@@ -94,9 +94,10 @@ class VAD:
 class Sender:
     """Sends ADPCM segments to the backend."""
 
-    def __init__(self, server_url: str, api_key: str):
+    def __init__(self, server_url: str, api_key: str, verbose: bool = False):
         self.endpoint = f"{server_url}/api/segments"
         self.api_key = api_key
+        self.verbose = verbose
 
     def send(self, adpcm_data: bytes, duration_ms: int, silence_before_ms: int) -> bool:
         """Send an ADPCM segment to the backend.
@@ -121,6 +122,8 @@ class Sender:
             if resp.status_code == 201:
                 data = resp.json()
                 print(f"  ✓ Sent {len(adpcm_data)} bytes → segment {data['id'][:8]}...")
+                if self.verbose:
+                    print(f"    Server response: {data}")
                 return True
             else:
                 print(f"  ✗ Server returned {resp.status_code}: {resp.text[:100]}")
@@ -139,7 +142,7 @@ class Sender:
 def run_simulator(args):
     """Main loop: capture → VAD → encode → send."""
     vad = VAD(threshold=args.vad_threshold)
-    sender = Sender(args.server, args.api_key)
+    sender = Sender(args.server, args.api_key, verbose=args.verbose)
 
     frame_size = int(SAMPLE_RATE * 0.032)  # 32ms frames (512 samples) — same as firmware
     segment_max_samples = int(SAMPLE_RATE * args.segment_duration)
@@ -161,9 +164,12 @@ def run_simulator(args):
     segment_buffer = []  # list of PCM frames (numpy arrays)
     segment_start_time = 0
     last_silence_ms = 0
+    frame_count = 0
+    max_energy_seen = 0
 
     def audio_callback(indata, frames, time_info, status):
         nonlocal recording, segment_buffer, segment_start_time, last_silence_ms
+        nonlocal frame_count, max_energy_seen
 
         if status:
             print(f"  ⚠ Audio status: {status}", file=sys.stderr)
@@ -172,12 +178,27 @@ def run_simulator(args):
         frame_int16 = (frame * 32767).astype(np.int16) if frame.dtype != np.int16 else frame
 
         event = vad.process(frame_int16)
+        frame_count += 1
+        max_energy_seen = max(max_energy_seen, vad.energy)
+
+        # Show energy level every ~1 second (every 31 frames at 32ms each)
+        if frame_count % 31 == 0 and not recording:
+            bar_len = min(vad.energy // 50, 40)
+            bar = "█" * bar_len + "░" * (40 - bar_len)
+            threshold_pos = min(args.vad_threshold // 50, 40)
+            status_char = "🟢" if vad.energy > args.vad_threshold else "⚪"
+            sys.stdout.write(
+                f"\r  {status_char} Energy: {vad.energy:5d} [{bar}] "
+                f"(threshold: {args.vad_threshold}, max: {max_energy_seen})"
+            )
+            sys.stdout.flush()
 
         if event == "speech_start":
             recording = True
             segment_buffer = []
             segment_start_time = time.time()
             last_silence_ms = vad.silence_duration_ms
+            sys.stdout.write("\r" + " " * 80 + "\r")  # clear energy bar
             print(f"  🔴 Recording... (energy: {vad.energy})")
 
         if recording:
@@ -285,6 +306,11 @@ def main():
         type=int,
         default=None,
         help="Audio input device index (use --list-devices to see options)"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show full server response (segment ID, status)"
     )
 
     args = parser.parse_args()
