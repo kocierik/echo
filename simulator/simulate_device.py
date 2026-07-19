@@ -332,6 +332,117 @@ def transcribe_local(pcm_samples: np.ndarray, model):
         os.unlink(tmp_path)
 
 
+def run_calibration(args):
+    """Calibration mode: measures environment and suggests optimal parameters."""
+    frame_size = int(SAMPLE_RATE * 0.032)
+
+    print("""
+╔══════════════════════════════════════════════════╗
+║         Calibrazione                             ║
+╚══════════════════════════════════════════════════╝
+""")
+
+    # Phase 1: Measure silence
+    print("  📏 Fase 1: Misurazione rumore di fondo")
+    print("     Resta in SILENZIO per 5 secondi...\n")
+
+    silence_energies = []
+    duration = 5.0
+    samples_needed = int(duration / 0.032)
+
+    def silence_callback(indata, frames, time_info, status):
+        frame = indata[:, 0].copy()
+        frame_int16 = frame if frame.dtype == np.int16 else (frame * 32767).astype(np.int16)
+        energy = int(np.sqrt(np.mean(frame_int16.astype(np.float64) ** 2)))
+        silence_energies.append(energy)
+        # Progress
+        pct = min(len(silence_energies) / samples_needed * 100, 100)
+        sys.stdout.write(f"\r     Progresso: {pct:.0f}% (energy: {energy})")
+        sys.stdout.flush()
+
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                        blocksize=frame_size, callback=silence_callback):
+        time.sleep(duration)
+
+    noise_avg = int(np.mean(silence_energies))
+    noise_max = int(np.max(silence_energies))
+    noise_p95 = int(np.percentile(silence_energies, 95))
+
+    print(f"\n\n     Rumore di fondo:")
+    print(f"       Media:  {noise_avg}")
+    print(f"       Max:    {noise_max}")
+    print(f"       P95:    {noise_p95}")
+
+    # Phase 2: Measure speech
+    print("\n  📏 Fase 2: Misurazione parlato")
+    print("     Parla NORMALMENTE per 5 secondi...\n")
+
+    time.sleep(1)  # Brief pause
+    speech_energies = []
+
+    def speech_callback(indata, frames, time_info, status):
+        frame = indata[:, 0].copy()
+        frame_int16 = frame if frame.dtype == np.int16 else (frame * 32767).astype(np.int16)
+        energy = int(np.sqrt(np.mean(frame_int16.astype(np.float64) ** 2)))
+        speech_energies.append(energy)
+        pct = min(len(speech_energies) / samples_needed * 100, 100)
+        sys.stdout.write(f"\r     Progresso: {pct:.0f}% (energy: {energy})")
+        sys.stdout.flush()
+
+    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
+                        blocksize=frame_size, callback=speech_callback):
+        time.sleep(duration)
+
+    speech_avg = int(np.mean(speech_energies))
+    speech_max = int(np.max(speech_energies))
+    speech_p25 = int(np.percentile(speech_energies, 25))
+
+    print(f"\n\n     Parlato:")
+    print(f"       Media:  {speech_avg}")
+    print(f"       Max:    {speech_max}")
+    print(f"       P25:    {speech_p25}")
+
+    # Calculate optimal threshold
+    # Should be above 95th percentile of noise, below 25th percentile of speech
+    optimal_threshold = int((noise_p95 + speech_p25) / 2)
+    # Ensure it's at least 2x noise
+    optimal_threshold = max(optimal_threshold, noise_p95 * 2)
+
+    # Calculate gain if needed
+    gain = 1.0
+    if speech_avg < 300:
+        gain = max(2.0, 500 / speech_avg)
+
+    # Determine separation quality
+    separation = speech_p25 / max(noise_p95, 1)
+
+    print(f"\n  ═══════════════════════════════════════════════")
+    print(f"  📊 Risultati calibrazione:")
+    print(f"  ═══════════════════════════════════════════════")
+    print(f"")
+
+    if separation > 3:
+        print(f"  ✅ Ottima separazione segnale/rumore ({separation:.1f}x)")
+    elif separation > 1.5:
+        print(f"  ⚠️  Separazione sufficiente ({separation:.1f}x) — ambiente un po' rumoroso")
+    else:
+        print(f"  ❌ Separazione scarsa ({separation:.1f}x) — ambiente troppo rumoroso")
+
+    print(f"\n  Parametri consigliati:\n")
+
+    cmd = f"  python simulate_device.py -t {optimal_threshold}"
+    if gain > 1.0:
+        cmd += f" -g {gain:.0f}"
+    cmd += f" -s {args.server} -k {args.api_key}"
+
+    print(f"    {cmd}")
+    print(f"")
+    print(f"    -t {optimal_threshold}  (soglia VAD)")
+    if gain > 1.0:
+        print(f"    -g {gain:.0f}       (gain — microfono debole)")
+    print(f"")
+
+
 # =============================================================================
 # CLI
 # =============================================================================
@@ -373,6 +484,11 @@ def main():
         help="List available audio input devices and exit"
     )
     parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Run calibration mode: measures noise floor and suggests optimal settings"
+    )
+    parser.add_argument(
         "--device",
         type=int,
         default=None,
@@ -410,7 +526,10 @@ def main():
     if args.device is not None:
         sd.default.device[0] = args.device
 
-    run_simulator(args)
+    if args.calibrate:
+        run_calibration(args)
+    else:
+        run_simulator(args)
 
 
 if __name__ == "__main__":
