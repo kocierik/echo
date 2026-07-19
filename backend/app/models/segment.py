@@ -33,5 +33,5 @@ class Segment(UUIDPrimaryKey, Base):
 
 
 # Avoid circular import
-from app.models.transcription import Transcription  # noqa: E402
 from app.models.conversation import Conversation  # noqa: E402
+from app.models.transcription import Transcription  # noqa: E402

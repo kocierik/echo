@@ -2,18 +2,16 @@
 
 Processes:
 1. STT: picks segments from queue:stt, transcribes, saves transcription
-2. Analysis: picks transcriptions from queue:analysis, extracts entities, groups conversations, creates chunks with embeddings
+2. Analysis: extracts entities, groups conversations, creates chunks
 """
 
 import asyncio
-import json
 import logging
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 import redis.asyncio as redis
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -140,7 +138,7 @@ async def process_analysis(redis_client: redis.Redis):
                 await db.flush()
 
                 # --- Deduplicate entities ---
-                merged = await deduplicate_entities(db, user_id, llm_service)
+                await deduplicate_entities(db, user_id, llm_service)
 
                 # --- Chunking & embedding ---
                 # Get all transcriptions in the conversation so far
@@ -155,7 +153,9 @@ async def process_analysis(redis_client: redis.Redis):
                 full_text = " ".join(all_texts)
 
                 # Re-chunk the full conversation text
-                chunks = chunk_text(full_text, settings.chunk_size_tokens, settings.chunk_overlap_tokens)
+                chunks = chunk_text(
+                    full_text, settings.chunk_size_tokens, settings.chunk_overlap_tokens
+                )
 
                 # Delete old chunks for this conversation and re-create
                 from sqlalchemy import delete
@@ -232,7 +232,11 @@ async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversa
 
 
 async def extract_entities(
-    llm_service, text: str, user_id: uuid.UUID, transcription_id: uuid.UUID, conversation_id: uuid.UUID
+    llm_service,
+    text: str,
+    user_id: uuid.UUID,
+    transcription_id: uuid.UUID,
+    conversation_id: uuid.UUID,
 ) -> list[Entity]:
     """Use LLM to extract structured entities from transcription text."""
     messages = [

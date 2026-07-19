@@ -56,7 +56,8 @@ async def stats():
                 (SELECT count(*) FROM conversations) AS conversations,
                 (SELECT count(*) FROM entities) AS entities,
                 (SELECT count(*) FROM chunks) AS chunks,
-                (SELECT coalesce(sum(audio_size_bytes), 0) FROM segments WHERE audio_path != '') AS audio_bytes
+                (SELECT coalesce(sum(audio_size_bytes), 0)
+                    FROM segments WHERE audio_path != '') AS audio_bytes
         """))
         row = result.one()
 

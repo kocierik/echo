@@ -1,7 +1,6 @@
 """Query API: natural language search over personal memory with RAG."""
 
 import uuid
-from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
