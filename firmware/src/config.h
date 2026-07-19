@@ -9,8 +9,10 @@
 // ============================================================
 // Backend Server
 // ============================================================
-#define SERVER_HOST "192.168.1.100"
-#define SERVER_PORT 8000
+// For local dev: use your PC's IP (e.g. "192.168.1.100", port 8000)
+// For production: use Cloudflare Tunnel domain
+#define SERVER_HOST "echo.man.ovh"
+#define SERVER_PORT 443
 #define SERVER_ENDPOINT "/api/segments"
 #define API_KEY "my-secret-key"
 
