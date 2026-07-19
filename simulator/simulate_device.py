@@ -155,6 +155,7 @@ def run_simulator(args):
 ║  VAD:       threshold={args.vad_threshold:<26} ║
 ║  Segment:   {args.segment_duration}s max duration{' ' * 22}║
 ║  Silence:   {args.silence_timeout}s timeout{' ' * 25}║
+║  Gain:      {args.gain}x{' ' * 37}║
 ╚══════════════════════════════════════════════════╝
     """)
     print("🎙️  Listening... (speak to start recording, Ctrl+C to quit)\n")
@@ -176,6 +177,12 @@ def run_simulator(args):
 
         frame = indata[:, 0].copy()  # mono
         frame_int16 = (frame * 32767).astype(np.int16) if frame.dtype != np.int16 else frame
+
+        # Apply gain
+        if args.gain != 1.0:
+            amplified = frame_int16.astype(np.int32) * int(args.gain)
+            amplified = np.clip(amplified, -32768, 32767)
+            frame_int16 = amplified.astype(np.int16)
 
         event = vad.process(frame_int16)
         frame_count += 1
@@ -311,6 +318,12 @@ def main():
         "-v", "--verbose",
         action="store_true",
         help="Show full server response (segment ID, status)"
+    )
+    parser.add_argument(
+        "-g", "--gain",
+        type=float,
+        default=1.0,
+        help="Microphone gain multiplier (default: 1.0, try 5-10 if energy is low)"
     )
 
     args = parser.parse_args()
