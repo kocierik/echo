@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Environment
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes (local data)
+postgres_data/
+redis_data/
+audio_data/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# Test
+.pytest_cache/
+htmlcov/
+.coverage

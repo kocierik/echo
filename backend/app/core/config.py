@@ -1,0 +1,49 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    # Database
+    database_url: str = "postgresql+asyncpg://echo:echo@localhost:5432/echo"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
+    # Audio storage
+    audio_storage_path: str = "/data/audio"
+    audio_retention_days: int = 30
+
+    # OpenAI
+    openai_api_key: str = ""
+
+    # STT
+    stt_provider: str = "openai"
+    stt_model: str = "whisper-1"
+    stt_language: str = "it"
+
+    # LLM - analysis (async, economico)
+    llm_analysis_provider: str = "openai"
+    llm_analysis_model: str = "gpt-4o-mini"
+
+    # LLM - query (RAG, qualità)
+    llm_query_provider: str = "openai"
+    llm_query_model: str = "gpt-4o"
+
+    # Embeddings
+    embedding_provider: str = "openai"
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+
+    # Chunking
+    chunk_size_tokens: int = 500
+    chunk_overlap_tokens: int = 50
+
+    # Conversation segmentation
+    silence_timeout_ms: int = 120000  # 2 minutes of silence = new conversation
+
+    # API
+    api_prefix: str = "/api"
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+
+settings = Settings()
