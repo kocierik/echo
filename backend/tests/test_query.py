@@ -65,7 +65,7 @@ async def test_query_with_chunks(client: AsyncClient, auth_headers, db_session: 
         {
             "id": str(conversation_id),
             "user_id": str(TEST_USER_ID),
-            "started_at": datetime.now(timezone.utc).isoformat(),
+            "started_at": datetime.now(timezone.utc),
         },
     )
     await db_session.commit()

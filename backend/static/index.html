@@ -39,6 +39,25 @@
             overflow-y: auto;
             padding: 0.5rem;
         }
+        .empty-state {
+            padding: 1.25rem 0.75rem;
+            color: #666;
+            font-size: 0.85rem;
+            line-height: 1.45;
+        }
+        .empty-state strong { color: #aaa; font-weight: 500; }
+        #chat:empty::before {
+            content: "Inserisci la API key in basso a sinistra, poi chiedi alla tua memoria.";
+            display: block;
+            color: #555;
+            font-size: 0.9rem;
+            padding: 2rem 0;
+            text-align: center;
+        }
+        #settings.error input { border-color: #b91c1c; }
+        #settings .hint { color: #555; }
+        #settings .hint.ok { color: #4ade80; }
+        #settings .hint.err { color: #f87171; }
         .conv-item {
             padding: 0.75rem;
             border-radius: 8px;
@@ -167,13 +186,18 @@
         .entity-chip.note { border-color: #6b7280; color: #9ca3af; }
         /* Settings bar */
         #settings {
-            padding: 0.5rem 1rem;
+            padding: 0.75rem 1rem;
             border-top: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        #settings .row {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            font-size: 0.8rem;
-            color: #666;
         }
         #settings input {
             padding: 0.3rem 0.5rem;
@@ -182,8 +206,21 @@
             background: #1a1a1a;
             color: #e0e0e0;
             font-size: 0.8rem;
-            width: 220px;
+            flex: 1;
+            min-width: 0;
         }
+        #settings button.use-dev {
+            padding: 0.3rem 0.55rem;
+            border-radius: 4px;
+            border: 1px solid #333;
+            background: #1a1a1a;
+            color: #aaa;
+            font-size: 0.75rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        #settings button.use-dev:hover { border-color: #1d4ed8; color: #fff; }
+        #settings .note { font-size: 0.72rem; color: #555; line-height: 1.3; }
     </style>
 </head>
 <body>
@@ -194,8 +231,15 @@
         </header>
         <div id="conv-list"></div>
         <div id="settings">
-            <label for="api-key">Key:</label>
-            <input type="password" id="api-key" placeholder="API key" />
+            <div class="row">
+                <label for="api-key">Echo key:</label>
+                <input type="text" id="api-key" placeholder="my-secret-key" autocomplete="off" spellcheck="false" />
+                <button type="button" class="use-dev" id="use-dev-key" title="Inserisci la key di sviluppo">Usa default</button>
+            </div>
+            <div class="row">
+                <span class="hint" id="key-status"></span>
+            </div>
+            <div class="note">Non è la OPENAI_API_KEY del file .env — è la chiave Echo (locale: my-secret-key).</div>
         </div>
     </div>
     <div id="main">
@@ -220,11 +264,44 @@
         const apiKeyEl = document.getElementById('api-key');
         const convListEl = document.getElementById('conv-list');
         const detailPanel = document.getElementById('detail-panel');
+        const keyStatusEl = document.getElementById('key-status');
+        const settingsEl = document.getElementById('settings');
+        const DEV_API_KEY = 'my-secret-key';
 
-        apiKeyEl.value = localStorage.getItem('echo_api_key') || '';
-        apiKeyEl.addEventListener('change', () => {
-            localStorage.setItem('echo_api_key', apiKeyEl.value);
+        let stored = (localStorage.getItem('echo_api_key') || '').trim();
+        // Common mistake: pasting OPENAI_API_KEY (sk-...) into this field
+        if (stored.startsWith('sk-')) {
+            localStorage.removeItem('echo_api_key');
+            stored = '';
+        }
+        apiKeyEl.value = stored;
+
+        function saveAndLoadKey() {
+            const key = apiKeyEl.value.trim();
+            if (key.startsWith('sk-')) {
+                setKeyStatus(false, 'questa è OpenAI, non Echo');
+                convListEl.innerHTML = `
+                    <div class="empty-state">
+                        <strong>Key sbagliata</strong><br>
+                        Hai inserito la OPENAI_API_KEY. Qui serve la chiave Echo:
+                        <code>${DEV_API_KEY}</code>
+                    </div>`;
+                return;
+            }
+            localStorage.setItem('echo_api_key', key);
             loadConversations();
+        }
+
+        apiKeyEl.addEventListener('change', saveAndLoadKey);
+        apiKeyEl.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveAndLoadKey();
+            }
+        });
+        document.getElementById('use-dev-key').addEventListener('click', () => {
+            apiKeyEl.value = DEV_API_KEY;
+            saveAndLoadKey();
         });
 
         questionEl.addEventListener('keydown', (e) => {
@@ -233,6 +310,12 @@
 
         function getHeaders() {
             return { 'X-API-Key': apiKeyEl.value.trim(), 'Content-Type': 'application/json' };
+        }
+
+        function setKeyStatus(ok, msg) {
+            settingsEl.classList.toggle('error', !ok && !!msg);
+            keyStatusEl.className = 'hint ' + (ok ? 'ok' : (msg ? 'err' : ''));
+            keyStatusEl.textContent = msg || '';
         }
 
         // --- Tabs ---
@@ -244,16 +327,45 @@
 
         // --- Conversations ---
         async function loadConversations() {
-            if (!apiKeyEl.value.trim()) return;
+            const key = apiKeyEl.value.trim();
+            if (!key) {
+                setKeyStatus(false, '');
+                convListEl.innerHTML = `
+                    <div class="empty-state">
+                        <strong>Nessuna API key</strong><br>
+                        Clicca <em>Usa default</em> oppure digita <code>${DEV_API_KEY}</code>
+                        (non la OPENAI_API_KEY del .env).
+                    </div>`;
+                return;
+            }
             try {
                 const res = await fetch('/api/conversations?limit=50', { headers: getHeaders() });
-                if (!res.ok) return;
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    const detail = err.detail || `HTTP ${res.status}`;
+                    setKeyStatus(false, 'non valida');
+                    convListEl.innerHTML = `<div class="empty-state"><strong>Auth fallita</strong><br>${detail}</div>`;
+                    return;
+                }
+                setKeyStatus(true, 'ok');
                 const data = await res.json();
                 renderConversations(data.conversations);
-            } catch (e) { console.error(e); }
+            } catch (e) {
+                console.error(e);
+                setKeyStatus(false, 'errore');
+                convListEl.innerHTML = `<div class="empty-state"><strong>Errore di rete</strong><br>${e.message}</div>`;
+            }
         }
 
         function renderConversations(conversations) {
+            if (!conversations.length) {
+                convListEl.innerHTML = `
+                    <div class="empty-state">
+                        <strong>Nessuna conversazione</strong><br>
+                        Quando il wearable (o un upload) invia audio, apparirà qui.
+                    </div>`;
+                return;
+            }
             convListEl.innerHTML = conversations.map(c => `
                 <div class="conv-item" onclick="showConversation('${c.id}')" id="conv-${c.id}">
                     <div class="title">${c.title || 'Conversazione senza titolo'}</div>
@@ -351,7 +463,7 @@
         }
 
         // --- Init ---
-        if (apiKeyEl.value) loadConversations();
+        loadConversations();
     </script>
 </body>
 </html>
