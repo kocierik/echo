@@ -1,0 +1,4 @@
+# Echo Device Simulator dependencies
+sounddevice==0.5.1
+numpy==2.1.2
+requests==2.32.3
