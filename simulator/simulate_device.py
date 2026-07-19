@@ -193,7 +193,7 @@ def run_simulator(args):
             print(f"  ⚠ Audio status: {status}", file=sys.stderr)
 
         frame = indata[:, 0].copy()  # mono
-        frame_int16 = (frame * 32767).astype(np.int16) if frame.dtype != np.int16 else frame
+        frame_int16 = (frame * 32767).astype(np.int16)
 
         # Apply gain
         if args.gain != 1.0:
@@ -246,7 +246,7 @@ def run_simulator(args):
         with sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
-            dtype=DTYPE,
+            dtype="float32",
             blocksize=frame_size,
             callback=audio_callback,
         ):
