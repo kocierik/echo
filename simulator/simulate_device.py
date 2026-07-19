@@ -271,6 +271,11 @@ def finalize_segment(frames: list, duration: float, silence_before_ms: int,
     pcm_samples = np.concatenate(frames)
     duration_ms = int(duration * 1000)
 
+    # Skip very short segments (< 500ms) — they're usually noise/clicks
+    if duration_ms < 500:
+        print(f"  ⏭ Skipped: too short ({duration_ms}ms)")
+        return
+
     print(f"  ⬜ Segment: {duration_ms}ms, {len(pcm_samples)} samples")
 
     # Local transcription preview (free, no API cost)
@@ -307,8 +312,17 @@ def transcribe_local(pcm_samples: np.ndarray, model):
     try:
         segments, info = model.transcribe(tmp_path, language="it", beam_size=3)
         text = " ".join(seg.text.strip() for seg in segments)
-        if text:
+
+        # Filter known Whisper hallucinations
+        hallucinations = [
+            "sottotitoli", "amara.org", "comunità", "MoraviCS",
+            "Sottotitoli e revisione", "www.", ".org", ".com",
+            "Grazie per aver guardato", "Iscriviti al canale",
+        ]
+        if text and not any(h.lower() in text.lower() for h in hallucinations):
             print(f"  💬 \"{text}\"")
+        elif text:
+            print(f"  💬 (hallucination filtered: \"{text[:50]}...\")")
         else:
             print(f"  💬 (silenzio / non riconosciuto)")
     except Exception as e:
