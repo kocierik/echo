@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0
@@ -25,6 +28,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     command: python -m app.workers.main
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     environment:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -20,9 +20,7 @@ class Transcription(UUIDPrimaryKey, Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default_factory=lambda: __import__("datetime").datetime.now(
-            __import__("datetime").timezone.utc
-        ),
+        default=lambda: datetime.now(timezone.utc),
     )
     stt_provider: Mapped[str] = mapped_column(String(50), nullable=False)
     stt_model: Mapped[str] = mapped_column(String(50), nullable=False)

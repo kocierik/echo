@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.database import engine
+from app.core.database import async_session, engine
 from app.routers import conversations, entities, query, segments
 
 app = FastAPI(
@@ -13,14 +13,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# API routes
+# API routes (must be before static mount)
 app.include_router(segments.router, prefix=settings.api_prefix)
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
-
-# Serve frontend static files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 
 @app.get("/health")
@@ -51,8 +48,6 @@ async def health():
 @app.get("/api/stats")
 async def stats():
     """System statistics: counts and storage usage."""
-    from app.core.database import async_session
-
     async with async_session() as db:
         result = await db.execute(text("""
             SELECT
@@ -73,3 +68,7 @@ async def stats():
         "chunks": row.chunks,
         "audio_storage_mb": round(row.audio_bytes / (1024 * 1024), 2),
     }
+
+
+# Serve frontend static files (MUST be last — catches all unmatched routes)
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

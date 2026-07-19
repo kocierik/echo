@@ -5,10 +5,10 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
+from app.models.base import Base, UUIDPrimaryKey
 
 
-class Segment(UUIDPrimaryKey, TimestampMixin, Base):
+class Segment(UUIDPrimaryKey, Base):
     __tablename__ = "segments"
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
