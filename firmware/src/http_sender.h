@@ -60,7 +60,8 @@ bool HttpSender::sendSegment(const uint8_t* data, size_t length, const SegmentMe
 
 bool HttpSender::doPost(const uint8_t* data, size_t length, const SegmentMetadata& meta) {
     HTTPClient http;
-    String url = String("http://") + SERVER_HOST + ":" + SERVER_PORT + SERVER_ENDPOINT;
+    String protocol = (SERVER_PORT == 443) ? "https://" : "http://";
+    String url = protocol + SERVER_HOST + ":" + SERVER_PORT + SERVER_ENDPOINT;
 
     http.begin(url);
     http.setTimeout(HTTP_TIMEOUT_MS);
