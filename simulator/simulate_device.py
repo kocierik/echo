@@ -17,6 +17,13 @@ import numpy as np
 
 from adpcm_encode import encode_adpcm
 
+# Optional: local transcription preview
+try:
+    from faster_whisper import WhisperModel
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
 # =============================================================================
 # Configuration defaults
 # =============================================================================
@@ -144,6 +151,17 @@ def run_simulator(args):
     vad = VAD(threshold=args.vad_threshold)
     sender = Sender(args.server, args.api_key, verbose=args.verbose)
 
+    # Load local Whisper model for transcription preview
+    whisper_model = None
+    if args.transcribe:
+        if not WHISPER_AVAILABLE:
+            print("  ⚠ faster-whisper not installed. Run: pip install faster-whisper")
+            print("    Continuing without local transcription.\n")
+        else:
+            print(f"  📥 Loading Whisper '{args.whisper_model}' model (first time downloads ~150MB)...")
+            whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
+            print("  ✓ Whisper model loaded.\n")
+
     frame_size = int(SAMPLE_RATE * 0.032)  # 32ms frames (512 samples) — same as firmware
     segment_max_samples = int(SAMPLE_RATE * args.segment_duration)
 
@@ -214,13 +232,13 @@ def run_simulator(args):
             # Check max duration
             elapsed = time.time() - segment_start_time
             if elapsed >= args.segment_duration:
-                finalize_segment(segment_buffer, elapsed, last_silence_ms, sender)
+                finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
                 recording = False
                 segment_buffer = []
 
         if event == "speech_end" and recording:
             elapsed = time.time() - segment_start_time
-            finalize_segment(segment_buffer, elapsed, last_silence_ms, sender)
+            finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
             recording = False
             segment_buffer = []
 
@@ -244,7 +262,8 @@ def run_simulator(args):
         sys.exit(1)
 
 
-def finalize_segment(frames: list, duration: float, silence_before_ms: int, sender: Sender):
+def finalize_segment(frames: list, duration: float, silence_before_ms: int,
+                     sender: Sender, whisper_model=None):
     """Encode collected frames to ADPCM and send."""
     if not frames:
         return
@@ -254,6 +273,10 @@ def finalize_segment(frames: list, duration: float, silence_before_ms: int, send
     duration_ms = int(duration * 1000)
 
     print(f"  ⬜ Segment: {duration_ms}ms, {len(pcm_samples)} samples")
+
+    # Local transcription preview (free, no API cost)
+    if whisper_model is not None:
+        transcribe_local(pcm_samples, whisper_model)
 
     # Convert to bytes
     pcm_bytes = pcm_samples.tobytes()
@@ -266,6 +289,34 @@ def finalize_segment(frames: list, duration: float, silence_before_ms: int, send
     # Send to backend
     sender.send(adpcm_data, duration_ms, silence_before_ms)
     print()
+
+
+def transcribe_local(pcm_samples: np.ndarray, model):
+    """Transcribe audio locally using faster-whisper (free, no API calls)."""
+    import tempfile
+    import wave
+
+    # Write PCM to a temporary WAV file
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        tmp_path = f.name
+        with wave.open(f, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(SAMPLE_RATE)
+            wav.writeframes(pcm_samples.tobytes())
+
+    try:
+        segments, info = model.transcribe(tmp_path, language="it", beam_size=3)
+        text = " ".join(seg.text.strip() for seg in segments)
+        if text:
+            print(f"  💬 \"{text}\"")
+        else:
+            print(f"  💬 (silenzio / non riconosciuto)")
+    except Exception as e:
+        print(f"  ⚠ Transcription error: {e}")
+    finally:
+        import os
+        os.unlink(tmp_path)
 
 
 # =============================================================================
@@ -324,6 +375,17 @@ def main():
         type=float,
         default=1.0,
         help="Microphone gain multiplier (default: 1.0, try 5-10 if energy is low)"
+    )
+    parser.add_argument(
+        "--transcribe",
+        action="store_true",
+        help="Show local transcription preview (uses faster-whisper, free, no API calls)"
+    )
+    parser.add_argument(
+        "--whisper-model",
+        default="base",
+        choices=["tiny", "base", "small"],
+        help="Local Whisper model size (default: base)"
     )
 
     args = parser.parse_args()
