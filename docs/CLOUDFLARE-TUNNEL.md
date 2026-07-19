@@ -24,9 +24,9 @@ Nella pagina del tunnel, sezione **Public Hostnames**:
 
 | Subdomain | Domain | Service |
 |-----------|--------|---------|
-| `echo` | `tuodominio.com` | `http://api:8000` |
+| `echo` | `man.ovh` | `http://api:8000` |
 
-Questo crea `echo.tuodominio.com` → il tuo backend.
+Questo crea `echo.man.ovh` → il tuo backend.
 
 ### 3. Aggiungi il token al .env
 
@@ -46,7 +46,7 @@ Il servizio `tunnel` nel `docker-compose.yml` si connetterà automaticamente a C
 ### 5. Verifica
 
 ```bash
-curl https://echo.tuodominio.com/health
+curl https://echo.man.ovh/health
 # Dovrebbe ritornare: {"status":"ok","postgres":"ok","redis":"ok"}
 ```
 
@@ -54,7 +54,7 @@ curl https://echo.tuodominio.com/health
 
 Nel firmware `config.h`:
 ```c
-#define SERVER_HOST "echo.tuodominio.com"
+#define SERVER_HOST "echo.man.ovh"
 #define SERVER_PORT 443
 #define SERVER_ENDPOINT "/api/segments"
 ```
@@ -63,7 +63,7 @@ E nel `http_sender.h`, cambia `http://` in `https://` (Cloudflare gestisce il TL
 
 Nel simulatore:
 ```bash
-python simulate_device.py -s https://echo.tuodominio.com
+python simulate_device.py -s https://echo.man.ovh
 ```
 
 ## Sicurezza
