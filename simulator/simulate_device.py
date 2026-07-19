@@ -154,9 +154,14 @@ def run_simulator(args):
     # Load local Whisper model for transcription preview
     whisper_model = None
     if not args.no_transcribe and WHISPER_AVAILABLE:
-        print(f"  📥 Loading Whisper '{args.whisper_model}' model (first time downloads ~150MB)...")
-        whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
-        print("  ✓ Whisper model loaded.\n")
+        try:
+            print(f"  📥 Loading Whisper '{args.whisper_model}' model...")
+            whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
+            print("  ✓ Whisper model loaded.\n")
+        except Exception as e:
+            print(f"  ⚠ Could not load Whisper model: {e}")
+            print("    Continuing without local transcription.\n")
+            whisper_model = None
     elif not args.no_transcribe and not WHISPER_AVAILABLE:
         print("  ℹ Local transcription disabled (install faster-whisper to enable)")
         print("    pip install faster-whisper\n")
