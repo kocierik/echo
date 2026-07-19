@@ -153,14 +153,13 @@ def run_simulator(args):
 
     # Load local Whisper model for transcription preview
     whisper_model = None
-    if args.transcribe:
-        if not WHISPER_AVAILABLE:
-            print("  ⚠ faster-whisper not installed. Run: pip install faster-whisper")
-            print("    Continuing without local transcription.\n")
-        else:
-            print(f"  📥 Loading Whisper '{args.whisper_model}' model (first time downloads ~150MB)...")
-            whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
-            print("  ✓ Whisper model loaded.\n")
+    if not args.no_transcribe and WHISPER_AVAILABLE:
+        print(f"  📥 Loading Whisper '{args.whisper_model}' model (first time downloads ~150MB)...")
+        whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
+        print("  ✓ Whisper model loaded.\n")
+    elif not args.no_transcribe and not WHISPER_AVAILABLE:
+        print("  ℹ Local transcription disabled (install faster-whisper to enable)")
+        print("    pip install faster-whisper\n")
 
     frame_size = int(SAMPLE_RATE * 0.032)  # 32ms frames (512 samples) — same as firmware
     segment_max_samples = int(SAMPLE_RATE * args.segment_duration)
@@ -377,9 +376,9 @@ def main():
         help="Microphone gain multiplier (default: 1.0, try 5-10 if energy is low)"
     )
     parser.add_argument(
-        "--transcribe",
+        "--no-transcribe",
         action="store_true",
-        help="Show local transcription preview (uses faster-whisper, free, no API calls)"
+        help="Disable local transcription preview"
     )
     parser.add_argument(
         "--whisper-model",
