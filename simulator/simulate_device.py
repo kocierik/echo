@@ -344,53 +344,50 @@ def run_calibration(args):
 
     # Phase 1: Measure silence
     print("  📏 Fase 1: Misurazione rumore di fondo")
-    print("     Resta in SILENZIO per 3 secondi...\n")
-
+    print("     Resta in SILENZIO per 3 secondi...")
+    print("     (inizio fra 1 secondo)\n")
     time.sleep(1)
-    silence_energies = []
-    frames_needed = int(3.0 / 0.032)
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                        blocksize=frame_size) as stream:
-        for i in range(frames_needed):
-            data, _ = stream.read(frame_size)
-            frame = data[:, 0]
-            energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
-            silence_energies.append(energy)
-            if i % 15 == 0:
-                sys.stdout.write(f"\r     [{i * 100 // frames_needed}%] energy: {energy}")
-                sys.stdout.flush()
+    recording = sd.rec(int(3 * SAMPLE_RATE), samplerate=SAMPLE_RATE,
+                       channels=CHANNELS, dtype=DTYPE)
+    sd.wait()
+
+    # Analyze silence in 32ms frames
+    silence_energies = []
+    for i in range(0, len(recording) - frame_size, frame_size):
+        frame = recording[i:i + frame_size, 0]
+        energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
+        silence_energies.append(energy)
 
     noise_avg = int(np.mean(silence_energies))
     noise_max = int(np.max(silence_energies))
     noise_p95 = int(np.percentile(silence_energies, 95))
 
-    print(f"\r     Rumore di fondo:                    ")
+    print(f"     Rumore di fondo:")
     print(f"       Media: {noise_avg}  |  Max: {noise_max}  |  P95: {noise_p95}")
 
     # Phase 2: Measure speech
     print("\n  📏 Fase 2: Misurazione parlato")
-    print("     Parla NORMALMENTE per 3 secondi...\n")
-
+    print("     Parla NORMALMENTE per 3 secondi...")
+    print("     (inizio fra 1 secondo)\n")
     time.sleep(1)
-    speech_energies = []
 
-    with sd.InputStream(samplerate=SAMPLE_RATE, channels=CHANNELS, dtype=DTYPE,
-                        blocksize=frame_size) as stream:
-        for i in range(frames_needed):
-            data, _ = stream.read(frame_size)
-            frame = data[:, 0]
-            energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
-            speech_energies.append(energy)
-            if i % 15 == 0:
-                sys.stdout.write(f"\r     [{i * 100 // frames_needed}%] energy: {energy}")
-                sys.stdout.flush()
+    recording = sd.rec(int(3 * SAMPLE_RATE), samplerate=SAMPLE_RATE,
+                       channels=CHANNELS, dtype=DTYPE)
+    sd.wait()
+
+    # Analyze speech in 32ms frames
+    speech_energies = []
+    for i in range(0, len(recording) - frame_size, frame_size):
+        frame = recording[i:i + frame_size, 0]
+        energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
+        speech_energies.append(energy)
 
     speech_avg = int(np.mean(speech_energies))
     speech_max = int(np.max(speech_energies))
     speech_p25 = int(np.percentile(speech_energies, 25))
 
-    print(f"\r     Parlato:                             ")
+    print(f"     Parlato:")
     print(f"       Media: {speech_avg}  |  Max: {speech_max}  |  P25: {speech_p25}")
 
     # Calculate optimal threshold
