@@ -154,14 +154,9 @@ def run_simulator(args):
     # Load local Whisper model for transcription preview
     whisper_model = None
     if not args.no_transcribe and WHISPER_AVAILABLE:
-        try:
-            print(f"  📥 Loading Whisper '{args.whisper_model}' model...")
-            whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
-            print("  ✓ Whisper model loaded.\n")
-        except Exception as e:
-            print(f"  ⚠ Could not load Whisper model: {e}")
-            print("    Continuing without local transcription.\n")
-            whisper_model = None
+        print(f"  📥 Loading Whisper '{args.whisper_model}' model (first time downloads ~150MB)...")
+        whisper_model = WhisperModel(args.whisper_model, device="cpu", compute_type="int8")
+        print("  ✓ Whisper model loaded.\n")
     elif not args.no_transcribe and not WHISPER_AVAILABLE:
         print("  ℹ Local transcription disabled (install faster-whisper to enable)")
         print("    pip install faster-whisper\n")
@@ -337,96 +332,6 @@ def transcribe_local(pcm_samples: np.ndarray, model):
         os.unlink(tmp_path)
 
 
-def run_calibration(args):
-    """Calibration mode: measures environment and suggests optimal parameters."""
-    frame_size = int(SAMPLE_RATE * 0.032)
-
-    print("""
-╔══════════════════════════════════════════════════╗
-║         Calibrazione                             ║
-╚══════════════════════════════════════════════════╝
-""")
-
-    # Phase 1: Measure silence
-    print("  📏 Fase 1: Misurazione rumore di fondo")
-    print("     Resta in SILENZIO per 3 secondi...")
-    print("     (inizio fra 1 secondo)\n")
-    time.sleep(1)
-
-    recording = sd.rec(int(3 * SAMPLE_RATE), samplerate=SAMPLE_RATE,
-                       channels=CHANNELS, dtype=DTYPE)
-    sd.wait()
-
-    # Analyze silence in 32ms frames
-    silence_energies = []
-    for i in range(0, len(recording) - frame_size, frame_size):
-        frame = recording[i:i + frame_size, 0]
-        energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
-        silence_energies.append(energy)
-
-    noise_avg = int(np.mean(silence_energies))
-    noise_max = int(np.max(silence_energies))
-    noise_p95 = int(np.percentile(silence_energies, 95))
-
-    print(f"     Rumore di fondo:")
-    print(f"       Media: {noise_avg}  |  Max: {noise_max}  |  P95: {noise_p95}")
-
-    # Phase 2: Measure speech
-    print("\n  📏 Fase 2: Misurazione parlato")
-    print("     Parla NORMALMENTE per 3 secondi...")
-    print("     (inizio fra 1 secondo)\n")
-    time.sleep(1)
-
-    recording = sd.rec(int(3 * SAMPLE_RATE), samplerate=SAMPLE_RATE,
-                       channels=CHANNELS, dtype=DTYPE)
-    sd.wait()
-
-    # Analyze speech in 32ms frames
-    speech_energies = []
-    for i in range(0, len(recording) - frame_size, frame_size):
-        frame = recording[i:i + frame_size, 0]
-        energy = int(np.sqrt(np.mean(frame.astype(np.float64) ** 2)))
-        speech_energies.append(energy)
-
-    speech_avg = int(np.mean(speech_energies))
-    speech_max = int(np.max(speech_energies))
-    speech_p25 = int(np.percentile(speech_energies, 25))
-
-    print(f"     Parlato:")
-    print(f"       Media: {speech_avg}  |  Max: {speech_max}  |  P25: {speech_p25}")
-
-    # Calculate optimal threshold
-    optimal_threshold = int((noise_p95 + speech_p25) / 2)
-    optimal_threshold = max(optimal_threshold, noise_p95 * 2)
-
-    # Calculate gain if needed
-    gain = 1.0
-    if speech_avg < 300:
-        gain = max(2.0, 500 / speech_avg)
-
-    separation = speech_p25 / max(noise_p95, 1)
-
-    print(f"\n  ═══════════════════════════════════════════════")
-    print(f"  📊 Risultati:")
-    print(f"  ═══════════════════════════════════════════════")
-
-    if separation > 3:
-        print(f"\n  ✅ Ottima separazione segnale/rumore ({separation:.1f}x)")
-    elif separation > 1.5:
-        print(f"\n  ⚠️  Separazione sufficiente ({separation:.1f}x)")
-    else:
-        print(f"\n  ❌ Separazione scarsa ({separation:.1f}x) — ambiente rumoroso")
-
-    cmd = f"python simulate_device.py -t {optimal_threshold}"
-    if gain > 1.0:
-        cmd += f" -g {gain:.0f}"
-    cmd += f" -s {args.server} -k {args.api_key}"
-
-    print(f"\n  Comando consigliato:\n")
-    print(f"    {cmd}")
-    print()
-
-
 # =============================================================================
 # CLI
 # =============================================================================
@@ -468,11 +373,6 @@ def main():
         help="List available audio input devices and exit"
     )
     parser.add_argument(
-        "--calibrate",
-        action="store_true",
-        help="Run calibration mode: measures noise floor and suggests optimal settings"
-    )
-    parser.add_argument(
         "--device",
         type=int,
         default=None,
@@ -510,10 +410,7 @@ def main():
     if args.device is not None:
         sd.default.device[0] = args.device
 
-    if args.calibrate:
-        run_calibration(args)
-    else:
-        run_simulator(args)
+    run_simulator(args)
 
 
 if __name__ == "__main__":
