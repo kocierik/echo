@@ -16,7 +16,7 @@ pip install -r requirements.txt
 python simulate_device.py
 
 # Custom server and key
-python simulate_device.py -s http://your-server:8000 -k your-api-key
+python simulate_device.py -s https://echo.man.ovh -k your-api-key
 
 # Adjust VAD sensitivity (lower = more sensitive)
 python simulate_device.py -t 300
