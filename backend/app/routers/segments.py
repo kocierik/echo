@@ -63,7 +63,8 @@ async def ingest_segment(
         transcription_status="pending",
     )
     db.add(segment)
-    await db.flush()
+    # Commit before enqueue so the worker can see the row (avoids race with BRPOP).
+    await db.commit()
 
     # Queue for STT processing via Redis
     redis_client = redis.from_url(settings.redis_url)
