@@ -3,8 +3,6 @@
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import TEST_API_KEY
-
 
 @pytest.mark.asyncio
 async def test_ingest_segment_success(client: AsyncClient, auth_headers, tmp_path):

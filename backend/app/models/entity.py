@@ -44,5 +44,5 @@ class Entity(UUIDPrimaryKey, Base):
     conversation: Mapped["Conversation | None"] = relationship(back_populates="entities")
 
 
-from app.models.transcription import Transcription  # noqa: E402
 from app.models.conversation import Conversation  # noqa: E402
+from app.models.transcription import Transcription  # noqa: E402

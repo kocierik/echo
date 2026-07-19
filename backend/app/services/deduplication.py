@@ -8,7 +8,7 @@ import logging
 import uuid
 from difflib import SequenceMatcher
 
-from sqlalchemy import select, update, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entity import Entity

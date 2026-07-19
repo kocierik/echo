@@ -1,12 +1,10 @@
 """Unit tests for ADPCM decoder."""
 
+import io
 import struct
 import wave
-import io
 
-import pytest
-
-from app.services.adpcm_decoder import decode_adpcm, adpcm_to_wav
+from app.services.adpcm_decoder import adpcm_to_wav, decode_adpcm
 
 
 class TestDecodeAdpcm:

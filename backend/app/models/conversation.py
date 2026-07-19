@@ -24,6 +24,6 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, Base):
     entities: Mapped[list["Entity"]] = relationship(back_populates="conversation")
 
 
-from app.models.segment import Segment  # noqa: E402
 from app.models.chunk import Chunk  # noqa: E402
 from app.models.entity import Entity  # noqa: E402
+from app.models.segment import Segment  # noqa: E402

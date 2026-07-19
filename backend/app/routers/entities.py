@@ -52,7 +52,9 @@ class EntityStatsResponse(BaseModel):
 
 @router.get("", response_model=EntityListResponse)
 async def list_entities(
-    entity_type: str | None = Query(None, description="Filter by type: person, task, idea, event, note"),
+    entity_type: str | None = Query(
+        None, description="Filter by type: person, task, idea, event, note"
+    ),
     search: str | None = Query(None, description="Search by name (case-insensitive)"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
