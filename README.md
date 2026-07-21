@@ -63,6 +63,13 @@ On first run, apply the schema:
 docker compose exec postgres psql -U echo -d echo -f /dev/stdin < docs/schema.sql
 ```
 
+To reset the database (drops all data):
+
+```bash
+docker compose exec postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose exec postgres psql -U echo -d echo -f /dev/stdin < docs/schema.sql
+```
+
 ### 4. Create an API key
 
 ```bash
