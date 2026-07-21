@@ -147,8 +147,10 @@ async def query_memory(
     result = await db.execute(similarity_query)
     rows = result.all()
 
-    # 4. Find relevant entities
-    entities_context = await find_relevant_entities(db, user_id, request.question)
+    # 4. Find relevant entities (vector + keyword search)
+    entities_context = await find_relevant_entities(
+        db, user_id, request.question, question_embedding
+    )
 
     if not rows and not entities_context:
         no_result_msg = "Non ho ancora informazioni nella memoria per rispondere a questa domanda."
@@ -248,14 +250,39 @@ def _format_date_filter(date_range: DateRange | None) -> dict | None:
 
 
 async def find_relevant_entities(
-    db: AsyncSession, user_id: uuid.UUID, question: str
+    db: AsyncSession, user_id: uuid.UUID, question: str, question_embedding: list[float]
 ) -> str:
-    """Find entities relevant to the question using keyword matching.
+    """Find entities relevant to the question using vector similarity + keyword fallback.
 
-    Searches entity names against words in the question.
+    Strategy:
+    1. Vector search on entity embeddings (semantic match)
+    2. Keyword fallback for entities without embeddings
+    3. Merge and deduplicate results
+
     Returns a formatted string with entity info, or empty string if none found.
     """
-    # Extract significant words from question (skip short/common words)
+    found_entities = []
+
+    # 1. Vector search on entities with embeddings
+    vector_query = (
+        select(
+            Entity,
+            (1 - Entity.embedding.cosine_distance(question_embedding)).label("similarity"),
+        )
+        .where(Entity.user_id == user_id)
+        .where(Entity.embedding.isnot(None))
+        .order_by(Entity.embedding.cosine_distance(question_embedding))
+        .limit(8)
+    )
+    result = await db.execute(vector_query)
+    vector_results = result.all()
+
+    # Filter by minimum similarity threshold
+    for entity, similarity in vector_results:
+        if similarity > 0.3:  # Only include reasonably relevant entities
+            found_entities.append(entity)
+
+    # 2. Keyword fallback for additional matches
     stop_words = {
         "che", "cosa", "come", "quando", "dove", "chi", "quale", "quanto",
         "mi", "ha", "ho", "hai", "hanno", "era", "sono", "stato", "stata",
@@ -270,35 +297,38 @@ async def find_relevant_entities(
     words = [w.strip("?.,!\"'") for w in question.lower().split()]
     keywords = [w for w in words if len(w) > 2 and w not in stop_words]
 
-    if not keywords:
+    if keywords:
+        conditions = [Entity.name.ilike(f"%{kw}%") for kw in keywords]
+        from sqlalchemy import or_
+        keyword_query = (
+            select(Entity)
+            .where(Entity.user_id == user_id)
+            .where(or_(*conditions))
+            .order_by(Entity.created_at.desc())
+            .limit(5)
+        )
+        result = await db.execute(keyword_query)
+        keyword_entities = result.scalars().all()
+
+        # Add keyword results not already found by vector search
+        found_ids = {e.id for e in found_entities}
+        for e in keyword_entities:
+            if e.id not in found_ids:
+                found_entities.append(e)
+
+    if not found_entities:
         return ""
 
-    # Search entities whose name matches any keyword
-    conditions = [Entity.name.ilike(f"%{kw}%") for kw in keywords]
-
-    from sqlalchemy import or_
-    query = (
-        select(Entity)
-        .where(Entity.user_id == user_id)
-        .where(or_(*conditions))
-        .order_by(Entity.created_at.desc())
-        .limit(10)
-    )
-
-    result = await db.execute(query)
-    entities = result.scalars().all()
-
-    if not entities:
-        return ""
+    # Deduplicate and limit
+    found_entities = found_entities[:10]
 
     # Format entities as structured context
     lines = []
-    for e in entities:
+    for e in found_entities:
         line = f"- [{e.entity_type.upper()}] {e.name}"
         if e.content:
             line += f": {e.content}"
         if e.metadata_:
-            # Add relevant metadata
             meta_parts = []
             for key, val in e.metadata_.items():
                 if val and key not in ("tags",):
