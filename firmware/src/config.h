@@ -3,8 +3,13 @@
 // ============================================================
 // Wi-Fi Configuration
 // ============================================================
-#define WIFI_SSID "YOUR_WIFI_SSID"
-#define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// Credentials are in secrets.h (not tracked by git)
+#include "secrets.h"
+
+// If secrets.h doesn't exist, uncomment and fill these:
+// #define WIFI_SSID "YOUR_WIFI_SSID"
+// #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
+// #define API_KEY "my-secret-key"
 
 // ============================================================
 // Backend Server
@@ -14,7 +19,6 @@
 #define SERVER_HOST "echo.man.ovh"
 #define SERVER_PORT 443
 #define SERVER_ENDPOINT "/api/segments"
-#define API_KEY "my-secret-key"
 
 // ============================================================
 // Audio Configuration
