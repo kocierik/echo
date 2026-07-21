@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session, engine
-from app.routers import conversations, entities, query, segments
+from app.routers import admin, conversations, entities, query, segments
 
 app = FastAPI(
     title="Echo - Second Brain API",
@@ -18,6 +18,7 @@ app.include_router(segments.router, prefix=settings.api_prefix)
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
+app.include_router(admin.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")
