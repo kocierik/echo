@@ -30,6 +30,7 @@ from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
+from app.services.chunking import chunk_text
 from app.services.deduplication import deduplicate_entities
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_base import LLMMessage
@@ -404,27 +405,6 @@ async def generate_conversation_summary(llm_service, full_text: str) -> tuple[st
     summary = result.get("summary", "")
 
     return title, summary
-
-
-def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
-    """Split text into chunks of approximately chunk_size tokens with overlap.
-
-    Uses word-based splitting as a simple token approximation.
-    """
-    words = text.split()
-    if not words:
-        return []
-
-    chunks = []
-    start = 0
-    while start < len(words):
-        end = start + chunk_size
-        chunk = " ".join(words[start:end])
-        if chunk.strip():
-            chunks.append(chunk)
-        start += chunk_size - overlap
-
-    return chunks
 
 
 async def main():
