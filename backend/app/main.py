@@ -1,16 +1,34 @@
+from contextlib import asynccontextmanager
+
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session, engine
-from app.routers import conversations, entities, query, segments
+from app.routers import admin, conversations, digest, entities, query, segments
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage shared resources (Redis pool) across the app lifecycle."""
+    # Startup: create shared Redis connection pool
+    app.state.redis = aioredis.from_url(
+        settings.redis_url,
+        decode_responses=False,
+        max_connections=20,
+    )
+    yield
+    # Shutdown: close the pool
+    await app.state.redis.aclose()
+
 
 app = FastAPI(
     title="Echo - Second Brain API",
     description="Personal AI memory backend for the Second Brain wearable device.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # API routes (must be before static mount)
@@ -18,10 +36,17 @@ app.include_router(segments.router, prefix=settings.api_prefix)
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
+app.include_router(digest.router, prefix=settings.api_prefix)
+app.include_router(admin.router, prefix=settings.api_prefix)
+
+
+def get_redis(request: Request) -> aioredis.Redis:
+    """Get the shared Redis client from app state."""
+    return request.app.state.redis
 
 
 @app.get("/health")
-async def health():
+async def health(request: Request):
     """Health check: verifies PostgreSQL and Redis connectivity."""
     status = {"status": "ok", "postgres": "ok", "redis": "ok"}
 
@@ -35,9 +60,7 @@ async def health():
 
     # Check Redis
     try:
-        redis_client = aioredis.from_url(settings.redis_url)
-        await redis_client.ping()
-        await redis_client.aclose()
+        await request.app.state.redis.ping()
     except Exception as e:
         status["redis"] = f"error: {str(e)[:100]}"
         status["status"] = "degraded"

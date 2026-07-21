@@ -2,8 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import redis.asyncio as redis
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +25,7 @@ class SegmentResponse(BaseModel):
 
 @router.post("", response_model=SegmentResponse, status_code=status.HTTP_201_CREATED)
 async def ingest_segment(
+    request: Request,
     audio: UploadFile = File(..., description="ADPCM audio file"),
     recorded_at: datetime = Header(..., alias="X-Recorded-At"),
     duration_ms: int = Header(..., alias="X-Duration-Ms"),
@@ -66,10 +66,9 @@ async def ingest_segment(
     # Commit before enqueue so the worker can see the row (avoids race with BRPOP).
     await db.commit()
 
-    # Queue for STT processing via Redis
-    redis_client = redis.from_url(settings.redis_url)
+    # Queue for STT processing via Redis (shared pool)
+    redis_client = request.app.state.redis
     await redis_client.lpush("queue:stt", str(segment_id))
-    await redis_client.aclose()
 
     return SegmentResponse(
         id=segment.id,

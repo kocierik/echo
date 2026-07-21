@@ -3,15 +3,23 @@
 Processes:
 1. STT: picks segments from queue:stt, transcribes, saves transcription
 2. Analysis: extracts entities, groups conversations, creates chunks
+
+Features:
+- Exponential backoff retry on transient failures
+- Graceful shutdown on SIGTERM/SIGINT (waits up to 30s for in-progress tasks)
+- Dead letter queue for segments that fail after all retries
 """
 
 import asyncio
+import json
 import logging
+import signal
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 import redis.asyncio as redis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -27,19 +35,50 @@ from app.services.embedding_openai import get_embedding_service
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.stt_openai import get_stt_service
+from app.workers.digest import run_digest_loop
 from app.workers.retention import run_retention_loop
+from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Shutdown coordination
+SHUTDOWN_TIMEOUT_S = 30
+shutdown_event = asyncio.Event()
+
+
+def _handle_signal(sig: signal.Signals):
+    """Signal handler: set shutdown event."""
+    logger.info(f"[Shutdown] Received {sig.name}, initiating graceful shutdown...")
+    shutdown_event.set()
+
+
+async def push_to_dead_letter(
+    redis_client: redis.Redis,
+    segment_id: uuid.UUID,
+    step: str,
+    error: str,
+    attempts: int = 3,
+):
+    """Push a failed segment to the dead letter queue."""
+    entry = {
+        "segment_id": str(segment_id),
+        "step": step,
+        "error": str(error)[:500],
+        "attempts": attempts,
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await redis_client.lpush("queue:dead-letter", json.dumps(entry))
+    logger.warning(f"[DeadLetter] Segment {segment_id} pushed to dead letter (step={step})")
 
 
 async def process_stt(redis_client: redis.Redis):
     """Process STT queue: transcribe audio segments."""
     stt_service = get_stt_service()
 
-    while True:
-        # Blocking pop from Redis queue
-        result = await redis_client.brpop("queue:stt", timeout=5)
+    while not shutdown_event.is_set():
+        # Blocking pop from Redis queue (short timeout to check shutdown flag)
+        result = await redis_client.brpop("queue:stt", timeout=2)
         if result is None:
             continue
 
@@ -65,6 +104,9 @@ async def process_stt(redis_client: redis.Redis):
                     logger.error(f"Audio file not found: {audio_path}")
                     segment.transcription_status = "failed"
                     await db.commit()
+                    await push_to_dead_letter(
+                        redis_client, segment_id, "stt", "Audio file not found"
+                    )
                     continue
 
                 audio_data = audio_path.read_bytes()
@@ -72,8 +114,13 @@ async def process_stt(redis_client: redis.Redis):
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
 
-                # Transcribe
-                stt_result = await stt_service.transcribe(wav_data, language=settings.stt_language)
+                # Transcribe with retry
+                stt_result = await retry_with_backoff(
+                    stt_service.transcribe,
+                    wav_data,
+                    language=settings.stt_language,
+                    operation_name=f"STT segment {segment_id}",
+                )
 
                 # Save transcription
                 transcription = Transcription(
@@ -94,10 +141,25 @@ async def process_stt(redis_client: redis.Redis):
                 await redis_client.lpush("queue:analysis", str(segment_id))
                 logger.info(f"STT completed for segment {segment_id}: '{stt_result.text[:50]}...'")
 
-            except Exception as e:
-                logger.error(f"STT failed for segment {segment_id}: {e}")
+            except RetryExhaustedError as e:
+                logger.error(f"STT failed permanently for segment {segment_id}: {e}")
                 segment.transcription_status = "failed"
                 await db.commit()
+                await push_to_dead_letter(
+                    redis_client, segment_id, "stt", str(e.last_error), e.attempts
+                )
+
+            except asyncio.CancelledError:
+                # Shutdown in progress — requeue the segment
+                logger.info(f"[Shutdown] STT interrupted for segment {segment_id}, requeueing")
+                await redis_client.lpush("queue:stt", str(segment_id))
+                raise
+
+            except Exception as e:
+                logger.error(f"STT unexpected error for segment {segment_id}: {e}")
+                segment.transcription_status = "failed"
+                await db.commit()
+                await push_to_dead_letter(redis_client, segment_id, "stt", str(e))
 
 
 async def process_analysis(redis_client: redis.Redis):
@@ -105,8 +167,8 @@ async def process_analysis(redis_client: redis.Redis):
     llm_service = get_llm_analysis_service()
     embedding_service = get_embedding_service()
 
-    while True:
-        result = await redis_client.brpop("queue:analysis", timeout=5)
+    while not shutdown_event.is_set():
+        result = await redis_client.brpop("queue:analysis", timeout=2)
         if result is None:
             continue
 
@@ -127,9 +189,15 @@ async def process_analysis(redis_client: redis.Redis):
                 # --- Conversation grouping ---
                 conversation = await assign_to_conversation(db, segment)
 
-                # --- Entity extraction ---
-                entities = await extract_entities(
-                    llm_service, transcription.text, user_id, transcription.id, conversation.id
+                # --- Entity extraction (with retry) ---
+                entities = await retry_with_backoff(
+                    extract_entities,
+                    llm_service,
+                    transcription.text,
+                    user_id,
+                    transcription.id,
+                    conversation.id,
+                    operation_name=f"Entity extraction segment {segment_id}",
                 )
                 for entity in entities:
                     db.add(entity)
@@ -158,12 +226,15 @@ async def process_analysis(redis_client: redis.Redis):
                 )
 
                 # Delete old chunks for this conversation and re-create
-                from sqlalchemy import delete
                 await db.execute(delete(Chunk).where(Chunk.conversation_id == conversation.id))
 
-                # Create embeddings in batch
+                # Create embeddings in batch (with retry)
                 if chunks:
-                    embeddings = await embedding_service.embed_batch(chunks)
+                    embeddings = await retry_with_backoff(
+                        embedding_service.embed_batch,
+                        chunks,
+                        operation_name=f"Embeddings segment {segment_id}",
+                    )
                     for i, (text, embedding) in enumerate(zip(chunks, embeddings)):
                         chunk = Chunk(
                             conversation_id=conversation.id,
@@ -174,10 +245,13 @@ async def process_analysis(redis_client: redis.Redis):
                         )
                         db.add(chunk)
 
-                # --- Generate conversation title & summary ---
+                # --- Generate conversation title & summary (with retry) ---
                 if full_text.strip() and len(full_text.split()) > 10:
-                    title, summary = await generate_conversation_summary(
-                        llm_service, full_text
+                    title, summary = await retry_with_backoff(
+                        generate_conversation_summary,
+                        llm_service,
+                        full_text,
+                        operation_name=f"Summary segment {segment_id}",
                     )
                     conversation.title = title
                     conversation.summary = summary
@@ -189,9 +263,25 @@ async def process_analysis(redis_client: redis.Redis):
                     f"{len(entities)} entities, {len(chunks)} chunks"
                 )
 
-            except Exception as e:
-                logger.error(f"Analysis failed for segment {segment_id}: {e}")
+            except RetryExhaustedError as e:
+                logger.error(f"Analysis failed permanently for segment {segment_id}: {e}")
                 await db.rollback()
+                await push_to_dead_letter(
+                    redis_client, segment_id, "analysis", str(e.last_error), e.attempts
+                )
+
+            except asyncio.CancelledError:
+                logger.info(
+                    f"[Shutdown] Analysis interrupted for segment {segment_id}, requeueing"
+                )
+                await db.rollback()
+                await redis_client.lpush("queue:analysis", str(segment_id))
+                raise
+
+            except Exception as e:
+                logger.error(f"Analysis unexpected error for segment {segment_id}: {e}")
+                await db.rollback()
+                await push_to_dead_letter(redis_client, segment_id, "analysis", str(e))
 
 
 async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversation:
@@ -340,16 +430,38 @@ def chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
 async def main():
     """Main entry point for the worker process."""
     logger.info("Starting Echo background worker...")
+
+    # Register signal handlers
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, _handle_signal, sig)
+
     redis_client = redis.from_url(settings.redis_url)
 
-    try:
-        await asyncio.gather(
-            process_stt(redis_client),
-            process_analysis(redis_client),
-            run_retention_loop(),
-        )
-    finally:
-        await redis_client.aclose()
+    # Create worker tasks
+    tasks = [
+        asyncio.create_task(process_stt(redis_client), name="stt_worker"),
+        asyncio.create_task(process_analysis(redis_client), name="analysis_worker"),
+        asyncio.create_task(run_retention_loop(), name="retention_worker"),
+        asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
+    ]
+
+    # Wait for shutdown signal
+    await shutdown_event.wait()
+    logger.info(f"[Shutdown] Waiting up to {SHUTDOWN_TIMEOUT_S}s for tasks to finish...")
+
+    # Cancel all tasks and wait with timeout
+    for task in tasks:
+        task.cancel()
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for task, result in zip(tasks, results):
+        if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):
+            logger.error(f"[Shutdown] Task {task.get_name()} ended with error: {result}")
+
+    await redis_client.aclose()
+    logger.info("[Shutdown] Worker stopped cleanly.")
 
 
 if __name__ == "__main__":
