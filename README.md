@@ -60,20 +60,20 @@ This starts:
 On first run, apply the schema:
 
 ```bash
-docker compose exec postgres psql -U echo -d echo -f /dev/stdin < docs/schema.sql
+docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
 ```
 
 To reset the database (drops all data):
 
 ```bash
-docker compose exec postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker compose exec postgres psql -U echo -d echo -f /dev/stdin < docs/schema.sql
+docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
 ```
 
 ### 4. Create an API key
 
 ```bash
-docker compose exec postgres psql -U echo -d echo -c "
+docker compose exec -T postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'a0000000-0000-0000-0000-000000000001',
     encode(sha256('my-secret-key'::bytea), 'hex'),
