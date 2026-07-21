@@ -128,6 +128,20 @@ CREATE TABLE digests (
 CREATE UNIQUE INDEX idx_digests_user_date ON digests (user_id, digest_date);
 
 -- ============================================================
+-- CHAT SESSIONS: persistent query history with the assistant
+-- ============================================================
+CREATE TABLE chat_sessions (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    title TEXT,
+    messages JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_chat_sessions_user ON chat_sessions (user_id, updated_at DESC);
+
+-- ============================================================
 -- API KEYS: simple auth for MVP
 -- ============================================================
 CREATE TABLE api_keys (
