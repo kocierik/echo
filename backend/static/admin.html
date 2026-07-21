@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Echo — Admin Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e4e4e7;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #fff; }
+        h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #a1a1aa; }
+
+        .api-key-form {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+        }
+        .api-key-form input {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: 1px solid #27272a;
+            background: #18181b;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+        .api-key-form button {
+            padding: 0.5rem 1.5rem;
+            border-radius: 8px;
+            border: none;
+            background: #3b82f6;
+            color: #fff;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .api-key-form button:hover { background: #2563eb; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .stat-card .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-top: 0.25rem;
+            color: #fff;
+        }
+        .stat-card.error .value { color: #ef4444; }
+        .stat-card.ok .value { color: #22c55e; }
+
+        .section {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .dead-letter-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .dead-letter-list li {
+            padding: 0.75rem;
+            border-bottom: 1px solid #27272a;
+            font-size: 0.85rem;
+        }
+        .dead-letter-list li:last-child { border-bottom: none; }
+        .dead-letter-list .step {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: #7c3aed;
+            color: #fff;
+            font-size: 0.75rem;
+            margin-right: 0.5rem;
+        }
+        .dead-letter-list .error-msg {
+            color: #f87171;
+            font-family: monospace;
+            font-size: 0.8rem;
+        }
+        .dead-letter-list .time {
+            color: #71717a;
+            font-size: 0.75rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        .btn-retry { background: #f59e0b; color: #000; }
+        .btn-retry:hover { background: #d97706; }
+        .btn-refresh { background: #27272a; color: #e4e4e7; }
+        .btn-refresh:hover { background: #3f3f46; }
+
+        .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+        .health-status {
+            display: flex; gap: 1rem; align-items: center;
+            font-size: 0.85rem;
+        }
+        .health-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            display: inline-block; margin-right: 4px;
+        }
+        .health-dot.ok { background: #22c55e; }
+        .health-dot.error { background: #ef4444; }
+
+        .empty { color: #71717a; font-style: italic; padding: 1rem 0; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>🧠 Echo — Admin Dashboard</h1>
+
+    <div class="api-key-form" id="authForm">
+        <input type="password" id="apiKeyInput" placeholder="API Key" />
+        <button onclick="connect()">Connect</button>
+    </div>
+
+    <div id="dashboard" class="hidden">
+        <div class="health-status" id="health"></div>
+
+        <div class="grid" id="statsGrid">
+            <div class="stat-card"><div class="label">Segments</div><div class="value" id="stat-segments">—</div></div>
+            <div class="stat-card"><div class="label">Transcriptions</div><div class="value" id="stat-transcriptions">—</div></div>
+            <div class="stat-card"><div class="label">Conversations</div><div class="value" id="stat-conversations">—</div></div>
+            <div class="stat-card"><div class="label">Entities</div><div class="value" id="stat-entities">—</div></div>
+            <div class="stat-card"><div class="label">Chunks</div><div class="value" id="stat-chunks">—</div></div>
+            <div class="stat-card"><div class="label">Audio Storage</div><div class="value" id="stat-audio">—</div></div>
+        </div>
+
+        <div class="section">
+            <h2>Dead Letter Queue</h2>
+            <ul class="dead-letter-list" id="deadLetterList">
+                <li class="empty">Loading...</li>
+            </ul>
+            <div class="actions">
+                <button class="btn btn-retry" onclick="retryDeadLetter()">Retry All</button>
+                <button class="btn btn-refresh" onclick="loadDeadLetter()">Refresh</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let apiKey = '';
+
+        function connect() {
+            apiKey = document.getElementById('apiKeyInput').value.trim();
+            if (!apiKey) return;
+            localStorage.setItem('echo_admin_key', apiKey);
+            document.getElementById('authForm').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            loadAll();
+        }
+
+        // Auto-connect if key is stored
+        window.addEventListener('DOMContentLoaded', () => {
+            const stored = localStorage.getItem('echo_admin_key');
+            if (stored) {
+                document.getElementById('apiKeyInput').value = stored;
+                connect();
+            }
+        });
+
+        async function apiFetch(url, options = {}) {
+            return fetch(url, {
+                ...options,
+                headers: { 'X-API-Key': apiKey, ...options.headers }
+            });
+        }
+
+        async function loadAll() {
+            await Promise.all([loadHealth(), loadStats(), loadDeadLetter()]);
+            // Auto-refresh every 30 seconds
+            setInterval(loadAll, 30000);
+        }
+
+        async function loadHealth() {
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                const el = document.getElementById('health');
+                el.innerHTML = `
+                    <span><span class="health-dot ${data.postgres === 'ok' ? 'ok' : 'error'}"></span>PostgreSQL: ${data.postgres}</span>
+                    <span><span class="health-dot ${data.redis === 'ok' ? 'ok' : 'error'}"></span>Redis: ${data.redis}</span>
+                `;
+            } catch (e) {
+                document.getElementById('health').innerHTML = '<span><span class="health-dot error"></span>API unreachable</span>';
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await apiFetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('stat-segments').textContent = data.segments.toLocaleString();
+                document.getElementById('stat-transcriptions').textContent = data.transcriptions.toLocaleString();
+                document.getElementById('stat-conversations').textContent = data.conversations.toLocaleString();
+                document.getElementById('stat-entities').textContent = data.entities.toLocaleString();
+                document.getElementById('stat-chunks').textContent = data.chunks.toLocaleString();
+                document.getElementById('stat-audio').textContent = data.audio_storage_mb + ' MB';
+            } catch (e) {
+                console.error('Stats error:', e);
+            }
+        }
+
+        async function loadDeadLetter() {
+            try {
+                const res = await apiFetch('/api/admin/dead-letter');
+                const data = await res.json();
+                const list = document.getElementById('deadLetterList');
+
+                if (data.count === 0) {
+                    list.innerHTML = '<li class="empty">No failed segments ✓</li>';
+                    return;
+                }
+
+                list.innerHTML = data.items.map(item => `
+                    <li>
+                        <span class="step">${item.step.toUpperCase()}</span>
+                        <code>${item.segment_id.slice(0, 8)}…</code>
+                        <span class="error-msg">${item.error.slice(0, 100)}</span><br>
+                        <span class="time">${item.failed_at} · ${item.attempts} attempts</span>
+                    </li>
+                `).join('');
+            } catch (e) {
+                document.getElementById('deadLetterList').innerHTML = '<li class="empty">Error loading</li>';
+            }
+        }
+
+        async function retryDeadLetter() {
+            try {
+                const res = await apiFetch('/api/admin/dead-letter/retry', { method: 'POST' });
+                const data = await res.json();
+                alert(`Requeued ${data.requeued} segments`);
+                await loadDeadLetter();
+            } catch (e) {
+                alert('Retry failed: ' + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
