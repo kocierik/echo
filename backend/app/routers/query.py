@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.models.chat_session import ChatSession
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -163,6 +164,7 @@ async def query_memory(
         history.append({"role": "user", "content": request.question})
         history.append({"role": "assistant", "content": no_result_msg})
         await _save_session_history(redis_client, session_id, history)
+        await _persist_chat_session(db, user_id, session_id, history)
 
         return QueryResponse(
             answer=no_result_msg,
@@ -231,12 +233,49 @@ async def query_memory(
     history.append({"role": "assistant", "content": response.content})
     await _save_session_history(redis_client, session_id, history)
 
+    # Persist session to Postgres for permanent chat history
+    await _persist_chat_session(db, user_id, session_id, history)
+
     return QueryResponse(
         answer=response.content,
         sources=sources,
         session_id=session_id,
         date_filter=_format_date_filter(date_range),
     )
+
+
+async def _persist_chat_session(
+    db: AsyncSession, user_id: uuid.UUID, session_id: str, history: list[dict]
+):
+    """Persist or update chat session in Postgres for permanent history."""
+    from datetime import timezone
+
+    session_uuid = uuid.UUID(session_id)
+
+    # Try to find existing session
+    result = await db.execute(
+        select(ChatSession).where(ChatSession.id == session_uuid)
+    )
+    chat_session = result.scalar_one_or_none()
+
+    if chat_session is None:
+        # Create new session — generate title from first user message
+        first_question = next(
+            (m["content"] for m in history if m["role"] == "user"), "Nuova chat"
+        )
+        title = first_question[:80]
+
+        chat_session = ChatSession(
+            id=session_uuid,
+            user_id=user_id,
+            title=title,
+            messages=history,
+        )
+        db.add(chat_session)
+    else:
+        # Update existing session
+        chat_session.messages = history
+        chat_session.updated_at = datetime.now(timezone.utc)
 
 
 def _format_date_filter(date_range: DateRange | None) -> dict | None:
