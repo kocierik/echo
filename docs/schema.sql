@@ -108,6 +108,24 @@ CREATE INDEX idx_entities_conversation ON entities (conversation_id);
 -- for segments older than 30 days. The transcription and entities remain.
 
 -- ============================================================
+-- DIGESTS: daily summaries generated automatically
+-- ============================================================
+CREATE TABLE digests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    digest_date DATE NOT NULL,
+    summary TEXT NOT NULL,
+    people JSONB NOT NULL DEFAULT '[]',
+    tasks JSONB NOT NULL DEFAULT '[]',
+    ideas JSONB NOT NULL DEFAULT '[]',
+    events JSONB NOT NULL DEFAULT '[]',
+    conversation_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX idx_digests_user_date ON digests (user_id, digest_date);
+
+-- ============================================================
 -- API KEYS: simple auth for MVP
 -- ============================================================
 CREATE TABLE api_keys (

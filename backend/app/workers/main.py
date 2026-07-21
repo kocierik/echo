@@ -35,6 +35,7 @@ from app.services.embedding_openai import get_embedding_service
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.stt_openai import get_stt_service
+from app.workers.digest import run_digest_loop
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
@@ -442,6 +443,7 @@ async def main():
         asyncio.create_task(process_stt(redis_client), name="stt_worker"),
         asyncio.create_task(process_analysis(redis_client), name="analysis_worker"),
         asyncio.create_task(run_retention_loop(), name="retention_worker"),
+        asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
     ]
 
     # Wait for shutdown signal
