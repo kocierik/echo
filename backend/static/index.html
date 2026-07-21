@@ -108,7 +108,14 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
         }
+        #chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        #chat-container.hidden { display: none; }
         /* Chat */
         #chat {
             flex: 1;
@@ -208,6 +215,33 @@
         .admin-link { font-size: 0.72rem; color: #555; text-align: center; margin-top: 0.5rem; }
         .admin-link a { color: #666; text-decoration: none; }
         .admin-link a:hover { color: #aaa; }
+        /* Detail panel */
+        #detail-panel {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: none;
+        }
+        #detail-panel.active { display: block; }
+        #detail-panel h2 { font-size: 1.2rem; margin-bottom: 0.5rem; color: #fff; }
+        #detail-panel .summary { color: #aaa; margin-bottom: 1.5rem; font-size: 0.9rem; }
+        #detail-panel h3 { font-size: 0.85rem; color: #888; margin: 1rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        #detail-panel .back-btn {
+            padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #333;
+            background: transparent; color: #aaa; cursor: pointer; font-size: 0.8rem; margin-bottom: 1rem;
+        }
+        #detail-panel .back-btn:hover { border-color: #1d4ed8; color: #fff; }
+        .transcript-item { padding: 0.5rem 0; border-bottom: 1px solid #1a1a1a; font-size: 0.9rem; line-height: 1.5; }
+        .transcript-item .time { font-size: 0.75rem; color: #666; }
+        .entity-chip {
+            display: inline-block; padding: 0.25rem 0.6rem; border-radius: 12px;
+            font-size: 0.8rem; margin: 0.2rem; background: #1a1a1a; border: 1px solid #333;
+        }
+        .entity-chip.person { border-color: #3b82f6; color: #93c5fd; }
+        .entity-chip.task { border-color: #f59e0b; color: #fcd34d; }
+        .entity-chip.idea { border-color: #10b981; color: #6ee7b7; }
+        .entity-chip.event { border-color: #8b5cf6; color: #c4b5fd; }
+        .entity-chip.note { border-color: #6b7280; color: #9ca3af; }
     </style>
 </head>
 <body>
@@ -234,11 +268,14 @@
         </div>
     </div>
     <div id="main">
-        <div id="chat"></div>
-        <div id="input-area">
-            <input type="text" id="question" placeholder="Chiedi alla tua memoria..." autofocus />
-            <button id="send" onclick="askQuestion()">Chiedi</button>
+        <div id="chat-container">
+            <div id="chat"></div>
+            <div id="input-area">
+                <input type="text" id="question" placeholder="Chiedi alla tua memoria..." autofocus />
+                <button id="send" onclick="askQuestion()">Chiedi</button>
+            </div>
         </div>
+        <div id="detail-panel"></div>
     </div>
 
     <script>
@@ -360,9 +397,50 @@
         }
 
         async function showConversation(id) {
-            // Ask about this conversation
-            questionEl.value = `Riassumi la conversazione ${id.slice(0, 8)}`;
-            questionEl.focus();
+            try {
+                const res = await fetch(`/api/conversations/${id}`, { headers: getHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                renderDetail(data);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderDetail(conv) {
+            const detailPanel = document.getElementById('detail-panel');
+            const chatContainer = document.getElementById('chat-container');
+
+            const entities = conv.entities.map(e =>
+                `<span class="entity-chip ${e.entity_type}">${escHtml(e.entity_type)}: ${escHtml(e.name)}</span>`
+            ).join('');
+
+            const transcripts = conv.transcriptions.map(t =>
+                `<div class="transcript-item">
+                    <span class="time">${formatTime(t.recorded_at)}</span>
+                    <p>${escHtml(t.text)}</p>
+                </div>`
+            ).join('');
+
+            detailPanel.innerHTML = `
+                <button class="back-btn" onclick="closeDetail()">← Torna alla chat</button>
+                <h2>${escHtml(conv.title || 'Conversazione')}</h2>
+                <div class="summary">${escHtml(conv.summary || '')}</div>
+                ${entities ? '<h3>Entità</h3><div>' + entities + '</div>' : ''}
+                <h3>Trascrizione</h3>
+                ${transcripts || '<p style="color:#666">Nessuna trascrizione disponibile.</p>'}
+            `;
+
+            chatContainer.classList.add('hidden');
+            detailPanel.classList.add('active');
+        }
+
+        function closeDetail() {
+            document.getElementById('detail-panel').classList.remove('active');
+            document.getElementById('chat-container').classList.remove('hidden');
+        }
+
+        function formatTime(iso) {
+            if (!iso) return '';
+            return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
         }
 
         // --- Chat ---
