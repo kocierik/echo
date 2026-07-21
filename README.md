@@ -14,13 +14,16 @@ An open-source wearable device that continuously listens for speech, transcribes
                                     ┌──────────▼──────────────────┐
                                     │     Background Worker        │
                                     │  STT → Analysis → Embeddings │
+                                    │  + Retry + Dead Letter Queue │
+                                    │  + Daily Digest generation   │
                                     └──────────┬──────────────────┘
                                                │
                                     ┌──────────▼──────────────────┐
                                     │   PostgreSQL + pgvector      │
                                     │   (segments, transcriptions, │
                                     │    conversations, chunks,    │
-                                    │    entities)                 │
+                                    │    entities, digests,        │
+                                    │    chat_sessions)            │
                                     └─────────────────────────────┘
 ```
 
@@ -48,7 +51,7 @@ docker compose up --build
 
 This starts:
 - **API** on http://localhost:8000 (FastAPI + Web UI)
-- **Worker** (background STT + analysis)
+- **Worker** (background STT + analysis + daily digest)
 - **PostgreSQL** with pgvector on port 5432
 - **Redis** on port 6379
 
@@ -75,9 +78,20 @@ Your API key is `my-secret-key`. Use it in the web UI or in the `X-API-Key` head
 
 ### 5. Use the Web UI
 
-Open http://localhost:8000 and enter your API key. Ask questions about your memory.
+Open http://localhost:8000 and enter your API key. Features:
+- **Chat tab**: Ask questions about your memory with follow-up support
+- **Audio tab**: Browse transcribed conversations from the device
+- **Session history**: All chats are saved and can be resumed
+- **Temporal filters**: Ask "cosa è successo ieri?" and it auto-filters by date
 
-### 6. Send audio from the device
+### 6. Admin Dashboard
+
+Open http://localhost:8000/admin.html for system monitoring:
+- Live stats (segments, transcriptions, entities, storage)
+- Health check (PostgreSQL + Redis)
+- Dead letter queue viewer with retry
+
+### 7. Send audio from the device
 
 The wearable sends audio segments via HTTP POST:
 
@@ -98,39 +112,57 @@ echo/
 ├── .env.example
 ├── docs/
 │   ├── schema.sql               # Database schema
+│   ├── ROADMAP.md               # Feature roadmap
+│   ├── DEVELOPMENT.md           # Dev setup guide
 │   └── adr/                     # Architectural Decision Records
 ├── backend/
 │   ├── Dockerfile
 │   ├── pyproject.toml
 │   ├── static/
-│   │   └── index.html           # Web UI (chat)
+│   │   ├── index.html           # Web UI (chat + sessions)
+│   │   └── admin.html           # Admin dashboard
+│   ├── tests/
+│   │   ├── test_adpcm_decoder.py
+│   │   ├── test_temporal.py     # Temporal filter tests
+│   │   └── test_chunking.py     # Sentence chunking tests
 │   └── app/
-│       ├── main.py              # FastAPI app
+│       ├── main.py              # FastAPI app + lifespan
 │       ├── core/
 │       │   ├── config.py        # Settings (env vars)
 │       │   ├── database.py      # Async SQLAlchemy
 │       │   └── auth.py          # API key auth
 │       ├── models/
-│       │   ├── base.py
 │       │   ├── segment.py
 │       │   ├── transcription.py
 │       │   ├── conversation.py
 │       │   ├── chunk.py
-│       │   ├── entity.py
+│       │   ├── entity.py        # + vector embedding
+│       │   ├── digest.py        # Daily summaries
+│       │   ├── chat_session.py  # Persistent chat history
 │       │   └── api_key.py
 │       ├── routers/
 │       │   ├── segments.py      # POST /api/segments
-│       │   └── query.py         # POST /api/query
+│       │   ├── query.py         # POST /api/query (RAG + sessions)
+│       │   ├── conversations.py # Audio conversations
+│       │   ├── entities.py      # Knowledge entities
+│       │   ├── digest.py        # Daily digest
+│       │   ├── chat_sessions.py # Chat history CRUD
+│       │   └── admin.py         # Dead letter queue
 │       ├── services/
-│       │   ├── stt_base.py      # STT interface
-│       │   ├── stt_openai.py    # Whisper implementation
-│       │   ├── llm_base.py      # LLM interface
-│       │   ├── llm_openai.py    # GPT implementation
-│       │   ├── embedding_base.py # Embedding interface
-│       │   └── embedding_openai.py
+│       │   ├── temporal.py      # NLP date extraction
+│       │   ├── chunking.py      # Sentence-aware chunking
+│       │   ├── deduplication.py # Entity dedup
+│       │   ├── adpcm_decoder.py
+│       │   ├── stt_base.py / stt_openai.py
+│       │   ├── llm_base.py / llm_openai.py
+│       │   └── embedding_base.py / embedding_openai.py
 │       └── workers/
-│           └── main.py          # Background worker
-└── firmware/                    # (future) ESP32-S3 Arduino code
+│           ├── main.py          # Worker entry (STT + analysis)
+│           ├── retry.py         # Exponential backoff utility
+│           ├── digest.py        # Daily digest generation
+│           └── retention.py     # Audio file cleanup
+├── firmware/                    # ESP32-S3 Arduino code
+└── simulator/                   # Device simulator (Python)
 ```
 
 ## API Reference
@@ -141,24 +173,24 @@ Receive an audio segment from the device.
 
 **Headers:**
 - `X-API-Key`: API key (required)
-- `X-Recorded-At`: ISO 8601 timestamp when audio was recorded
+- `X-Recorded-At`: ISO 8601 timestamp
 - `X-Duration-Ms`: Duration in milliseconds
-- `X-Silence-Before-Ms`: Silence before this segment (optional, for conversation grouping)
+- `X-Silence-Before-Ms`: Silence before segment (optional)
 
-**Body:** Multipart form with `audio` file (ADPCM)
+**Body:** Multipart form with `audio` file (ADPCM, max 5MB)
 
 ### POST /api/query
 
-Query personal memory with natural language.
-
-**Headers:**
-- `X-API-Key`: API key (required)
+Query personal memory with natural language. Supports multi-turn follow-up and automatic temporal filtering.
 
 **Body:**
 ```json
 {
-  "question": "Cosa mi ha detto Marco sulla conferenza?",
-  "top_k": 5
+  "question": "Cosa mi ha detto Marco ieri?",
+  "top_k": 5,
+  "session_id": "optional-uuid-for-follow-up",
+  "date_from": "2026-07-20T00:00:00Z",
+  "date_to": "2026-07-20T23:59:59Z"
 }
 ```
 
@@ -166,33 +198,77 @@ Query personal memory with natural language.
 ```json
 {
   "answer": "Marco ti ha consigliato di...",
-  "sources": [
-    {
-      "conversation_id": "uuid",
-      "text": "...",
-      "similarity": 0.89
-    }
-  ]
+  "sources": [{"conversation_id": "uuid", "text": "...", "similarity": 0.89}],
+  "session_id": "uuid-to-use-for-follow-up",
+  "date_filter": {"from": "2026-07-20T00:00:00+00:00", "to": "2026-07-20T23:59:59+00:00"}
 }
 ```
 
-## Configuration
+### GET /api/chat-sessions
 
-All settings are configurable via environment variables:
+List saved chat sessions (most recent first).
+
+### GET /api/chat-sessions/{id}
+
+Get full message history for a session.
+
+### DELETE /api/chat-sessions/{id}
+
+Delete a chat session.
+
+### GET /api/digest?days=7
+
+List recent daily digests.
+
+### GET /api/digest/{date}
+
+Get a specific day's digest (people, tasks, ideas, events, summary).
+
+### POST /api/digest/{date}
+
+Manually trigger digest generation for a date.
+
+### GET /api/admin/dead-letter
+
+List failed segments in the dead letter queue.
+
+### POST /api/admin/dead-letter/retry
+
+Retry all failed segments.
+
+### GET /health
+
+Health check (PostgreSQL + Redis connectivity).
+
+### GET /api/stats
+
+System statistics (counts + storage usage).
+
+## Key Features
+
+- **Temporal filtering**: Ask "ieri", "questa settimana", "3 giorni fa" — auto-detected
+- **Multi-turn follow-up**: Continue conversations with session context
+- **Daily digest**: Automatic daily summary at 21:00 UTC
+- **Entity embeddings**: Semantic search on extracted knowledge
+- **Sentence-aware chunking**: Never cuts concepts mid-sentence
+- **Retry + dead letter**: Resilient worker with exponential backoff
+- **Graceful shutdown**: No data loss on Docker restart
+
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql+asyncpg://echo:echo@localhost:5432/echo` | PostgreSQL connection |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
 | `OPENAI_API_KEY` | — | OpenAI API key (required) |
-| `AUDIO_STORAGE_PATH` | `/data/audio` | Where to store audio files |
+| `AUDIO_STORAGE_PATH` | `/data/audio` | Audio file storage |
 | `AUDIO_RETENTION_DAYS` | `30` | Days to keep raw audio |
-| `STT_LANGUAGE` | `it` | Primary language for transcription |
+| `STT_LANGUAGE` | `it` | Primary language for STT |
 | `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Model for entity extraction |
 | `LLM_QUERY_MODEL` | `gpt-4o` | Model for RAG answers |
 | `CHUNK_SIZE_TOKENS` | `500` | Chunk size for embedding |
 | `CHUNK_OVERLAP_TOKENS` | `50` | Overlap between chunks |
-| `SILENCE_TIMEOUT_MS` | `120000` | Silence before new conversation (ms) |
+| `SILENCE_TIMEOUT_MS` | `120000` | Silence before new conversation |
 
 ## Design Decisions
 

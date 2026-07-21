@@ -28,10 +28,10 @@ jobs:
           cd backend
           ruff check app/ tests/
 
-      - name: Unit tests
+      - name: Unit tests (no DB required)
         run: |
           cd backend
-          pytest tests/test_adpcm_decoder.py -v --noconftest
+          pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py -v --noconftest
 
   firmware-syntax:
     runs-on: ubuntu-latest

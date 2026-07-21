@@ -15,7 +15,7 @@
         }
         /* Sidebar */
         #sidebar {
-            width: 300px;
+            width: 280px;
             border-right: 1px solid #222;
             display: flex;
             flex-direction: column;
@@ -26,19 +26,45 @@
             border-bottom: 1px solid #222;
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            justify-content: space-between;
         }
+        #sidebar header .left { display: flex; align-items: center; gap: 0.5rem; }
         #sidebar header h1 { font-size: 1.1rem; font-weight: 600; color: #fff; }
         #sidebar header .dot {
             width: 8px; height: 8px; border-radius: 50%;
             background: #22c55e; animation: pulse 2s infinite;
         }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        #conv-list {
+        .new-chat-btn {
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            border: 1px solid #333;
+            background: transparent;
+            color: #aaa;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .new-chat-btn:hover { border-color: #1d4ed8; color: #fff; }
+        #sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid #222;
+        }
+        .sidebar-tab {
+            flex: 1;
+            padding: 0.6rem;
+            text-align: center;
+            cursor: pointer;
+            font-size: 0.8rem;
+            color: #666;
+            border-bottom: 2px solid transparent;
+        }
+        .sidebar-tab.active { color: #fff; border-bottom-color: #1d4ed8; }
+        #session-list, #conv-list {
             flex: 1;
             overflow-y: auto;
             padding: 0.5rem;
         }
+        .hidden { display: none !important; }
         .empty-state {
             padding: 1.25rem 0.75rem;
             color: #666;
@@ -46,65 +72,44 @@
             line-height: 1.45;
         }
         .empty-state strong { color: #aaa; font-weight: 500; }
-        #chat:empty::before {
-            content: "Inserisci la API key in basso a sinistra, poi chiedi alla tua memoria.";
-            display: block;
-            color: #555;
-            font-size: 0.9rem;
-            padding: 2rem 0;
-            text-align: center;
-        }
-        #settings.error input { border-color: #b91c1c; }
-        #settings .hint { color: #555; }
-        #settings .hint.ok { color: #4ade80; }
-        #settings .hint.err { color: #f87171; }
-        .conv-item {
+        .session-item, .conv-item {
             padding: 0.75rem;
             border-radius: 8px;
             cursor: pointer;
             margin-bottom: 0.25rem;
             transition: background 0.15s;
         }
-        .conv-item:hover { background: #1a1a1a; }
-        .conv-item.active { background: #1d4ed8; }
-        .conv-item .title {
-            font-size: 0.9rem;
+        .session-item:hover, .conv-item:hover { background: #1a1a1a; }
+        .session-item.active, .conv-item.active { background: #1d4ed8; }
+        .session-item .title, .conv-item .title {
+            font-size: 0.85rem;
             font-weight: 500;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .conv-item .meta {
-            font-size: 0.75rem;
+        .session-item .meta, .conv-item .meta {
+            font-size: 0.72rem;
             color: #888;
-            margin-top: 0.25rem;
+            margin-top: 0.2rem;
         }
-        .conv-item.active .meta { color: #a5b4fc; }
+        .session-item.active .meta, .conv-item.active .meta { color: #a5b4fc; }
+        .session-item .delete-btn {
+            float: right;
+            opacity: 0;
+            color: #666;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+        .session-item:hover .delete-btn { opacity: 1; }
+        .session-item .delete-btn:hover { color: #ef4444; }
         /* Main area */
         #main {
             flex: 1;
             display: flex;
             flex-direction: column;
         }
-        #tabs {
-            display: flex;
-            border-bottom: 1px solid #222;
-        }
-        .tab {
-            padding: 0.75rem 1.5rem;
-            cursor: pointer;
-            font-size: 0.9rem;
-            border-bottom: 2px solid transparent;
-            color: #888;
-        }
-        .tab.active { color: #fff; border-bottom-color: #1d4ed8; }
-        .tab:hover { color: #ccc; }
-        /* Chat panel */
-        #chat-panel {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
+        /* Chat */
         #chat {
             flex: 1;
             overflow-y: auto;
@@ -113,18 +118,30 @@
             flex-direction: column;
             gap: 1rem;
         }
+        #chat:empty::after {
+            content: "Chiedi qualcosa alla tua memoria…";
+            display: block;
+            color: #555;
+            font-size: 0.9rem;
+            padding: 2rem 0;
+            text-align: center;
+        }
         .message {
             max-width: 70%;
             padding: 0.75rem 1rem;
             border-radius: 12px;
             line-height: 1.5;
             font-size: 0.95rem;
+            white-space: pre-wrap;
         }
         .message.user { align-self: flex-end; background: #1d4ed8; color: #fff; }
         .message.assistant { align-self: flex-start; background: #1f1f1f; border: 1px solid #333; }
         .message .sources {
             margin-top: 0.5rem; padding-top: 0.5rem;
             border-top: 1px solid #333; font-size: 0.8rem; color: #888;
+        }
+        .message .date-filter {
+            font-size: 0.75rem; color: #a78bfa; margin-top: 0.3rem;
         }
         .message.error { align-self: center; background: #7f1d1d; color: #fca5a5; font-size: 0.85rem; }
         #input-area {
@@ -152,38 +169,6 @@
         }
         #input-area button:hover { background: #2563eb; }
         #input-area button:disabled { background: #333; cursor: not-allowed; }
-        /* Detail panel */
-        #detail-panel {
-            flex: 1;
-            overflow-y: auto;
-            padding: 1.5rem;
-            display: none;
-        }
-        #detail-panel.active { display: block; }
-        #detail-panel h2 { font-size: 1.2rem; margin-bottom: 0.5rem; }
-        #detail-panel .summary { color: #aaa; margin-bottom: 1.5rem; font-size: 0.9rem; }
-        #detail-panel h3 { font-size: 0.95rem; color: #888; margin: 1rem 0 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
-        .transcript-item {
-            padding: 0.5rem 0;
-            border-bottom: 1px solid #1a1a1a;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-        .transcript-item .time { font-size: 0.75rem; color: #666; }
-        .entity-chip {
-            display: inline-block;
-            padding: 0.25rem 0.6rem;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            margin: 0.2rem;
-            background: #1a1a1a;
-            border: 1px solid #333;
-        }
-        .entity-chip.person { border-color: #3b82f6; color: #93c5fd; }
-        .entity-chip.task { border-color: #f59e0b; color: #fcd34d; }
-        .entity-chip.idea { border-color: #10b981; color: #6ee7b7; }
-        .entity-chip.event { border-color: #8b5cf6; color: #c4b5fd; }
-        .entity-chip.note { border-color: #6b7280; color: #9ca3af; }
         /* Settings bar */
         #settings {
             padding: 0.75rem 1rem;
@@ -194,11 +179,7 @@
             font-size: 0.8rem;
             color: #666;
         }
-        #settings .row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
+        #settings .row { display: flex; align-items: center; gap: 0.5rem; }
         #settings input {
             padding: 0.3rem 0.5rem;
             border-radius: 4px;
@@ -220,41 +201,44 @@
             white-space: nowrap;
         }
         #settings button.use-dev:hover { border-color: #1d4ed8; color: #fff; }
+        #settings .hint { font-size: 0.75rem; }
+        #settings .hint.ok { color: #4ade80; }
+        #settings .hint.err { color: #f87171; }
         #settings .note { font-size: 0.72rem; color: #555; line-height: 1.3; }
+        .admin-link { font-size: 0.72rem; color: #555; text-align: center; margin-top: 0.5rem; }
+        .admin-link a { color: #666; text-decoration: none; }
+        .admin-link a:hover { color: #aaa; }
     </style>
 </head>
 <body>
     <div id="sidebar">
         <header>
-            <div class="dot"></div>
-            <h1>Echo</h1>
+            <div class="left"><div class="dot"></div><h1>Echo</h1></div>
+            <button class="new-chat-btn" onclick="newChat()">+ Nuova</button>
         </header>
-        <div id="conv-list"></div>
+        <div id="sidebar-tabs">
+            <div class="sidebar-tab active" data-tab="sessions" onclick="switchSidebarTab('sessions')">💬 Chat</div>
+            <div class="sidebar-tab" data-tab="conversations" onclick="switchSidebarTab('conversations')">🎙️ Audio</div>
+        </div>
+        <div id="session-list"></div>
+        <div id="conv-list" class="hidden"></div>
         <div id="settings">
             <div class="row">
-                <label for="api-key">Echo key:</label>
+                <label for="api-key">Key:</label>
                 <input type="text" id="api-key" placeholder="my-secret-key" autocomplete="off" spellcheck="false" />
-                <button type="button" class="use-dev" id="use-dev-key" title="Inserisci la key di sviluppo">Usa default</button>
+                <button type="button" class="use-dev" onclick="useDevKey()">Default</button>
             </div>
-            <div class="row">
-                <span class="hint" id="key-status"></span>
-            </div>
-            <div class="note">Non è la OPENAI_API_KEY del file .env — è la chiave Echo (locale: my-secret-key).</div>
+            <div class="row"><span class="hint" id="key-status"></span></div>
+            <div class="note">La chiave Echo locale, non la OPENAI_API_KEY.</div>
+            <div class="admin-link"><a href="/admin.html">⚙️ Admin Dashboard</a></div>
         </div>
     </div>
     <div id="main">
-        <div id="tabs">
-            <div class="tab active" data-tab="chat" onclick="switchTab('chat')">💬 Chiedi</div>
-            <div class="tab" data-tab="detail" onclick="switchTab('detail')">📄 Dettaglio</div>
+        <div id="chat"></div>
+        <div id="input-area">
+            <input type="text" id="question" placeholder="Chiedi alla tua memoria..." autofocus />
+            <button id="send" onclick="askQuestion()">Chiedi</button>
         </div>
-        <div id="chat-panel">
-            <div id="chat"></div>
-            <div id="input-area">
-                <input type="text" id="question" placeholder="Chiedi alla tua memoria..." autofocus />
-                <button id="send" onclick="askQuestion()">Chiedi</button>
-            </div>
-        </div>
-        <div id="detail-panel"></div>
     </div>
 
     <script>
@@ -262,155 +246,127 @@
         const questionEl = document.getElementById('question');
         const sendBtn = document.getElementById('send');
         const apiKeyEl = document.getElementById('api-key');
+        const sessionListEl = document.getElementById('session-list');
         const convListEl = document.getElementById('conv-list');
-        const detailPanel = document.getElementById('detail-panel');
         const keyStatusEl = document.getElementById('key-status');
-        const settingsEl = document.getElementById('settings');
-        const DEV_API_KEY = 'my-secret-key';
 
-        let stored = (localStorage.getItem('echo_api_key') || '').trim();
-        // Common mistake: pasting OPENAI_API_KEY (sk-...) into this field
-        if (stored.startsWith('sk-')) {
-            localStorage.removeItem('echo_api_key');
-            stored = '';
-        }
-        apiKeyEl.value = stored;
+        let currentSessionId = null;
 
-        function saveAndLoadKey() {
+        // --- Init ---
+        const stored = (localStorage.getItem('echo_api_key') || '').trim();
+        if (stored && !stored.startsWith('sk-')) apiKeyEl.value = stored;
+
+        apiKeyEl.addEventListener('change', onKeyChange);
+        apiKeyEl.addEventListener('keydown', e => { if (e.key === 'Enter') onKeyChange(); });
+        questionEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !sendBtn.disabled) askQuestion(); });
+
+        function useDevKey() { apiKeyEl.value = 'my-secret-key'; onKeyChange(); }
+
+        function onKeyChange() {
             const key = apiKeyEl.value.trim();
-            if (key.startsWith('sk-')) {
-                setKeyStatus(false, 'questa è OpenAI, non Echo');
-                convListEl.innerHTML = `
-                    <div class="empty-state">
-                        <strong>Key sbagliata</strong><br>
-                        Hai inserito la OPENAI_API_KEY. Qui serve la chiave Echo:
-                        <code>${DEV_API_KEY}</code>
-                    </div>`;
-                return;
-            }
+            if (key.startsWith('sk-')) { setKeyStatus(false, 'questa è OpenAI, non Echo'); return; }
             localStorage.setItem('echo_api_key', key);
+            loadSessions();
             loadConversations();
         }
 
-        apiKeyEl.addEventListener('change', saveAndLoadKey);
-        apiKeyEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                saveAndLoadKey();
-            }
-        });
-        document.getElementById('use-dev-key').addEventListener('click', () => {
-            apiKeyEl.value = DEV_API_KEY;
-            saveAndLoadKey();
-        });
-
-        questionEl.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !sendBtn.disabled) askQuestion();
-        });
+        function setKeyStatus(ok, msg) {
+            keyStatusEl.className = 'hint ' + (ok ? 'ok' : (msg ? 'err' : ''));
+            keyStatusEl.textContent = msg || '';
+        }
 
         function getHeaders() {
             return { 'X-API-Key': apiKeyEl.value.trim(), 'Content-Type': 'application/json' };
         }
 
-        function setKeyStatus(ok, msg) {
-            settingsEl.classList.toggle('error', !ok && !!msg);
-            keyStatusEl.className = 'hint ' + (ok ? 'ok' : (msg ? 'err' : ''));
-            keyStatusEl.textContent = msg || '';
+        // --- Sidebar tabs ---
+        function switchSidebarTab(tab) {
+            document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            sessionListEl.classList.toggle('hidden', tab !== 'sessions');
+            convListEl.classList.toggle('hidden', tab !== 'conversations');
         }
 
-        // --- Tabs ---
-        function switchTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-            document.getElementById('chat-panel').style.display = tab === 'chat' ? 'flex' : 'none';
-            detailPanel.classList.toggle('active', tab === 'detail');
-        }
-
-        // --- Conversations ---
-        async function loadConversations() {
+        // --- Chat Sessions ---
+        async function loadSessions() {
             const key = apiKeyEl.value.trim();
-            if (!key) {
-                setKeyStatus(false, '');
-                convListEl.innerHTML = `
-                    <div class="empty-state">
-                        <strong>Nessuna API key</strong><br>
-                        Clicca <em>Usa default</em> oppure digita <code>${DEV_API_KEY}</code>
-                        (non la OPENAI_API_KEY del .env).
-                    </div>`;
-                return;
-            }
+            if (!key) { sessionListEl.innerHTML = '<div class="empty-state">Inserisci API key</div>'; return; }
             try {
-                const res = await fetch('/api/conversations?limit=50', { headers: getHeaders() });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    const detail = err.detail || `HTTP ${res.status}`;
-                    setKeyStatus(false, 'non valida');
-                    convListEl.innerHTML = `<div class="empty-state"><strong>Auth fallita</strong><br>${detail}</div>`;
-                    return;
-                }
+                const res = await fetch('/api/chat-sessions', { headers: getHeaders() });
+                if (!res.ok) { setKeyStatus(false, 'non valida'); return; }
                 setKeyStatus(true, 'ok');
                 const data = await res.json();
-                renderConversations(data.conversations);
-            } catch (e) {
-                console.error(e);
-                setKeyStatus(false, 'errore');
-                convListEl.innerHTML = `<div class="empty-state"><strong>Errore di rete</strong><br>${e.message}</div>`;
-            }
+                renderSessions(data.items);
+            } catch (e) { sessionListEl.innerHTML = '<div class="empty-state">Errore di rete</div>'; }
         }
 
-        function renderConversations(conversations) {
-            if (!conversations.length) {
-                convListEl.innerHTML = `
-                    <div class="empty-state">
-                        <strong>Nessuna conversazione</strong><br>
-                        Quando il wearable (o un upload) invia audio, apparirà qui.
-                    </div>`;
+        function renderSessions(sessions) {
+            if (!sessions.length) {
+                sessionListEl.innerHTML = '<div class="empty-state">Nessuna chat ancora.<br>Fai una domanda!</div>';
                 return;
             }
-            convListEl.innerHTML = conversations.map(c => `
-                <div class="conv-item" onclick="showConversation('${c.id}')" id="conv-${c.id}">
-                    <div class="title">${c.title || 'Conversazione senza titolo'}</div>
-                    <div class="meta">${formatDate(c.started_at)} · ${c.segment_count} segmenti</div>
+            sessionListEl.innerHTML = sessions.map(s => `
+                <div class="session-item ${s.id === currentSessionId ? 'active' : ''}" onclick="loadSession('${s.id}')">
+                    <span class="delete-btn" onclick="event.stopPropagation(); deleteSession('${s.id}')">✕</span>
+                    <div class="title">${escHtml(s.title || 'Chat senza titolo')}</div>
+                    <div class="meta">${formatDate(s.updated_at)} · ${s.message_count} msg</div>
                 </div>
             `).join('');
         }
 
-        async function showConversation(id) {
-            document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
-            const el = document.getElementById('conv-' + id);
-            if (el) el.classList.add('active');
-
+        async function loadSession(id) {
+            currentSessionId = id;
             try {
-                const res = await fetch(`/api/conversations/${id}`, { headers: getHeaders() });
+                const res = await fetch(`/api/chat-sessions/${id}`, { headers: getHeaders() });
                 if (!res.ok) return;
                 const data = await res.json();
-                renderDetail(data);
-                switchTab('detail');
+                chatEl.innerHTML = '';
+                data.messages.forEach(m => addMessage(m.content, m.role));
+                loadSessions(); // refresh active state
             } catch (e) { console.error(e); }
         }
 
-        function renderDetail(conv) {
-            const entities = conv.entities.map(e =>
-                `<span class="entity-chip ${e.entity_type}">${e.entity_type}: ${e.name}</span>`
-            ).join('');
+        async function deleteSession(id) {
+            if (!confirm('Eliminare questa chat?')) return;
+            await fetch(`/api/chat-sessions/${id}`, { method: 'DELETE', headers: getHeaders() });
+            if (currentSessionId === id) newChat();
+            loadSessions();
+        }
 
-            const transcripts = conv.transcriptions.map(t =>
-                `<div class="transcript-item">
-                    <span class="time">${formatTime(t.recorded_at)}</span>
-                    <p>${t.text}</p>
-                </div>`
-            ).join('');
+        function newChat() {
+            currentSessionId = null;
+            chatEl.innerHTML = '';
+            document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+        }
 
-            detailPanel.innerHTML = `
-                <h2>${conv.title || 'Conversazione'}</h2>
-                <div class="summary">${conv.summary || ''}</div>
-                ${entities ? '<h3>Entità</h3><div>' + entities + '</div>' : ''}
-                <h3>Trascrizione</h3>
-                ${transcripts || '<p style="color:#666">Nessuna trascrizione disponibile.</p>'}
-            `;
+        // --- Conversations (audio) ---
+        async function loadConversations() {
+            const key = apiKeyEl.value.trim();
+            if (!key) return;
+            try {
+                const res = await fetch('/api/conversations?limit=50', { headers: getHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.conversations || !data.conversations.length) {
+                    convListEl.innerHTML = '<div class="empty-state">Nessuna conversazione audio.</div>';
+                    return;
+                }
+                convListEl.innerHTML = data.conversations.map(c => `
+                    <div class="conv-item" onclick="showConversation('${c.id}')">
+                        <div class="title">${escHtml(c.title || 'Senza titolo')}</div>
+                        <div class="meta">${formatDate(c.started_at)} · ${c.segment_count} segmenti</div>
+                    </div>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function showConversation(id) {
+            // Ask about this conversation
+            questionEl.value = `Riassumi la conversazione ${id.slice(0, 8)}`;
+            questionEl.focus();
         }
 
         // --- Chat ---
-        function addMessage(text, role, sources) {
+        function addMessage(text, role, sources, dateFilter) {
             const div = document.createElement('div');
             div.className = `message ${role}`;
             div.textContent = text;
@@ -420,31 +376,40 @@
                 srcDiv.textContent = `📎 ${sources.length} fonti (${sources.map(s => (s.similarity * 100).toFixed(0) + '%').join(', ')})`;
                 div.appendChild(srcDiv);
             }
+            if (dateFilter) {
+                const dfDiv = document.createElement('div');
+                dfDiv.className = 'date-filter';
+                dfDiv.textContent = `📅 Filtro: ${new Date(dateFilter.from).toLocaleDateString('it-IT')} – ${new Date(dateFilter.to).toLocaleDateString('it-IT')}`;
+                div.appendChild(dfDiv);
+            }
             chatEl.appendChild(div);
             chatEl.scrollTop = chatEl.scrollHeight;
         }
 
         async function askQuestion() {
             const question = questionEl.value.trim();
-            if (!question || !apiKeyEl.value.trim()) {
-                if (!apiKeyEl.value.trim()) addMessage('Inserisci una API key.', 'error');
-                return;
-            }
+            if (!question || !apiKeyEl.value.trim()) return;
             addMessage(question, 'user');
             questionEl.value = '';
             sendBtn.disabled = true;
             try {
+                const body = { question, top_k: 5 };
+                if (currentSessionId) body.session_id = currentSessionId;
+
                 const res = await fetch('/api/query', {
                     method: 'POST',
                     headers: getHeaders(),
-                    body: JSON.stringify({ question, top_k: 5 }),
+                    body: JSON.stringify(body),
                 });
                 if (!res.ok) {
                     const err = await res.json().catch(() => ({}));
                     throw new Error(err.detail || `HTTP ${res.status}`);
                 }
                 const data = await res.json();
-                addMessage(data.answer, 'assistant', data.sources);
+                currentSessionId = data.session_id;
+                addMessage(data.answer, 'assistant', data.sources, data.date_filter);
+                // Refresh session list (new session may have been created)
+                loadSessions();
             } catch (err) {
                 addMessage(`Errore: ${err.message}`, 'error');
             } finally {
@@ -455,15 +420,14 @@
 
         // --- Utils ---
         function formatDate(iso) {
+            if (!iso) return '';
             const d = new Date(iso);
             return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         }
-        function formatTime(iso) {
-            return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-        }
+        function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-        // --- Init ---
-        loadConversations();
+        // --- Boot ---
+        if (apiKeyEl.value.trim()) { loadSessions(); loadConversations(); }
     </script>
 </body>
 </html>
