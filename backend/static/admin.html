@@ -177,7 +177,7 @@
             localStorage.setItem('echo_admin_key', apiKey);
             document.getElementById('authForm').classList.add('hidden');
             document.getElementById('dashboard').classList.remove('hidden');
-            loadAll();
+            startAutoRefresh();
         }
 
         // Auto-connect if key is stored
@@ -198,7 +198,10 @@
 
         async function loadAll() {
             await Promise.all([loadHealth(), loadStats(), loadDeadLetter()]);
-            // Auto-refresh every 30 seconds
+        }
+
+        function startAutoRefresh() {
+            loadAll();
             setInterval(loadAll, 30000);
         }
 
