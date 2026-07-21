@@ -203,6 +203,20 @@ async def process_analysis(redis_client: redis.Redis):
                 for entity in entities:
                     db.add(entity)
 
+                # Generate embeddings for entities
+                if entities:
+                    entity_texts = [
+                        f"{e.name}: {e.content}" if e.content else e.name
+                        for e in entities
+                    ]
+                    entity_embeddings = await retry_with_backoff(
+                        embedding_service.embed_batch,
+                        entity_texts,
+                        operation_name=f"Entity embeddings segment {segment_id}",
+                    )
+                    for entity, emb in zip(entities, entity_embeddings):
+                        entity.embedding = emb
+
                 # Flush to persist entities before dedup
                 await db.flush()
 

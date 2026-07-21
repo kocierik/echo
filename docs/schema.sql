@@ -84,6 +84,7 @@ CREATE TABLE entities (
     name TEXT NOT NULL,                         -- canonical name (e.g. "Marco", "Comprare latte")
     content TEXT,                               -- additional detail / description
     metadata JSONB NOT NULL DEFAULT '{}',       -- type-specific fields (see below)
+    embedding vector(1536),                     -- semantic embedding of name + content
     source_transcription_id UUID REFERENCES transcriptions(id) ON DELETE SET NULL,
     conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -100,6 +101,7 @@ CREATE TABLE entities (
 CREATE INDEX idx_entities_user_type ON entities (user_id, entity_type);
 CREATE INDEX idx_entities_name ON entities (user_id, name);
 CREATE INDEX idx_entities_conversation ON entities (conversation_id);
+CREATE INDEX idx_entities_embedding ON entities USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
 
 -- ============================================================
 -- AUDIO RETENTION: cleanup policy (30 days)
