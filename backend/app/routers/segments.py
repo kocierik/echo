@@ -43,6 +43,14 @@ async def ingest_segment(
     if not audio_data:
         raise HTTPException(status_code=400, detail="Empty audio file")
 
+    # Reject oversized uploads (max 5MB)
+    max_audio_bytes = 5 * 1024 * 1024
+    if len(audio_data) > max_audio_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large ({len(audio_data)} bytes). Maximum is 5MB.",
+        )
+
     # Store audio file
     segment_id = uuid.uuid4()
     audio_dir = Path(settings.audio_storage_path) / str(user_id)
