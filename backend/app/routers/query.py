@@ -1,9 +1,11 @@
 """Query API: natural language search over personal memory with RAG."""
 
+import json
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,12 +22,18 @@ from app.services.temporal import DateRange, extract_date_range
 
 router = APIRouter(prefix="/query", tags=["query"])
 
+# Session TTL: 30 minutes of inactivity
+SESSION_TTL_SECONDS = 30 * 60
+# Max history messages to keep (to avoid token explosion)
+MAX_HISTORY_MESSAGES = 20
+
 
 class QueryRequest(BaseModel):
     question: str
     top_k: int = 5
     date_from: datetime | None = None
     date_to: datetime | None = None
+    session_id: str | None = None
 
 
 class SourceChunk(BaseModel):
@@ -39,24 +47,60 @@ class SourceChunk(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
+    session_id: str
     date_filter: dict | None = None
+
+
+async def _get_session_history(
+    redis_client: aioredis.Redis, session_id: str
+) -> list[dict]:
+    """Retrieve conversation history from Redis."""
+    raw = await redis_client.get(f"session:{session_id}")
+    if raw is None:
+        return []
+    return json.loads(raw)
+
+
+async def _save_session_history(
+    redis_client: aioredis.Redis, session_id: str, history: list[dict]
+):
+    """Save conversation history to Redis with TTL refresh."""
+    # Trim to max history
+    if len(history) > MAX_HISTORY_MESSAGES:
+        history = history[-MAX_HISTORY_MESSAGES:]
+    await redis_client.set(
+        f"session:{session_id}",
+        json.dumps(history),
+        ex=SESSION_TTL_SECONDS,
+    )
 
 
 @router.post("", response_model=QueryResponse)
 async def query_memory(
+    http_request: Request,
     request: QueryRequest,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Query the user's memory using natural language.
 
+    Supports multi-turn follow-up via session_id:
+    - First request: omit session_id → a new session is created
+    - Follow-up: include session_id from previous response → continues the conversation
+
     Performs RAG with optional temporal filtering:
     1. Extract date range from question (or use explicit date_from/date_to)
     2. Embed the question
     3. Find similar chunks via pgvector (filtered by date if applicable)
     4. Find relevant entities
-    5. Assemble context and generate answer with LLM
+    5. Assemble context + history and generate answer with LLM
     """
+    redis_client = http_request.app.state.redis
+
+    # Resolve or create session
+    session_id = request.session_id or str(uuid.uuid4())
+    history = await _get_session_history(redis_client, session_id)
+
     # 1. Determine date filter: explicit params take priority, then NLP extraction
     date_range = None
     if request.date_from or request.date_to:
@@ -113,9 +157,15 @@ async def query_memory(
                 "Non ho trovato informazioni nella memoria per il periodo indicato. "
                 "Prova a riformulare la domanda o a estendere il periodo."
             )
+        # Save to history even for empty results
+        history.append({"role": "user", "content": request.question})
+        history.append({"role": "assistant", "content": no_result_msg})
+        await _save_session_history(redis_client, session_id, history)
+
         return QueryResponse(
             answer=no_result_msg,
             sources=[],
+            session_id=session_id,
             date_filter=_format_date_filter(date_range),
         )
 
@@ -140,7 +190,7 @@ async def query_memory(
 
     context = "\n\n---\n\n".join(context_parts)
 
-    # 6. Generate answer via LLM
+    # 6. Generate answer via LLM (with conversation history)
     llm_service = get_llm_query_service()
 
     system_prompt = (
@@ -150,6 +200,8 @@ async def query_memory(
         "Il contesto include 'Conoscenze strutturate' (entità estratte) e "
         "frammenti di trascrizioni reali. "
         "Se il contesto non contiene informazioni sufficienti, dillo chiaramente. "
+        "Se l'utente fa una domanda di follow-up, usa la conversazione precedente "
+        "per capire a cosa si riferisce. "
         "Rispondi in italiano."
     )
 
@@ -160,18 +212,27 @@ async def query_memory(
             f"{date_range.date_to.strftime('%d/%m/%Y')}."
         )
 
-    messages = [
-        LLMMessage(role="system", content=system_prompt),
-        LLMMessage(
-            role="user",
-            content=f"Contesto dalla memoria:\n\n{context}\n\n---\n\nDomanda: {request.question}",
-        ),
-    ]
+    messages = [LLMMessage(role="system", content=system_prompt)]
+
+    # Add conversation history for multi-turn context
+    for msg in history:
+        messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
+
+    # Add current question with fresh RAG context
+    user_message = f"Contesto dalla memoria:\n\n{context}\n\n---\n\nDomanda: {request.question}"
+    messages.append(LLMMessage(role="user", content=user_message))
+
     response = await llm_service.complete(messages, temperature=0.3)
+
+    # Save to session history (store clean question, not the RAG-augmented one)
+    history.append({"role": "user", "content": request.question})
+    history.append({"role": "assistant", "content": response.content})
+    await _save_session_history(redis_client, session_id, history)
 
     return QueryResponse(
         answer=response.content,
         sources=sources,
+        session_id=session_id,
         date_filter=_format_date_filter(date_range),
     )
 
