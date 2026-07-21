@@ -242,6 +242,32 @@
         .entity-chip.idea { border-color: #10b981; color: #6ee7b7; }
         .entity-chip.event { border-color: #8b5cf6; color: #c4b5fd; }
         .entity-chip.note { border-color: #6b7280; color: #9ca3af; }
+        /* Digest */
+        #digest-list { flex: 1; overflow-y: auto; padding: 0.5rem; }
+        .digest-item { padding: 0.75rem; border-radius: 8px; cursor: pointer; margin-bottom: 0.25rem; }
+        .digest-item:hover { background: #1a1a1a; }
+        .digest-item .title { font-size: 0.85rem; font-weight: 500; color: #e0e0e0; }
+        .digest-item .meta { font-size: 0.72rem; color: #888; margin-top: 0.2rem; }
+        .digest-generate { padding: 0.5rem; text-align: center; }
+        .digest-generate button {
+            padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid #333;
+            background: transparent; color: #aaa; cursor: pointer; font-size: 0.8rem; width: 100%;
+        }
+        .digest-generate button:hover { border-color: #1d4ed8; color: #fff; }
+        #digest-panel { flex: 1; overflow-y: auto; padding: 1.5rem; display: none; }
+        #digest-panel.active { display: block; }
+        #digest-panel h2 { font-size: 1.2rem; margin-bottom: 0.5rem; color: #fff; }
+        #digest-panel .digest-summary { color: #ccc; margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.5; }
+        #digest-panel .digest-section { margin-bottom: 1rem; }
+        #digest-panel .digest-section h3 { font-size: 0.85rem; color: #888; text-transform: uppercase; margin-bottom: 0.4rem; }
+        #digest-panel .digest-section ul { list-style: none; padding: 0; }
+        #digest-panel .digest-section li { padding: 0.3rem 0; font-size: 0.9rem; color: #bbb; }
+        /* Session badge */
+        .session-badge { font-size: 0.7rem; color: #a78bfa; margin-left: 0.3rem; }
+        /* Conv status */
+        .status-badge { font-size: 0.7rem; padding: 1px 5px; border-radius: 3px; margin-left: 0.3rem; }
+        .status-badge.completed { background: #166534; color: #86efac; }
+        .status-badge.pending { background: #713f12; color: #fcd34d; }
     </style>
 </head>
 <body>
@@ -253,9 +279,11 @@
         <div id="sidebar-tabs">
             <div class="sidebar-tab active" data-tab="sessions" onclick="switchSidebarTab('sessions')">💬 Chat</div>
             <div class="sidebar-tab" data-tab="conversations" onclick="switchSidebarTab('conversations')">🎙️ Audio</div>
+            <div class="sidebar-tab" data-tab="digests" onclick="switchSidebarTab('digests')">📊 Digest</div>
         </div>
         <div id="session-list"></div>
         <div id="conv-list" class="hidden"></div>
+        <div id="digest-list" class="hidden"></div>
         <div id="settings">
             <div class="row">
                 <label for="api-key">Key:</label>
@@ -269,6 +297,7 @@
     </div>
     <div id="main">
         <div id="chat-container">
+            <div id="session-indicator" class="hidden" style="padding: 0.4rem 1.5rem; font-size: 0.75rem; color: #a78bfa; border-bottom: 1px solid #222;">🔄 Follow-up attivo — il contesto è mantenuto</div>
             <div id="chat"></div>
             <div id="input-area">
                 <input type="text" id="question" placeholder="Chiedi alla tua memoria..." autofocus />
@@ -276,6 +305,7 @@
             </div>
         </div>
         <div id="detail-panel"></div>
+        <div id="digest-panel"></div>
     </div>
 
     <script>
@@ -321,6 +351,8 @@
             document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
             sessionListEl.classList.toggle('hidden', tab !== 'sessions');
             convListEl.classList.toggle('hidden', tab !== 'conversations');
+            document.getElementById('digest-list').classList.toggle('hidden', tab !== 'digests');
+            if (tab === 'digests') loadDigests();
         }
 
         // --- Chat Sessions ---
@@ -358,6 +390,9 @@
                 const data = await res.json();
                 chatEl.innerHTML = '';
                 data.messages.forEach(m => addMessage(m.content, m.role));
+                updateSessionIndicator();
+                closeDetail();
+                closeDigest();
                 loadSessions(); // refresh active state
             } catch (e) { console.error(e); }
         }
@@ -373,6 +408,10 @@
             currentSessionId = null;
             chatEl.innerHTML = '';
             document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+            updateSessionIndicator();
+            // Return to chat view if on detail/digest
+            closeDetail();
+            closeDigest();
         }
 
         // --- Conversations (audio) ---
@@ -389,7 +428,7 @@
                 }
                 convListEl.innerHTML = data.conversations.map(c => `
                     <div class="conv-item" onclick="showConversation('${c.id}')">
-                        <div class="title">${escHtml(c.title || 'Senza titolo')}</div>
+                        <div class="title">${escHtml(c.title || 'Senza titolo')} <span class="status-badge ${c.analysis_status}">${c.analysis_status === 'completed' ? '✓' : '⏳'}</span></div>
                         <div class="meta">${formatDate(c.started_at)} · ${c.segment_count} segmenti</div>
                     </div>
                 `).join('');
@@ -486,6 +525,7 @@
                 const data = await res.json();
                 currentSessionId = data.session_id;
                 addMessage(data.answer, 'assistant', data.sources, data.date_filter);
+                updateSessionIndicator();
                 // Refresh session list (new session may have been created)
                 loadSessions();
             } catch (err) {
@@ -503,6 +543,89 @@
             return d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
         }
         function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        function updateSessionIndicator() {
+            document.getElementById('session-indicator').classList.toggle('hidden', !currentSessionId);
+        }
+
+        // --- Digests ---
+        async function loadDigests() {
+            const key = apiKeyEl.value.trim();
+            if (!key) return;
+            const digestListEl = document.getElementById('digest-list');
+            try {
+                const res = await fetch('/api/digest?days=14', { headers: getHeaders() });
+                if (!res.ok) return;
+                const data = await res.json();
+                let html = `<div class="digest-generate"><button onclick="generateTodayDigest()">📊 Genera digest di oggi</button></div>`;
+                if (!data.items.length) {
+                    html += '<div class="empty-state">Nessun digest ancora. Genera il primo!</div>';
+                } else {
+                    html += data.items.map(d => `
+                        <div class="digest-item" onclick="showDigest('${d.digest_date}')">
+                            <div class="title">📊 ${new Date(d.digest_date + 'T00:00:00').toLocaleDateString('it-IT', {weekday: 'short', day: 'numeric', month: 'short'})}</div>
+                            <div class="meta">${d.conversation_count} conversazioni · ${d.people.length} persone</div>
+                        </div>
+                    `).join('');
+                }
+                digestListEl.innerHTML = html;
+            } catch (e) { console.error(e); }
+        }
+
+        async function showDigest(date) {
+            try {
+                const res = await fetch(`/api/digest/${date}`, { headers: getHeaders() });
+                if (!res.ok) return;
+                const d = await res.json();
+                renderDigestPanel(d);
+            } catch (e) { console.error(e); }
+        }
+
+        function renderDigestPanel(d) {
+            const panel = document.getElementById('digest-panel');
+            const chatContainer = document.getElementById('chat-container');
+            const detailPanel = document.getElementById('detail-panel');
+
+            const dateStr = new Date(d.digest_date + 'T00:00:00').toLocaleDateString('it-IT', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
+
+            let sections = '';
+            if (d.people.length) sections += `<div class="digest-section"><h3>👤 Persone</h3><ul>${d.people.map(p => `<li>${escHtml(p)}</li>`).join('')}</ul></div>`;
+            if (d.tasks.length) sections += `<div class="digest-section"><h3>✅ Task</h3><ul>${d.tasks.map(t => `<li>${escHtml(t.name || t)}${t.content ? ': ' + escHtml(t.content) : ''}</li>`).join('')}</ul></div>`;
+            if (d.ideas.length) sections += `<div class="digest-section"><h3>💡 Idee</h3><ul>${d.ideas.map(i => `<li>${escHtml(i.name || i)}${i.content ? ': ' + escHtml(i.content) : ''}</li>`).join('')}</ul></div>`;
+            if (d.events.length) sections += `<div class="digest-section"><h3>📅 Eventi</h3><ul>${d.events.map(e => `<li>${escHtml(e.name || e)}${e.content ? ': ' + escHtml(e.content) : ''}</li>`).join('')}</ul></div>`;
+
+            panel.innerHTML = `
+                <button class="back-btn" onclick="closeDigest()" style="padding:0.4rem 0.8rem;border-radius:6px;border:1px solid #333;background:transparent;color:#aaa;cursor:pointer;font-size:0.8rem;margin-bottom:1rem;">← Torna alla chat</button>
+                <h2>📊 Digest — ${dateStr}</h2>
+                <p style="font-size:0.8rem;color:#888;margin-bottom:1rem;">${d.conversation_count} conversazioni</p>
+                <div class="digest-summary">${escHtml(d.summary)}</div>
+                ${sections}
+            `;
+
+            chatContainer.classList.add('hidden');
+            detailPanel.classList.remove('active');
+            panel.classList.add('active');
+        }
+
+        function closeDigest() {
+            document.getElementById('digest-panel').classList.remove('active');
+            document.getElementById('chat-container').classList.remove('hidden');
+        }
+
+        async function generateTodayDigest() {
+            const today = new Date().toISOString().split('T')[0];
+            try {
+                const res = await fetch(`/api/digest/${today}`, { method: 'POST', headers: getHeaders() });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    alert(err.detail || 'Errore nella generazione');
+                    return;
+                }
+                const d = await res.json();
+                renderDigestPanel(d);
+                loadDigests();
+            } catch (e) { alert('Errore: ' + e.message); }
+        }
 
         // --- Boot ---
         if (apiKeyEl.value.trim()) { loadSessions(); loadConversations(); }
