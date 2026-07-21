@@ -34,3 +34,7 @@ firmware/.vscode/
 .pytest_cache/
 htmlcov/
 .coverage
+
+
+# Firmware secrets
+firmware/src/secrets.h
