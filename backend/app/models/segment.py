@@ -22,6 +22,11 @@ class Segment(UUIDPrimaryKey, Base):
         String(64), nullable=True, unique=True, index=True,
         comment="SHA-256 of audio content + recorded_at for idempotency"
     )
+    audio_energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    speaker: Mapped[str | None] = mapped_column(
+        String(10), nullable=True, default="unknown",
+        comment="self | other | unknown"
+    )
     transcription_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )

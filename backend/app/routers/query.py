@@ -43,6 +43,7 @@ class QueryRequest(BaseModel):
 
 class SourceChunk(BaseModel):
     conversation_id: uuid.UUID
+    chunk_id: uuid.UUID
     text: str
     similarity: float
 
@@ -124,6 +125,7 @@ async def query_memory(
     # 3. Find similar chunks via pgvector cosine similarity (with date filter)
     similarity_query = (
         select(
+            Chunk.id,
             Chunk.conversation_id,
             Chunk.text,
             (1 - Chunk.embedding.cosine_distance(question_embedding)).label("similarity"),
@@ -153,7 +155,26 @@ async def query_memory(
     result = await db.execute(similarity_query)
     rows = result.all()
 
-    # 4. Find relevant entities (vector + keyword search)
+    # 4. Apply feedback re-ranking
+    from app.routers.feedback import get_chunk_feedback_scores
+
+    if rows:
+        chunk_ids = [row.id for row in rows]
+        feedback_multipliers = await get_chunk_feedback_scores(db, user_id, chunk_ids)
+
+        # Re-rank: apply multipliers and filter excluded chunks
+        reranked = []
+        for row in rows:
+            multiplier = feedback_multipliers.get(row.id, 1.0)
+            if multiplier == 0.0:
+                continue  # Excluded by negative feedback
+            reranked.append((row, float(row.similarity) * multiplier))
+
+        # Sort by adjusted similarity
+        reranked.sort(key=lambda x: x[1], reverse=True)
+        rows = [r[0] for r in reranked]
+
+    # 5. Find relevant entities (vector + keyword search)
     entities_context = await find_relevant_entities(
         db, user_id, request.question, question_embedding
     )
@@ -218,6 +239,7 @@ async def query_memory(
         sources.append(
             SourceChunk(
                 conversation_id=row.conversation_id,
+                chunk_id=row.id,
                 text=row.text[:200],
                 similarity=round(float(row.similarity), 4),
             )

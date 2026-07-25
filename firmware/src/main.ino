@@ -52,6 +52,8 @@ uint8_t* segmentBuffer = nullptr;
 size_t segmentPos = 0;
 uint32_t segmentStartMs = 0;
 uint32_t lastSilenceDurationMs = 0;
+uint32_t energySum = 0;
+uint16_t energyFrameCount = 0;
 char segmentTimestamp[30];
 
 // WiFi reconnection
@@ -149,12 +151,16 @@ void loop() {
                 segmentPos = 0;
                 segmentStartMs = millis();
                 lastSilenceDurationMs = vad.getLastSilenceDurationMs();
+                energySum = 0;
+                energyFrameCount = 0;
                 timeSync.getTimestamp(segmentTimestamp, sizeof(segmentTimestamp));
                 encoder.reset();
                 indicators.setRecording(true);
 
-                // Encode this first frame
+                // Encode this first frame and track energy
                 encodeFrame(pcmBuffer, samplesRead);
+                energySum += vad.getEnergy();
+                energyFrameCount++;
             }
             break;
 
@@ -162,6 +168,8 @@ void loop() {
             if (isSpeech || !vad.speechEnded()) {
                 // Continue recording
                 encodeFrame(pcmBuffer, samplesRead);
+                energySum += vad.getEnergy();
+                energyFrameCount++;
 
                 // Check if segment is full (max duration reached)
                 uint32_t elapsed = millis() - segmentStartMs;
@@ -209,6 +217,7 @@ void finalizeSegment() {
     SegmentMetadata meta;
     meta.durationMs = durationMs;
     meta.silenceBeforeMs = lastSilenceDurationMs;
+    meta.avgEnergy = (energyFrameCount > 0) ? (uint16_t)(energySum / energyFrameCount) : 0;
     strncpy(meta.recordedAt, segmentTimestamp, sizeof(meta.recordedAt));
 
     // Try to send directly

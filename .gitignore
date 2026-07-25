@@ -29,7 +29,7 @@ audio_data/
 # PlatformIO
 firmware/.pio/
 firmware/.vscode/
-
+.agents
 # Test
 .pytest_cache/
 htmlcov/

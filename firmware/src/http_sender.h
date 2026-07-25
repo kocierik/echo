@@ -13,6 +13,7 @@
 struct SegmentMetadata {
     uint32_t durationMs;
     uint32_t silenceBeforeMs;
+    uint16_t avgEnergy;  // Average RMS energy for speaker detection
     char recordedAt[30];  // ISO 8601 timestamp
 };
 
@@ -76,6 +77,9 @@ bool HttpSender::doPost(const uint8_t* data, size_t length, const SegmentMetadat
     http.addHeader("X-Duration-Ms", String(meta.durationMs));
     if (meta.silenceBeforeMs > 0) {
         http.addHeader("X-Silence-Before-Ms", String(meta.silenceBeforeMs));
+    }
+    if (meta.avgEnergy > 0) {
+        http.addHeader("X-Audio-Energy", String(meta.avgEnergy));
     }
 
     // Build multipart body manually
