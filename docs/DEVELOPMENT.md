@@ -94,6 +94,78 @@ pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py
 pytest tests/ -v
 ```
 
+## Operazioni comuni
+
+### Primo avvio (da zero)
+
+```bash
+# 1. Copia e configura environment
+cp .env.example .env
+# Modifica .env: aggiungi OPENAI_API_KEY
+
+# 2. Avvia tutti i servizi
+docker compose up --build -d
+
+# 3. Crea lo schema del database
+docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
+
+# 4. Marca Alembic come aggiornato (il DB ha già lo schema corrente)
+docker compose exec api python -m alembic stamp head
+
+# 5. Crea una API key
+docker compose exec -T postgres psql -U echo -d echo -c "
+INSERT INTO api_keys (user_id, key_hash, name) VALUES (
+    'a0000000-0000-0000-0000-000000000001',
+    encode(sha256('my-secret-key'::bytea), 'hex'),
+    'default'
+);"
+
+# 6. Verifica che tutto funzioni
+curl http://localhost:8000/health
+```
+
+### Dopo un git pull (aggiornamento codice)
+
+```bash
+# 1. Ricostruisci le immagini Docker (nuovo codice)
+docker compose up --build -d
+
+# 2. Applica eventuali nuove migrazioni al database
+docker compose exec api python -m alembic upgrade head
+
+# 3. Riavvia il worker (carica il nuovo codice)
+docker compose restart worker
+
+# 4. Verifica
+curl http://localhost:8000/health
+```
+
+### Reset completo del database (cancella tutti i dati)
+
+```bash
+docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
+docker compose exec api python -m alembic stamp head
+
+# Ricrea API key
+docker compose exec -T postgres psql -U echo -d echo -c "
+INSERT INTO api_keys (user_id, key_hash, name) VALUES (
+    'a0000000-0000-0000-0000-000000000001',
+    encode(sha256('my-secret-key'::bytea), 'hex'),
+    'default'
+);"
+```
+
+### Troubleshooting
+
+| Errore | Causa | Soluzione |
+|--------|-------|-----------|
+| `NameError: name 'X' is not defined` nel worker | Colonne nuove nel codice ma non nel DB | `docker compose exec api python -m alembic upgrade head && docker compose restart worker` |
+| `relation "query_feedback" does not exist` | Tabella non creata | `docker compose exec api python -m alembic upgrade head` |
+| `column "audio_energy" does not exist` | Migrazione non applicata | `docker compose exec api python -m alembic upgrade head` |
+| Worker si riavvia in loop | Errore nel codice o DB non aggiornato | `docker compose logs worker --tail 50` per vedere il traceback |
+| `alembic.util.exc.CommandError: Can't locate revision` | Alembic non inizializzato | `docker compose exec api python -m alembic stamp 001` poi `upgrade head` |
+
 ## Database migrations (Alembic)
 
 We use [Alembic](https://alembic.sqlalchemy.org/) to version database schema changes. This ensures any environment can be brought up-to-date with a single command.
