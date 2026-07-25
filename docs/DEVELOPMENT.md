@@ -17,6 +17,7 @@ cp .env.example .env
 
 docker compose up --build -d
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
+docker compose exec api python -m alembic stamp head
 docker compose exec postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'a0000000-0000-0000-0000-000000000001',
@@ -37,6 +38,11 @@ docker compose -f docker-compose-infra.yml up -d
 
 # Apply schema
 docker compose -f docker-compose-infra.yml exec -T postgres psql -U echo -d echo < docs/schema.sql
+
+# Stamp Alembic (mark DB as up-to-date)
+cd backend
+python -m alembic stamp head
+
 docker compose -f docker-compose-infra.yml exec postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'a0000000-0000-0000-0000-000000000001',
@@ -45,7 +51,6 @@ INSERT INTO api_keys (user_id, key_hash, name) VALUES (
 );"
 
 # Install Python deps
-cd backend
 pip install -e ".[dev]"
 
 # Run the API
@@ -83,10 +88,58 @@ echo/
 cd backend
 
 # Unit tests (no DB required)
-pytest tests/test_adpcm_decoder.py -v --noconftest
+pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py -v --noconftest
 
 # Integration tests (requires running PostgreSQL)
 pytest tests/ -v
+```
+
+## Database migrations (Alembic)
+
+We use [Alembic](https://alembic.sqlalchemy.org/) to version database schema changes. This ensures any environment can be brought up-to-date with a single command.
+
+### After pulling new code
+
+```bash
+# Docker
+docker compose exec api python -m alembic upgrade head
+
+# Local
+cd backend && python -m alembic upgrade head
+```
+
+### Creating a new migration
+
+When you modify a SQLAlchemy model (add a column, change a type, add an index):
+
+```bash
+# Auto-generate from model diff
+docker compose exec api python -m alembic revision --autogenerate -m "add xyz column"
+
+# Or with Makefile
+make db-new-migration MSG="add xyz column"
+```
+
+Review the generated file in `backend/alembic/versions/`, verify the `upgrade()` and `downgrade()` functions, then commit it.
+
+### Rolling back
+
+```bash
+# Undo last migration
+docker compose exec api python -m alembic downgrade -1
+
+# Check current revision
+docker compose exec api python -m alembic current
+```
+
+### Fresh database setup
+
+```bash
+# Apply SQL schema (creates tables)
+docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
+
+# Tell Alembic the DB is at the current version
+docker compose exec api python -m alembic stamp head
 ```
 
 ## Firmware development
