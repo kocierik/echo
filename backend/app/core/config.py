@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     stt_model: str = "gpt-4o-transcribe"
     stt_language: str = "it"
 
+    # Deepgram (alternative STT provider)
+    deepgram_api_key: str = ""
+    deepgram_model: str = "nova-3"
+
     # LLM - analysis (async, economico)
     llm_analysis_provider: str = "openai"
     llm_analysis_model: str = "gpt-4o-mini"
