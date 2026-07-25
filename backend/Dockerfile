@@ -9,13 +9,19 @@ RUN apt-get update && \
 
 # Install Python dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir . 
+RUN pip install --no-cache-dir .
 
 # Copy application code
 COPY . .
 
-# Create audio storage directory
-RUN mkdir -p /data/audio
+# Create audio storage directory and non-root user
+RUN mkdir -p /data/audio && \
+    groupadd -r echo && \
+    useradd -r -g echo -d /app -s /sbin/nologin echo && \
+    chown -R echo:echo /app /data/audio
+
+# Run as non-root
+USER echo
 
 EXPOSE 8000
 

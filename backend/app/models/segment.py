@@ -18,6 +18,10 @@ class Segment(UUIDPrimaryKey, Base):
     audio_path: Mapped[str] = mapped_column(Text, nullable=False)
     audio_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     silence_before_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    audio_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, unique=True, index=True,
+        comment="SHA-256 of audio content + recorded_at for idempotency"
+    )
     transcription_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
     )
