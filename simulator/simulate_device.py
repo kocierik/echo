@@ -255,18 +255,24 @@ def run_simulator(args):
             segment_buffer = []
             pre_buffer = []
 
-    # Start audio stream
+    # Start audio stream — use blocking read instead of callback to avoid
+    # Windows freeze on Ctrl+C (callback threads deadlock on shutdown)
     try:
-        with sd.InputStream(
+        stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
             dtype="float32",
             blocksize=frame_size,
-            callback=audio_callback,
-        ):
-            print("  (Press Ctrl+C to stop)\n")
-            while True:
-                time.sleep(0.1)
+        )
+        stream.start()
+        print("  (Press Ctrl+C to stop)\n")
+
+        while True:
+            frame_data, overflowed = stream.read(frame_size)
+            if overflowed:
+                print("  ⚠ Audio buffer overflow", file=sys.stderr)
+            audio_callback(frame_data, frame_size, None, None)
+
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -274,8 +280,11 @@ def run_simulator(args):
         print("   Make sure you have a microphone connected.")
         sys.exit(1)
     finally:
-        # Force cleanup audio resources on Windows to avoid system freeze
-        sd.stop()
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
         print("\n\n👋 Simulator stopped.")
 
 
