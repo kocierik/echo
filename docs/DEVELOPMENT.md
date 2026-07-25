@@ -288,8 +288,16 @@ python simulate_device.py
 
 - **Pre-buffer (500ms):** captures audio BEFORE the VAD triggers, so you never lose the start of a phrase
 - **Utterance segmentation:** segments end on natural pauses (not fixed duration), giving the STT model complete phrases
+- **Continuation window (500ms):** if speech resumes within 500ms of a pause, it stays in the same segment
+- **Continuous mode (`--continuous`):** records everything in fixed chunks, skips silence-only. Best quality, higher API cost.
 - **Local transcription preview:** optional faster-whisper for real-time feedback (install `faster-whisper` to enable)
-- **Max segment duration:** 15s safety limit
+- **Max segment duration:** 30s safety limit (VAD mode), configurable chunk size (continuous mode)
+
+### Recording modes
+
+**VAD mode (default):** records only when speech is detected. Smart enough to handle natural pauses (2s tolerance + continuation window). Best for battery/cost savings.
+
+**Continuous mode (`--continuous`):** records everything in fixed 30s chunks. Only skips chunks that are 100% silence. Zero words lost — ideal for debugging or when quality matters more than cost.
 
 ### Useful options
 
@@ -299,6 +307,12 @@ python simulate_device.py --vad-threshold 300
 
 # Amplify microphone signal
 python simulate_device.py --gain 5
+
+# Continuous mode (record everything)
+python simulate_device.py --continuous
+
+# Save WAV files for debugging audio quality
+python simulate_device.py --save-wav
 
 # Longer segments for more context
 python simulate_device.py --segment-duration 30
