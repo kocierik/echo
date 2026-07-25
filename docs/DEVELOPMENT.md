@@ -243,21 +243,95 @@ All architectural decisions are documented in `docs/adr/`:
 4. Add config in `app/core/config.py`
 5. The worker and routers pick up the new provider via the factory
 
+## STT providers
+
+Echo supports multiple Speech-to-Text providers. Switch via env vars.
+
+### OpenAI (default)
+
+```env
+STT_PROVIDER=openai
+STT_MODEL=gpt-4o-transcribe
+```
+
+Models available:
+- `gpt-4o-transcribe` — best accuracy, $0.006/min (recommended)
+- `gpt-4o-mini-transcribe` — cheaper, $0.003/min, slightly less accurate
+- `whisper-1` — legacy, same price as gpt-4o-transcribe but worse
+
+Supports prompt conditioning (names, jargon) for improved accuracy.
+
+### Deepgram
+
+```env
+STT_PROVIDER=deepgram
+DEEPGRAM_API_KEY=dg-your-key-here
+DEEPGRAM_MODEL=nova-3
+```
+
+Get an API key at [console.deepgram.com](https://console.deepgram.com) ($200 free credits).
+
+Pros: very fast, good Italian, built-in punctuation and smart formatting.
+Cons: no prompt conditioning (can't bias toward known names).
+
+## Simulator
+
+The simulator runs on your PC and emulates the wearable device using your microphone.
+
+```bash
+cd simulator
+pip install -r requirements.txt
+python simulate_device.py
+```
+
+### Key features
+
+- **Pre-buffer (500ms):** captures audio BEFORE the VAD triggers, so you never lose the start of a phrase
+- **Utterance segmentation:** segments end on natural pauses (not fixed duration), giving the STT model complete phrases
+- **Local transcription preview:** optional faster-whisper for real-time feedback (install `faster-whisper` to enable)
+- **Max segment duration:** 15s safety limit
+
+### Useful options
+
+```bash
+# Lower VAD threshold if your mic is quiet
+python simulate_device.py --vad-threshold 300
+
+# Amplify microphone signal
+python simulate_device.py --gain 5
+
+# Longer segments for more context
+python simulate_device.py --segment-duration 30
+
+# List available microphones
+python simulate_device.py --list-devices
+
+# Use a specific microphone
+python simulate_device.py --device 2
+```
+
 ## API endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/segments` | Ingest audio from device |
 | POST | `/api/query` | RAG query on memory |
+| POST | `/api/query/feedback` | Rate a RAG response (👍/👎) |
 | GET | `/api/conversations` | List conversations |
 | GET | `/api/conversations/{id}` | Conversation detail |
 | GET | `/api/entities` | List/filter entities |
+| PATCH | `/api/entities/{id}` | Update an entity |
+| DELETE | `/api/entities/{id}` | Delete an entity |
+| POST | `/api/entities/{id}/merge` | Merge entity into another |
 | GET | `/api/entities/stats` | Entity type counts |
 | GET | `/api/entities/people` | List people |
 | GET | `/api/entities/tasks` | List tasks (filter by done) |
 | POST | `/api/entities/deduplicate` | Trigger entity dedup |
+| GET | `/api/digest?days=7` | List recent daily digests |
+| GET | `/api/chat-sessions` | List saved chat sessions |
 | GET | `/api/stats` | System statistics |
-| GET | `/health` | Health check (DB + Redis) |
+| GET | `/health` | Health check (DB + Redis + queues) |
+| GET | `/metrics` | Prometheus metrics |
 
 ## Environment variables
 
