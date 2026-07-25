@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # STT
     stt_provider: str = "openai"
-    stt_model: str = "whisper-1"
+    stt_model: str = "gpt-4o-transcribe"
     stt_language: str = "it"
 
     # LLM - analysis (async, economico)
