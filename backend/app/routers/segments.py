@@ -37,6 +37,7 @@ async def ingest_segment(
     recorded_at: datetime = Header(..., alias="X-Recorded-At"),
     duration_ms: int = Header(..., alias="X-Duration-Ms"),
     silence_before_ms: int | None = Header(None, alias="X-Silence-Before-Ms"),
+    audio_energy: int | None = Header(None, alias="X-Audio-Energy"),
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -100,6 +101,7 @@ async def ingest_segment(
         audio_path=str(audio_path),
         audio_size_bytes=len(audio_data),
         silence_before_ms=silence_before_ms,
+        audio_energy=audio_energy,
         audio_hash=idempotency_hash,
         transcription_status="pending",
     )

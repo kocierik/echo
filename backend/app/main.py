@@ -13,7 +13,16 @@ from app.core.config import settings
 from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
-from app.routers import admin, chat_sessions, conversations, digest, entities, query, segments
+from app.routers import (
+    admin,
+    chat_sessions,
+    conversations,
+    digest,
+    entities,
+    feedback,
+    query,
+    segments,
+)
 
 # Configure structured JSON logging on import
 setup_logging()
@@ -87,6 +96,7 @@ app.include_router(chat_sessions.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
+app.include_router(feedback.router, prefix=settings.api_prefix)
 
 
 def get_redis(request: Request) -> aioredis.Redis:

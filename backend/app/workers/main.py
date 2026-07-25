@@ -37,6 +37,7 @@ from app.services.embedding_openai import get_embedding_service
 from app.services.entity_consolidation import consolidate_entities
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
+from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
     build_stt_prompt,
@@ -137,6 +138,18 @@ async def process_stt(redis_client: redis.Redis):
 
                 # Post-process: clean artifacts and normalize
                 cleaned_text = clean_transcription(stt_result.text)
+
+                # Classify speaker based on audio energy
+                speaker = await classify_segment(
+                    db, segment.user_id, segment.audio_energy
+                )
+                segment.speaker = speaker
+
+                # Prefix transcription with speaker tag
+                if speaker == "self":
+                    cleaned_text = f"[Tu] {cleaned_text}"
+                elif speaker == "other":
+                    cleaned_text = f"[Altri] {cleaned_text}"
 
                 # Save transcription
                 transcription = Transcription(
