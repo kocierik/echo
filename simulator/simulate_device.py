@@ -169,12 +169,20 @@ def run_simulator(args):
 ║         Echo Device Simulator                    ║
 ╠══════════════════════════════════════════════════╣
 ║  Server:    {args.server:<36} ║
+║  Mode:      {'CONTINUOUS' if args.continuous else 'VAD-driven':<36} ║
 ║  VAD:       threshold={args.vad_threshold:<26} ║
 ║  Segment:   {args.segment_duration}s max duration{' ' * 22}║
 ║  Silence:   {args.silence_timeout}s timeout{' ' * 25}║
 ║  Gain:      {args.gain}x{' ' * 37}║
 ╚══════════════════════════════════════════════════╝
     """)
+
+    # --- CONTINUOUS MODE ---
+    if args.continuous:
+        print("🎙️  CONTINUOUS mode — recording everything, Ctrl+C to quit\n")
+        run_continuous(args, sender, whisper_model, frame_size)
+        return
+
     print("🎙️  Listening... (speak to start recording, Ctrl+C to quit)\n")
 
     # State
@@ -306,6 +314,87 @@ def run_simulator(args):
             pass
         print("\n\n👋 Simulator stopped.")
         # Force kill to avoid audio subsystem deadlock (PulseAudio/PipeWire bug)
+        import os
+        os._exit(0)
+
+
+def run_continuous(args, sender, whisper_model, frame_size):
+    """Continuous recording mode: fixed-duration chunks, skip silence-only.
+
+    Records everything in chunks of segment_duration seconds.
+    Only skips chunks that contain zero speech (100% silence).
+    No audio is ever lost — ideal for maximum transcription quality.
+    """
+    vad = VAD(threshold=args.vad_threshold)
+    chunk_frames = []
+    chunk_start_time = time.time()
+    has_speech = False
+    chunk_count = 0
+
+    try:
+        stream = sd.InputStream(
+            samplerate=SAMPLE_RATE,
+            channels=CHANNELS,
+            dtype="float32",
+            blocksize=frame_size,
+        )
+        stream.start()
+
+        while True:
+            frame_data, overflowed = stream.read(frame_size)
+            if overflowed:
+                print("  ⚠ Audio buffer overflow", file=sys.stderr)
+
+            frame = frame_data[:, 0].copy()
+            frame_int16 = (frame * 32767).astype(np.int16)
+
+            # Apply gain
+            if args.gain != 1.0:
+                amplified = frame_int16.astype(np.int32) * int(args.gain)
+                amplified = np.clip(amplified, -32768, 32767)
+                frame_int16 = amplified.astype(np.int16)
+
+            # Track if there's any speech in this chunk
+            vad.process(frame_int16)
+            if vad.energy > args.vad_threshold:
+                has_speech = True
+
+            chunk_frames.append(frame_int16.copy())
+
+            # Check if chunk duration reached
+            elapsed = time.time() - chunk_start_time
+            if elapsed >= args.segment_duration:
+                if has_speech:
+                    chunk_count += 1
+                    print(f"  📤 Chunk #{chunk_count}: {elapsed:.1f}s (has speech)")
+                    finalize_segment(
+                        chunk_frames, elapsed, 0, sender, whisper_model,
+                        save_wav=args.save_wav,
+                    )
+                else:
+                    print(f"  ⏭ Chunk skipped: {elapsed:.1f}s (silence only)")
+
+                # Reset for next chunk
+                chunk_frames = []
+                chunk_start_time = time.time()
+                has_speech = False
+
+    except KeyboardInterrupt:
+        # Finalize remaining frames
+        if chunk_frames and has_speech:
+            elapsed = time.time() - chunk_start_time
+            print(f"\n  ⏹ Finalizing last chunk ({elapsed:.1f}s)...")
+            finalize_segment(
+                chunk_frames, elapsed, 0, sender, whisper_model,
+                save_wav=args.save_wav,
+            )
+    finally:
+        try:
+            stream.stop()
+            stream.close()
+        except Exception:
+            pass
+        print("\n\n👋 Simulator stopped.")
         import os
         os._exit(0)
 
@@ -463,6 +552,12 @@ def main():
         "--save-wav",
         action="store_true",
         help="Save each segment as WAV in debug_segments/ (for debugging audio quality)"
+    )
+    parser.add_argument(
+        "--continuous",
+        action="store_true",
+        help="Continuous recording mode: record everything in fixed chunks, skip silence-only chunks. "
+             "Best transcription quality but higher STT API cost."
     )
     parser.add_argument(
         "--whisper-model",
