@@ -254,11 +254,15 @@ def run_simulator(args):
             while True:
                 time.sleep(0.1)
     except KeyboardInterrupt:
-        print("\n\n👋 Simulator stopped.")
+        pass
     except Exception as e:
         print(f"\n❌ Error: {e}")
         print("   Make sure you have a microphone connected.")
         sys.exit(1)
+    finally:
+        # Force cleanup audio resources on Windows to avoid system freeze
+        sd.stop()
+        print("\n\n👋 Simulator stopped.")
 
 
 def finalize_segment(frames: list, duration: float, silence_before_ms: int,
