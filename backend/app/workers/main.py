@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import redis.asyncio as redis
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -37,6 +37,11 @@ from app.services.embedding_openai import get_embedding_service
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.stt_openai import get_stt_service
+from app.services.transcription_enhancer import (
+    build_stt_prompt,
+    clean_transcription,
+    is_meaningful_transcription,
+)
 from app.workers.digest import run_digest_loop
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
@@ -76,7 +81,7 @@ async def push_to_dead_letter(
 
 
 async def process_stt(redis_client: redis.Redis):
-    """Process STT queue: transcribe audio segments."""
+    """Process STT queue: transcribe audio segments with context-aware prompting."""
     stt_service = get_stt_service()
 
     while not shutdown_event.is_set():
@@ -117,18 +122,25 @@ async def process_stt(redis_client: redis.Redis):
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
 
-                # Transcribe with retry
+                # Build context-aware prompt from known entities
+                stt_prompt = await build_stt_prompt(db, segment.user_id)
+
+                # Transcribe with retry (passing context prompt for better accuracy)
                 stt_result = await retry_with_backoff(
                     stt_service.transcribe,
                     wav_data,
                     language=settings.stt_language,
+                    prompt=stt_prompt or None,
                     operation_name=f"STT segment {segment_id}",
                 )
+
+                # Post-process: clean artifacts and normalize
+                cleaned_text = clean_transcription(stt_result.text)
 
                 # Save transcription
                 transcription = Transcription(
                     segment_id=segment_id,
-                    text=stt_result.text,
+                    text=cleaned_text,
                     language=stt_result.language,
                     confidence=stt_result.confidence,
                     stt_provider=settings.stt_provider,
@@ -140,9 +152,17 @@ async def process_stt(redis_client: redis.Redis):
                 segment.transcription_status = "completed"
                 await db.commit()
 
-                # Queue for analysis
-                await redis_client.lpush("queue:analysis", str(segment_id))
-                logger.info(f"STT completed for segment {segment_id}: '{stt_result.text[:50]}...'")
+                # Only queue for analysis if transcription is meaningful
+                if is_meaningful_transcription(cleaned_text):
+                    await redis_client.lpush("queue:analysis", str(segment_id))
+                    logger.info(
+                        f"STT completed for segment {segment_id}: '{cleaned_text[:80]}...'"
+                    )
+                else:
+                    logger.info(
+                        f"STT completed but skipping analysis (trivial): "
+                        f"segment {segment_id} text='{cleaned_text}'"
+                    )
 
             except RetryExhaustedError as e:
                 logger.error(f"STT failed permanently for segment {segment_id}: {e}")
@@ -192,7 +212,18 @@ async def process_analysis(redis_client: redis.Redis):
                 # --- Conversation grouping ---
                 conversation = await assign_to_conversation(db, segment)
 
-                # --- Entity extraction (with retry) ---
+                # --- Fetch known people for context-aware extraction ---
+                known_people_query = (
+                    select(Entity.name)
+                    .where(Entity.user_id == user_id)
+                    .where(Entity.entity_type == "person")
+                    .order_by(Entity.updated_at.desc())
+                    .limit(20)
+                )
+                people_result = await db.execute(known_people_query)
+                known_people = [row[0] for row in people_result.all()]
+
+                # --- Entity extraction (with retry + known people context) ---
                 entities = await retry_with_backoff(
                     extract_entities,
                     llm_service,
@@ -200,6 +231,7 @@ async def process_analysis(redis_client: redis.Redis):
                     user_id,
                     transcription.id,
                     conversation.id,
+                    known_people=known_people,
                     operation_name=f"Entity extraction segment {segment_id}",
                 )
                 for entity in entities:
@@ -225,8 +257,46 @@ async def process_analysis(redis_client: redis.Redis):
                 # --- Deduplicate entities ---
                 await deduplicate_entities(db, user_id, llm_service)
 
-                # --- Chunking & embedding ---
-                # Get all transcriptions in the conversation so far
+                # --- Incremental chunking & embedding ---
+                # Only embed the NEW segment's text as an additional chunk,
+                # instead of re-chunking the entire conversation every time.
+                # Full re-chunking happens only when conversation is "completed".
+                new_text = transcription.text.strip()
+                if new_text and len(new_text.split()) > 5:
+                    # Get current max chunk_index for this conversation
+                    max_idx_query = (
+                        select(Chunk.chunk_index)
+                        .where(Chunk.conversation_id == conversation.id)
+                        .order_by(Chunk.chunk_index.desc())
+                        .limit(1)
+                    )
+                    max_idx_result = await db.execute(max_idx_query)
+                    max_idx_row = max_idx_result.first()
+                    next_index = (max_idx_row[0] + 1) if max_idx_row else 0
+
+                    # Chunk only the new text
+                    new_chunks = chunk_text(
+                        new_text, settings.chunk_size_tokens, settings.chunk_overlap_tokens
+                    )
+
+                    if new_chunks:
+                        new_embeddings = await retry_with_backoff(
+                            embedding_service.embed_batch,
+                            new_chunks,
+                            operation_name=f"Incremental embeddings segment {segment_id}",
+                        )
+                        for i, (text, embedding) in enumerate(zip(new_chunks, new_embeddings)):
+                            chunk = Chunk(
+                                conversation_id=conversation.id,
+                                text=text,
+                                token_count=len(text.split()),
+                                chunk_index=next_index + i,
+                                embedding=embedding,
+                            )
+                            db.add(chunk)
+
+                # --- Generate conversation title & summary (with retry) ---
+                # Get full conversation text for summary
                 conv_segments_query = (
                     select(Transcription.text)
                     .join(Segment, Segment.id == Transcription.segment_id)
@@ -237,32 +307,6 @@ async def process_analysis(redis_client: redis.Redis):
                 all_texts = [row[0] for row in result.all()]
                 full_text = " ".join(all_texts)
 
-                # Re-chunk the full conversation text
-                chunks = chunk_text(
-                    full_text, settings.chunk_size_tokens, settings.chunk_overlap_tokens
-                )
-
-                # Delete old chunks for this conversation and re-create
-                await db.execute(delete(Chunk).where(Chunk.conversation_id == conversation.id))
-
-                # Create embeddings in batch (with retry)
-                if chunks:
-                    embeddings = await retry_with_backoff(
-                        embedding_service.embed_batch,
-                        chunks,
-                        operation_name=f"Embeddings segment {segment_id}",
-                    )
-                    for i, (text, embedding) in enumerate(zip(chunks, embeddings)):
-                        chunk = Chunk(
-                            conversation_id=conversation.id,
-                            text=text,
-                            token_count=len(text.split()),  # approximate
-                            chunk_index=i,
-                            embedding=embedding,
-                        )
-                        db.add(chunk)
-
-                # --- Generate conversation title & summary (with retry) ---
                 if full_text.strip() and len(full_text.split()) > 10:
                     title, summary = await retry_with_backoff(
                         generate_conversation_summary,
@@ -277,7 +321,8 @@ async def process_analysis(redis_client: redis.Redis):
                 await db.commit()
                 logger.info(
                     f"Analysis completed for segment {segment_id}: "
-                    f"{len(entities)} entities, {len(chunks)} chunks"
+                    f"{len(entities)} entities, "
+                    f"{len(new_chunks) if new_text and len(new_text.split()) > 5 else 0} chunks"
                 )
 
             except RetryExhaustedError as e:
@@ -344,8 +389,29 @@ async def extract_entities(
     user_id: uuid.UUID,
     transcription_id: uuid.UUID,
     conversation_id: uuid.UUID,
+    known_people: list[str] | None = None,
 ) -> list[Entity]:
-    """Use LLM to extract structured entities from transcription text."""
+    """Use LLM to extract structured entities from transcription text.
+
+    Args:
+        llm_service: LLM service for extraction.
+        text: Transcription text to analyze.
+        user_id: Owner user ID.
+        transcription_id: Source transcription.
+        conversation_id: Parent conversation.
+        known_people: Optional list of known person names to help LLM
+                      recognize and normalize references.
+    """
+    # Build system prompt with known people context
+    people_context = ""
+    if known_people:
+        names_list = ", ".join(known_people[:15])
+        people_context = (
+            f"\n\nPersone già note all'utente: {names_list}. "
+            "Se riconosci riferimenti a queste persone (anche con varianti del nome, "
+            "soprannomi, o pronomi), usa il nome canonico dalla lista."
+        )
+
     messages = [
         LLMMessage(
             role="system",
@@ -361,7 +427,13 @@ async def extract_entities(
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
                 "- event: eventi, appuntamenti, date (metadata: {event_date, location})\n"
                 "- note: qualsiasi altra informazione rilevante (metadata: {tags})\n\n"
-                "Se non ci sono entità da estrarre, rispondi con {\"entities\": []}."
+                "Regole importanti:\n"
+                "- Estrai SOLO informazioni esplicitamente presenti nel testo\n"
+                "- Per i task, formula il nome come azione (verbo all'infinito)\n"
+                "- Per le persone, usa il nome completo se disponibile\n"
+                "- Ignora filler e parole senza contenuto informativo\n"
+                "- Se non ci sono entità da estrarre, rispondi con {\"entities\": []}."
+                f"{people_context}"
             ),
         ),
         LLMMessage(role="user", content=f"Testo:\n\n{text}"),
@@ -372,10 +444,15 @@ async def extract_entities(
 
     entities = []
     for e in entities_data:
+        # Skip entities with empty names
+        name = e.get("name", "").strip()
+        if not name:
+            continue
+
         entity = Entity(
             user_id=user_id,
             entity_type=e.get("type", "note"),
-            name=e.get("name", ""),
+            name=name,
             content=e.get("content"),
             metadata_=e.get("metadata", {}),
             source_transcription_id=transcription_id,

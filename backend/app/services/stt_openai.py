@@ -13,18 +13,33 @@ class OpenAISTTService(STTService):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = settings.stt_model
 
-    async def transcribe(self, audio_data: bytes, language: str = "it") -> STTResult:
-        """Transcribe PCM audio via OpenAI Whisper API."""
+    async def transcribe(
+        self, audio_data: bytes, language: str = "it", prompt: str | None = None
+    ) -> STTResult:
+        """Transcribe PCM audio via OpenAI Whisper API.
+
+        Args:
+            audio_data: WAV audio bytes.
+            language: Language hint for Whisper.
+            prompt: Optional prompt to guide Whisper (improves accuracy with names,
+                    jargon, and speaking style).
+        """
         # Wrap raw PCM bytes in a WAV-like file object for the API
         audio_file = io.BytesIO(audio_data)
         audio_file.name = "audio.wav"
 
-        response = await self.client.audio.transcriptions.create(
-            model=self.model,
-            file=audio_file,
-            language=language,
-            response_format="verbose_json",
-        )
+        kwargs = {
+            "model": self.model,
+            "file": audio_file,
+            "language": language,
+            "response_format": "verbose_json",
+        }
+
+        # Prompt improves accuracy by conditioning on expected vocabulary
+        if prompt:
+            kwargs["prompt"] = prompt
+
+        response = await self.client.audio.transcriptions.create(**kwargs)
 
         return STTResult(
             text=response.text,
