@@ -274,7 +274,11 @@ def run_simulator(args):
             audio_callback(frame_data, frame_size, None, None)
 
     except KeyboardInterrupt:
-        pass
+        # Finalize any in-progress segment before exiting
+        if recording and segment_buffer:
+            elapsed = time.time() - segment_start_time
+            print("\n  ⏹ Finalizing last segment before exit...")
+            finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
     except Exception as e:
         print(f"\n❌ Error: {e}")
         print("   Make sure you have a microphone connected.")
