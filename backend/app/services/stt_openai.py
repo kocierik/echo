@@ -56,4 +56,8 @@ def get_stt_service() -> STTService:
     """Factory function to get the configured STT service."""
     if settings.stt_provider == "openai":
         return OpenAISTTService()
+    if settings.stt_provider == "deepgram":
+        from app.services.stt_deepgram import DeepgramSTTService
+
+        return DeepgramSTTService()
     raise ValueError(f"Unknown STT provider: {settings.stt_provider}")

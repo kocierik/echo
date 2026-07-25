@@ -185,6 +185,10 @@ def run_simulator(args):
     frame_count = 0
     max_energy_seen = 0
 
+    # Pre-buffer: keep last 500ms of audio to capture speech onset
+    pre_buffer_frames = int(0.5 / 0.032)  # ~15 frames = 500ms
+    pre_buffer = []  # circular buffer of recent frames
+
     def audio_callback(indata, frames, time_info, status):
         nonlocal recording, segment_buffer, segment_start_time, last_silence_ms
         nonlocal frame_count, max_energy_seen
@@ -219,27 +223,37 @@ def run_simulator(args):
 
         if event == "speech_start":
             recording = True
-            segment_buffer = []
-            segment_start_time = time.time()
+            # Include pre-buffer (audio BEFORE VAD triggered) to capture onset
+            segment_buffer = list(pre_buffer)
+            segment_start_time = time.time() - (len(pre_buffer) * 0.032)  # adjust start time
             last_silence_ms = vad.silence_duration_ms
             sys.stdout.write("\r" + " " * 80 + "\r")  # clear energy bar
-            print(f"  🔴 Recording... (energy: {vad.energy})")
+            print(f"  🔴 Recording... (energy: {vad.energy}, pre-buffer: {len(pre_buffer)} frames)")
+
+        # Always maintain pre-buffer (rolling window of recent audio)
+        if not recording:
+            pre_buffer.append(frame_int16.copy())
+            if len(pre_buffer) > pre_buffer_frames:
+                pre_buffer.pop(0)
 
         if recording:
             segment_buffer.append(frame_int16.copy())
 
-            # Check max duration
+            # Check max duration (safety limit)
             elapsed = time.time() - segment_start_time
             if elapsed >= args.segment_duration:
                 finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
                 recording = False
                 segment_buffer = []
+                pre_buffer = []
 
         if event == "speech_end" and recording:
+            # Speech ended naturally (pause detected) — finalize
             elapsed = time.time() - segment_start_time
             finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
             recording = False
             segment_buffer = []
+            pre_buffer = []
 
     # Start audio stream
     try:
