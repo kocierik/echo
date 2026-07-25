@@ -7,6 +7,8 @@ from datetime import datetime
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +24,8 @@ from app.services.llm_openai import get_llm_query_service
 from app.services.temporal import DateRange, extract_date_range
 
 router = APIRouter(prefix="/query", tags=["query"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 # Session TTL: 30 minutes of inactivity
 SESSION_TTL_SECONDS = 30 * 60
@@ -77,6 +81,7 @@ async def _save_session_history(
 
 
 @router.post("", response_model=QueryResponse)
+@limiter.limit("20/minute")
 async def query_memory(
     http_request: Request,
     request: QueryRequest,

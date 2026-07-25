@@ -1,9 +1,13 @@
+import hashlib
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
@@ -12,6 +16,8 @@ from app.core.database import get_db
 from app.models.segment import Segment
 
 router = APIRouter(prefix="/segments", tags=["segments"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 class SegmentResponse(BaseModel):
@@ -24,6 +30,7 @@ class SegmentResponse(BaseModel):
 
 
 @router.post("", response_model=SegmentResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("60/minute")
 async def ingest_segment(
     request: Request,
     audio: UploadFile = File(..., description="ADPCM audio file"),
@@ -37,6 +44,9 @@ async def ingest_segment(
 
     The device sends audio chunks every 5-10 seconds of detected speech.
     Each chunk is stored and queued for STT processing.
+
+    Idempotent: if the same audio content for the same recorded_at is sent twice
+    (e.g., device retry), the duplicate is detected and the original is returned.
     """
     # Read audio data
     audio_data = await audio.read()
@@ -49,6 +59,28 @@ async def ingest_segment(
         raise HTTPException(
             status_code=413,
             detail=f"Audio file too large ({len(audio_data)} bytes). Maximum is 5MB.",
+        )
+
+    # --- Idempotency check ---
+    # Hash audio content + recorded_at to detect device retries
+    idempotency_hash = hashlib.sha256(
+        audio_data + recorded_at.isoformat().encode()
+    ).hexdigest()
+
+    existing = await db.execute(
+        select(Segment).where(
+            Segment.user_id == user_id,
+            Segment.audio_hash == idempotency_hash,
+        )
+    )
+    existing_segment = existing.scalar_one_or_none()
+    if existing_segment is not None:
+        # Return the existing segment — no duplicate processing
+        return SegmentResponse(
+            id=existing_segment.id,
+            received_at=existing_segment.received_at,
+            duration_ms=existing_segment.duration_ms,
+            transcription_status=existing_segment.transcription_status,
         )
 
     # Store audio file
@@ -68,6 +100,7 @@ async def ingest_segment(
         audio_path=str(audio_path),
         audio_size_bytes=len(audio_data),
         silence_before_ms=silence_before_ms,
+        audio_hash=idempotency_hash,
         transcription_status="pending",
     )
     db.add(segment)
