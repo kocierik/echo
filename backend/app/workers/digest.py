@@ -91,6 +91,13 @@ async def generate_digest_for_date(
 
     full_text = "\n\n".join(texts)
 
+    # Gather conversation summaries (more compact than raw text)
+    conv_summaries = [
+        f"- {c.title or 'Conversazione'}: {c.summary}"
+        for c in conversations
+        if c.summary
+    ]
+
     # Gather entities for the day
     entities_query = (
         select(Entity)
@@ -118,9 +125,16 @@ async def generate_digest_for_date(
     # Generate narrative summary via LLM
     llm_service = get_llm_analysis_service()
 
-    # Truncate if too long
-    max_chars = 5000
-    text_for_summary = full_text[:max_chars] if len(full_text) > max_chars else full_text
+    # Use conversation summaries if available (more concise), fall back to raw text
+    if conv_summaries:
+        input_text = (
+            "Riassunti delle conversazioni:\n" + "\n".join(conv_summaries) +
+            f"\n\nTrascrizioni (per dettagli):\n\n{full_text[:3000]}"
+        )
+    else:
+        # Truncate if too long
+        max_chars = 5000
+        input_text = full_text[:max_chars] if len(full_text) > max_chars else full_text
 
     messages = [
         LLMMessage(
@@ -143,7 +157,7 @@ async def generate_digest_for_date(
                 f"Data: {target_date.strftime('%d/%m/%Y')}\n"
                 f"Conversazioni: {len(conversations)}\n"
                 f"Persone menzionate: {', '.join(set(people)) or 'nessuna'}\n\n"
-                f"Trascrizioni della giornata:\n\n{text_for_summary}"
+                f"{input_text}"
             ),
         ),
     ]
