@@ -30,7 +30,7 @@ except ImportError:
 DEFAULT_SERVER = "http://localhost:8000"
 DEFAULT_API_KEY = "my-secret-key"
 DEFAULT_VAD_THRESHOLD = 500
-DEFAULT_SEGMENT_DURATION = 5.0  # seconds
+DEFAULT_SEGMENT_DURATION = 15.0  # seconds
 DEFAULT_SILENCE_TIMEOUT = 2.0  # seconds of silence before ending segment
 
 SAMPLE_RATE = 16000
