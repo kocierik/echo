@@ -169,7 +169,7 @@ def run_simulator(args):
 ║         Echo Device Simulator                    ║
 ╠══════════════════════════════════════════════════╣
 ║  Server:    {args.server:<36} ║
-║  Mode:      {'CONTINUOUS' if args.continuous else 'VAD-driven':<36} ║
+║  Mode:      {'VAD-driven' if args.vad else 'CONTINUOUS':<36} ║
 ║  VAD:       threshold={args.vad_threshold:<26} ║
 ║  Segment:   {args.segment_duration}s max duration{' ' * 22}║
 ║  Silence:   {args.silence_timeout}s timeout{' ' * 25}║
@@ -177,13 +177,13 @@ def run_simulator(args):
 ╚══════════════════════════════════════════════════╝
     """)
 
-    # --- CONTINUOUS MODE ---
-    if args.continuous:
+    # --- CONTINUOUS MODE (default) ---
+    if not args.vad:
         print("🎙️  CONTINUOUS mode — recording everything, Ctrl+C to quit\n")
         run_continuous(args, sender, whisper_model, frame_size)
         return
 
-    print("🎙️  Listening... (speak to start recording, Ctrl+C to quit)\n")
+    print("🎙️  VAD mode — recording only speech, Ctrl+C to quit\n")
 
     # State
     recording = False
@@ -554,10 +554,10 @@ def main():
         help="Save each segment as WAV in debug_segments/ (for debugging audio quality)"
     )
     parser.add_argument(
-        "--continuous",
+        "--vad",
         action="store_true",
-        help="Continuous recording mode: record everything in fixed chunks, skip silence-only chunks. "
-             "Best transcription quality but higher STT API cost."
+        help="Use VAD-driven recording (only records speech). Default is continuous mode. "
+             "Use for lower STT API cost at the expense of potentially missing words."
     )
     parser.add_argument(
         "--whisper-model",
