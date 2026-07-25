@@ -10,7 +10,12 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import async_session, engine
+from app.core.logging import new_correlation_id, setup_logging
+from app.core.metrics import metrics
 from app.routers import admin, chat_sessions, conversations, digest, entities, query, segments
+
+# Configure structured JSON logging on import
+setup_logging()
 
 
 @asynccontextmanager
@@ -40,6 +45,27 @@ app = FastAPI(
 # Register rate limit exceeded handler
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Assign a correlation ID to each request and track metrics."""
+    import time
+
+    cid = new_correlation_id()
+    start = time.time()
+    response = await call_next(request)
+    duration = time.time() - start
+
+    response.headers["X-Correlation-ID"] = cid
+
+    # Track request metrics
+    metrics.inc("http_requests_total")
+    metrics.observe("http_request_duration_seconds", duration)
+    if response.status_code >= 400:
+        metrics.inc("http_errors_total")
+
+    return response
 
 # API routes (must be before static mount)
 app.include_router(segments.router, prefix=settings.api_prefix)
@@ -103,6 +129,14 @@ async def stats():
         "chunks": row.chunks,
         "audio_storage_mb": round(row.audio_bytes / (1024 * 1024), 2),
     }
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus-compatible metrics endpoint."""
+    from fastapi.responses import PlainTextResponse
+
+    return PlainTextResponse(metrics.export(), media_type="text/plain")
 
 
 # Serve frontend static files (MUST be last — catches all unmatched routes)

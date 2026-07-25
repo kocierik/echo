@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.logging import setup_logging
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -40,7 +41,8 @@ from app.workers.digest import run_digest_loop
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
-logging.basicConfig(level=logging.INFO)
+# Configure structured logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Shutdown coordination
