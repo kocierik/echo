@@ -34,15 +34,19 @@
 
 // Audio buffer sizes
 #define PCM_BUFFER_SIZE 512      // Samples per I2S read (32ms at 16kHz)
-#define SEGMENT_DURATION_MS 5000 // Send segment every 5 seconds of speech
+#define SEGMENT_DURATION_MS 15000 // Send segment every 15 seconds of speech max
 
 // ============================================================
 // VAD (Voice Activity Detection)
 // ============================================================
 #define VAD_ENERGY_THRESHOLD 500       // Minimum RMS energy to consider as speech
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
-#define VAD_SPEECH_END_FRAMES 30       // Consecutive frames below threshold to stop (~1s)
+#define VAD_SPEECH_END_FRAMES 60       // Consecutive frames below threshold to stop (~2s)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame
+
+// Pre-buffer: keep last N frames of audio before VAD triggers
+// This captures the speech onset that would otherwise be lost
+#define PRE_BUFFER_FRAMES 16           // ~500ms of audio (16 × 32ms)
 
 // ============================================================
 // ADPCM Encoding
@@ -53,8 +57,8 @@
 // ============================================================
 // PSRAM Buffer
 // ============================================================
-#define PSRAM_BUFFER_SIZE (256 * 1024) // 256KB ring buffer (~32s of ADPCM)
-#define SEGMENT_MAX_SIZE (40 * 1024)   // Max 40KB per segment (~5s ADPCM)
+#define PSRAM_BUFFER_SIZE (512 * 1024) // 512KB ring buffer (~64s of ADPCM)
+#define SEGMENT_MAX_SIZE (120 * 1024)  // Max 120KB per segment (~15s ADPCM)
 
 // ============================================================
 // Conversation Segmentation
