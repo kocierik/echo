@@ -27,7 +27,7 @@ logs-worker: ## Tail worker logs
 # --- Development ---
 
 test: ## Run unit tests (no DB required)
-	cd backend && python -m pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py -v --noconftest
+	cd backend && python -m pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py tests/test_circuit_breaker.py -v --noconftest
 
 test-all: ## Run all tests (requires running DB)
 	cd backend && python -m pytest tests/ -v

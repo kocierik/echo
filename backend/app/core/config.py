@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # API
     api_prefix: str = "/api"
 
+    # CORS — comma-separated allowed origins (use "*" to allow all)
+    cors_origins: str = "*"
+
+    # Circuit breaker — protects against cascading failures from OpenAI outages
+    circuit_breaker_failure_threshold: int = 5  # failures before opening circuit
+    circuit_breaker_recovery_timeout: int = 60  # seconds to wait before half-open
+
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
