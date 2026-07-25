@@ -20,6 +20,7 @@ from app.models.entity import Entity  # noqa: F401
 from app.models.digest import Digest  # noqa: F401
 from app.models.chat_session import ChatSession  # noqa: F401
 from app.models.api_key import ApiKey  # noqa: F401
+from app.models.query_feedback import QueryFeedback  # noqa: F401
 
 # Alembic Config object
 config = context.config
