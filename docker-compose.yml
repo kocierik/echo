@@ -8,11 +8,12 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0
       - AUDIO_STORAGE_PATH=/data/audio
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
@@ -31,11 +32,12 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0
       - AUDIO_STORAGE_PATH=/data/audio
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
