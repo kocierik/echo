@@ -295,27 +295,30 @@ python simulate_device.py
 
 ### Recording modes
 
-**VAD mode (default):** records only when speech is detected. Smart enough to handle natural pauses (2s tolerance + continuation window). Best for battery/cost savings.
+**Continuous mode (default):** records everything in fixed 30s chunks. Only skips chunks that are 100% silence. Zero words lost. Best quality.
 
-**Continuous mode (`--continuous`):** records everything in fixed 30s chunks. Only skips chunks that are 100% silence. Zero words lost — ideal for debugging or when quality matters more than cost.
+**VAD mode (`--vad`):** records only when speech is detected. Smart enough to handle natural pauses (2s tolerance + continuation window). Use when cost savings matter more than quality.
 
 ### Useful options
 
 ```bash
-# Lower VAD threshold if your mic is quiet
-python simulate_device.py --vad-threshold 300
+# Default: continuous mode (records everything)
+python simulate_device.py
+
+# VAD mode (only records speech, saves API cost)
+python simulate_device.py --vad
+
+# Lower VAD threshold if your mic is quiet (VAD mode)
+python simulate_device.py --vad --vad-threshold 300
 
 # Amplify microphone signal
 python simulate_device.py --gain 5
 
-# Continuous mode (record everything)
-python simulate_device.py --continuous
-
 # Save WAV files for debugging audio quality
 python simulate_device.py --save-wav
 
-# Longer segments for more context
-python simulate_device.py --segment-duration 30
+# Custom chunk duration
+python simulate_device.py --segment-duration 20
 
 # List available microphones
 python simulate_device.py --list-devices
