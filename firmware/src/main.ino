@@ -47,6 +47,11 @@ DeviceState state = STATE_IDLE;
 int16_t pcmBuffer[PCM_BUFFER_SIZE];
 uint8_t adpcmFrame[PCM_BUFFER_SIZE / 2];  // ADPCM is 4:1
 
+// Pre-buffer: circular buffer of recent audio frames (captures speech onset)
+int16_t preBuffer[PRE_BUFFER_FRAMES][PCM_BUFFER_SIZE];
+uint8_t preBufferWriteIdx = 0;
+uint8_t preBufferCount = 0;  // how many frames are stored (up to PRE_BUFFER_FRAMES)
+
 // Segment accumulation buffer (on PSRAM)
 uint8_t* segmentBuffer = nullptr;
 size_t segmentPos = 0;
@@ -145,11 +150,16 @@ void loop() {
 
     switch (state) {
         case STATE_IDLE:
+            // Always store in pre-buffer (circular, overwrites oldest)
+            memcpy(preBuffer[preBufferWriteIdx], pcmBuffer, PCM_BUFFER_SIZE * sizeof(int16_t));
+            preBufferWriteIdx = (preBufferWriteIdx + 1) % PRE_BUFFER_FRAMES;
+            if (preBufferCount < PRE_BUFFER_FRAMES) preBufferCount++;
+
             if (vad.speechStarted()) {
                 // Start recording a new segment
                 state = STATE_RECORDING;
                 segmentPos = 0;
-                segmentStartMs = millis();
+                segmentStartMs = millis() - (preBufferCount * VAD_FRAME_DURATION_MS); // adjust for pre-buffer
                 lastSilenceDurationMs = vad.getLastSilenceDurationMs();
                 energySum = 0;
                 energyFrameCount = 0;
@@ -157,7 +167,15 @@ void loop() {
                 encoder.reset();
                 indicators.setRecording(true);
 
-                // Encode this first frame and track energy
+                // Encode the pre-buffer first (captures speech onset)
+                uint8_t readIdx = (preBufferWriteIdx - preBufferCount + PRE_BUFFER_FRAMES) % PRE_BUFFER_FRAMES;
+                for (uint8_t i = 0; i < preBufferCount; i++) {
+                    encodeFrame(preBuffer[readIdx], PCM_BUFFER_SIZE);
+                    readIdx = (readIdx + 1) % PRE_BUFFER_FRAMES;
+                }
+                preBufferCount = 0;
+
+                // Encode this current frame too
                 encodeFrame(pcmBuffer, samplesRead);
                 energySum += vad.getEnergy();
                 energyFrameCount++;
@@ -177,7 +195,8 @@ void loop() {
                     finalizeSegment();
                 }
             } else if (vad.speechEnded()) {
-                // Speech ended
+                // Speech ended — encode the trailing silence too (for natural audio)
+                encodeFrame(pcmBuffer, samplesRead);
                 finalizeSegment();
             }
             break;
