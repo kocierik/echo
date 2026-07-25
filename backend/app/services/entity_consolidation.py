@@ -91,7 +91,7 @@ async def consolidate_entities(
     return truly_new
 
 
-def _merge_into_existing(existing: Entity, new: Entity) -> None:
+def _merge_into_existing(existing: "Entity", new: "Entity") -> None:
     """Merge new entity information into an existing one.
 
     Rules:
