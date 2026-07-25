@@ -158,6 +158,26 @@ async def query_memory(
         db, user_id, request.question, question_embedding
     )
 
+    # 5. Find conversation summaries for matched conversations (high-level context)
+    conversation_summaries = ""
+    if rows:
+        matched_conv_ids = list({row.conversation_id for row in rows})
+        summaries_query = (
+            select(Conversation.title, Conversation.summary, Conversation.started_at)
+            .where(Conversation.id.in_(matched_conv_ids))
+            .where(Conversation.summary.isnot(None))
+            .order_by(Conversation.started_at.desc())
+        )
+        summaries_result = await db.execute(summaries_query)
+        summaries_rows = summaries_result.all()
+        if summaries_rows:
+            summary_lines = []
+            for s in summaries_rows:
+                date_str = s.started_at.strftime("%d/%m/%Y %H:%M")
+                title = s.title or "Conversazione"
+                summary_lines.append(f"- [{date_str}] {title}: {s.summary}")
+            conversation_summaries = "\n".join(summary_lines)
+
     if not rows and not entities_context:
         no_result_msg = "Non ho ancora informazioni nella memoria per rispondere a questa domanda."
         if date_range:
@@ -178,15 +198,21 @@ async def query_memory(
             date_filter=_format_date_filter(date_range),
         )
 
-    # 5. Build context from chunks + entities
+    # 6. Build context from summaries + entities + chunks
     context_parts = []
     sources = []
 
-    # Add entity context first (structured knowledge)
+    # Add conversation summaries first (high-level understanding)
+    if conversation_summaries:
+        context_parts.append(
+            f"Riassunti delle conversazioni rilevanti:\n{conversation_summaries}"
+        )
+
+    # Add entity context (structured knowledge)
     if entities_context:
         context_parts.append(f"Conoscenze strutturate:\n{entities_context}")
 
-    # Add chunk context (raw transcriptions)
+    # Add chunk context (raw transcriptions for detail)
     for row in rows:
         context_parts.append(row.text)
         sources.append(
@@ -199,15 +225,19 @@ async def query_memory(
 
     context = "\n\n---\n\n".join(context_parts)
 
-    # 6. Generate answer via LLM (with conversation history)
+    # 7. Generate answer via LLM (with conversation history)
     llm_service = get_llm_query_service()
 
     system_prompt = (
         "Sei un assistente personale. L'utente ti fa domande sulla sua memoria — "
         "conversazioni, idee, task, persone menzionate in passato. "
         "Rispondi basandoti SOLO sul contesto fornito. "
-        "Il contesto include 'Conoscenze strutturate' (entità estratte) e "
-        "frammenti di trascrizioni reali. "
+        "Il contesto include:\n"
+        "- 'Riassunti delle conversazioni' per una panoramica ad alto livello\n"
+        "- 'Conoscenze strutturate' (entità: persone, task, idee, eventi)\n"
+        "- Frammenti di trascrizioni reali per dettagli specifici\n\n"
+        "Usa i riassunti per rispondere a domande generali ('cosa è successo ieri?') "
+        "e i frammenti per domande specifiche ('cosa ha detto esattamente Marco?'). "
         "Se il contesto non contiene informazioni sufficienti, dillo chiaramente. "
         "Se l'utente fa una domanda di follow-up, usa la conversazione precedente "
         "per capire a cosa si riferisce. "

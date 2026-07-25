@@ -34,6 +34,7 @@ from app.services.adpcm_decoder import adpcm_to_wav
 from app.services.chunking import chunk_text
 from app.services.deduplication import deduplicate_entities
 from app.services.embedding_openai import get_embedding_service
+from app.services.entity_consolidation import consolidate_entities
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.stt_openai import get_stt_service
@@ -234,27 +235,32 @@ async def process_analysis(redis_client: redis.Redis):
                     known_people=known_people,
                     operation_name=f"Entity extraction segment {segment_id}",
                 )
-                for entity in entities:
+
+                # --- Consolidate with existing entities ---
+                # Update existing entities if new info refers to something already known,
+                # only insert truly new entities
+                new_entities = await consolidate_entities(db, entities, user_id)
+                for entity in new_entities:
                     db.add(entity)
 
-                # Generate embeddings for entities
-                if entities:
+                # Generate embeddings for NEW entities only (existing ones already have them)
+                if new_entities:
                     entity_texts = [
                         f"{e.name}: {e.content}" if e.content else e.name
-                        for e in entities
+                        for e in new_entities
                     ]
                     entity_embeddings = await retry_with_backoff(
                         embedding_service.embed_batch,
                         entity_texts,
                         operation_name=f"Entity embeddings segment {segment_id}",
                     )
-                    for entity, emb in zip(entities, entity_embeddings):
+                    for entity, emb in zip(new_entities, entity_embeddings):
                         entity.embedding = emb
 
                 # Flush to persist entities before dedup
                 await db.flush()
 
-                # --- Deduplicate entities ---
+                # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
                 await deduplicate_entities(db, user_id, llm_service)
 
                 # --- Incremental chunking & embedding ---
