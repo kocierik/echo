@@ -30,7 +30,7 @@ except ImportError:
 DEFAULT_SERVER = "http://localhost:8000"
 DEFAULT_API_KEY = "my-secret-key"
 DEFAULT_VAD_THRESHOLD = 500
-DEFAULT_SEGMENT_DURATION = 15.0  # seconds
+DEFAULT_SEGMENT_DURATION = 30.0  # seconds
 DEFAULT_SILENCE_TIMEOUT = 2.0  # seconds of silence before ending segment
 
 SAMPLE_RATE = 16000
@@ -44,7 +44,7 @@ DTYPE = "int16"
 class VAD:
     """Energy-based VAD matching the firmware implementation."""
 
-    def __init__(self, threshold: int = 500, speech_start_frames: int = 3, speech_end_frames: int = 30):
+    def __init__(self, threshold: int = 500, speech_start_frames: int = 3, speech_end_frames: int = 60):
         self.threshold = threshold
         self.speech_start_frames = speech_start_frames
         self.speech_end_frames = speech_end_frames
@@ -184,6 +184,9 @@ def run_simulator(args):
     last_silence_ms = 0
     frame_count = 0
     max_energy_seen = 0
+    pending_finalize = False  # waiting for continuation or timeout
+    pending_finalize_time = 0  # when speech_end was detected
+    CONTINUATION_WINDOW = 0.5  # seconds to wait before truly finalizing
 
     # Pre-buffer: keep last 500ms of audio to capture speech onset
     pre_buffer_frames = int(0.5 / 0.032)  # ~15 frames = 500ms
@@ -222,21 +225,26 @@ def run_simulator(args):
             sys.stdout.flush()
 
         if event == "speech_start":
-            recording = True
-            # Include pre-buffer (audio BEFORE VAD triggered) to capture onset
-            segment_buffer = list(pre_buffer)
-            segment_start_time = time.time() - (len(pre_buffer) * 0.032)  # adjust start time
-            last_silence_ms = vad.silence_duration_ms
-            sys.stdout.write("\r" + " " * 80 + "\r")  # clear energy bar
-            print(f"  🔴 Recording... (energy: {vad.energy}, pre-buffer: {len(pre_buffer)} frames)")
+            if pending_finalize:
+                # Speech resumed within continuation window — cancel finalize
+                pending_finalize = False
+                # Keep recording, don't break the segment
+            elif not recording:
+                recording = True
+                # Include pre-buffer (audio BEFORE VAD triggered) to capture onset
+                segment_buffer = list(pre_buffer)
+                segment_start_time = time.time() - (len(pre_buffer) * 0.032)
+                last_silence_ms = vad.silence_duration_ms
+                sys.stdout.write("\r" + " " * 80 + "\r")  # clear energy bar
+                print(f"  🔴 Recording... (energy: {vad.energy}, pre-buffer: {len(pre_buffer)} frames)")
 
         # Always maintain pre-buffer (rolling window of recent audio)
-        if not recording:
+        if not recording and not pending_finalize:
             pre_buffer.append(frame_int16.copy())
             if len(pre_buffer) > pre_buffer_frames:
                 pre_buffer.pop(0)
 
-        if recording:
+        if recording or pending_finalize:
             segment_buffer.append(frame_int16.copy())
 
             # Check max duration (safety limit)
@@ -244,14 +252,21 @@ def run_simulator(args):
             if elapsed >= args.segment_duration:
                 finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
                 recording = False
+                pending_finalize = False
                 segment_buffer = []
                 pre_buffer = []
 
         if event == "speech_end" and recording:
-            # Speech ended naturally (pause detected) — finalize
+            # Don't finalize immediately — wait for continuation window
+            pending_finalize = True
+            pending_finalize_time = time.time()
+            recording = False  # stop treating as active speech
+
+        # Check if continuation window expired (truly done talking)
+        if pending_finalize and (time.time() - pending_finalize_time) > CONTINUATION_WINDOW:
             elapsed = time.time() - segment_start_time
             finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
-            recording = False
+            pending_finalize = False
             segment_buffer = []
             pre_buffer = []
 
@@ -275,7 +290,7 @@ def run_simulator(args):
 
     except KeyboardInterrupt:
         # Finalize any in-progress segment before exiting
-        if recording and segment_buffer:
+        if (recording or pending_finalize) and segment_buffer:
             elapsed = time.time() - segment_start_time
             print("\n  ⏹ Finalizing last segment before exit...")
             finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
