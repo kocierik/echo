@@ -28,11 +28,15 @@ class OpenAISTTService(STTService):
         audio_file = io.BytesIO(audio_data)
         audio_file.name = "audio.wav"
 
+        # gpt-4o-transcribe only supports "json" or "text", not "verbose_json"
+        is_whisper = self.model.startswith("whisper")
+        response_format = "verbose_json" if is_whisper else "json"
+
         kwargs = {
             "model": self.model,
             "file": audio_file,
             "language": language,
-            "response_format": "verbose_json",
+            "response_format": response_format,
         }
 
         # Prompt improves accuracy by conditioning on expected vocabulary
@@ -44,7 +48,7 @@ class OpenAISTTService(STTService):
         return STTResult(
             text=response.text,
             language=language,
-            confidence=None,  # Whisper doesn't return overall confidence
+            confidence=None,
         )
 
 
