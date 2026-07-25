@@ -191,7 +191,7 @@ def run_simulator(args):
 
     def audio_callback(indata, frames, time_info, status):
         nonlocal recording, segment_buffer, segment_start_time, last_silence_ms
-        nonlocal frame_count, max_energy_seen
+        nonlocal frame_count, max_energy_seen, pre_buffer
 
         if status:
             print(f"  ⚠ Audio status: {status}", file=sys.stderr)
