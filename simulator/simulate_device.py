@@ -242,7 +242,7 @@ def run_simulator(args):
             # Check max duration (safety limit)
             elapsed = time.time() - segment_start_time
             if elapsed >= args.segment_duration:
-                finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
+                finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
                 recording = False
                 segment_buffer = []
                 pre_buffer = []
@@ -250,7 +250,7 @@ def run_simulator(args):
         if event == "speech_end" and recording:
             # Speech ended naturally (pause detected) — finalize
             elapsed = time.time() - segment_start_time
-            finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model)
+            finalize_segment(segment_buffer, elapsed, last_silence_ms, sender, whisper_model, save_wav=args.save_wav)
             recording = False
             segment_buffer = []
             pre_buffer = []
@@ -286,10 +286,13 @@ def run_simulator(args):
         except Exception:
             pass
         print("\n\n👋 Simulator stopped.")
+        # Force kill to avoid audio subsystem deadlock (PulseAudio/PipeWire bug)
+        import os
+        os._exit(0)
 
 
 def finalize_segment(frames: list, duration: float, silence_before_ms: int,
-                     sender: Sender, whisper_model=None):
+                     sender: Sender, whisper_model=None, save_wav: bool = False):
     """Encode collected frames to ADPCM and send."""
     if not frames:
         return
@@ -304,6 +307,22 @@ def finalize_segment(frames: list, duration: float, silence_before_ms: int,
         return
 
     print(f"  ⬜ Segment: {duration_ms}ms, {len(pcm_samples)} samples")
+
+    # Save WAV for debugging (before ADPCM encoding)
+    if save_wav:
+        import wave
+        from pathlib import Path
+
+        wav_dir = Path("debug_segments")
+        wav_dir.mkdir(exist_ok=True)
+        wav_name = f"segment_{int(time.time())}_{duration_ms}ms.wav"
+        wav_path = wav_dir / wav_name
+        with wave.open(str(wav_path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(pcm_samples.tobytes())
+        print(f"  💾 Saved: {wav_path}")
 
     # Local transcription preview (free, no API cost)
     if whisper_model is not None:
@@ -420,6 +439,11 @@ def main():
         "--no-transcribe",
         action="store_true",
         help="Disable local transcription preview"
+    )
+    parser.add_argument(
+        "--save-wav",
+        action="store_true",
+        help="Save each segment as WAV in debug_segments/ (for debugging audio quality)"
     )
     parser.add_argument(
         "--whisper-model",
