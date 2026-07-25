@@ -11,14 +11,14 @@ class TestIsMeaningfulTranscription:
         assert is_meaningful_transcription("") is False
 
     def test_very_short(self):
-        assert is_meaningful_transcription("ok") is False
-        assert is_meaningful_transcription("sì") is False
+        # Only truly empty/artifact content is filtered
+        assert is_meaningful_transcription("..") is False
 
-    def test_filler_words_only(self):
-        assert is_meaningful_transcription("sì ok") is False
-        assert is_meaningful_transcription("eh no ok") is False
-        assert is_meaningful_transcription("mh mh mh") is False
-        assert is_meaningful_transcription("allora...") is False
+    def test_filler_words_kept(self):
+        # Fillers are meaningful in conversation context (agreement/confirmation)
+        assert is_meaningful_transcription("sì ok") is True
+        assert is_meaningful_transcription("ok") is True
+        assert is_meaningful_transcription("no") is True
 
     def test_meaningful_short(self):
         assert is_meaningful_transcription("chiamami domani") is True
@@ -32,8 +32,7 @@ class TestIsMeaningfulTranscription:
         assert is_meaningful_transcription("...") is False
 
     def test_single_real_word(self):
-        # One real word is not enough (needs >= 2 words > 2 chars)
-        assert is_meaningful_transcription("ciao") is False
+        assert is_meaningful_transcription("ciao") is True
 
     def test_two_real_words(self):
         assert is_meaningful_transcription("buongiorno Marco") is True

@@ -17,13 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Minimum meaningful transcription length (characters)
-MIN_TRANSCRIPTION_LENGTH = 5
-
-# Filler patterns that don't add information
-FILLER_PATTERNS = re.compile(
-    r"^(\s*(sì|si|ok|no|eh|ah|mh|uhm|hmm|okay|allora|ecco|boh|ciao|\.+)\s*)+$",
-    re.IGNORECASE,
-)
+MIN_TRANSCRIPTION_LENGTH = 2
 
 
 async def build_stt_prompt(db: "AsyncSession", user_id: uuid.UUID) -> str:
@@ -91,23 +85,21 @@ def is_meaningful_transcription(text: str) -> bool:
     """Check if a transcription contains meaningful content worth analyzing.
 
     Filters out:
-    - Very short texts (< 5 chars)
-    - Pure filler words ("sì", "ok", "eh", etc.)
+    - Very short texts (< 3 chars, likely noise/artifacts)
     - Only punctuation/whitespace
+
+    Note: we intentionally keep filler words like "sì", "ok" because in context
+    they signal agreement/confirmation which is valuable for understanding conversations.
 
     Returns True if the text should proceed to entity extraction.
     """
     text = text.strip()
 
-    if len(text) < MIN_TRANSCRIPTION_LENGTH:
+    if len(text) < 2:
         return False
 
-    if FILLER_PATTERNS.match(text):
-        return False
-
-    # Check if there's at least one word with > 2 characters
-    words = [w for w in text.split() if len(w) > 2 and w.isalpha()]
-    if len(words) < 2:
+    # Check if there's at least one alphabetic character
+    if not any(c.isalpha() for c in text):
         return False
 
     return True
