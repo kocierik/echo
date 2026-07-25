@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -46,6 +47,17 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# CORS — allow configured origins (default: "*" for development)
+cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Correlation-ID"],
+)
+
 
 @app.middleware("http")
 async def correlation_id_middleware(request: Request, call_next):
@@ -84,7 +96,9 @@ def get_redis(request: Request) -> aioredis.Redis:
 
 @app.get("/health")
 async def health(request: Request):
-    """Health check: verifies PostgreSQL and Redis connectivity."""
+    """Health check: verifies PostgreSQL, Redis, queue depth, and circuit breaker."""
+    from app.core.circuit_breaker import openai_breaker
+
     status = {"status": "ok", "postgres": "ok", "redis": "ok"}
 
     # Check PostgreSQL
@@ -95,11 +109,34 @@ async def health(request: Request):
         status["postgres"] = f"error: {str(e)[:100]}"
         status["status"] = "degraded"
 
-    # Check Redis
+    # Check Redis + queue lengths
     try:
-        await request.app.state.redis.ping()
+        redis_client = request.app.state.redis
+        await redis_client.ping()
+
+        # Queue depths — useful to detect worker lag
+        stt_queue_len = await redis_client.llen("queue:stt")
+        analysis_queue_len = await redis_client.llen("queue:analysis")
+        dead_letter_len = await redis_client.llen("queue:dead-letter")
+
+        status["queues"] = {
+            "stt": stt_queue_len,
+            "analysis": analysis_queue_len,
+            "dead_letter": dead_letter_len,
+        }
+
+        # Warn if queues are backing up
+        if stt_queue_len > 50 or analysis_queue_len > 50:
+            status["status"] = "degraded"
+            status["warning"] = "Queue backlog detected — worker may be slow or down"
+
     except Exception as e:
         status["redis"] = f"error: {str(e)[:100]}"
+        status["status"] = "degraded"
+
+    # Circuit breaker status
+    status["circuit_breaker"] = openai_breaker.status()
+    if openai_breaker.state.value == "open":
         status["status"] = "degraded"
 
     return status

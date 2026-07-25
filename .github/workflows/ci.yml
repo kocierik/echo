@@ -10,6 +10,31 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: echo
+          POSTGRES_PASSWORD: echo
+          POSTGRES_DB: echo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U echo"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +56,23 @@ jobs:
       - name: Unit tests (no DB required)
         run: |
           cd backend
-          pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py -v --noconftest
+          pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py tests/test_circuit_breaker.py -v --noconftest
+
+      - name: Apply database schema
+        run: |
+          PGPASSWORD=echo psql -h localhost -U echo -d echo < docs/schema.sql
+        env:
+          PGPASSWORD: echo
+
+      - name: Integration tests (with DB + Redis)
+        run: |
+          cd backend
+          pytest tests/ -v --timeout=30
+        env:
+          DATABASE_URL: "postgresql+asyncpg://echo:echo@localhost:5432/echo"
+          REDIS_URL: "redis://localhost:6379/0"
+          OPENAI_API_KEY: "sk-test-not-real"
+          AUDIO_STORAGE_PATH: "/tmp/echo_audio"
 
   firmware-syntax:
     runs-on: ubuntu-latest

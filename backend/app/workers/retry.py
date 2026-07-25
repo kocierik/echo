@@ -1,8 +1,10 @@
-"""Retry utility with exponential backoff and timeout for async calls."""
+"""Retry utility with exponential backoff, timeout, and circuit breaker for async calls."""
 
 import asyncio
 import logging
 from typing import TypeVar
+
+from app.core.circuit_breaker import CircuitOpenError, openai_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ async def retry_with_backoff(
     multiplier: float = DEFAULT_MULTIPLIER,
     timeout: float = DEFAULT_TIMEOUT,
     operation_name: str = "operation",
+    use_circuit_breaker: bool = True,
     **kwargs,
 ):
     """Execute an async function with retry and exponential backoff.
@@ -44,6 +47,7 @@ async def retry_with_backoff(
         multiplier: Backoff multiplier (default 4, giving 1s, 4s, 16s).
         timeout: Timeout per attempt in seconds (default 60).
         operation_name: Name for logging purposes.
+        use_circuit_breaker: Whether to use the OpenAI circuit breaker (default True).
         **kwargs: Keyword arguments for the function.
 
     Returns:
@@ -51,19 +55,41 @@ async def retry_with_backoff(
 
     Raises:
         RetryExhaustedError: If all attempts fail.
+        CircuitOpenError: If the circuit breaker is open.
     """
+    # Check circuit breaker before attempting
+    if use_circuit_breaker and not openai_breaker.allow_request():
+        raise CircuitOpenError(openai_breaker.name)
+
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
         try:
             async with asyncio.timeout(timeout):
                 result = await coro_func(*args, **kwargs)
+
+            # Success — record it
+            if use_circuit_breaker:
+                openai_breaker.record_success()
             return result
         except asyncio.CancelledError:
             # Don't retry on cancellation (shutdown scenario)
             raise
         except Exception as e:
             last_error = e
+
+            # Record failure in circuit breaker
+            if use_circuit_breaker:
+                openai_breaker.record_failure()
+
+            # Check if circuit just opened
+            if use_circuit_breaker and not openai_breaker.allow_request():
+                logger.error(
+                    f"[Retry] {operation_name}: circuit breaker opened after failure. "
+                    f"Stopping retries."
+                )
+                break
+
             if attempt < max_attempts:
                 delay = base_delay * (multiplier ** (attempt - 1))
                 logger.warning(
