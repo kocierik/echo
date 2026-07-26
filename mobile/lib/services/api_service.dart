@@ -155,4 +155,123 @@ class ApiService {
       return false;
     }
   }
+
+  Future<List<Conversation>> getConversations() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+
+    final response = await http.get(
+      Uri.parse('$server/api/conversations?limit=50'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) return [];
+
+    final data = jsonDecode(response.body);
+    final items = data['conversations'] as List? ?? [];
+    return items.map((e) => Conversation.fromJson(e)).toList();
+  }
+
+  Future<ConversationDetail?> getConversationDetail(String id) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+
+    final response = await http.get(
+      Uri.parse('$server/api/conversations/$id'),
+      headers: headers,
+    );
+
+    if (response.statusCode != 200) return null;
+    return ConversationDetail.fromJson(jsonDecode(response.body));
+  }
+}
+
+
+// --- Conversation Models ---
+
+class Conversation {
+  final String id;
+  final String title;
+  final String? summary;
+  final String startedAt;
+  final int segmentCount;
+  final String analysisStatus;
+
+  Conversation({
+    required this.id,
+    required this.title,
+    this.summary,
+    required this.startedAt,
+    required this.segmentCount,
+    required this.analysisStatus,
+  });
+
+  factory Conversation.fromJson(Map<String, dynamic> json) {
+    return Conversation(
+      id: json['id'] ?? '',
+      title: json['title'] ?? 'Untitled',
+      summary: json['summary'],
+      startedAt: json['started_at'] ?? '',
+      segmentCount: json['segment_count'] ?? 0,
+      analysisStatus: json['analysis_status'] ?? 'pending',
+    );
+  }
+}
+
+class EntityItem {
+  final String id;
+  final String type;
+  final String name;
+  final String? content;
+
+  EntityItem({required this.id, required this.type, required this.name, this.content});
+
+  factory EntityItem.fromJson(Map<String, dynamic> json) {
+    return EntityItem(
+      id: json['id'] ?? '',
+      type: json['entity_type'] ?? 'note',
+      name: json['name'] ?? '',
+      content: json['content'],
+    );
+  }
+}
+
+class TranscriptEntry {
+  final String text;
+  final String recordedAt;
+
+  TranscriptEntry({required this.text, required this.recordedAt});
+
+  factory TranscriptEntry.fromJson(Map<String, dynamic> json) {
+    return TranscriptEntry(
+      text: json['text'] ?? '',
+      recordedAt: json['recorded_at'] ?? '',
+    );
+  }
+}
+
+class ConversationDetail {
+  final String id;
+  final String title;
+  final String summary;
+  final List<EntityItem> entities;
+  final List<TranscriptEntry> transcriptions;
+
+  ConversationDetail({
+    required this.id,
+    required this.title,
+    required this.summary,
+    required this.entities,
+    required this.transcriptions,
+  });
+
+  factory ConversationDetail.fromJson(Map<String, dynamic> json) {
+    return ConversationDetail(
+      id: json['id'] ?? '',
+      title: json['title'] ?? 'Conversation',
+      summary: json['summary'] ?? '',
+      entities: (json['entities'] as List? ?? []).map((e) => EntityItem.fromJson(e)).toList(),
+      transcriptions: (json['transcriptions'] as List? ?? []).map((e) => TranscriptEntry.fromJson(e)).toList(),
+    );
+  }
 }
