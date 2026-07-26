@@ -19,21 +19,21 @@ class _TypingIndicatorState extends State<TypingIndicator> with TickerProviderSt
       return AnimationController(
         duration: const Duration(milliseconds: 600),
         vsync: this,
-      )..repeat(reverse: true);
+      );
     });
-
-    // Stagger the animations
-    for (int i = 0; i < 3; i++) {
-      Future.delayed(Duration(milliseconds: i * 180), () {
-        if (mounted) _controllers[i].forward();
-      });
-    }
 
     _animations = _controllers.map((c) {
       return Tween<double>(begin: 0.3, end: 1.0).animate(
         CurvedAnimation(parent: c, curve: Curves.easeInOut),
       );
     }).toList();
+
+    // Stagger start
+    for (int i = 0; i < 3; i++) {
+      Future.delayed(Duration(milliseconds: i * 180), () {
+        if (mounted) _controllers[i].repeat(reverse: true);
+      });
+    }
   }
 
   @override

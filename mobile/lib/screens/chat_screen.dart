@@ -1,18 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
-
-class ChatMessage {
-  final String text;
-  final bool isUser;
-  final int? index;
-  String? feedback;
-
-  ChatMessage({required this.text, required this.isUser, this.index, this.feedback});
-}
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
