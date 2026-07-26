@@ -84,8 +84,8 @@ async def _save_session_history(
 @router.post("", response_model=QueryResponse)
 @limiter.limit("20/minute")
 async def query_memory(
-    http_request: Request,
-    request: QueryRequest,
+    request: Request,
+    body: QueryRequest,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -102,25 +102,25 @@ async def query_memory(
     4. Find relevant entities
     5. Assemble context + history and generate answer with LLM
     """
-    redis_client = http_request.app.state.redis
+    redis_client = request.app.state.redis
 
     # Resolve or create session
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = body.session_id or str(uuid.uuid4())
     history = await _get_session_history(redis_client, session_id)
 
     # 1. Determine date filter: explicit params take priority, then NLP extraction
     date_range = None
-    if request.date_from or request.date_to:
+    if body.date_from or body.date_to:
         date_range = DateRange(
-            date_from=request.date_from,
-            date_to=request.date_to or datetime.max,
+            date_from=body.date_from,
+            date_to=body.date_to or datetime.max,
         )
     else:
-        date_range = extract_date_range(request.question)
+        date_range = extract_date_range(body.question)
 
     # 2. Embed the question
     embedding_service = get_embedding_service()
-    question_embedding = await embedding_service.embed(request.question)
+    question_embedding = await embedding_service.embed(body.question)
 
     # 3. Find similar chunks via pgvector cosine similarity (with date filter)
     similarity_query = (
@@ -149,7 +149,7 @@ async def query_memory(
     similarity_query = (
         similarity_query
         .order_by(Chunk.embedding.cosine_distance(question_embedding))
-        .limit(request.top_k)
+        .limit(body.top_k)
     )
 
     result = await db.execute(similarity_query)
@@ -176,7 +176,7 @@ async def query_memory(
 
     # 5. Find relevant entities (vector + keyword search)
     entities_context = await find_relevant_entities(
-        db, user_id, request.question, question_embedding
+        db, user_id, body.question, question_embedding
     )
 
     # 5. Find conversation summaries for matched conversations (high-level context)
@@ -207,7 +207,7 @@ async def query_memory(
                 "Prova a riformulare la domanda o a estendere il periodo."
             )
         # Save to history even for empty results
-        history.append({"role": "user", "content": request.question})
+        history.append({"role": "user", "content": body.question})
         history.append({"role": "assistant", "content": no_result_msg})
         await _save_session_history(redis_client, session_id, history)
         await _persist_chat_session(db, user_id, session_id, history)
@@ -280,13 +280,13 @@ async def query_memory(
         messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
 
     # Add current question with fresh RAG context
-    user_message = f"Contesto dalla memoria:\n\n{context}\n\n---\n\nDomanda: {request.question}"
+    user_message = f"Contesto dalla memoria:\n\n{context}\n\n---\n\nDomanda: {body.question}"
     messages.append(LLMMessage(role="user", content=user_message))
 
     response = await llm_service.complete(messages, temperature=0.3)
 
     # Save to session history (store clean question, not the RAG-augmented one)
-    history.append({"role": "user", "content": request.question})
+    history.append({"role": "user", "content": body.question})
     history.append({"role": "assistant", "content": response.content})
     await _save_session_history(redis_client, session_id, history)
 
