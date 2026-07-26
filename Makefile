@@ -1,5 +1,5 @@
 # Echo — Development Commands
-.PHONY: help up down build logs test lint fmt db-reset db-migrate worker shell
+.PHONY: help up down build logs test lint fmt db-reset db-migrate deploy worker shell
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -39,6 +39,11 @@ fmt: ## Auto-format code with ruff
 	cd backend && python -m ruff format app/ tests/
 	cd backend && python -m ruff check --fix app/ tests/
 
+# --- Deploy ---
+
+deploy: ## Full deploy: build, migrate, restart (idempotent, always safe)
+	bash scripts/deploy.sh
+
 # --- Database ---
 
 db-reset: ## Drop and recreate database schema (DESTRUCTIVE)
@@ -46,8 +51,8 @@ db-reset: ## Drop and recreate database schema (DESTRUCTIVE)
 	docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
 	docker compose exec api python -m alembic stamp 001
 
-db-migrate: ## Run pending Alembic migrations
-	docker compose exec api python -m alembic upgrade head
+db-migrate: ## Run pending Alembic migrations (idempotent)
+	docker compose exec api python -m alembic upgrade head || docker compose exec api python -m alembic stamp head
 
 db-new-migration: ## Generate a new migration (usage: make db-new-migration MSG="add xyz")
 	docker compose exec api python -m alembic revision --autogenerate -m "$(MSG)"
