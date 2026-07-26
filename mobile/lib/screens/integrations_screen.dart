@@ -76,17 +76,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   Future<void> _launchUrl(String url) async {
-    // ignore: depend_on_referenced_packages
     final uri = Uri.parse(url);
-    // Use url_launcher or fallback
     try {
-      // ignore: unused_import
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      // Fallback: show URL to user
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        // Fallback: try with platformDefault
+        await launchUrl(uri, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      // Fallback: show copyable URL
       if (mounted) {
+        Clipboard.setData(ClipboardData(text: url));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Open this URL in your browser:\n$url')),
+          const SnackBar(content: Text('Link copied — open it in your browser to connect')),
         );
       }
     }
