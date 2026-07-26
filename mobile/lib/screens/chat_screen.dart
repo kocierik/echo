@@ -22,6 +22,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isTyping = false;
   bool _canSend = false;
   int _msgCount = 0;
+  String? _sessionDay; // Track which day this session belongs to
 
   @override
   void initState() {
@@ -30,6 +31,18 @@ class _ChatScreenState extends State<ChatScreen> {
       final canSend = _controller.text.trim().isNotEmpty;
       if (canSend != _canSend) setState(() => _canSend = canSend);
     });
+  }
+
+  /// Reset session if it's a new day
+  void _ensureFreshDaySession() {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    if (_sessionDay != null && _sessionDay != today) {
+      // New day — start fresh
+      _messages.clear();
+      _sessionId = null;
+      _msgCount = 0;
+    }
+    _sessionDay = today;
   }
 
   void _scrollToBottom() {
@@ -48,6 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    _ensureFreshDaySession();
     HapticFeedback.lightImpact();
     setState(() {
       _messages.add(ChatMessage(text: text, isUser: true));
