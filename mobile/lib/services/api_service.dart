@@ -286,6 +286,18 @@ class ApiService {
     await http.patch(Uri.parse('$server/api/integrations/$id'), headers: headers, body: jsonEncode(body));
   }
 
+  Future<String?> getOAuthUrl(String provider) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(
+      Uri.parse('$server/api/integrations/oauth/$provider/authorize'),
+      headers: headers,
+    );
+    if (response.statusCode != 200) return null;
+    final data = jsonDecode(response.body);
+    return data['authorize_url'];
+  }
+
   /// Upload an audio segment to the backend (used by BLE relay)
   Future<bool> uploadSegment({
     required List<int> audioData,

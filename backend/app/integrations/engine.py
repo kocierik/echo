@@ -94,10 +94,82 @@ async def _todoist_create_task(config: dict, entity: Entity):
 
 
 async def _google_calendar_create_event(config: dict, entity: Entity):
-    """Create event in Google Calendar (simplified — uses API key approach)."""
-    # Note: full Google Calendar requires OAuth. This is a placeholder
-    # for the MCP server approach which handles auth separately.
-    logger.info(f"[Calendar] Would create event: {entity.name} (placeholder — needs MCP server)")
+    """Create event in Google Calendar via OAuth2 tokens."""
+    access_token = config.get("access_token")
+    refresh_token = config.get("refresh_token")
+
+    if not access_token and not refresh_token:
+        logger.warning("[Calendar] No tokens configured — skipping")
+        return
+
+    # Build event payload
+    event_date = entity.metadata_.get("event_date")
+    event_time = entity.metadata_.get("event_time")
+    location = entity.metadata_.get("location")
+
+    event_body: dict = {
+        "summary": entity.name,
+    }
+    if entity.content:
+        event_body["description"] = entity.content
+    if location:
+        event_body["location"] = location
+
+    # Date handling: full day or timed event
+    if event_date and event_time:
+        event_body["start"] = {"dateTime": f"{event_date}T{event_time}:00", "timeZone": "Europe/Rome"}
+        event_body["end"] = {"dateTime": f"{event_date}T{event_time}:00", "timeZone": "Europe/Rome"}
+    elif event_date:
+        event_body["start"] = {"date": event_date}
+        event_body["end"] = {"date": event_date}
+    else:
+        # No date — skip, can't create event without date
+        logger.info(f"[Calendar] Skipping event '{entity.name}' — no date extracted")
+        return
+
+    # Try with current access_token, refresh if 401
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=event_body,
+        )
+
+        if resp.status_code == 401 and refresh_token:
+            # Token expired — refresh it
+            new_token = await _google_refresh_token(refresh_token)
+            if new_token:
+                access_token = new_token
+                resp = await client.post(
+                    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    json=event_body,
+                )
+
+        if resp.status_code in (200, 201):
+            logger.info(f"[Calendar] Created event: {entity.name}")
+        else:
+            logger.warning(f"[Calendar] Failed ({resp.status_code}): {resp.text[:200]}")
+
+
+async def _google_refresh_token(refresh_token: str) -> str | None:
+    """Refresh Google OAuth2 access token."""
+    from app.core.config import settings
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+        )
+        if resp.status_code == 200:
+            return resp.json().get("access_token")
+        logger.error(f"[Calendar] Token refresh failed: {resp.text[:100]}")
+        return None
 
 
 async def _notion_create_page(config: dict, entity: Entity):

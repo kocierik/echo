@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
@@ -49,20 +50,58 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   Future<void> _toggle(Map<String, dynamic> provider) async {
     HapticFeedback.mediumImpact();
     final providerId = provider['id'];
+    final authType = provider['auth_type'] ?? 'manual';
     final integrationId = _getIntegrationId(providerId);
 
     if (integrationId != null) {
       // Toggle existing
       final current = _isEnabled(providerId);
       await _api.updateIntegration(integrationId, enabled: !current);
+    } else if (authType == 'oauth2') {
+      // OAuth flow: open browser for authorization
+      final url = await _api.getOAuthUrl(providerId);
+      if (url != null) {
+        await _launchUrl(url);
+        // Poll for connection (user completes in browser)
+        _pollForConnection(providerId);
+      }
     } else {
-      // Show config dialog then create
+      // Manual config: show dialog
       final config = await _showConfigDialog(provider);
       if (config != null) {
         await _api.createIntegration(providerId, config);
       }
     }
     _load();
+  }
+
+  Future<void> _launchUrl(String url) async {
+    // ignore: depend_on_referenced_packages
+    final uri = Uri.parse(url);
+    // Use url_launcher or fallback
+    try {
+      // ignore: unused_import
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // Fallback: show URL to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Open this URL in your browser:\n$url')),
+        );
+      }
+    }
+  }
+
+  void _pollForConnection(String providerId) {
+    // Check every 2s for up to 60s if the integration was created via OAuth callback
+    int attempts = 0;
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 2));
+      attempts++;
+      await _load();
+      if (_isEnabled(providerId) || attempts >= 30) return false;
+      return true;
+    });
   }
 
   Future<Map<String, dynamic>?> _showConfigDialog(Map<String, dynamic> provider) async {

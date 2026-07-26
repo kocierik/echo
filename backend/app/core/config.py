@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     # Speaker detection
     speaker_energy_threshold: int = 0  # manual override (0 = auto-calibrate)
 
+    # Google OAuth2 (for Calendar integration)
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""  # e.g. https://yourdomain.com/api/integrations/google/callback
+
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
