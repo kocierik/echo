@@ -102,6 +102,8 @@ async def create_integration(
         entity_types=provider_meta.get("entity_types", []),
     )
     db.add(integration)
+    await db.flush()
+    await db.refresh(integration)
     return integration
 
 
