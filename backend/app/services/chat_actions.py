@@ -122,10 +122,10 @@ async def _execute_action(
             return "Google Calendar non è connesso. Vai su Integrations per collegarlo."
         if not events:
             period = _format_period(date_from, date_to)
-            return f"Non hai eventi {period}. 📭"
+            return f"Non hai eventi {period}."
 
         period = _format_period(date_from, date_to)
-        lines = [f"📅 **I tuoi eventi {period}** ({len(events)}):\n"]
+        lines = [f"Ecco i tuoi eventi {period}:\n"]
         for ev in events:
             lines.append(_format_event(ev))
         return "\n".join(lines)
@@ -146,7 +146,7 @@ async def _execute_action(
             return "Non sono riuscito a creare l'evento. Verifica che Google Calendar sia connesso."
         time_str = f" alle {time}" if time else ""
         loc_str = f" a {location}" if location else ""
-        return f"✅ Evento creato: **{summary}** il {date}{time_str}{loc_str}"
+        return f"Fatto! Ho creato \"{summary}\" per il {_format_date_human(date)}{time_str}{loc_str}."
 
     elif action == "calendar_update":
         event_id = params.get("event_id")
@@ -162,7 +162,7 @@ async def _execute_action(
         )
         if result is None:
             return "Non sono riuscito a modificare l'evento."
-        return f"✅ Evento aggiornato: **{result.get('summary', '')}**"
+        return f"Fatto! Ho aggiornato l'evento \"{result.get('summary', '')}\"."
 
     elif action == "calendar_delete":
         event_id = params.get("event_id")
@@ -170,60 +170,82 @@ async def _execute_action(
             return "Non ho capito quale evento eliminare."
         success = await delete_event(db, user_id, event_id)
         if success:
-            return "✅ Evento eliminato."
+            return "Fatto! Evento eliminato dal calendario."
         return "Non sono riuscito a eliminare l'evento."
 
     return "Azione non riconosciuta."
 
 
 def _format_event(ev: dict) -> str:
-    """Format a single calendar event for display."""
+    """Format a single calendar event in natural language."""
     summary = ev.get("summary", "(senza titolo)")
     start_raw = ev.get("start", "")
     location = ev.get("location")
 
-    # Parse and format time nicely
+    # Parse time
     time_str = ""
     if "T" in start_raw:
-        # Has time: 2026-07-27T13:00:00+02:00
         try:
             from datetime import datetime
             dt = datetime.fromisoformat(start_raw)
-            time_str = dt.strftime("%H:%M")
+            time_str = f"alle {dt.strftime('%H:%M')}"
         except (ValueError, TypeError):
-            time_str = start_raw
+            time_str = ""
     else:
         time_str = "tutto il giorno"
 
-    line = f"• **{summary}** — {time_str}"
+    parts = [f"  • {summary}"]
+    if time_str:
+        parts.append(time_str)
     if location:
-        # Shorten very long locations
-        loc_short = location if len(location) < 40 else location[:37] + "..."
-        line += f" 📍 {loc_short}"
-    return line
+        parts.append(f"a {location}")
+
+    return " — ".join(parts)
 
 
 def _format_period(date_from: str | None, date_to: str | None) -> str:
-    """Format date range for display."""
-    from datetime import date, datetime, timedelta
+    """Format date range as natural period description."""
+    from datetime import date, timedelta
 
     today = date.today()
     tomorrow = today + timedelta(days=1)
 
     if not date_from:
-        return "prossimi"
+        return "dei prossimi giorni"
 
     try:
         d_from = date.fromisoformat(date_from)
         d_to = date.fromisoformat(date_to) if date_to else d_from
     except (ValueError, TypeError):
-        return "prossimi"
+        return "dei prossimi giorni"
 
     if d_from == today and d_to == today:
         return "di oggi"
     elif d_from == tomorrow and d_to == tomorrow:
         return "di domani"
-    elif d_from == today:
+    elif d_from == today and (d_to - today).days <= 7:
         return "di questa settimana"
     else:
         return f"dal {d_from.strftime('%d/%m')} al {d_to.strftime('%d/%m')}"
+
+
+def _format_date_human(date_str: str) -> str:
+    """Format a date string as human-readable Italian."""
+    from datetime import date, timedelta
+
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    try:
+        d = date.fromisoformat(date_str)
+    except (ValueError, TypeError):
+        return date_str
+
+    if d == today:
+        return "oggi"
+    elif d == tomorrow:
+        return "domani"
+    else:
+        days_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
+        day_name = days_it[d.weekday()]
+        return f"{day_name} {d.strftime('%d/%m')}"
