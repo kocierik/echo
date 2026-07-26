@@ -218,6 +218,27 @@ class ApiService {
     return jsonDecode(response.body);
   }
 
+  Future<List<Map<String, dynamic>>> getTasks({bool? done}) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    var url = '$server/api/entities?entity_type=task&limit=20';
+    if (done != null) url += '&done=$done';
+    final response = await http.get(Uri.parse(url), headers: headers);
+    if (response.statusCode != 200) return [];
+    final data = jsonDecode(response.body);
+    return List<Map<String, dynamic>>.from(data['entities'] ?? []);
+  }
+
+  Future<void> updateEntity(String id, {String? name, String? content, Map<String, dynamic>? metadata}) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name;
+    if (content != null) body['content'] = content;
+    if (metadata != null) body['metadata_'] = metadata;
+    await http.patch(Uri.parse('$server/api/entities/$id'), headers: headers, body: jsonEncode(body));
+  }
+
   /// Upload an audio segment to the backend (used by BLE relay)
   Future<bool> uploadSegment({
     required List<int> audioData,

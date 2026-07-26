@@ -16,6 +16,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<String, dynamic>? _stats;
   Map<String, dynamic>? _digest;
   List<Conversation> _recentConvs = [];
+  List<Map<String, dynamic>> _tasks = [];
   bool _loading = true;
 
   @override
@@ -31,10 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
       final convs = await _api.getConversations();
       final today = DateTime.now().toIso8601String().split('T')[0];
       final digest = await _api.getDigest(today);
+      final tasks = await _api.getTasks();
       setState(() {
         _stats = stats;
         _recentConvs = convs.take(3).toList();
         _digest = digest;
+        _tasks = tasks;
         _loading = false;
       });
     } catch (_) {
@@ -90,6 +93,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 24),
 
+              // Tasks from conversations
+              if (!_loading && _tasks.isNotEmpty) ...[
+                const Text('TASKS', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 10),
+                ..._tasks.map((t) => _TaskItem(
+                  task: t,
+                  onToggle: () => _toggleTask(t),
+                )),
+                const SizedBox(height: 24),
+              ],
+
               // Stats Row
               if (_stats != null) ...[
                 const Text('TODAY', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
@@ -116,6 +130,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
+  }
+
+  Future<void> _toggleTask(Map<String, dynamic> task) async {
+    final id = task['id'];
+    final isDone = task['metadata_']?['done'] == true;
+    await _api.updateEntity(id, metadata: {'done': !isDone});
+    _load();
   }
 }
 
@@ -331,5 +352,79 @@ class _RecentConvCard extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+
+class _TaskItem extends StatelessWidget {
+  final Map<String, dynamic> task;
+  final VoidCallback onToggle;
+  const _TaskItem({required this.task, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = task['name'] ?? '';
+    final content = task['content'] ?? '';
+    final isDone = task['metadata_']?['done'] == true;
+    final createdAt = task['created_at'] ?? '';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.bgElevated,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDone ? AppColors.success.withOpacity(0.2) : AppColors.border),
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              width: 22, height: 22,
+              decoration: BoxDecoration(
+                color: isDone ? AppColors.success.withOpacity(0.15) : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: isDone ? AppColors.success : AppColors.foregroundMuted, width: 1.5),
+              ),
+              child: isDone ? const Icon(Icons.check_rounded, size: 14, color: AppColors.success) : null,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: isDone ? AppColors.foregroundMuted : AppColors.foreground,
+                    decoration: isDone ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                if (content.isNotEmpty)
+                  Text(content, style: const TextStyle(fontSize: 11, color: AppColors.foregroundMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          if (createdAt.isNotEmpty)
+            Text(_formatDay(createdAt), style: const TextStyle(fontSize: 10, color: AppColors.foregroundMuted)),
+        ],
+      ),
+    );
+  }
+
+  String _formatDay(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      final now = DateTime.now();
+      if (dt.day == now.day && dt.month == now.month) return 'Today';
+      if (dt.day == now.day - 1 && dt.month == now.month) return 'Yesterday';
+      return '${dt.day}/${dt.month}';
+    } catch (_) {
+      return '';
+    }
   }
 }
