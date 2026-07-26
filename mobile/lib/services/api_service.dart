@@ -221,12 +221,22 @@ class ApiService {
   Future<List<Map<String, dynamic>>> getTasks({bool? done}) async {
     final server = await _serverUrl;
     final headers = await _headers;
-    var url = '$server/api/entities?entity_type=task&limit=20';
+    // Only fetch undone tasks, most recent first, limited
+    var url = '$server/api/entities?entity_type=task&limit=8';
     if (done != null) url += '&done=$done';
     final response = await http.get(Uri.parse(url), headers: headers);
     if (response.statusCode != 200) return [];
     final data = jsonDecode(response.body);
-    return List<Map<String, dynamic>>.from(data['entities'] ?? []);
+    final tasks = List<Map<String, dynamic>>.from(data['entities'] ?? []);
+    // Filter: only undone tasks from last 3 days
+    final cutoff = DateTime.now().subtract(const Duration(days: 3));
+    return tasks.where((t) {
+      final isDone = t['metadata_']?['done'] == true;
+      if (isDone) return false;
+      final created = DateTime.tryParse(t['created_at'] ?? '');
+      if (created == null) return true;
+      return created.isAfter(cutoff);
+    }).toList();
   }
 
   Future<void> updateEntity(String id, {String? name, String? content, Map<String, dynamic>? metadata}) async {

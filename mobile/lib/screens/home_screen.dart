@@ -95,12 +95,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Tasks from conversations
               if (!_loading && _tasks.isNotEmpty) ...[
-                const Text('TASKS', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
+                Row(
+                  children: [
+                    const Text('TASKS', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
+                    const Spacer(),
+                    Text('${_tasks.length} pending', style: const TextStyle(fontSize: 10, color: AppColors.foregroundMuted)),
+                  ],
+                ),
                 const SizedBox(height: 10),
-                ..._tasks.map((t) => _TaskItem(
+                ..._tasks.take(5).map((t) => _TaskItem(
                   task: t,
                   onToggle: () => _toggleTask(t),
                 )),
+                if (_tasks.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Center(
+                      child: Text(
+                        '+ ${_tasks.length - 5} more tasks',
+                        style: const TextStyle(fontSize: 12, color: AppColors.accent),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 24),
               ],
 

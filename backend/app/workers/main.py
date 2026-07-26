@@ -442,7 +442,10 @@ async def extract_entities(
                 '"content": "...", "metadata": {...}}]}\n\n'
                 "Tipi:\n"
                 "- person: persone menzionate (metadata: {role, notes})\n"
-                "- task: azioni da fare (metadata: {done, due_date, priority})\n"
+                "- task: azioni concrete e specifiche da fare, con un risultato chiaro. "
+                "NON estrarre come task: intenzioni vaghe, desideri generici, o abitudini. "
+                "Esempio task valido: 'Chiamare Marco domani'. "
+                "Esempio NON task: 'Devo mangiare meglio' (metadata: {done: false, due_date, priority})\n"
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
                 "- event: eventi, appuntamenti, date (metadata: {event_date, location})\n"
                 "- note: qualsiasi altra informazione rilevante (metadata: {tags})\n\n"
