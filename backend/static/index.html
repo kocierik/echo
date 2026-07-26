@@ -178,7 +178,7 @@
         <div id="input-bar"><input id="q" placeholder="Ask your memory..." autofocus/><button id="send" onclick="ask()">Ask</button></div>
     </div>
     <!-- AUDIO DETAIL -->
-    <div class="detail-panel" id="p-detail"></div>
+    <div class="detail-panel" id="p-detail"><div class="empty" style="padding:4rem">Select a conversation from the sidebar</div></div>
     <!-- ENTITIES PAGE -->
     <div class="panel" id="p-entities"></div>
     <!-- DIGEST PAGE -->
@@ -213,13 +213,13 @@ function tab(t){
     });
     if(t==='chat')$('l-chat').classList.remove('hidden');
     if(t==='audio')$('l-audio').classList.remove('hidden');
-    // Main panels
+    // Main panels: hide all, show only the selected one
     document.querySelectorAll('.panel,.detail-panel').forEach(x=>x.classList.remove('on'));
     if(t==='chat')$('p-chat').classList.add('on');
+    if(t==='audio')$('p-detail').classList.add('on');
     if(t==='entities')loadEntities();
     if(t==='digest')loadDigests();
     if(t==='stats')loadStats();
-    if(t==='audio')$('p-chat').classList.add('on'); // audio uses detail panel when clicked
 }
 
 // CHAT
@@ -288,8 +288,9 @@ async function showConv(id){
     const trans=c.transcriptions.map(t=>{
         let spk='';const txt=t.text.replace(/^\[(Tu|Altri)\]\s*/,(m,s)=>{spk=s==='Tu'?'<span class="spk-self">[You]</span>':'<span class="spk-other">[Other]</span>';return''});
         return`<div class="trans-item"><span class="time">${T(t.recorded_at)}</span> ${spk}${H(txt)}</div>`}).join('');
-    $('p-detail').innerHTML=`<button class="back" onclick="showPanel('chat')">← Back</button><div class="d-title">${H(c.title||'Conversation')}</div><div class="d-summary">${H(c.summary||'')}</div>${ents?'<div class="d-section">ENTITIES</div><div>'+ents+'</div>':''}<div class="d-section">TRANSCRIPTION</div>${trans||'<p style="color:var(--text-3)">No transcription.</p>'}`;
-    showPanel('detail')}catch(e){}
+    $('p-detail').innerHTML=`<button class="back" onclick="tab('audio')">← Back</button><div class="d-title">${H(c.title||'Conversation')}</div><div class="d-summary">${H(c.summary||'')}</div>${ents?'<div class="d-section">ENTITIES</div><div>'+ents+'</div>':''}<div class="d-section">TRANSCRIPTION</div>${trans||'<p style="color:var(--text-3)">No transcription.</p>'}`;
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('on'));
+    $('p-detail').classList.add('on');}catch(e){}
 }
 
 // ENTITIES
