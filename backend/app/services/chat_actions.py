@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 # Actions the chat can perform
 AVAILABLE_ACTIONS = """
 Available actions you can take:
-1. calendar_list — List upcoming events (params: days)
+1. calendar_list — List events for a specific period (params: date_from YYYY-MM-DD, date_to YYYY-MM-DD)
 2. calendar_create — Create an event (params: summary, date YYYY-MM-DD, time HH:MM optional, location optional)
 3. calendar_update — Update an event (params: event_id, summary, date, time, location — all optional except event_id)
 4. calendar_delete — Delete an event (params: event_id)
@@ -25,18 +25,22 @@ Available actions you can take:
 DETECT_PROMPT = """You are an intent classifier for a personal assistant chat.
 The user may ask questions about their memory OR request actions (create/read/modify/delete calendar events).
 
-Determine if the user's message requires an ACTION or is just a QUESTION.
+Determine if the user's message requires an ACTION or is just a QUESTION about their past conversations/memory.
 
 {actions}
 
 Respond with ONLY a JSON object:
-- If it's a question (memory search): {{"action": "none"}}
-- If it's a calendar list request: {{"action": "calendar_list", "params": {{"days": 7}}}}
+- If it's a question about memory/past conversations: {{"action": "none"}}
+- If it's a calendar list request: {{"action": "calendar_list", "params": {{"date_from": "YYYY-MM-DD", "date_to": "YYYY-MM-DD"}}}}
+  - "domani" = tomorrow's date for both date_from and date_to
+  - "questa settimana" = today to end of week
+  - "prossima settimana" = next monday to next sunday
 - If it's a calendar create request: {{"action": "calendar_create", "params": {{"summary": "...", "date": "YYYY-MM-DD", "time": "HH:MM", "location": "..."}}}}
 - If it's a calendar update: {{"action": "calendar_update", "params": {{"event_id": "...", "summary": "..."}}}}
 - If it's a calendar delete: {{"action": "calendar_delete", "params": {{"event_id": "..."}}}}
 
 Today's date: {today}
+Tomorrow's date: {tomorrow}
 
 Only return the JSON, nothing else."""
 
@@ -52,7 +56,7 @@ async def detect_and_execute_action(
     Returns None if no action is needed (normal RAG query should proceed).
     Returns a string response if an action was executed.
     """
-    from datetime import date
+    from datetime import date, timedelta
 
     llm = get_llm_query_service()
 
@@ -65,12 +69,16 @@ async def detect_and_execute_action(
             role = "User" if msg["role"] == "user" else "Assistant"
             history_text += f"{role}: {msg['content'][:200]}\n"
 
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
     messages = [
         LLMMessage(
             role="system",
             content=DETECT_PROMPT.format(
                 actions=AVAILABLE_ACTIONS,
-                today=date.today().isoformat(),
+                today=today.isoformat(),
+                tomorrow=tomorrow.isoformat(),
             ),
         ),
         LLMMessage(
@@ -107,17 +115,19 @@ async def _execute_action(
     """Execute a detected action and return a human-readable response."""
 
     if action == "calendar_list":
-        days = params.get("days", 7)
-        events = await list_events(db, user_id, days=days)
+        date_from = params.get("date_from")
+        date_to = params.get("date_to")
+        events = await list_events(db, user_id, date_from=date_from, date_to=date_to)
         if events is None:
             return "Google Calendar non è connesso. Vai su Integrations per collegarlo."
         if not events:
-            return f"Non hai eventi nei prossimi {days} giorni."
-        lines = [f"📅 I tuoi eventi ({len(events)}):\n"]
+            period = _format_period(date_from, date_to)
+            return f"Non hai eventi {period}. 📭"
+
+        period = _format_period(date_from, date_to)
+        lines = [f"📅 **I tuoi eventi {period}** ({len(events)}):\n"]
         for ev in events:
-            start = ev["start"] or ""
-            loc = f" — {ev['location']}" if ev.get("location") else ""
-            lines.append(f"• **{ev['summary']}** — {start}{loc}")
+            lines.append(_format_event(ev))
         return "\n".join(lines)
 
     elif action == "calendar_create":
@@ -164,3 +174,56 @@ async def _execute_action(
         return "Non sono riuscito a eliminare l'evento."
 
     return "Azione non riconosciuta."
+
+
+def _format_event(ev: dict) -> str:
+    """Format a single calendar event for display."""
+    summary = ev.get("summary", "(senza titolo)")
+    start_raw = ev.get("start", "")
+    location = ev.get("location")
+
+    # Parse and format time nicely
+    time_str = ""
+    if "T" in start_raw:
+        # Has time: 2026-07-27T13:00:00+02:00
+        try:
+            from datetime import datetime
+            dt = datetime.fromisoformat(start_raw)
+            time_str = dt.strftime("%H:%M")
+        except (ValueError, TypeError):
+            time_str = start_raw
+    else:
+        time_str = "tutto il giorno"
+
+    line = f"• **{summary}** — {time_str}"
+    if location:
+        # Shorten very long locations
+        loc_short = location if len(location) < 40 else location[:37] + "..."
+        line += f" 📍 {loc_short}"
+    return line
+
+
+def _format_period(date_from: str | None, date_to: str | None) -> str:
+    """Format date range for display."""
+    from datetime import date, datetime, timedelta
+
+    today = date.today()
+    tomorrow = today + timedelta(days=1)
+
+    if not date_from:
+        return "prossimi"
+
+    try:
+        d_from = date.fromisoformat(date_from)
+        d_to = date.fromisoformat(date_to) if date_to else d_from
+    except (ValueError, TypeError):
+        return "prossimi"
+
+    if d_from == today and d_to == today:
+        return "di oggi"
+    elif d_from == tomorrow and d_to == tomorrow:
+        return "di domani"
+    elif d_from == today:
+        return "di questa settimana"
+    else:
+        return f"dal {d_from.strftime('%d/%m')} al {d_to.strftime('%d/%m')}"

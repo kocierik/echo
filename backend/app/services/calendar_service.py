@@ -72,22 +72,29 @@ async def _refresh_token(refresh_token: str) -> str | None:
 
 
 async def list_events(
-    db: AsyncSession, user_id: uuid.UUID, days: int = 7
+    db: AsyncSession, user_id: uuid.UUID, date_from: str | None = None, date_to: str | None = None, days: int = 7
 ) -> list[dict] | None:
-    """List upcoming events for the next N days."""
+    """List events for a specific date range, or next N days if no range given."""
     token = await get_calendar_token(db, user_id)
     if not token:
         return None
 
-    now = datetime.utcnow().isoformat() + "Z"
-    time_max = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
+    if date_from:
+        time_min = f"{date_from}T00:00:00Z"
+        # date_to is end of that day
+        end_date = date_to or date_from
+        time_max = f"{end_date}T23:59:59Z"
+    else:
+        now = datetime.utcnow().isoformat() + "Z"
+        time_min = now
+        time_max = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{CALENDAR_API}/calendars/primary/events",
             headers={"Authorization": f"Bearer {token}"},
             params={
-                "timeMin": now,
+                "timeMin": time_min,
                 "timeMax": time_max,
                 "singleEvents": "true",
                 "orderBy": "startTime",
