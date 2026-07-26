@@ -108,6 +108,24 @@ async def query_memory(
     session_id = body.session_id or str(uuid.uuid4())
     history = await _get_session_history(redis_client, session_id)
 
+    # --- Action Detection: check if user wants to DO something (not just ask) ---
+    from app.services.chat_actions import detect_and_execute_action
+
+    action_result = await detect_and_execute_action(db, user_id, body.question, history)
+    if action_result is not None:
+        # Action was executed — return result directly (skip RAG)
+        history.append({"role": "user", "content": body.question})
+        history.append({"role": "assistant", "content": action_result})
+        await _save_session_history(redis_client, session_id, history)
+        await _persist_chat_session(db, user_id, session_id, history)
+
+        return QueryResponse(
+            answer=action_result,
+            sources=[],
+            session_id=session_id,
+            date_filter=None,
+        )
+
     # 1. Determine date filter: explicit params take priority, then NLP extraction
     date_range = None
     if body.date_from or body.date_to:
