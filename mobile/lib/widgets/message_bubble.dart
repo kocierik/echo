@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
 
@@ -34,14 +35,38 @@ class MessageBubble extends StatelessWidget {
                 ),
                 border: isUser ? null : Border.all(color: AppColors.border),
               ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.45,
-                  color: isUser ? Colors.white : AppColors.foreground,
-                ),
-              ),
+              child: isUser
+                  ? Text(
+                      message.text,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        height: 1.45,
+                        color: Colors.white,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: message.text,
+                      selectable: true,
+                      styleSheet: MarkdownStyleSheet(
+                        p: const TextStyle(fontSize: 15, height: 1.45, color: AppColors.foreground),
+                        strong: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.foreground),
+                        em: const TextStyle(fontSize: 15, fontStyle: FontStyle.italic, color: AppColors.foreground),
+                        h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.foreground),
+                        h2: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.foreground),
+                        h3: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.foreground),
+                        listBullet: const TextStyle(fontSize: 15, color: AppColors.foreground),
+                        code: TextStyle(fontSize: 13, color: AppColors.accent, backgroundColor: AppColors.surface),
+                        codeblockDecoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        blockquoteDecoration: BoxDecoration(
+                          border: Border(left: BorderSide(color: AppColors.accent, width: 3)),
+                        ),
+                        blockquotePadding: const EdgeInsets.only(left: 12),
+                        listIndent: 16,
+                      ),
+                    ),
             ),
             // Feedback row
             if (!isUser && onFeedback != null)
