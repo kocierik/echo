@@ -100,10 +100,45 @@ fi
 
 # Now run upgrade head — all migrations are idempotent
 docker compose exec -T api python -m alembic upgrade head && log "Migrations complete" || {
-    # If upgrade still fails, force stamp head (nuclear option)
-    warn "Migration error — force-stamping head..."
+    # If upgrade fails, apply missing tables directly then stamp
+    warn "Migration error — applying tables directly..."
+    docker compose exec -T postgres psql -U echo -d echo -c "
+        -- Migration 002: audio_hash
+        ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_hash VARCHAR(64);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_audio_hash ON segments (audio_hash);
+
+        -- Migration 003: speaker + feedback
+        ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_energy INTEGER;
+        ALTER TABLE segments ADD COLUMN IF NOT EXISTS speaker VARCHAR(10) DEFAULT 'unknown';
+        CREATE TABLE IF NOT EXISTS query_feedback (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL,
+            session_id UUID NOT NULL,
+            message_index INTEGER NOT NULL,
+            rating VARCHAR(10) NOT NULL,
+            comment TEXT,
+            source_chunk_ids JSONB NOT NULL DEFAULT '[]',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_feedback_user ON query_feedback (user_id, created_at);
+
+        -- Migration 004: integrations
+        CREATE TABLE IF NOT EXISTS integrations (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            user_id UUID NOT NULL,
+            provider VARCHAR(50) NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT false,
+            config JSONB NOT NULL DEFAULT '{}',
+            entity_types TEXT[] NOT NULL DEFAULT '{}',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        );
+        CREATE INDEX IF NOT EXISTS idx_integrations_user ON integrations (user_id);
+    " > /dev/null 2>&1
+
+    # Stamp head so Alembic knows we're current
     docker compose exec -T api python -m alembic stamp head
-    log "Force-stamped at head"
+    log "Tables applied directly + stamped at head"
 }
 
 # --- 7. Restart services to pick up any code changes ---
