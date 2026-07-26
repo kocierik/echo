@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 
 revision: str = "004"
@@ -18,20 +19,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "integrations",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("user_id", UUID(as_uuid=True), nullable=False),
-        sa.Column("provider", sa.String(50), nullable=False),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="false"),
-        sa.Column("config", JSONB(), nullable=False, server_default="{}"),
-        sa.Column("entity_types", ARRAY(sa.String), nullable=False, server_default="{}"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-    )
-    op.create_index("idx_integrations_user", "integrations", ["user_id"])
+    conn = op.get_bind()
+    inspector = sa_inspect(conn)
+    tables = inspector.get_table_names()
+
+    if "integrations" not in tables:
+        op.create_table(
+            "integrations",
+            sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
+            sa.Column("user_id", UUID(as_uuid=True), nullable=False),
+            sa.Column("provider", sa.String(50), nullable=False),
+            sa.Column("enabled", sa.Boolean(), nullable=False, server_default="false"),
+            sa.Column("config", JSONB(), nullable=False, server_default="{}"),
+            sa.Column("entity_types", ARRAY(sa.String), nullable=False, server_default="{}"),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        )
+        op.create_index("idx_integrations_user", "integrations", ["user_id"])
 
 
 def downgrade() -> None:
-    op.drop_index("idx_integrations_user", table_name="integrations")
-    op.drop_table("integrations")
+    conn = op.get_bind()
+    inspector = sa_inspect(conn)
+    tables = inspector.get_table_names()
+
+    if "integrations" in tables:
+        op.drop_index("idx_integrations_user", table_name="integrations")
+        op.drop_table("integrations")
