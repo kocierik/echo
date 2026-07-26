@@ -102,7 +102,10 @@ class _MainShellState extends State<MainShell> {
           backgroundColor: AppColors.bgDeep,
           indicatorColor: AppColors.surface,
           selectedIndex: _currentIndex,
-          onDestinationSelected: (i) => setState(() => _currentIndex = i),
+          onDestinationSelected: (i) {
+            HapticFeedback.selectionClick();
+            setState(() => _currentIndex = i);
+          },
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           height: 64,
           destinations: const [
