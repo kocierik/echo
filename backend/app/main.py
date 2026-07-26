@@ -20,6 +20,7 @@ from app.routers import (
     digest,
     entities,
     feedback,
+    integrations,
     query,
     segments,
 )
@@ -97,6 +98,7 @@ app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
+app.include_router(integrations.router, prefix=settings.api_prefix)
 
 
 def get_redis(request: Request) -> aioredis.Redis:

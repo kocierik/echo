@@ -249,6 +249,43 @@ class ApiService {
     await http.patch(Uri.parse('$server/api/entities/$id'), headers: headers, body: jsonEncode(body));
   }
 
+  // --- Integrations ---
+
+  Future<List<Map<String, dynamic>>> getAvailableProviders() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/integrations/available'), headers: headers);
+    if (response.statusCode != 200) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+  }
+
+  Future<List<Map<String, dynamic>>> getUserIntegrations() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/integrations'), headers: headers);
+    if (response.statusCode != 200) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+  }
+
+  Future<void> createIntegration(String provider, Map<String, dynamic> config) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    await http.post(
+      Uri.parse('$server/api/integrations'),
+      headers: headers,
+      body: jsonEncode({'provider': provider, 'config': config, 'enabled': true}),
+    );
+  }
+
+  Future<void> updateIntegration(String id, {bool? enabled, Map<String, dynamic>? config}) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final body = <String, dynamic>{};
+    if (enabled != null) body['enabled'] = enabled;
+    if (config != null) body['config'] = config;
+    await http.patch(Uri.parse('$server/api/integrations/$id'), headers: headers, body: jsonEncode(body));
+  }
+
   /// Upload an audio segment to the backend (used by BLE relay)
   Future<bool> uploadSegment({
     required List<int> audioData,

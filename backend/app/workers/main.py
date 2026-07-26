@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import setup_logging
+from app.integrations.engine import trigger_integrations
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -276,6 +277,10 @@ async def process_analysis(redis_client: redis.Redis):
                 # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
                 await deduplicate_entities(db, user_id, llm_service)
 
+                # --- Trigger integrations for new entities ---
+                for entity in new_entities:
+                    await trigger_integrations(db, user_id, entity)
+
                 # --- Incremental chunking & embedding ---
                 # Only embed the NEW segment's text as an additional chunk,
                 # instead of re-chunking the entire conversation every time.
@@ -443,9 +448,10 @@ async def extract_entities(
                 "Tipi:\n"
                 "- person: persone menzionate (metadata: {role, notes})\n"
                 "- task: azioni concrete e specifiche da fare, con un risultato chiaro. "
-                "NON estrarre come task: intenzioni vaghe, desideri generici, o abitudini. "
-                "Esempio task valido: 'Chiamare Marco domani'. "
-                "Esempio NON task: 'Devo mangiare meglio' (metadata: {done: false, due_date, priority})\n"
+                "NON estrarre come task: intenzioni vaghe, desideri generici, "
+                "o abitudini. Esempio task valido: 'Chiamare Marco domani'. "
+                "Esempio NON task: 'Devo mangiare meglio' "
+                "(metadata: {done: false, due_date, priority})\n"
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
                 "- event: eventi, appuntamenti, date (metadata: {event_date, location})\n"
                 "- note: qualsiasi altra informazione rilevante (metadata: {tags})\n\n"
