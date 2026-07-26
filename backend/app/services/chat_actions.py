@@ -125,7 +125,7 @@ async def _execute_action(
             return f"Non hai eventi {period}."
 
         period = _format_period(date_from, date_to)
-        lines = [f"Ecco i tuoi eventi {period}:\n"]
+        lines = [f"📅 Ecco i tuoi eventi {period}:\n"]
         for ev in events:
             lines.append(_format_event(ev))
         return "\n".join(lines)
@@ -146,7 +146,7 @@ async def _execute_action(
             return "Non sono riuscito a creare l'evento. Verifica che Google Calendar sia connesso."
         time_str = f" alle {time}" if time else ""
         loc_str = f" a {location}" if location else ""
-        return f"Fatto! Ho creato \"{summary}\" per il {_format_date_human(date)}{time_str}{loc_str}."
+        return f"✅ Fatto! Ho creato **{summary}** per {_format_date_human(date)}{time_str}{loc_str}."
 
     elif action == "calendar_update":
         event_id = params.get("event_id")
@@ -162,7 +162,7 @@ async def _execute_action(
         )
         if result is None:
             return "Non sono riuscito a modificare l'evento."
-        return f"Fatto! Ho aggiornato l'evento \"{result.get('summary', '')}\"."
+        return f"✅ Evento **{result.get('summary', '')}** aggiornato."
 
     elif action == "calendar_delete":
         event_id = params.get("event_id")
@@ -170,14 +170,14 @@ async def _execute_action(
             return "Non ho capito quale evento eliminare."
         success = await delete_event(db, user_id, event_id)
         if success:
-            return "Fatto! Evento eliminato dal calendario."
+            return "✅ Evento eliminato dal calendario."
         return "Non sono riuscito a eliminare l'evento."
 
     return "Azione non riconosciuta."
 
 
 def _format_event(ev: dict) -> str:
-    """Format a single calendar event in natural language."""
+    """Format a single calendar event with light markdown."""
     summary = ev.get("summary", "(senza titolo)")
     start_raw = ev.get("start", "")
     location = ev.get("location")
@@ -188,19 +188,18 @@ def _format_event(ev: dict) -> str:
         try:
             from datetime import datetime
             dt = datetime.fromisoformat(start_raw)
-            time_str = f"alle {dt.strftime('%H:%M')}"
+            time_str = dt.strftime("%H:%M")
         except (ValueError, TypeError):
             time_str = ""
     else:
         time_str = "tutto il giorno"
 
-    parts = [f"  • {summary}"]
+    line = f"• **{summary}**"
     if time_str:
-        parts.append(time_str)
+        line += f" — {time_str}"
     if location:
-        parts.append(f"a {location}")
-
-    return " — ".join(parts)
+        line += f"\n  📍 {location}"
+    return line
 
 
 def _format_period(date_from: str | None, date_to: str | None) -> str:
