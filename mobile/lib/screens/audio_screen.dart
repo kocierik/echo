@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/skeleton.dart';
 import 'conversation_detail_screen.dart';
 
 class AudioScreen extends StatefulWidget {
@@ -14,6 +16,7 @@ class _AudioScreenState extends State<AudioScreen> {
   final _api = ApiService();
   List<Conversation> _conversations = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -22,12 +25,16 @@ class _AudioScreenState extends State<AudioScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final convs = await _api.getConversations();
-    setState(() {
-      _conversations = convs;
-      _loading = false;
-    });
+    setState(() { _loading = true; _error = null; });
+    try {
+      final convs = await _api.getConversations();
+      setState(() {
+        _conversations = convs;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() { _error = e.toString(); _loading = false; });
+    }
   }
 
   @override
@@ -68,27 +75,55 @@ class _AudioScreenState extends State<AudioScreen> {
             // List
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _conversations.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No conversations yet.\nStart recording with your device.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: AppColors.foregroundMuted, fontSize: 14),
+                  ? const SkeletonList(count: 4)
+                  : _error != null
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.wifi_off_rounded, color: AppColors.foregroundMuted, size: 32),
+                              const SizedBox(height: 12),
+                              Text('Connection failed', style: const TextStyle(color: AppColors.foregroundMuted, fontSize: 14)),
+                              const SizedBox(height: 12),
+                              TextButton(
+                                onPressed: _load,
+                                child: const Text('Retry', style: TextStyle(color: AppColors.accent)),
+                              ),
+                            ],
                           ),
                         )
-                      : RefreshIndicator(
-                          onRefresh: _load,
-                          color: AppColors.accent,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: _conversations.length,
-                            itemBuilder: (_, i) => _ConversationCard(
-                              conversation: _conversations[i],
-                              onTap: () => _openDetail(_conversations[i]),
+                      : _conversations.isEmpty
+                          ? const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.mic_off_rounded, color: AppColors.foregroundMuted, size: 32),
+                                  SizedBox(height: 12),
+                                  Text(
+                                    'No conversations yet',
+                                    style: TextStyle(color: AppColors.foreground, fontSize: 15, fontWeight: FontWeight.w500),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Start recording with your device\nor use the simulator',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: AppColors.foregroundMuted, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _load,
+                              color: AppColors.accent,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                itemCount: _conversations.length,
+                                itemBuilder: (_, i) => _ConversationCard(
+                                  conversation: _conversations[i],
+                                  onTap: () => _openDetail(_conversations[i]),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
             ),
           ],
         ),

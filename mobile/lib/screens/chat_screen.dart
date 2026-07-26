@@ -20,7 +20,17 @@ class _ChatScreenState extends State<ChatScreen> {
   final List<ChatMessage> _messages = [];
   String? _sessionId;
   bool _isTyping = false;
+  bool _canSend = false;
   int _msgCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final canSend = _controller.text.trim().isNotEmpty;
+      if (canSend != _canSend) setState(() => _canSend = canSend);
+    });
+  }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -198,14 +208,19 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     const SizedBox(width: 8),
                     GestureDetector(
-                      onTap: _send,
-                      child: Container(
+                      onTap: _canSend && !_isTyping ? _send : null,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
                         width: 44, height: 44,
                         decoration: BoxDecoration(
-                          color: AppColors.accent,
+                          color: _canSend ? AppColors.accent : AppColors.surface,
                           borderRadius: BorderRadius.circular(22),
                         ),
-                        child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                        child: Icon(
+                          Icons.arrow_upward_rounded,
+                          color: _canSend ? Colors.white : AppColors.foregroundMuted,
+                          size: 20,
+                        ),
                       ),
                     ),
                   ],
