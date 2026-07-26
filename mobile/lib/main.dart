@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/audio_screen.dart';
+import 'screens/voice_chat_screen.dart';
+import 'screens/integrations_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/api_service.dart';
 import 'theme/app_theme.dart';
@@ -79,9 +81,28 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  void _openChat({String? initialQuery}) {
+  // Map tab indices: 0=Home, 1=Chat, 2=Mic(special), 3=Audio
+  // The mic tab (index 2) opens the voice screen as a modal overlay
+
+  void _openChat() {
     setState(() => _currentIndex = 1);
-    // TODO: pass initialQuery to chat screen if needed
+  }
+
+  void _openVoice() {
+    HapticFeedback.heavyImpact();
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => const VoiceChatScreen(),
+        transitionsBuilder: (_, anim, __, child) {
+          return SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
   }
 
   @override
@@ -90,52 +111,129 @@ class _MainShellState extends State<MainShell> {
       body: IndexedStack(
         index: _currentIndex,
         children: [
-          HomeScreen(onAskTap: () => _openChat()),
+          HomeScreen(onAskTap: _openChat),
           const ChatScreen(),
           const AudioScreen(),
         ],
       ),
-      // Floating Ask Button
-      floatingActionButton: _currentIndex != 1
-          ? FloatingActionButton(
-              onPressed: () => _openChat(),
-              backgroundColor: AppColors.accent,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: const Icon(Icons.chat_rounded, color: Colors.white, size: 22),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      // Bottom Nav
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
         ),
-        child: NavigationBar(
-          backgroundColor: AppColors.bgDeep,
-          indicatorColor: AppColors.surface,
-          selectedIndex: _currentIndex,
-          onDestinationSelected: (i) {
-            HapticFeedback.selectionClick();
-            setState(() => _currentIndex = i);
-          },
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          height: 64,
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined, size: 22),
-              selectedIcon: Icon(Icons.home_rounded, size: 22),
-              label: 'Home',
+        child: SafeArea(
+          child: Container(
+            height: 64,
+            color: AppColors.bgDeep,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _NavItem(
+                  icon: Icons.home_outlined,
+                  activeIcon: Icons.home_rounded,
+                  label: 'Home',
+                  isActive: _currentIndex == 0,
+                  onTap: () => setState(() => _currentIndex = 0),
+                ),
+                _NavItem(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  activeIcon: Icons.chat_bubble_rounded,
+                  label: 'Chat',
+                  isActive: _currentIndex == 1,
+                  onTap: () => setState(() => _currentIndex = 1),
+                ),
+                // Center Mic Button
+                GestureDetector(
+                  onTap: _openVoice,
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.accent, Color(0xFF7B61FF)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accent.withOpacity(0.4),
+                          blurRadius: 16,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.mic_rounded, color: Colors.white, size: 26),
+                  ),
+                ),
+                _NavItem(
+                  icon: Icons.graphic_eq_rounded,
+                  activeIcon: Icons.graphic_eq_rounded,
+                  label: 'Audio',
+                  isActive: _currentIndex == 2,
+                  onTap: () => setState(() => _currentIndex = 2),
+                ),
+                _NavItem(
+                  icon: Icons.person_outline_rounded,
+                  activeIcon: Icons.person_rounded,
+                  label: 'More',
+                  isActive: false,
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (_) => const IntegrationsScreen(),
+                    ));
+                  },
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline_rounded, size: 22),
-              selectedIcon: Icon(Icons.chat_bubble_rounded, size: 22),
-              label: 'Chat',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: 56,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isActive ? activeIcon : icon,
+              size: 22,
+              color: isActive ? AppColors.foreground : AppColors.foregroundMuted,
             ),
-            NavigationDestination(
-              icon: Icon(Icons.mic_none_rounded, size: 22),
-              selectedIcon: Icon(Icons.mic_rounded, size: 22),
-              label: 'Audio',
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isActive ? AppColors.foreground : AppColors.foregroundMuted,
+                fontWeight: isActive ? FontWeight.w500 : FontWeight.normal,
+              ),
             ),
           ],
         ),
