@@ -71,8 +71,10 @@
 
         /* MAIN */
         #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
-        .panel{flex:1;overflow-y:auto;padding:2rem;display:none}
-        .panel.on{display:flex;flex-direction:column}
+        .panel{flex:1;overflow-y:auto;padding:2rem;display:none;flex-direction:column}
+        .panel.on{display:flex}
+        .detail-panel{flex:1;overflow-y:auto;padding:2rem;display:none}
+        .detail-panel.on{display:block}
 
         /* CHAT */
         #p-chat{display:flex;flex-direction:column}
@@ -130,8 +132,6 @@
         .stat-card .label{font-size:.72rem;color:var(--text-3);margin-top:.2rem;text-transform:uppercase;letter-spacing:.04em}
 
         /* DETAIL */
-        .detail-panel{flex:1;overflow-y:auto;padding:2rem;display:none}
-        .detail-panel.on{display:block}
         .back{padding:.35rem .7rem;border-radius:6px;border:1px solid var(--border);background:0;color:var(--text-2);cursor:pointer;font-size:.75rem;margin-bottom:1rem;transition:.2s}
         .back:hover{border-color:var(--accent);color:var(--text)}
         .d-title{font-size:1.2rem;font-weight:600;letter-spacing:-.02em;margin-bottom:.4rem}
@@ -213,8 +213,12 @@ function tab(t){
     });
     if(t==='chat')$('l-chat').classList.remove('hidden');
     if(t==='audio')$('l-audio').classList.remove('hidden');
-    // Main panels: hide all, show only the selected one
-    document.querySelectorAll('.panel,.detail-panel').forEach(x=>x.classList.remove('on'));
+    // Main panels: hide ALL including p-chat, then show only selected
+    $('p-chat').classList.remove('on');
+    $('p-detail').classList.remove('on');
+    $('p-entities').classList.remove('on');
+    $('p-digest').classList.remove('on');
+    $('p-stats').classList.remove('on');
     if(t==='chat')$('p-chat').classList.add('on');
     if(t==='audio')$('p-detail').classList.add('on');
     if(t==='entities')loadEntities();
