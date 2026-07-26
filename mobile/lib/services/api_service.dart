@@ -202,6 +202,22 @@ class ApiService {
     return ConversationDetail.fromJson(jsonDecode(response.body));
   }
 
+  Future<Map<String, dynamic>?> getStats() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/stats'), headers: headers);
+    if (response.statusCode != 200) return null;
+    return jsonDecode(response.body);
+  }
+
+  Future<Map<String, dynamic>?> getDigest(String date) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/digest/$date'), headers: headers);
+    if (response.statusCode != 200) return null;
+    return jsonDecode(response.body);
+  }
+
   /// Upload an audio segment to the backend (used by BLE relay)
   Future<bool> uploadSegment({
     required List<int> audioData,
