@@ -17,6 +17,7 @@ build/
 *.swp
 *.swo
 
+.kiro
 # OS
 .DS_Store
 Thumbs.db
@@ -35,6 +36,34 @@ firmware/.vscode/
 htmlcov/
 .coverage
 
-
 # Firmware secrets
 firmware/src/secrets.h
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/.metadata
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/local.properties
+mobile/android/key.properties
+mobile/android/*.jks
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/ephemeral/
+mobile/ios/Runner.xcworkspace/xcshareddata/
+mobile/ios/Flutter/App.framework
+mobile/linux/flutter/
+mobile/macos/Flutter/
+mobile/windows/flutter/
+mobile/.fvm/
+mobile/pubspec.lock
+*.g.dart
+*.freezed.dart
