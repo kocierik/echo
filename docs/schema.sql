@@ -1,5 +1,6 @@
--- Second Brain AI Wearable — MVP Database Schema
+-- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
+-- Includes all migrations (001-004)
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -11,16 +12,24 @@ CREATE TABLE segments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recorded_at TIMESTAMPTZ NOT NULL,           -- device-reported timestamp
-    duration_ms INTEGER NOT NULL,               -- audio duration in milliseconds
-    audio_path TEXT NOT NULL,                    -- path to stored ADPCM file
+    recorded_at TIMESTAMPTZ NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    audio_path TEXT NOT NULL,
     audio_size_bytes INTEGER NOT NULL,
-    silence_before_ms INTEGER,                  -- silence gap before this segment (for timeout grouping)
-    transcription_status TEXT NOT NULL DEFAULT 'pending'  -- pending | processing | completed | failed
+    silence_before_ms INTEGER,
+    transcription_status TEXT NOT NULL DEFAULT 'pending',
+    conversation_id UUID,
+    -- Migration 002: idempotent ingest
+    audio_hash VARCHAR(64),
+    -- Migration 003: speaker detection
+    audio_energy INTEGER,
+    speaker VARCHAR(10) DEFAULT 'unknown'
 );
 
 CREATE INDEX idx_segments_user_recorded ON segments (user_id, recorded_at);
 CREATE INDEX idx_segments_status ON segments (transcription_status) WHERE transcription_status != 'completed';
+CREATE INDEX idx_segments_conversation ON segments (conversation_id);
+CREATE UNIQUE INDEX idx_segments_audio_hash ON segments (audio_hash);
 
 -- ============================================================
 -- TRANSCRIPTIONS: STT output for each segment
@@ -30,10 +39,10 @@ CREATE TABLE transcriptions (
     segment_id UUID NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     language TEXT NOT NULL DEFAULT 'it',
-    confidence REAL,                            -- overall confidence score from STT
+    confidence REAL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    stt_provider TEXT NOT NULL,                 -- e.g. 'openai_whisper'
-    stt_model TEXT NOT NULL                     -- e.g. 'whisper-1'
+    stt_provider TEXT NOT NULL,
+    stt_model TEXT NOT NULL
 );
 
 CREATE INDEX idx_transcriptions_segment ON transcriptions (segment_id);
@@ -44,19 +53,19 @@ CREATE INDEX idx_transcriptions_segment ON transcriptions (segment_id);
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
-    title TEXT,                                  -- LLM-generated title
-    summary TEXT,                                -- LLM-generated summary
+    title TEXT,
+    summary TEXT,
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    analysis_status TEXT NOT NULL DEFAULT 'pending'  -- pending | completed
+    analysis_status TEXT NOT NULL DEFAULT 'pending'
 );
 
 CREATE INDEX idx_conversations_user_time ON conversations (user_id, started_at DESC);
 
--- Link segments to conversations (a segment belongs to exactly one conversation)
-ALTER TABLE segments ADD COLUMN conversation_id UUID REFERENCES conversations(id);
-CREATE INDEX idx_segments_conversation ON segments (conversation_id);
+-- FK from segments to conversations
+ALTER TABLE segments ADD CONSTRAINT fk_segments_conversation
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id);
 
 -- ============================================================
 -- CHUNKS: fixed-size text chunks for RAG embedding
@@ -66,8 +75,8 @@ CREATE TABLE chunks (
     conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
     token_count INTEGER NOT NULL,
-    chunk_index INTEGER NOT NULL,               -- order within the conversation
-    embedding vector(1536),                     -- OpenAI text-embedding-3-small
+    chunk_index INTEGER NOT NULL,
+    embedding vector(1536),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -80,34 +89,21 @@ CREATE INDEX idx_chunks_embedding ON chunks USING ivfflat (embedding vector_cosi
 CREATE TABLE entities (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
-    entity_type TEXT NOT NULL,                  -- 'person' | 'task' | 'idea' | 'event' | 'note'
-    name TEXT NOT NULL,                         -- canonical name (e.g. "Marco", "Comprare latte")
-    content TEXT,                               -- additional detail / description
-    metadata JSONB NOT NULL DEFAULT '{}',       -- type-specific fields (see below)
-    embedding vector(1536),                     -- semantic embedding of name + content
+    entity_type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    content TEXT,
+    metadata JSONB NOT NULL DEFAULT '{}',
+    embedding vector(1536),
     source_transcription_id UUID REFERENCES transcriptions(id) ON DELETE SET NULL,
     conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- metadata examples by type:
--- person:  {"role": "collega", "notes": "lavora in marketing"}
--- task:    {"done": false, "due_date": "2026-08-01", "priority": "high"}
--- idea:    {"tags": ["wearable", "AI"]}
--- event:   {"event_date": "2026-09-15", "location": "Milano"}
--- note:    {"tags": ["generico"]}
-
 CREATE INDEX idx_entities_user_type ON entities (user_id, entity_type);
 CREATE INDEX idx_entities_name ON entities (user_id, name);
 CREATE INDEX idx_entities_conversation ON entities (conversation_id);
 CREATE INDEX idx_entities_embedding ON entities USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
-
--- ============================================================
--- AUDIO RETENTION: cleanup policy (30 days)
--- ============================================================
--- A scheduled job deletes segments.audio_path files and NULLs the column
--- for segments older than 30 days. The transcription and entities remain.
 
 -- ============================================================
 -- DIGESTS: daily summaries generated automatically
@@ -147,10 +143,43 @@ CREATE INDEX idx_chat_sessions_user ON chat_sessions (user_id, updated_at DESC);
 CREATE TABLE api_keys (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
-    key_hash TEXT NOT NULL,                     -- SHA-256 of the API key
+    key_hash TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT 'default',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_used_at TIMESTAMPTZ
 );
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys (key_hash);
+
+-- ============================================================
+-- QUERY FEEDBACK: user ratings on RAG answers (Migration 003)
+-- ============================================================
+CREATE TABLE query_feedback (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    session_id UUID NOT NULL,
+    message_index INTEGER NOT NULL,
+    rating VARCHAR(10) NOT NULL,
+    comment TEXT,
+    source_chunk_ids JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_feedback_user ON query_feedback (user_id, created_at);
+CREATE INDEX idx_feedback_chunks ON query_feedback USING gin (source_chunk_ids);
+
+-- ============================================================
+-- INTEGRATIONS: MCP integration store (Migration 004)
+-- ============================================================
+CREATE TABLE integrations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    provider VARCHAR(50) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    config JSONB NOT NULL DEFAULT '{}',
+    entity_types TEXT[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_integrations_user ON integrations (user_id);
