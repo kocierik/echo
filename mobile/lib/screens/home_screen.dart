@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/skeleton.dart';
+import 'integrations_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onAskTap;
@@ -72,7 +73,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 10),
                   const Text('Echo', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.foreground, letterSpacing: -0.5)),
                   const Spacer(),
-                  // Live indicator (placeholder — will animate when device is connected)
+                  IconButton(
+                    icon: const Icon(Icons.extension_rounded, size: 20, color: AppColors.foregroundMuted),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntegrationsScreen())),
+                    tooltip: 'Integrations',
+                  ),
+                  // Live indicator
                   _LiveIndicator(),
                 ],
               ),
