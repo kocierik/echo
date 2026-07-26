@@ -184,6 +184,38 @@ class ApiService {
     if (response.statusCode != 200) return null;
     return ConversationDetail.fromJson(jsonDecode(response.body));
   }
+
+  /// Upload an audio segment to the backend (used by BLE relay)
+  Future<bool> uploadSegment({
+    required List<int> audioData,
+    required String recordedAt,
+    required int durationMs,
+    int? silenceBeforeMs,
+    int? audioEnergy,
+  }) async {
+    final server = await _serverUrl;
+    final key = await _secureStorage.read(key: _apiKeyKey) ?? '';
+
+    final request = http.MultipartRequest('POST', Uri.parse('$server/api/segments'));
+    request.headers['X-API-Key'] = key;
+    request.headers['X-Recorded-At'] = recordedAt;
+    request.headers['X-Duration-Ms'] = durationMs.toString();
+    if (silenceBeforeMs != null) {
+      request.headers['X-Silence-Before-Ms'] = silenceBeforeMs.toString();
+    }
+    if (audioEnergy != null) {
+      request.headers['X-Audio-Energy'] = audioEnergy.toString();
+    }
+
+    request.files.add(http.MultipartFile.fromBytes(
+      'audio',
+      audioData,
+      filename: 'segment.adpcm',
+    ));
+
+    final response = await request.send();
+    return response.statusCode == 201;
+  }
 }
 
 
