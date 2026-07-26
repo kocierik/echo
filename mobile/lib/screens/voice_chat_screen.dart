@@ -16,9 +16,11 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     with SingleTickerProviderStateMixin {
   final _api = ApiService();
   final _speech = SpeechService();
+  final _textController = TextEditingController();
 
   bool _isListening = false;
   bool _isProcessing = false;
+  bool _speechAvailable = true;
   String _transcript = '';
   String _response = '';
   String? _sessionId;
@@ -31,13 +33,19 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
-    _speech.init();
+    _initSpeech();
+  }
+
+  Future<void> _initSpeech() async {
+    await _speech.init();
+    setState(() => _speechAvailable = _speech.isAvailable);
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
     _speech.dispose();
+    _textController.dispose();
     super.dispose();
   }
 
@@ -71,9 +79,24 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
       return;
     }
 
-    // Send to chat API
+    await _processQuery(_transcript.trim());
+  }
+
+  Future<void> _sendText() async {
+    final text = _textController.text.trim();
+    if (text.isEmpty) return;
+    _textController.clear();
+    setState(() {
+      _transcript = text;
+      _response = '';
+      _isProcessing = true;
+    });
+    await _processQuery(text);
+  }
+
+  Future<void> _processQuery(String text) async {
     try {
-      final response = await _api.query(_transcript.trim(), sessionId: _sessionId);
+      final response = await _api.query(text, sessionId: _sessionId);
       _sessionId = response.sessionId;
       setState(() {
         _response = response.answer;
@@ -171,67 +194,96 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
               ),
             ),
 
-            // Mic button
+            // Mic button or text input fallback
             Padding(
               padding: const EdgeInsets.only(bottom: 48),
-              child: GestureDetector(
-                onLongPressStart: (_) => _startListening(),
-                onLongPressEnd: (_) => _stopListening(),
-                onTap: () {
-                  // Tap toggles: start or stop
-                  if (_isListening) {
-                    _stopListening();
-                  } else {
-                    _startListening();
-                    // Auto-stop after 15s
-                    Future.delayed(const Duration(seconds: 15), () {
-                      if (_isListening) _stopListening();
-                    });
-                  }
-                },
-                child: AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (context, child) {
-                    final scale = _isListening ? 1.0 + (_pulseController.value * 0.15) : 1.0;
-                    return Transform.scale(
-                      scale: scale,
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: _isListening
-                                ? [AppColors.error, const Color(0xFFFF6B6B)]
-                                : [AppColors.accent, const Color(0xFF7B61FF)],
-                          ),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: (_isListening ? AppColors.error : AppColors.accent).withOpacity(0.4),
-                              blurRadius: _isListening ? 24 : 16,
-                              offset: const Offset(0, 4),
+              child: _speechAvailable
+                  ? GestureDetector(
+                      onLongPressStart: (_) => _startListening(),
+                      onLongPressEnd: (_) => _stopListening(),
+                      onTap: () {
+                        if (_isListening) {
+                          _stopListening();
+                        } else {
+                          _startListening();
+                          Future.delayed(const Duration(seconds: 15), () {
+                            if (_isListening) _stopListening();
+                          });
+                        }
+                      },
+                      child: AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) {
+                          final scale = _isListening ? 1.0 + (_pulseController.value * 0.15) : 1.0;
+                          return Transform.scale(
+                            scale: scale,
+                            child: Container(
+                              width: 80,
+                              height: 80,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: _isListening
+                                      ? [AppColors.error, const Color(0xFFFF6B6B)]
+                                      : [AppColors.accent, const Color(0xFF7B61FF)],
+                                ),
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_isListening ? AppColors.error : AppColors.accent).withOpacity(0.4),
+                                    blurRadius: _isListening ? 24 : 16,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                _isListening ? Icons.stop_rounded : Icons.mic_rounded,
+                                color: Colors.white,
+                                size: 32,
+                              ),
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-                          color: Colors.white,
-                          size: 32,
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-              ),
+                    )
+                  : // Text input fallback for unsupported platforms
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _textController,
+                              onSubmitted: (_) => _sendText(),
+                              style: const TextStyle(fontSize: 15),
+                              decoration: const InputDecoration(hintText: 'Type your request...'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: _sendText,
+                            child: Container(
+                              width: 44, height: 44,
+                              decoration: BoxDecoration(
+                                color: AppColors.accent,
+                                borderRadius: BorderRadius.circular(22),
+                              ),
+                              child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
             ),
 
             // Hint
             Padding(
               padding: const EdgeInsets.only(bottom: 24),
               child: Text(
-                _isListening ? 'Listening... tap to stop' : 'Tap or hold to speak',
+                _speechAvailable
+                    ? (_isListening ? 'Listening... tap to stop' : 'Tap or hold to speak')
+                    : 'Speech not available on this platform — use text input',
                 style: const TextStyle(color: AppColors.foregroundMuted, fontSize: 12),
               ),
             ),
