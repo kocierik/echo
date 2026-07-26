@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/audio_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -59,14 +60,10 @@ class _AppRouterState extends State<AppRouter> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     if (!_configured) {
-      return OnboardingScreen(onComplete: () {
-        setState(() => _configured = true);
-      });
+      return OnboardingScreen(onComplete: () => setState(() => _configured = true));
     }
     return const MainShell();
   }
@@ -82,18 +79,34 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  final _screens = const [
-    ChatScreen(),
-    AudioScreen(),
-  ];
+  void _openChat({String? initialQuery}) {
+    setState(() => _currentIndex = 1);
+    // TODO: pass initialQuery to chat screen if needed
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: [
+          HomeScreen(onAskTap: () => _openChat()),
+          const ChatScreen(),
+          const AudioScreen(),
+        ],
       ),
+      // Floating Ask Button
+      floatingActionButton: _currentIndex != 1
+          ? FloatingActionButton(
+              onPressed: () => _openChat(),
+              backgroundColor: AppColors.accent,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: const Icon(Icons.chat_rounded, color: Colors.white, size: 22),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // Bottom Nav
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
@@ -109,6 +122,11 @@ class _MainShellState extends State<MainShell> {
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           height: 64,
           destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.home_outlined, size: 22),
+              selectedIcon: Icon(Icons.home_rounded, size: 22),
+              label: 'Home',
+            ),
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline_rounded, size: 22),
               selectedIcon: Icon(Icons.chat_bubble_rounded, size: 22),
