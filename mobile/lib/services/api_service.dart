@@ -58,14 +58,25 @@ class ApiService {
   Future<bool> isConfigured() async {
     final prefs = await SharedPreferences.getInstance();
     final server = prefs.getString(_serverKey);
-    final key = await _secureStorage.read(key: _apiKeyKey);
+    String? key;
+    try {
+      key = await _secureStorage.read(key: _apiKeyKey);
+    } catch (_) {
+      // Fallback: keyring not available (Linux without gnome-keyring)
+      key = prefs.getString(_apiKeyKey);
+    }
     return server != null && server.isNotEmpty && key != null && key.isNotEmpty;
   }
 
   Future<void> configure(String serverUrl, String apiKey) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_serverKey, serverUrl.trimRight());
-    await _secureStorage.write(key: _apiKeyKey, value: apiKey.trim());
+    try {
+      await _secureStorage.write(key: _apiKeyKey, value: apiKey.trim());
+    } catch (_) {
+      // Fallback: store in shared_preferences (less secure, but works on Linux)
+      await prefs.setString(_apiKeyKey, apiKey.trim());
+    }
   }
 
   Future<String> get _serverUrl async {
@@ -74,9 +85,15 @@ class ApiService {
   }
 
   Future<Map<String, String>> get _headers async {
-    final key = await _secureStorage.read(key: _apiKeyKey) ?? '';
+    String? key;
+    try {
+      key = await _secureStorage.read(key: _apiKeyKey);
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      key = prefs.getString(_apiKeyKey);
+    }
     return {
-      'X-API-Key': key,
+      'X-API-Key': key ?? '',
       'Content-Type': 'application/json',
     };
   }
@@ -194,10 +211,16 @@ class ApiService {
     int? audioEnergy,
   }) async {
     final server = await _serverUrl;
-    final key = await _secureStorage.read(key: _apiKeyKey) ?? '';
+    String? key;
+    try {
+      key = await _secureStorage.read(key: _apiKeyKey);
+    } catch (_) {
+      final prefs = await SharedPreferences.getInstance();
+      key = prefs.getString(_apiKeyKey);
+    }
 
     final request = http.MultipartRequest('POST', Uri.parse('$server/api/segments'));
-    request.headers['X-API-Key'] = key;
+    request.headers['X-API-Key'] = key ?? '';
     request.headers['X-Recorded-At'] = recordedAt;
     request.headers['X-Duration-Ms'] = durationMs.toString();
     if (silenceBeforeMs != null) {
