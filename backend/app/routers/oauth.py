@@ -23,6 +23,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_SCOPES = "https://www.googleapis.com/auth/calendar.events"
 
 
+@router.get("/google_calendar/authorize")
 @router.get("/google/authorize")
 async def google_authorize(user_id: uuid.UUID = Depends(get_current_user_id)):
     """Generate Google OAuth2 authorization URL.

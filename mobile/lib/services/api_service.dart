@@ -286,16 +286,30 @@ class ApiService {
     await http.patch(Uri.parse('$server/api/integrations/$id'), headers: headers, body: jsonEncode(body));
   }
 
-  Future<String?> getOAuthUrl(String provider) async {
+  Future<String> getOAuthUrl(String provider) async {
     final server = await _serverUrl;
     final headers = await _headers;
     final response = await http.get(
       Uri.parse('$server/api/integrations/oauth/$provider/authorize'),
       headers: headers,
     );
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) {
+      var message = 'OAuth request failed (${response.statusCode})';
+      try {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic> && data['detail'] is String) {
+          message = data['detail'];
+        }
+      } catch (_) {}
+      throw Exception(message);
+    }
+
     final data = jsonDecode(response.body);
-    return data['authorize_url'];
+    final authorizeUrl = data['authorize_url'];
+    if (authorizeUrl is! String || authorizeUrl.isEmpty) {
+      throw Exception('OAuth authorization URL missing');
+    }
+    return authorizeUrl;
   }
 
   // --- Rules ---
