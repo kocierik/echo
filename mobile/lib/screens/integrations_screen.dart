@@ -16,6 +16,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   List<Map<String, dynamic>> _providers = [];
   List<Map<String, dynamic>> _userIntegrations = [];
   bool _loading = true;
+  String? _pendingProviderId;
 
   @override
   void initState() {
@@ -48,31 +49,43 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
   }
 
   Future<void> _toggle(Map<String, dynamic> provider) async {
+    final providerId = provider['id'] as String;
+    if (_pendingProviderId != null) return;
+
     HapticFeedback.mediumImpact();
-    final providerId = provider['id'];
     final authType = provider['auth_type'] ?? 'manual';
     final integrationId = _getIntegrationId(providerId);
 
-    if (integrationId != null) {
-      // Toggle existing
-      final current = _isEnabled(providerId);
-      await _api.updateIntegration(integrationId, enabled: !current);
-    } else if (authType == 'oauth2') {
-      // OAuth flow: open browser for authorization
-      final url = await _api.getOAuthUrl(providerId);
-      if (url != null) {
+    setState(() => _pendingProviderId = providerId);
+    try {
+      if (integrationId != null) {
+        // Toggle existing
+        final current = _isEnabled(providerId);
+        await _api.updateIntegration(integrationId, enabled: !current);
+      } else if (authType == 'oauth2') {
+        // OAuth flow: open browser for authorization
+        final url = await _api.getOAuthUrl(providerId);
         await _launchUrl(url);
         // Poll for connection (user completes in browser)
-        _pollForConnection(providerId);
+        await _pollForConnection(providerId);
+      } else {
+        // Manual config: show dialog
+        final config = await _showConfigDialog(provider);
+        if (config != null) {
+          await _api.createIntegration(providerId, config);
+        }
       }
-    } else {
-      // Manual config: show dialog
-      final config = await _showConfigDialog(provider);
-      if (config != null) {
-        await _api.createIntegration(providerId, config);
+    } catch (error) {
+      if (mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
       }
+    } finally {
+      await _load();
+      if (mounted) setState(() => _pendingProviderId = null);
     }
-    _load();
   }
 
   Future<void> _launchUrl(String url) async {
@@ -94,10 +107,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
     }
   }
 
-  void _pollForConnection(String providerId) {
+  Future<void> _pollForConnection(String providerId) async {
     // Check every 2s for up to 60s if the integration was created via OAuth callback
     int attempts = 0;
-    Future.doWhile(() async {
+    await Future.doWhile(() async {
       await Future.delayed(const Duration(seconds: 2));
       attempts++;
       await _load();
@@ -191,6 +204,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
                 itemBuilder: (_, i) => _ProviderCard(
                   provider: _providers[i],
                   enabled: _isEnabled(_providers[i]['id']),
+                  pending: _pendingProviderId == _providers[i]['id'],
                   icon: _getIcon(_providers[i]['icon'] ?? ''),
                   onTap: () => _toggle(_providers[i]),
                 ),
@@ -203,10 +217,11 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> {
 class _ProviderCard extends StatelessWidget {
   final Map<String, dynamic> provider;
   final bool enabled;
+  final bool pending;
   final IconData icon;
   final VoidCallback onTap;
 
-  const _ProviderCard({required this.provider, required this.enabled, required this.icon, required this.onTap});
+  const _ProviderCard({required this.provider, required this.enabled, required this.pending, required this.icon, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -242,15 +257,22 @@ class _ProviderCard extends StatelessWidget {
               ),
             ),
             Container(
+              constraints: const BoxConstraints(minWidth: 42, minHeight: 24),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: enabled ? AppColors.success.withOpacity(0.1) : AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                enabled ? 'ON' : 'OFF',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: enabled ? AppColors.success : AppColors.foregroundMuted),
-              ),
+              child: pending
+                  ? const SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      enabled ? 'ON' : 'OFF',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: enabled ? AppColors.success : AppColors.foregroundMuted),
+                    ),
             ),
           ],
         ),
