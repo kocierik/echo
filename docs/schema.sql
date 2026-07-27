@@ -183,3 +183,24 @@ CREATE TABLE integrations (
 );
 
 CREATE INDEX idx_integrations_user ON integrations (user_id);
+
+
+-- ============================================================
+-- RULES: user-defined automation rules (Migration 005)
+-- ============================================================
+CREATE TABLE rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    conditions JSONB NOT NULL DEFAULT '{}',
+    actions JSONB NOT NULL DEFAULT '[]',
+    trigger_count INTEGER NOT NULL DEFAULT 0,
+    last_triggered_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_rules_user ON rules (user_id);
+CREATE INDEX idx_rules_enabled ON rules (user_id, enabled) WHERE enabled = true;

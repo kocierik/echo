@@ -281,6 +281,11 @@ async def process_analysis(redis_client: redis.Redis):
                 for entity in new_entities:
                     await trigger_integrations(db, user_id, entity)
 
+                # --- Evaluate user rules for new entities ---
+                from app.services.rules_engine import evaluate_rules
+                for entity in new_entities:
+                    await evaluate_rules(db, user_id, entity)
+
                 # --- Incremental chunking & embedding ---
                 # Only embed the NEW segment's text as an additional chunk,
                 # instead of re-chunking the entire conversation every time.

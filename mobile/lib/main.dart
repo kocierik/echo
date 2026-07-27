@@ -5,6 +5,7 @@ import 'screens/chat_screen.dart';
 import 'screens/audio_screen.dart';
 import 'screens/voice_chat_screen.dart';
 import 'screens/integrations_screen.dart';
+import 'screens/rules_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/api_service.dart';
 import 'theme/app_theme.dart';
@@ -179,9 +180,41 @@ class _MainShellState extends State<MainShell> {
                   label: 'More',
                   isActive: false,
                   onTap: () {
-                    Navigator.push(context, MaterialPageRoute(
-                      builder: (_) => const IntegrationsScreen(),
-                    ));
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: AppColors.bgElevated,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (_) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _MoreItem(
+                                icon: Icons.auto_awesome_rounded,
+                                label: 'Automation Rules',
+                                subtitle: 'IF this THEN that',
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => const RulesScreen()));
+                                },
+                              ),
+                              _MoreItem(
+                                icon: Icons.extension_rounded,
+                                label: 'Integrations',
+                                subtitle: 'Connect your apps',
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => const IntegrationsScreen()));
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
                   },
                 ),
               ],
@@ -235,6 +268,52 @@ class _NavItem extends StatelessWidget {
                 fontWeight: isActive ? FontWeight.w500 : FontWeight.normal,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _MoreItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _MoreItem({required this.icon, required this.label, required this.subtitle, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40, height: 40,
+              decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+              child: Icon(icon, size: 20, color: AppColors.accent),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.foreground)),
+                  Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: AppColors.foregroundMuted),
           ],
         ),
       ),

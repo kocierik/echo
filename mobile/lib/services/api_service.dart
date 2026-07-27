@@ -298,6 +298,53 @@ class ApiService {
     return data['authorize_url'];
   }
 
+  // --- Rules ---
+
+  Future<List<Map<String, dynamic>>> getRules() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/rules'), headers: headers);
+    if (response.statusCode != 200) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+  }
+
+  Future<List<Map<String, dynamic>>> getRuleTemplates() async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(Uri.parse('$server/api/rules/templates/examples'), headers: headers);
+    if (response.statusCode != 200) return [];
+    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+  }
+
+  Future<Map<String, dynamic>?> createRule(Map<String, dynamic> rule) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.post(
+      Uri.parse('$server/api/rules'),
+      headers: headers,
+      body: jsonEncode(rule),
+    );
+    if (response.statusCode != 201) return null;
+    return jsonDecode(response.body);
+  }
+
+  Future<void> updateRule(String id, {bool? enabled, String? name, Map<String, dynamic>? conditions, List? actions}) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final body = <String, dynamic>{};
+    if (enabled != null) body['enabled'] = enabled;
+    if (name != null) body['name'] = name;
+    if (conditions != null) body['conditions'] = conditions;
+    if (actions != null) body['actions'] = actions;
+    await http.patch(Uri.parse('$server/api/rules/$id'), headers: headers, body: jsonEncode(body));
+  }
+
+  Future<void> deleteRule(String id) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    await http.delete(Uri.parse('$server/api/rules/$id'), headers: headers);
+  }
+
   /// Upload an audio segment to the backend (used by BLE relay)
   Future<bool> uploadSegment({
     required List<int> audioData,
