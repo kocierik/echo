@@ -1,3 +1,39 @@
+"""Query feedback API: rate RAG responses."""
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.auth import get_current_user_id
+from app.core.database import get_db
+from app.models.query_feedback import QueryFeedback
+
+router = APIRouter(prefix="/query/feedback", tags=["feedback"])
+
+
+class FeedbackRequest(BaseModel):
+    session_id: str
+    message_index: int
+    rating: str  # "positive" | "negative"
+    comment: str | None = None
+    source_chunk_ids: list[str] = []
+
+
+@router.post("", status_code=201)
+async def submit_feedback(
+    request: FeedbackRequest,
+    user_id = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    fb = QueryFeedback(
+        user_id=user_id,
+        session_id=request.session_id,
+        message_index=request.message_index,
+        rating=request.rating,
+        comment=request.comment,
+        source_chunk_ids=request.source_chunk_ids,
+    )
+    db.add(fb)
+    await db.flush()
+    return {"id": str(fb.id)}
 """Query feedback API: rate RAG responses to improve future results."""
 
 import uuid

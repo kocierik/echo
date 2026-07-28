@@ -1,3 +1,89 @@
+% BLE audio relay — Specifica di design (2026-07-28)
+
+Sommario
+-------
+Questa specifica descrive l'architettura, i protocolli e le scelte tecniche per il "BLE audio relay": un gateway che riceve pacchetti audio via BLE da dispositivi embeded, li ricostruisce, effettua buffering/jitter smoothing e li inoltra a un endpoint locale o remoto.
+
+Architettura ad alto livello
+---------------------------
+- Ruoli:
+  - Endpoint device: cattura audio, codifica (ADPCM), frammenta e invia via BLE.
+  - Relay/Gateway: centralizza più connessioni BLE, mantiene buffer per ciascuna sessione, applica jitter buffering e inoltra stream (via websocket/HTTP/gRPC) al backend.
+  - Backend (opzionale): riceve stream/frames, esegue trascrizione/analisi.
+
+Formati e protocolli
+--------------------
+- Audio codec: ADPCM (già usato nel repo) come payload primario.
+- Framing BLE: ogni frame contiene header minimale:
+  - session_id (32 bit)
+  - sequence_number (32 bit)
+  - timestamp (64 bit, ms unix)
+  - flags (8 bit: e.g., start/end, keyframe)
+  - payload_length (16 bit)
+  - payload (ADPCM bytes)
+
+- Rationing/frammentazione: BLE ATT MTU limita payload; i frame possono essere suddivisi su più pacchetti con un campo fragment_id e total_fragments.
+
+Buffering, latenza e jitter
+--------------------------
+- Jitter buffer per sessione con dimensione configurabile (p.es. 50–250 ms). Modalità adattiva: se throughput basso aumentare buffering, se latenza critica diminuirlo.
+- Politica di drop: oldest-first per evitare ritardi eccessivi; segnala al backend eventi di perdita.
+
+Gestione connessioni e resilienza
+--------------------------------
+- Riconnessioni: quando un device si riattacca, usare `session_id` + `sequence_number` per ricostruire lo stato. Offrire finestra di ricomposizione (p.es. 5 secondi) per frame persi.
+- Acknowledgement: opzionale ack a livello di frame per dati critici; per risparmiare energia usare NACK su lacune rilevate.
+
+Inoltro e API tra relay e backend
+---------------------------------
+- Transport: WebSocket con frammentazione di frame, o gRPC streaming per reti affidabili. Protocollo: incapsulare gli stessi campi header + payload.
+- Endpoint REST per controllo sessione: start/stop, health, metrics.
+
+Memoria e ottimizzazioni (PSRAM)
+--------------------------------
+- Allocazione buffer circolare in PSRAM per sessione. Limite per sessione configurabile (p.es. 64–256 KB).
+- Evitare copie inutili: zero-copy se possibile tra BLE stack e buffer di inoltro.
+
+Considerazioni energetiche
+-------------------------
+- Minimizzare wake-ups: batch degli invii verso relay quando possibile.
+- Modalità low-power: device può inviare solo frame chiave e delegare audio continui al relay se disponibile.
+
+Test e validazione
+-------------------
+- Test unitari per frammentazione/ricostruzione.
+- Test integrati con `simulator/adpcm_encode.py` per generare carichi realistici.
+- Misure: latenza P50/P90, percentuale di frame ricostruiti correttamente, uso memoria per sessione.
+
+Metriche e observability
+------------------------
+- Counters: frames_received, frames_dropped, sessions_active, retransmits
+- Histogram: latency_ms
+- Traces: session lifecycle (start/connect/disconnect/recover)
+
+Interoperabilità e future estensioni
+----------------------------------
+- Supportare altri codec (Opus) in future iterazioni: negoziazione codec in header di sessione.
+- Persistenza temporanea su disco per replay su reconnect (opzionale)
+
+Esempio di flusso (semplice)
+---------------------------
+1. Device invia frame 1..N via BLE con `session_id` S.
+2. Relay riceve, ricompone frammenti, appende a jitter buffer.
+3. Client consumer pull/stream dal relay via WebSocket; relay manda i frame ricostruiti.
+4. Backend elabora (opzionale) e risponde con ACK/command.
+
+Decisioni aperte / trade-offs
+-----------------------------
+- Ack vs no-ack: ack aumenta robustezza ma anche latenza e consumo.
+- Buffering dimensione fissa vs adattiva: adattiva migliora esperienza ma è più complessa.
+
+Checklist di consegna per prototipo
+----------------------------------
+- [ ] Implementare header/frame parser
+- [ ] Jitter buffer per sessione
+- [ ] Forwarder WebSocket streaming
+- [ ] Test con simulator e misure di latenza
 # BLE Audio Relay Design
 
 ## Goal

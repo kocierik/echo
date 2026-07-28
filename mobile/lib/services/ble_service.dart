@@ -11,6 +11,63 @@ class EchoBleUuids {
   static const controlCharUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
 }
 
+class EchoBleProtocol {
+  static const int frameSegmentStart = 0x01;
+  static const int frameSegmentMetadata = 0x02;
+  static const int frameSegmentData = 0x03;
+  static const int frameReady = 0x10;
+  static const int frameAckWindow = 0x11;
+  static const int frameRestartSegment = 0x12;
+  static const int frameUploadOk = 0x13;
+  static const int frameSetTime = 0x14;
+  static const int frameDeviceStatus = 0x20;
+  static const int protocolVersion = 1;
+  static const int segmentStartSize = 20;
+  static const int segmentMetadataSize = 19;
+  static const int segmentDataHeaderSize = 7;
+  static const int ackWindowSize = 7;
+  static const int segmentCommandSize = 5;
+  static const int readySize = 1;
+  static const int setTimeSize = 11;
+  static const int deviceStatusSize = 8;
+
+  static int readU16(Uint8List data, int offset) {
+    return data[offset] | (data[offset + 1] << 8);
+  }
+
+  static int readU32(Uint8List data, int offset) {
+    return data[offset] |
+        (data[offset + 1] << 8) |
+        (data[offset + 2] << 16) |
+        (data[offset + 3] << 24);
+  }
+
+  static int readU64(Uint8List data, int offset) {
+    var value = 0;
+    for (var i = 0; i < 8; i++) {
+      value |= data[offset + i] << (8 * i);
+    }
+    return value;
+  }
+
+  static Uint8List buildAckWindow(int segmentId, int highestSequence) {
+    final bytes = Uint8List(ackWindowSize);
+    final view = ByteData.sublistView(bytes);
+    view.setUint8(0, frameAckWindow);
+    view.setUint32(1, segmentId, Endian.little);
+    view.setUint16(5, highestSequence, Endian.little);
+    return bytes;
+  }
+
+  static Uint8List buildUploadOk(int segmentId) {
+    final bytes = Uint8List(segmentCommandSize);
+    final view = ByteData.sublistView(bytes);
+    view.setUint8(0, frameUploadOk);
+    view.setUint32(1, segmentId, Endian.little);
+    return bytes;
+  }
+}
+
 enum BleConnectionState { disconnected, scanning, connecting, connected }
 
 /// BLE relay service: receives audio from device via BLE, forwards to backend via HTTP.
@@ -33,6 +90,9 @@ class BleService {
   // Segment reassembly buffer
   final List<int> _segmentBuffer = [];
   int _expectedLength = 0;
+  int _segmentId = 0;
+  int _totalChunks = 0;
+  int _highestSequence = -1;
   DateTime? _segmentStartTime;
 
   // State
@@ -59,17 +119,30 @@ class BleService {
       return;
     }
 
-    await FlutterBluePlus.startScan(
-      withServices: [Guid(EchoBleUuids.serviceUuid)],
-      timeout: const Duration(seconds: 10),
-    );
+    // Start an unfiltered scan to capture all advertisements — some firmwares
+    // put the service UUID only in the scan response, not the primary adv packet.
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
 
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       for (final r in results) {
-        if (r.advertisementData.serviceUuids.contains(Guid(EchoBleUuids.serviceUuid))) {
+        final deviceName = r.device.platformName;
+        final advertisedName = r.advertisementData.advName;
+        final advSvc = r.advertisementData.serviceUuids
+            .map((g) => g.toString().toLowerCase())
+            .toList();
+        final addr = r.device.remoteId.toString();
+        // Debug log to aid troubleshooting
+        print('[BLE] scan result: name="$deviceName" advName="$advertisedName" addr=$addr advSvcs=$advSvc');
+
+        // Match by advertised service UUID OR by device name containing "Echo"
+        final serviceUuidLower = EchoBleUuids.serviceUuid.toLowerCase();
+        final matchesService = advSvc.any((uuid) => uuid.contains(serviceUuidLower));
+        final nameContainsEcho = deviceName.toLowerCase().contains('echo') || advertisedName.toLowerCase().contains('echo');
+        if (matchesService || nameContainsEcho) {
           // Found our device
           FlutterBluePlus.stopScan();
           _scanSub?.cancel();
+          _scanSub = null;
           _connect(r.device);
           return;
         }
@@ -77,9 +150,11 @@ class BleService {
     });
 
     // Handle scan timeout
-    Future.delayed(const Duration(seconds: 10), () {
+    Future.delayed(const Duration(seconds: 10), () async {
       if (_state == BleConnectionState.scanning) {
-        FlutterBluePlus.stopScan();
+        await FlutterBluePlus.stopScan();
+        await _scanSub?.cancel();
+        _scanSub = null;
         _setState(BleConnectionState.disconnected);
       }
     });
@@ -91,13 +166,21 @@ class BleService {
     _device = device;
 
     try {
+      print('[BLE] connecting to ${device.platformName} (${device.remoteId})');
       await device.connect(timeout: const Duration(seconds: 8));
+      print('[BLE] connect succeeded');
 
       // Request higher MTU for larger packets
-      await device.requestMtu(512);
+      try {
+        await device.requestMtu(512);
+        print('[BLE] mtu requested');
+      } catch (e) {
+        print('[BLE] mtu request failed: $e');
+      }
 
       // Discover services
       final services = await device.discoverServices();
+      print('[BLE] discovered ${services.length} services');
       final echoService = services.firstWhere(
         (s) => s.uuid == Guid(EchoBleUuids.serviceUuid),
         orElse: () => throw Exception('Echo service not found'),
@@ -118,6 +201,35 @@ class BleService {
       await _audioChar!.setNotifyValue(true);
       _audioSub = _audioChar!.onValueReceived.listen(_onAudioPacket);
 
+      // Subscribe to control notifications and send time + READY
+      await _controlChar!.setNotifyValue(true);
+      _controlChar!.onValueReceived.listen(_onControlPacket);
+
+      // Send SET_TIME (0x14) before READY
+      final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final tzOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
+      final bytes = <int>[];
+      // type
+      bytes.add(0x14);
+      // unix ms, little-endian 8 bytes
+      final b = ByteData(8)..setInt64(0, nowMs, Endian.little);
+      bytes.addAll(b.buffer.asUint8List());
+      // tz offset minutes, 4 bytes little-endian
+      final b2 = ByteData(4)..setInt32(0, tzOffsetMinutes, Endian.little);
+      bytes.addAll(b2.buffer.asUint8List());
+      try {
+        await _controlChar!.write(bytes, withoutResponse: false);
+      } catch (e) {
+        // ignore write errors for now
+      }
+
+      // Send READY (0x10)
+      try {
+        await _controlChar!.write([0x10], withoutResponse: false);
+      } catch (e) {
+        // ignore
+      }
+
       // Listen for disconnection
       device.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
@@ -127,6 +239,7 @@ class BleService {
 
       _setState(BleConnectionState.connected);
     } catch (e) {
+      print('[BLE] connection failed: $e');
       _setState(BleConnectionState.disconnected);
       _device = null;
     }
@@ -135,30 +248,116 @@ class BleService {
   /// Handle incoming audio packet from BLE
   ///
   /// Packet format (defined by firmware):
-  /// - First packet of segment: [0x01] [4 bytes: total_length] [2 bytes: duration_ms] [data...]
-  /// - Continuation packet:     [0x02] [data...]
-  /// - Last packet of segment:  [0x03] [data...]
+  /// - Segment start:      [0x01][segmentId:4][version:1][totalLength:4][durationMs:4][totalChunks:2][crc:4][optional payload]
+  /// - Segment metadata:   [0x02][segmentId:4][recordedAtUnixSeconds:8][silenceBeforeMs:4][avgEnergy:2]
+  /// - Segment data chunk: [0x03][segmentId:4][sequence:2][payload...]
   void _onAudioPacket(List<int> data) {
     if (data.isEmpty) return;
 
     final packetType = data[0];
+    final packet = Uint8List.fromList(data);
 
     switch (packetType) {
-      case 0x01: // Start of segment
-        if (data.length < 7) return;
+      case EchoBleProtocol.frameSegmentStart:
+        if (packet.length < EchoBleProtocol.segmentStartSize) return;
+        final version = packet[5];
+        if (version != EchoBleProtocol.protocolVersion) return;
+
+        _segmentId = EchoBleProtocol.readU32(packet, 1);
+        _expectedLength = EchoBleProtocol.readU32(packet, 6);
+        _totalChunks = EchoBleProtocol.readU16(packet, 14);
         _segmentBuffer.clear();
-        _expectedLength = ByteData.view(Uint8List.fromList(data.sublist(1, 5)).buffer).getUint32(0, Endian.little);
+        _highestSequence = -1;
         _segmentStartTime = DateTime.now().toUtc();
-        _segmentBuffer.addAll(data.sublist(7));
+        if (packet.length > EchoBleProtocol.segmentStartSize) {
+          _segmentBuffer.addAll(packet.sublist(EchoBleProtocol.segmentStartSize));
+        }
+        print('[BLE] segment start id=$_segmentId len=$_expectedLength chunks=$_totalChunks');
         break;
 
-      case 0x02: // Continuation
-        _segmentBuffer.addAll(data.sublist(1));
+      case EchoBleProtocol.frameSegmentMetadata:
+        if (packet.length != EchoBleProtocol.segmentMetadataSize) return;
+        final segmentId = EchoBleProtocol.readU32(packet, 1);
+        if (segmentId != _segmentId) return;
+        final recordedAtSeconds = EchoBleProtocol.readU64(packet, 5);
+        _segmentStartTime = DateTime.fromMillisecondsSinceEpoch(recordedAtSeconds * 1000, isUtc: true);
+        print('[BLE] segment metadata id=$segmentId recordedAt=$recordedAtSeconds');
         break;
 
-      case 0x03: // End of segment
-        _segmentBuffer.addAll(data.sublist(1));
-        _finalizeSegment();
+      case EchoBleProtocol.frameSegmentData:
+        if (packet.length < EchoBleProtocol.segmentDataHeaderSize) return;
+        final segmentId = EchoBleProtocol.readU32(packet, 1);
+        if (segmentId != _segmentId) return;
+        final sequence = EchoBleProtocol.readU16(packet, 5);
+        final payload = packet.sublist(EchoBleProtocol.segmentDataHeaderSize);
+        _segmentBuffer.addAll(payload);
+        _highestSequence = sequence;
+        print('[BLE] segment data seq=$sequence payload=${payload.length}');
+
+        final isWindowEnd = ((sequence + 1) % 8) == 0;
+        final isLastChunk = sequence == (_totalChunks - 1);
+        if (isWindowEnd || isLastChunk) {
+          _sendAckWindow();
+        }
+        if (isLastChunk) {
+          _sendUploadOk();
+          _finalizeSegment();
+        }
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  Future<void> _sendControlFrame(Uint8List value) async {
+    if (_controlChar == null) return;
+    try {
+      await _controlChar!.write(value, withoutResponse: false);
+    } catch (e) {
+      print('[BLE] failed control write: $e');
+    }
+  }
+
+  void _sendAckWindow() {
+    if (_segmentId == 0 || _highestSequence < 0) return;
+    final ack = EchoBleProtocol.buildAckWindow(_segmentId, _highestSequence);
+    _sendControlFrame(ack);
+    print('[BLE] sent ACK_WINDOW id=$_segmentId highestSeq=$_highestSequence');
+  }
+
+  void _sendUploadOk() {
+    if (_segmentId == 0) return;
+    final ok = EchoBleProtocol.buildUploadOk(_segmentId);
+    _sendControlFrame(ok);
+    print('[BLE] sent UPLOAD_OK id=$_segmentId');
+  }
+
+  /// Handle incoming control packets from firmware
+  void _onControlPacket(List<int> data) {
+    if (data.isEmpty) return;
+    final type = data[0];
+    switch (type) {
+      case EchoBleProtocol.frameAckWindow:
+        // expect: type(1) + segment_id(4) + highest_seq(2)
+        if (data.length >= EchoBleProtocol.ackWindowSize) {
+          final segId = ByteData.sublistView(Uint8List.fromList(data.sublist(1, 5))).getUint32(0, Endian.little);
+          final highest = ByteData.sublistView(Uint8List.fromList(data.sublist(5, 7))).getUint16(0, Endian.little);
+          print('[BLE] control ACK_WINDOW seg=$segId highest=$highest');
+        }
+        break;
+      case EchoBleProtocol.frameUploadOk:
+        // type + segment_id
+        if (data.length >= EchoBleProtocol.segmentCommandSize) {
+          final segId = ByteData.sublistView(Uint8List.fromList(data.sublist(1, 5))).getUint32(0, Endian.little);
+          print('[BLE] control UPLOAD_OK seg=$segId');
+        }
+        break;
+      case 0x20: // DEVICE_STATUS
+        // type + counts... ignore for now
+        break;
+      default:
+        // unknown
         break;
     }
   }
@@ -211,3 +410,5 @@ class BleService {
     _stateController.close();
   }
 }
+
+final bleService = BleService();
