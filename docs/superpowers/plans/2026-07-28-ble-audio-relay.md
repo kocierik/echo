@@ -1,3 +1,60 @@
+% BLE audio relay — Piano (2026-07-28)
+
+Obiettivo
+-------
+Progettare e implementare un "BLE audio relay" che permetta a un dispositivo con risorse limitate (p.es. microcontroller con PSRAM) di inviare flussi audio via BLE a un gateway/relay che li inoltra a un backend o a un altro endpoint locale. Il relay minimizza latenza, preserva qualità sufficiente per riconoscimento vocale e analisi, e gestisce connessioni intermittenti.
+
+Contesto e motivazione
+---------------------
+- Uso previsto: dispositivi embedded che catturano audio, comprimono (ADPCM) e lo trasmettono via BLE a un telefono o a un gateway.
+- Vincoli: memoria limitata, banda BLE variabile, consumo energetico critico, latenza target < 300 ms end-to-end quando possibile.
+
+Scope
+-----
+- Inclusi: protocolli di frammentazione e ricostruzione, buffering e jitter handling, handoff tra relay, meccanismi di rivelazione e ritrasmissione di frame persi, test end-to-end.
+- Esclusi: integrazione con cloud provider specifici (da definire in iterazioni successive), supporto a codec multipli oltre ADPCM iniziale.
+
+Milestones
+----------
+1. Definizione dei requisiti funzionali e non funzionali (questa versione)
+2. Specifica di design e API locali (file spec)
+3. Prototipo funzionante: dispositivo -> gateway BLE relay -> backend (simulazione)
+4. Test di latenza, qualità e resilienza (suite automatizzata)
+5. Ottimizzazioni consumo e memoria, edge cases
+6. Documentazione operativa e piano di rollout
+
+Task dettagliati e stime (T-shirt sizing)
+--------------------------------------
+- Requisiti & acceptance criteria — 1 giorno
+- Spec di design completa — 1-2 giorni
+- Implementazione relay minimale (server + buffer) — 3 giorni
+- Client firmware/integrazione ADPCM (invio fragm.) — 2 giorni
+- Test e tuning latenza/throughput — 2 giorni
+- CI + test end-to-end automatizzati — 2 giorni
+- Revisione e piccolo refactor — 1 giorno
+
+Dipendenze
+----------
+- Librerie ADPCM esistenti (codificatore/decodificatore nel repo)
+- Ambiente di test: `simulator/` e `simulator/adpcm_encode.py`
+- Hardware per validazione reale (opzionale, per fase finale)
+
+Metriche di successo
+--------------------
+- End-to-end latency median < 300 ms (bulk of samples)
+- Packet/frame loss gestito senza caduta della sessione > 99% delle volte
+- CPU/Memory fit su target device (uso PSRAM controllato)
+
+Rischi e mitigazioni
+--------------------
+- BLE throughput variabile: implementare adattamento bitrate e frammentazione adattiva.
+- Spike di latenza: buffer jitter e priorità per pacchetti critici.
+- Disconnessioni frequenti: ripristino di stato e retransmit dei frame critici.
+
+Prossimi passi
+-------------
+- Convalidare il design nella specifica: `docs/superpowers/specs/2026-07-28-ble-audio-relay-design.md`
+- Avviare implementazione prototipo gateway e test con `simulator/adpcm_encode.py`
 # BLE Audio Relay Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

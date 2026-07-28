@@ -215,6 +215,14 @@ void finalizeSegment() {
         Serial.println("[Main] PSRAM buffer full! Segment lost.");
         bleTransport.reportBufferFull();
     } else {
+        // Inform BLE transport about new buffered segment and report connection state
+        Serial.printf("[Main] Stored segment %u: %u bytes (buffered: %u)\n",
+                      segmentId, (unsigned)segmentPos, (unsigned)buffer.count());
+        if (!bleTransport.isConnected()) {
+            Serial.println("[Main] No BLE connection — waiting for device to connect");
+        } else {
+            Serial.println("[Main] BLE connected — will attempt to relay segment");
+        }
         bleTransport.requestBufferStatus();
     }
 

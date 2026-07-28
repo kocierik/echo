@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../services/ble_service.dart';
 import '../widgets/skeleton.dart';
 import 'integrations_screen.dart';
 
@@ -184,30 +185,44 @@ class _LiveIndicatorState extends State<_LiveIndicator> with SingleTickerProvide
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (_, __) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: AppColors.success.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.success.withOpacity(0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 6, height: 6,
-              decoration: BoxDecoration(
-                color: AppColors.success.withOpacity(0.4 + _controller.value * 0.6),
-                shape: BoxShape.circle,
-              ),
+    return StreamBuilder<BleConnectionState>(
+      stream: bleService.stateStream,
+      initialData: bleService.state,
+      builder: (context, snap) {
+        final state = snap.data ?? BleConnectionState.disconnected;
+        return GestureDetector(
+          onTap: () {
+            if (state == BleConnectionState.disconnected) {
+              bleService.startScan();
+            } else if (state == BleConnectionState.connected) {
+              bleService.disconnect();
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: state == BleConnectionState.connected ? AppColors.success.withOpacity(0.08) : AppColors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: state == BleConnectionState.connected ? AppColors.success.withOpacity(0.2) : AppColors.border),
             ),
-            const SizedBox(width: 6),
-            const Text('Listening', style: TextStyle(fontSize: 11, color: AppColors.success)),
-          ],
-        ),
-      ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  state == BleConnectionState.connected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_disabled_rounded,
+                  size: 14,
+                  color: state == BleConnectionState.connected ? AppColors.success : AppColors.foregroundMuted,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  state == BleConnectionState.connected ? 'Device' : (state == BleConnectionState.scanning ? 'Scanning...' : 'No device'),
+                  style: TextStyle(fontSize: 11, color: state == BleConnectionState.connected ? AppColors.success : AppColors.foregroundMuted),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

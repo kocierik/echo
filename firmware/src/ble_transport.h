@@ -16,7 +16,9 @@ public:
         : _serverCallbacks(*this), _controlCallbacks(*this) {}
 
     bool begin() {
+        Serial.println("[BLE] init");
         NimBLEDevice::init(BLE_DEVICE_NAME);
+        Serial.println("[BLE] NimBLEDevice initialized");
         NimBLEDevice::setMTU(BLE_PREFERRED_MTU);
 
         _server = NimBLEDevice::createServer();
@@ -40,7 +42,11 @@ public:
         NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
         advertising->addServiceUUID(BLE_SERVICE_UUID);
         advertising->enableScanResponse(true);
+        // Explicitly set the advertised device name to improve discovery
+        advertising->setName(BLE_DEVICE_NAME);
+        advertising->setAppearance(0x0000);
         advertising->start();
+        Serial.println("[BLE] Advertising started");
         return true;
     }
 
@@ -105,14 +111,17 @@ private:
         explicit ServerCallbacks(BleTransport& owner) : _owner(owner) {}
 
         void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
+            Serial.println("[BLE] onConnect");
             _owner.enqueueEvent(BleTransportEvent::connected());
         }
 
-        void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int) override {
-            _owner.enqueueDisconnect();
+        void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
+            Serial.printf("[BLE] onDisconnect (reason=%d)\n", reason);
+            _owner.enqueueDisconnect(reason);
         }
 
         void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override {
+            Serial.printf("[BLE] onMTUChange mtu=%u\n", (unsigned)mtu);
             _owner.enqueueEvent(BleTransportEvent::mtuChanged(mtu));
         }
 
@@ -126,6 +135,7 @@ private:
 
         void onWrite(NimBLECharacteristic* characteristic, NimBLEConnInfo&) override {
             const NimBLEAttValue& value = characteristic->getValue();
+            Serial.printf("[BLE] control write (%u bytes)\n", value.size());
             _owner.enqueueEvent(BleTransportEvent::control(value.data(), value.size()));
         }
 
@@ -139,7 +149,14 @@ private:
     }
 
     bool notifyAudio(const uint8_t* data, size_t length) {
-        return _audioCharacteristic != nullptr && _audioCharacteristic->notify(data, length);
+        if (_audioCharacteristic == nullptr) {
+            Serial.println("[BLE] notifyAudio: no audio characteristic");
+            return false;
+        }
+        Serial.printf("[BLE] notifyAudio attempt len=%u connected=%d\n", (unsigned)length, _connected ? 1 : 0);
+        const bool ok = _audioCharacteristic->notify(data, length);
+        Serial.printf("[BLE] notifyAudio result=%d\n", ok ? 1 : 0);
+        return ok;
     }
 
     void sendSegmentStart() {
@@ -221,9 +238,10 @@ private:
         portEXIT_CRITICAL(&_eventMux);
     }
 
-    void enqueueDisconnect() {
+    void enqueueDisconnect(int reason) {
         portENTER_CRITICAL(&_eventMux);
         _disconnectPending = true;
+        _lastDisconnectReason = reason;
         portEXIT_CRITICAL(&_eventMux);
     }
 
@@ -238,6 +256,7 @@ private:
         portEXIT_CRITICAL(&_eventMux);
         if (!pending) return false;
 
+        Serial.printf("[BLE] processing pending disconnect (reason=%d)\n", _lastDisconnectReason);
         _connected = false;
         _active = false;
         _segmentData = nullptr;
@@ -350,6 +369,7 @@ private:
     bool _crcReady = false;
     bool _disconnectPending = false;
     bool _eventOverflowPending = false;
+    int _lastDisconnectReason = 0;
     portMUX_TYPE _eventMux = portMUX_INITIALIZER_UNLOCKED;
     EchoBleProtocol::TimeAnchor _timeAnchor;
 
