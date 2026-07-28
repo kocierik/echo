@@ -6,20 +6,18 @@
  * 1. Capture PCM audio from PDM microphone (I2S)
  * 2. Run VAD to detect speech
  * 3. Encode speech to ADPCM
- * 4. Send via HTTP POST when segment is complete
- * 5. Buffer in PSRAM when WiFi is unavailable
- * 6. LED and mute button for user feedback
+ * 4. Store every completed segment in PSRAM
+ * 5. Relay the oldest segment over BLE
+ * 6. Keep capture active while BLE advances incrementally
  */
 
-#include <WiFi.h>
 #include "config.h"
 #include "audio_capture.h"
 #include "vad.h"
 #include "adpcm_encoder.h"
-#include "http_sender.h"
+#include "ble_transport.h"
 #include "psram_buffer.h"
 #include "indicators.h"
-#include "time_sync.h"
 
 // ============================================================
 // Global instances
@@ -27,10 +25,9 @@
 AudioCapture audio;
 VAD vad;
 ADPCMEncoder encoder;
-HttpSender http;
+BleTransport bleTransport;
 PSRAMBuffer buffer;
 Indicators indicators;
-TimeSync timeSync;
 
 // ============================================================
 // State
@@ -38,7 +35,6 @@ TimeSync timeSync;
 enum DeviceState {
     STATE_IDLE,         // Listening for speech
     STATE_RECORDING,    // Capturing and encoding speech
-    STATE_SENDING,      // Sending segment to backend
 };
 
 DeviceState state = STATE_IDLE;
@@ -59,10 +55,7 @@ uint32_t segmentStartMs = 0;
 uint32_t lastSilenceDurationMs = 0;
 uint32_t energySum = 0;
 uint16_t energyFrameCount = 0;
-char segmentTimestamp[30];
-
-// WiFi reconnection
-uint32_t lastWifiCheckMs = 0;
+uint32_t nextSegmentId = 1;
 
 // ============================================================
 // Setup
@@ -89,12 +82,9 @@ void setup() {
         while (true) { delay(1000); }
     }
 
-    // Connect to WiFi
-    connectWiFi();
-
-    // Sync time via NTP
-    if (http.isConnected()) {
-        timeSync.begin();
+    if (!bleTransport.begin()) {
+        Serial.println("[FATAL] BLE transport init failed");
+        while (true) { delay(1000); }
     }
 
     // Initialize audio capture
@@ -116,6 +106,7 @@ void setup() {
 // ============================================================
 void loop() {
     indicators.update();
+    bleTransport.update(buffer);
 
     // Check mute state
     if (indicators.isMuted()) {
@@ -125,20 +116,6 @@ void loop() {
         }
         delay(50);
         return;
-    }
-
-    // WiFi reconnection check
-    if (!http.isConnected() && (millis() - lastWifiCheckMs > WIFI_RECONNECT_INTERVAL_MS)) {
-        lastWifiCheckMs = millis();
-        reconnectWiFi();
-    }
-
-    // Periodic NTP resync
-    timeSync.resync();
-
-    // Flush buffered segments when WiFi is back
-    if (http.isConnected() && !buffer.isEmpty()) {
-        flushBuffer();
     }
 
     // Read audio frame from microphone
@@ -163,7 +140,6 @@ void loop() {
                 lastSilenceDurationMs = vad.getLastSilenceDurationMs();
                 energySum = 0;
                 energyFrameCount = 0;
-                timeSync.getTimestamp(segmentTimestamp, sizeof(segmentTimestamp));
                 encoder.reset();
                 indicators.setRecording(true);
 
@@ -201,10 +177,6 @@ void loop() {
             }
             break;
 
-        case STATE_SENDING:
-            // Should not stay in this state in the main loop
-            state = STATE_IDLE;
-            break;
     }
 }
 
@@ -227,101 +199,25 @@ void finalizeSegment() {
         return;
     }
 
-    state = STATE_SENDING;
     indicators.setRecording(false);
 
     uint32_t durationMs = millis() - segmentStartMs;
     Serial.printf("[Main] Segment ready: %u bytes, %ums\n", segmentPos, durationMs);
 
-    SegmentMetadata meta;
-    meta.durationMs = durationMs;
-    meta.silenceBeforeMs = lastSilenceDurationMs;
-    meta.avgEnergy = (energyFrameCount > 0) ? (uint16_t)(energySum / energyFrameCount) : 0;
-    strncpy(meta.recordedAt, segmentTimestamp, sizeof(meta.recordedAt));
-
-    // Try to send directly
-    if (http.isConnected()) {
-        if (http.sendSegment(segmentBuffer, segmentPos, meta)) {
-            state = STATE_IDLE;
-            return;
-        }
-    }
-
-    // WiFi unavailable or send failed — buffer in PSRAM
-    Serial.println("[Main] Buffering segment in PSRAM");
+    const uint16_t avgEnergy = energyFrameCount > 0
+        ? static_cast<uint16_t>(energySum / energyFrameCount)
+        : 0;
+    const uint32_t segmentId = nextSegmentId++;
     indicators.setBlinking(true);
 
-    if (!buffer.store(segmentBuffer, segmentPos, durationMs, lastSilenceDurationMs, segmentTimestamp)) {
+    if (!buffer.store(segmentId, segmentBuffer, segmentPos, durationMs,
+                      lastSilenceDurationMs, segmentStartMs, avgEnergy)) {
         Serial.println("[Main] PSRAM buffer full! Segment lost.");
+        bleTransport.reportBufferFull();
+    } else {
+        bleTransport.requestBufferStatus();
     }
 
     indicators.setBlinking(false);
     state = STATE_IDLE;
-}
-
-void flushBuffer() {
-    Serial.printf("[Main] Flushing %u buffered segments...\n", buffer.count());
-    indicators.setBlinking(true);
-
-    while (!buffer.isEmpty() && http.isConnected()) {
-        BufferedSegment header;
-        const uint8_t* data;
-
-        if (!buffer.peek(header, &data)) break;
-
-        SegmentMetadata meta;
-        meta.durationMs = header.durationMs;
-        meta.silenceBeforeMs = header.silenceBeforeMs;
-        strncpy(meta.recordedAt, header.recordedAt, sizeof(meta.recordedAt));
-
-        if (http.sendSegment(data, header.dataLength, meta)) {
-            buffer.dequeue();
-        } else {
-            // WiFi probably dropped, stop flushing
-            break;
-        }
-
-        // Small delay to avoid overwhelming the backend
-        delay(100);
-    }
-
-    indicators.setBlinking(false);
-}
-
-void connectWiFi() {
-    Serial.printf("[WiFi] Connecting to %s...\n", WIFI_SSID);
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - start < WIFI_CONNECT_TIMEOUT_MS)) {
-        delay(250);
-        Serial.print(".");
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("\n[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
-    } else {
-        Serial.println("\n[WiFi] Connection failed — will retry later");
-    }
-}
-
-void reconnectWiFi() {
-    if (WiFi.status() == WL_CONNECTED) return;
-    Serial.println("[WiFi] Attempting reconnection...");
-    WiFi.disconnect();
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    // Wait briefly for connection
-    uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - start < 3000)) {
-        delay(100);
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.printf("[WiFi] Reconnected! IP: %s\n", WiFi.localIP().toString().c_str());
-        if (!timeSync.isSynced()) {
-            timeSync.begin();
-        }
-    }
 }
