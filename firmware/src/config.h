@@ -1,26 +1,6 @@
 #pragma once
 
 // ============================================================
-// Wi-Fi Configuration
-// ============================================================
-// Credentials are in secrets.h (not tracked by git)
-#include "secrets.h"
-
-// If secrets.h doesn't exist, uncomment and fill these:
-// #define WIFI_SSID "YOUR_WIFI_SSID"
-// #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
-// #define API_KEY "my-secret-key"
-
-// ============================================================
-// Backend Server
-// ============================================================
-// For local dev: use your PC's IP (e.g. "192.168.1.100", port 8000)
-// For production: use Cloudflare Tunnel domain
-#define SERVER_HOST "echo.man.ovh"
-#define SERVER_PORT 443
-#define SERVER_ENDPOINT "/api/segments"
-
-// ============================================================
 // Audio Configuration
 // ============================================================
 #define SAMPLE_RATE 16000        // 16 kHz
@@ -61,6 +41,17 @@
 #define SEGMENT_MAX_SIZE (120 * 1024)  // Max 120KB per segment (~15s ADPCM)
 
 // ============================================================
+// BLE Relay
+// ============================================================
+#define BLE_DEVICE_NAME "Echo Wearable"
+#define BLE_SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define BLE_AUDIO_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define BLE_CONTROL_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
+#define BLE_PREFERRED_MTU 517
+#define BLE_STATUS_ERROR_NONE 0
+#define BLE_STATUS_ERROR_BUFFER_FULL 1
+
+// ============================================================
 // Conversation Segmentation
 // ============================================================
 #define SILENCE_TIMEOUT_MS 120000      // 2 minutes silence = new conversation
@@ -72,15 +63,6 @@
 #define MUTE_BUTTON_PIN 2              // GPIO for mute button (active LOW)
 #define MUTE_DEBOUNCE_MS 50            // Button debounce time
 
-// ============================================================
-// HTTP Client
-// ============================================================
-#define HTTP_TIMEOUT_MS 10000          // 10 second timeout for HTTP POST
-#define HTTP_MAX_RETRIES 3             // Max retries on failure
-#define HTTP_RETRY_DELAY_MS 1000       // Delay between retries
+static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,
+              "A segment must fit in the PSRAM buffer");
 
-// ============================================================
-// System
-// ============================================================
-#define WIFI_CONNECT_TIMEOUT_MS 10000  // WiFi connection timeout
-#define WIFI_RECONNECT_INTERVAL_MS 5000 // Try reconnect every 5s
