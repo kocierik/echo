@@ -103,6 +103,13 @@ class BleService {
   final _stateController = StreamController<BleConnectionState>.broadcast();
   Stream<BleConnectionState> get stateStream => _stateController.stream;
 
+  // Stream for incoming messages/notifications from device (for UI)
+  final _messageController = StreamController<String>.broadcast();
+  Stream<String> get messageStream => _messageController.stream;
+  // Persistent in-memory history of messages (most recent first)
+  final List<String> _messages = [];
+  List<String> get messages => List.unmodifiable(_messages);
+
   void _setState(BleConnectionState s) {
     _state = s;
     _stateController.add(s);
@@ -170,67 +177,66 @@ class BleService {
       await device.connect(timeout: const Duration(seconds: 8));
       print('[BLE] connect succeeded');
 
-      // Request higher MTU for larger packets
-      try {
-        await device.requestMtu(512);
-        print('[BLE] mtu requested');
-      } catch (e) {
-        print('[BLE] mtu request failed: $e');
-      }
+      // Skip requesting a larger MTU on Linux/BlueZ for now.
+      // This can help avoid early supervision timeout / transport failure.
+      print('[BLE] skipping MTU request for stability');
 
-      // Discover services
+      print('[BLE] starting service discovery');
       final services = await device.discoverServices();
       print('[BLE] discovered ${services.length} services');
+
       final echoService = services.firstWhere(
         (s) => s.uuid == Guid(EchoBleUuids.serviceUuid),
         orElse: () => throw Exception('Echo service not found'),
       );
+      print('[BLE] found Echo service ${echoService.uuid}');
 
-      // Find characteristics
       _audioChar = echoService.characteristics.firstWhere(
         (c) => c.uuid == Guid(EchoBleUuids.audioCharUuid),
         orElse: () => throw Exception('Audio characteristic not found'),
       );
+      print('[BLE] found audio characteristic ${_audioChar!.uuid}');
 
       _controlChar = echoService.characteristics.firstWhere(
         (c) => c.uuid == Guid(EchoBleUuids.controlCharUuid),
         orElse: () => throw Exception('Control characteristic not found'),
       );
+      print('[BLE] found control characteristic ${_controlChar!.uuid}');
 
-      // Subscribe to audio data notifications
+      print('[BLE] enabling audio notifications');
       await _audioChar!.setNotifyValue(true);
       _audioSub = _audioChar!.onValueReceived.listen(_onAudioPacket);
+      print('[BLE] audio notifications enabled');
 
-      // Subscribe to control notifications and send time + READY
+      print('[BLE] enabling control notifications');
       await _controlChar!.setNotifyValue(true);
       _controlChar!.onValueReceived.listen(_onControlPacket);
+      print('[BLE] control notifications enabled');
 
-      // Send SET_TIME (0x14) before READY
       final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
       final tzOffsetMinutes = DateTime.now().timeZoneOffset.inMinutes;
       final bytes = <int>[];
-      // type
       bytes.add(0x14);
-      // unix ms, little-endian 8 bytes
       final b = ByteData(8)..setInt64(0, nowMs, Endian.little);
       bytes.addAll(b.buffer.asUint8List());
-      // tz offset minutes, 4 bytes little-endian
-      final b2 = ByteData(4)..setInt32(0, tzOffsetMinutes, Endian.little);
+      final b2 = ByteData(2)..setInt16(0, tzOffsetMinutes, Endian.little);
       bytes.addAll(b2.buffer.asUint8List());
+      print('[BLE] sending SET_TIME timezone=$tzOffsetMinutes nowMs=$nowMs');
       try {
         await _controlChar!.write(bytes, withoutResponse: false);
+        print('[BLE] SET_TIME write succeeded');
       } catch (e) {
-        // ignore write errors for now
+        print('[BLE] SET_TIME write failed: $e');
       }
 
-      // Send READY (0x10)
+      print('[BLE] sending READY');
       try {
         await _controlChar!.write([0x10], withoutResponse: false);
+        print('[BLE] READY write succeeded');
       } catch (e) {
-        // ignore
+        print('[BLE] READY write failed: $e');
       }
 
-      // Listen for disconnection
       device.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
           _onDisconnected();
@@ -251,7 +257,7 @@ class BleService {
   /// - Segment start:      [0x01][segmentId:4][version:1][totalLength:4][durationMs:4][totalChunks:2][crc:4][optional payload]
   /// - Segment metadata:   [0x02][segmentId:4][recordedAtUnixSeconds:8][silenceBeforeMs:4][avgEnergy:2]
   /// - Segment data chunk: [0x03][segmentId:4][sequence:2][payload...]
-  void _onAudioPacket(List<int> data) {
+  Future<void> _onAudioPacket(List<int> data) async {
     if (data.isEmpty) return;
 
     final packetType = data[0];
@@ -273,6 +279,10 @@ class BleService {
           _segmentBuffer.addAll(packet.sublist(EchoBleProtocol.segmentStartSize));
         }
         print('[BLE] segment start id=$_segmentId len=$_expectedLength chunks=$_totalChunks');
+        final msg = 'Segment start: id=$_segmentId len=$_expectedLength';
+        _messages.insert(0, msg);
+        if (_messages.length > 500) _messages.removeLast();
+        _messageController.add(msg);
         break;
 
       case EchoBleProtocol.frameSegmentMetadata:
@@ -282,6 +292,10 @@ class BleService {
         final recordedAtSeconds = EchoBleProtocol.readU64(packet, 5);
         _segmentStartTime = DateTime.fromMillisecondsSinceEpoch(recordedAtSeconds * 1000, isUtc: true);
         print('[BLE] segment metadata id=$segmentId recordedAt=$recordedAtSeconds');
+        final msg = 'Segment metadata: id=$segmentId';
+        _messages.insert(0, msg);
+        if (_messages.length > 500) _messages.removeLast();
+        _messageController.add(msg);
         break;
 
       case EchoBleProtocol.frameSegmentData:
@@ -293,6 +307,13 @@ class BleService {
         _segmentBuffer.addAll(payload);
         _highestSequence = sequence;
         print('[BLE] segment data seq=$sequence payload=${payload.length}');
+        // Notify UI every Nth chunk or last chunk to avoid spam
+        if (sequence == 0 || ((sequence + 1) % 8) == 0 || sequence == (_totalChunks - 1)) {
+          final msg = 'Receiving segment $segmentId chunk $sequence';
+          _messages.insert(0, msg);
+          if (_messages.length > 500) _messages.removeLast();
+          _messageController.add(msg);
+        }
 
         final isWindowEnd = ((sequence + 1) % 8) == 0;
         final isLastChunk = sequence == (_totalChunks - 1);
@@ -300,8 +321,14 @@ class BleService {
           _sendAckWindow();
         }
         if (isLastChunk) {
-          _sendUploadOk();
-          _finalizeSegment();
+          // Last chunk received — finalize (upload) first, then ACK to device on success
+          final success = await _finalizeSegment();
+          if (success) {
+            _sendUploadOk();
+          } else {
+            print('[BLE] upload failed for segment=$_segmentId — will NOT send UPLOAD_OK');
+            _messageController.add('Upload failed for segment $_segmentId');
+          }
         }
         break;
 
@@ -351,6 +378,10 @@ class BleService {
         if (data.length >= EchoBleProtocol.segmentCommandSize) {
           final segId = ByteData.sublistView(Uint8List.fromList(data.sublist(1, 5))).getUint32(0, Endian.little);
           print('[BLE] control UPLOAD_OK seg=$segId');
+          final msg = 'Upload OK: segment $segId';
+          _messages.insert(0, msg);
+          if (_messages.length > 500) _messages.removeLast();
+          _messageController.add(msg);
         }
         break;
       case 0x20: // DEVICE_STATUS
@@ -363,28 +394,36 @@ class BleService {
   }
 
   /// Segment complete — forward to backend
-  Future<void> _finalizeSegment() async {
-    if (_segmentBuffer.isEmpty) return;
+  /// Finalize the assembled segment by uploading to backend.
+  /// Returns true on successful upload, false otherwise.
+  Future<bool> _finalizeSegment() async {
+    if (_segmentBuffer.isEmpty) return false;
 
     final adpcmData = Uint8List.fromList(_segmentBuffer);
     final startTime = _segmentStartTime ?? DateTime.now().toUtc();
 
     // Calculate approximate duration from ADPCM data length
-    // ADPCM at 16kHz: 8KB/s, so duration_ms = (length / 8) * 1000
-    final durationMs = (adpcmData.length / 8 * 1000).round();
+    // ADPCM at 16kHz: 8KB/s, so duration_ms = length / 8
+    final durationMs = (adpcmData.length / 8).round();
 
-    // Forward to backend via HTTP (same as device would do directly)
+    print('[BLE] uploading segment=$_segmentId len=${adpcmData.length} recordedAt=$startTime durationMs=$durationMs');
+
     try {
-      await _api.uploadSegment(
+      final res = await _api.uploadSegment(
         audioData: adpcmData,
         recordedAt: startTime.toIso8601String(),
         durationMs: durationMs,
       );
+      print('[BLE] uploadSegment succeeded for segment=$_segmentId');
+      _messageController.add('Uploaded segment $_segmentId');
+      _segmentBuffer.clear();
+      return true;
     } catch (e) {
-      // TODO: buffer locally and retry later
+      print('[BLE] uploadSegment FAILED for segment=$_segmentId: $e');
+      _messageController.add('Upload failed for segment $_segmentId');
+      // keep buffer for retry
+      return false;
     }
-
-    _segmentBuffer.clear();
   }
 
   void _onDisconnected() {
@@ -408,6 +447,7 @@ class BleService {
     _scanSub?.cancel();
     _audioSub?.cancel();
     _stateController.close();
+    _messageController.close();
   }
 }
 

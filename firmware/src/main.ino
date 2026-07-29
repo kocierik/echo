@@ -57,6 +57,10 @@ uint32_t energySum = 0;
 uint16_t energyFrameCount = 0;
 uint32_t nextSegmentId = 1;
 
+// Test injection state: when microphone is muted, inject one test segment
+bool _testSegmentInjected = false;
+bool _prevMutedState = false;
+
 // ============================================================
 // Setup
 // ============================================================
@@ -108,19 +112,66 @@ void loop() {
     indicators.update();
     bleTransport.update(buffer);
 
+
+
     // Check mute state
-    if (indicators.isMuted()) {
+    bool muted = indicators.isMuted();
+    if (muted) {
+        // On mute transition, inject a single test segment into PSRAM
+        if (!_prevMutedState && !_testSegmentInjected) {
+            // Generate a short realistic ADPCM payload using the encoder
+            const uint8_t framesToGenerate = 4; // number of PCM frames to encode
+            size_t adpcmPos = 0;
+            encoder.reset();
+            int16_t pcm[PCM_BUFFER_SIZE];
+
+            for (uint8_t f = 0; f < framesToGenerate; f++) {
+                // simple alternating waveform to simulate audio
+                for (size_t i = 0; i < PCM_BUFFER_SIZE; i++) {
+                    pcm[i] = (int16_t)((i % 2 == 0) ? 800 : -800);
+                }
+                size_t adpcmBytes = encoder.encode(pcm, PCM_BUFFER_SIZE, adpcmFrame);
+                if (adpcmPos + adpcmBytes <= SEGMENT_MAX_SIZE) {
+                    memcpy(segmentBuffer + adpcmPos, adpcmFrame, adpcmBytes);
+                    adpcmPos += adpcmBytes;
+                } else {
+                    break;
+                }
+            }
+
+            const uint32_t segId = nextSegmentId++;
+            const uint32_t durationMs = framesToGenerate * VAD_FRAME_DURATION_MS; // approximate
+            if (adpcmPos == 0) {
+                Serial.println("[Main] Test generation produced no ADPCM bytes");
+            } else if (!buffer.store(segId, segmentBuffer, adpcmPos, durationMs, 0, millis(), 0)) {
+                Serial.println("[Main] PSRAM buffer full! Test segment lost.");
+                bleTransport.reportBufferFull();
+            } else {
+                Serial.printf("[Main] Stored TEST segment %u: %u bytes (buffered: %u)\n",
+                              segId, (unsigned)adpcmPos, (unsigned)buffer.count());
+                bleTransport.requestBufferStatus();
+            }
+            _testSegmentInjected = true;
+        }
+
         // If we were recording, finalize the segment
         if (state == STATE_RECORDING) {
             finalizeSegment();
         }
+
+        _prevMutedState = true;
         delay(50);
         return;
+    } else {
+        // reset injection flag when unmuted
+        _prevMutedState = false;
+        _testSegmentInjected = false;
     }
 
     // Read audio frame from microphone
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
+
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);
@@ -193,39 +244,113 @@ void encodeFrame(const int16_t* samples, size_t count) {
 }
 
 void finalizeSegment() {
+
     if (segmentPos == 0) {
-        state = STATE_IDLE;
+        Serial.println("[Main] Empty segment, resetting");
+
         indicators.setRecording(false);
+
+        // Reset VAD and buffers before returning to listening
+        vad.reset();
+
+        preBufferCount = 0;
+        preBufferWriteIdx = 0;
+
+        state = STATE_IDLE;
         return;
     }
 
+
     indicators.setRecording(false);
 
-    uint32_t durationMs = millis() - segmentStartMs;
-    Serial.printf("[Main] Segment ready: %u bytes, %ums\n", segmentPos, durationMs);
 
-    const uint16_t avgEnergy = energyFrameCount > 0
+    uint32_t durationMs = millis() - segmentStartMs;
+
+    Serial.printf(
+        "[Main] Segment ready: %u bytes, %ums\n",
+        (unsigned)segmentPos,
+        durationMs
+    );
+
+
+    const uint16_t avgEnergy =
+        energyFrameCount > 0
         ? static_cast<uint16_t>(energySum / energyFrameCount)
         : 0;
+
+
     const uint32_t segmentId = nextSegmentId++;
+
+
     indicators.setBlinking(true);
 
-    if (!buffer.store(segmentId, segmentBuffer, segmentPos, durationMs,
-                      lastSilenceDurationMs, segmentStartMs, avgEnergy)) {
-        Serial.println("[Main] PSRAM buffer full! Segment lost.");
+
+    if (!buffer.store(
+            segmentId,
+            segmentBuffer,
+            segmentPos,
+            durationMs,
+            lastSilenceDurationMs,
+            segmentStartMs,
+            avgEnergy
+        )) {
+
+        Serial.println(
+            "[Main] PSRAM buffer full! Segment lost."
+        );
+
         bleTransport.reportBufferFull();
+
     } else {
-        // Inform BLE transport about new buffered segment and report connection state
-        Serial.printf("[Main] Stored segment %u: %u bytes (buffered: %u)\n",
-                      segmentId, (unsigned)segmentPos, (unsigned)buffer.count());
+
+        Serial.printf(
+            "[Main] Stored segment %u: %u bytes (buffered: %u)\n",
+            segmentId,
+            (unsigned)segmentPos,
+            (unsigned)buffer.count()
+        );
+
+
         if (!bleTransport.isConnected()) {
-            Serial.println("[Main] No BLE connection — waiting for device to connect");
+
+            Serial.println(
+                "[Main] No BLE connection — waiting"
+            );
+
         } else {
-            Serial.println("[Main] BLE connected — will attempt to relay segment");
+
+            Serial.println(
+                "[Main] BLE connected — sending"
+            );
         }
+
+
         bleTransport.requestBufferStatus();
     }
 
+
     indicators.setBlinking(false);
+
+
+    // ====================================================
+    // IMPORTANT:
+    // Prepare system for next recording
+    // ====================================================
+
+    segmentPos = 0;
+    energySum = 0;
+    energyFrameCount = 0;
+
+    vad.reset();
+
+    preBufferCount = 0;
+    preBufferWriteIdx = 0;
+
+
     state = STATE_IDLE;
+
+
+    Serial.println(
+        "[Main] Ready for next speech segment"
+    );
 }

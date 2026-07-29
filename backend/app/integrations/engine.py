@@ -30,7 +30,7 @@ async def trigger_integrations(db: AsyncSession, user_id: uuid.UUID, entity: Ent
         select(Integration)
         .where(Integration.user_id == user_id)
         .where(Integration.enabled.is_(True))
-        .where(Integration.entity_types.contains([entity.entity_type]))
+        .where(Integration.entity_types.any(entity.entity_type))
     )
     integrations = result.scalars().all()
 

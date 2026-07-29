@@ -20,6 +20,11 @@ public:
         NimBLEDevice::init(BLE_DEVICE_NAME);
         Serial.println("[BLE] NimBLEDevice initialized");
         NimBLEDevice::setMTU(BLE_PREFERRED_MTU);
+        if (NimBLEDevice::setPower(20, NimBLETxPowerType::All)) {
+            Serial.println("[BLE] TX power set to 20 dBm");
+        } else {
+            Serial.println("[BLE] failed to set BLE TX power");
+        }
 
         _server = NimBLEDevice::createServer();
         if (_server == nullptr) return false;
@@ -56,9 +61,18 @@ public:
         if (takeEventOverflow()) restartActive();
 
         if (_pendingStatus.shouldNotify(_connected, _state.isReady())) {
+            Serial.printf("[BLE] pending status notify connected=%d ready=%d\n",
+                          _connected ? 1 : 0, _state.isReady() ? 1 : 0);
             _pendingStatus.onNotifyResult(notifyBufferStatus(buffer));
         }
-        if (!_connected || !_timeAnchor.isValid()) return;
+        if (!_connected || !_timeAnchor.isValid()) {
+            // suppressed frequent log to avoid spamming Serial
+            return;
+        }
+        if (millis() < _notifyBackoffUntil) {
+            Serial.printf("[BLE] notify backoff active ms=%u\n", static_cast<unsigned>(_notifyBackoffUntil - millis()));
+            return;
+        }
 
         if (_state.phase() == BleTransferState::RESTARTING) {
             _preambleStep = 0;
@@ -67,10 +81,15 @@ public:
 
         if (!_active) {
             if (!buffer.peek(_segment, &_segmentData)) return;
+            Serial.printf("[BLE] next segment id=%u len=%u\n", _segment.segmentId,
+                          static_cast<unsigned>(_segment.dataLength));
             _chunkPayloadSize = payloadSizeForMtu();
             if (_chunkPayloadSize == 0) return;
             const size_t chunks = (_segment.dataLength + _chunkPayloadSize - 1) / _chunkPayloadSize;
             if (chunks == 0 || chunks > UINT16_MAX) return;
+            Serial.printf("[BLE] beginSegment id=%u chunks=%u payloadSize=%u mtu=%u\n",
+                          _segment.segmentId, static_cast<unsigned>(chunks),
+                          static_cast<unsigned>(_chunkPayloadSize), _negotiatedMtu);
             _state.beginSegment(_segment.segmentId, static_cast<uint16_t>(chunks), millis());
             _active = true;
             _preambleStep = 0;
@@ -98,10 +117,12 @@ public:
     bool isConnected() const { return _connected; }
 
     void requestBufferStatus() {
+        Serial.println("[BLE] requestBufferStatus");
         _pendingStatus.request();
     }
 
     void reportBufferFull() {
+        Serial.println("[BLE] reportBufferFull");
         _pendingStatus.request(BLE_STATUS_ERROR_BUFFER_FULL);
     }
 
@@ -116,7 +137,7 @@ private:
         }
 
         void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
-            Serial.printf("[BLE] onDisconnect (reason=%d)\n", reason);
+            Serial.printf("[BLE] onDisconnect (reason=%d:%s)\n", reason, disconnectReasonName(reason));
             _owner.enqueueDisconnect(reason);
         }
 
@@ -145,7 +166,8 @@ private:
 
     size_t payloadSizeForMtu() const {
         const uint16_t mtu = _negotiatedMtu >= 23 ? _negotiatedMtu : 23;
-        return EchoBleProtocol::segmentDataPayloadSizeForMtu(mtu);
+        const uint16_t effectiveMtu = mtu > 247 ? 247 : mtu;
+        return EchoBleProtocol::segmentDataPayloadSizeForMtu(effectiveMtu);
     }
 
     bool notifyAudio(const uint8_t* data, size_t length) {
@@ -156,6 +178,24 @@ private:
         Serial.printf("[BLE] notifyAudio attempt len=%u connected=%d\n", (unsigned)length, _connected ? 1 : 0);
         const bool ok = _audioCharacteristic->notify(data, length);
         Serial.printf("[BLE] notifyAudio result=%d\n", ok ? 1 : 0);
+        if (!ok) {
+            _notifyBackoffUntil = millis() + 10;
+            Serial.println("[BLE] notifyAudio failed, backing off");
+        }
+        return ok;
+    }
+
+    bool notifyBufferStatus(const PSRAMBuffer& buffer) {
+        if (_controlCharacteristic == nullptr) return false;
+        uint8_t frame[EchoBleProtocol::DEVICE_STATUS_SIZE] = {};
+        EchoBleProtocol::encodeDeviceStatus(
+            buffer.count(), static_cast<uint32_t>(buffer.bytesUsed()),
+            _pendingStatus.errorCode(), frame, sizeof(frame));
+        Serial.printf("[BLE] notifyBufferStatus count=%u bytes=%u error=%u\n",
+                      buffer.count(), static_cast<unsigned>(buffer.bytesUsed()),
+                      _pendingStatus.errorCode());
+        const bool ok = _controlCharacteristic->notify(frame, sizeof(frame));
+        Serial.printf("[BLE] notifyBufferStatus result=%d\n", ok ? 1 : 0);
         return ok;
     }
 
@@ -186,6 +226,7 @@ private:
             _segment.avgEnergy,
         };
         EchoBleProtocol::encodeSegmentMetadata(metadata, frame, sizeof(frame));
+        Serial.printf("[BLE] sendSegmentMetadata id=%u\n", _segment.segmentId);
         if (notifyAudio(frame, sizeof(frame))) ++_preambleStep;
     }
 
@@ -223,15 +264,6 @@ private:
         }
     }
 
-    bool notifyBufferStatus(const PSRAMBuffer& buffer) {
-        if (_controlCharacteristic == nullptr) return false;
-        uint8_t frame[EchoBleProtocol::DEVICE_STATUS_SIZE] = {};
-        EchoBleProtocol::encodeDeviceStatus(
-            buffer.count(), static_cast<uint32_t>(buffer.bytesUsed()),
-            _pendingStatus.errorCode(), frame, sizeof(frame));
-        return _controlCharacteristic->notify(frame, sizeof(frame));
-    }
-
     void enqueueEvent(const BleTransportEvent& event) {
         portENTER_CRITICAL(&_eventMux);
         if (!_events.push(event)) _eventOverflowPending = true;
@@ -245,6 +277,16 @@ private:
         portEXIT_CRITICAL(&_eventMux);
     }
 
+    static const char* disconnectReasonName(int reason) {
+        switch (reason) {
+            case 520: return "BLE_ERR_CONN_SPVN_TMO";
+            case 33: return "BLE_ERR_REM_USER_CONN_TERM";
+            case 19: return "BLE_ERR_CONN_TERM_LOCAL";
+            case 22: return "BLE_ERR_L2C_CONN_FAIL";
+            default: return "UNKNOWN_REASON";
+        }
+    }
+
     bool processPendingDisconnect() {
         portENTER_CRITICAL(&_eventMux);
         const bool pending = _disconnectPending;
@@ -256,7 +298,8 @@ private:
         portEXIT_CRITICAL(&_eventMux);
         if (!pending) return false;
 
-        Serial.printf("[BLE] processing pending disconnect (reason=%d)\n", _lastDisconnectReason);
+        Serial.printf("[BLE] processing pending disconnect (reason=%d:%s)\n", _lastDisconnectReason,
+                      disconnectReasonName(_lastDisconnectReason));
         _connected = false;
         _active = false;
         _segmentData = nullptr;
@@ -283,14 +326,17 @@ private:
 
         switch (event.type) {
             case BleTransportEventType::CONNECTED:
+                Serial.println("[BLE] event CONNECTED");
                 _connected = true;
                 _negotiatedMtu = 23;
                 _pendingStatus.request();
                 break;
             case BleTransportEventType::MTU_CHANGED:
+                Serial.printf("[BLE] event MTU_CHANGED mtu=%u\n", event.mtu);
                 if (_connected) _negotiatedMtu = event.mtu;
                 break;
             case BleTransportEventType::CONTROL:
+                Serial.printf("[BLE] event CONTROL len=%u\n", event.controlLength);
                 if (_connected) handleControl(
                     event.controlData, event.controlLength, buffer);
                 break;
@@ -304,25 +350,37 @@ private:
     void handleControl(const uint8_t* data, size_t length, PSRAMBuffer& buffer) {
         EchoBleProtocol::ControlFrame frame = {};
         if (!EchoBleProtocol::decodeControlFrame(data, length, frame)) {
+            Serial.printf("[BLE] handleControl decode failed len=%u\n", (unsigned)length);
             restartActive();
             return;
         }
 
         switch (frame.type) {
             case EchoBleProtocol::FRAME_SET_TIME:
+                Serial.printf("[BLE] control FRAME_SET_TIME unixMs=%llu tz=%d\n",
+                              static_cast<unsigned long long>(frame.unixMilliseconds),
+                              frame.timezoneOffsetMinutes);
                 _timeAnchor.set(frame.unixMilliseconds, millis(), frame.timezoneOffsetMinutes);
                 break;
             case EchoBleProtocol::FRAME_READY:
+                Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
                 break;
             case EchoBleProtocol::FRAME_ACK_WINDOW:
+                Serial.printf("[BLE] control FRAME_ACK_WINDOW seg=%u highest=%u\n",
+                              frame.segmentId, frame.sequence);
                 if (!_state.onAckWindow(frame.segmentId, frame.sequence, millis())) restartActive();
                 break;
             case EchoBleProtocol::FRAME_RESTART_SEGMENT:
+                Serial.printf("[BLE] control FRAME_RESTART_SEGMENT seg=%u\n", frame.segmentId);
                 if (!_state.onRestartSegment(frame.segmentId)) restartActive();
                 break;
             case EchoBleProtocol::FRAME_UPLOAD_OK:
+                Serial.printf("[BLE] control FRAME_UPLOAD_OK seg=%u\n", frame.segmentId);
                 acceptUpload(frame.segmentId, buffer);
+                break;
+            default:
+                Serial.printf("[BLE] control unknown type=%u\n", frame.type);
                 break;
         }
     }
@@ -330,17 +388,20 @@ private:
     void acceptUpload(uint32_t segmentId, PSRAMBuffer& buffer) {
         if (!_active) return;
         if (!_state.canAcceptUploadOk(segmentId)) {
+            Serial.printf("[BLE] acceptUpload rejected segment=%u state=%d\n", segmentId, _state.phase());
             restartActive();
             return;
         }
         BufferedSegment oldest = {};
         const uint8_t* data = nullptr;
         if (!buffer.peek(oldest, &data) || oldest.segmentId != segmentId) {
+            Serial.printf("[BLE] acceptUpload missing segment=%u\n", segmentId);
             restartActive();
             return;
         }
 
         buffer.dequeue();
+        Serial.printf("[BLE] upload accepted segment=%u\n", segmentId);
         _state.uploadAccepted();
         _active = false;
         _segmentData = nullptr;
@@ -360,6 +421,7 @@ private:
     const uint8_t* _segmentData = nullptr;
     size_t _chunkPayloadSize = 0;
     size_t _crcOffset = 0;
+    uint32_t _notifyBackoffUntil = 0;
     uint32_t _crcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
     uint32_t _segmentCrc = 0;
     uint16_t _negotiatedMtu = 23;
