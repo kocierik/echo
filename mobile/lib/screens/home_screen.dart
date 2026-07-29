@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../services/ble_service.dart';
 import '../widgets/skeleton.dart';
 import 'integrations_screen.dart';
+import 'device_messages_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onAskTap;
@@ -20,11 +22,31 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Conversation> _recentConvs = [];
   List<Map<String, dynamic>> _tasks = [];
   bool _loading = true;
+  StreamSubscription<String>? _bleMsgSub;
+  List<String> _bleMessages = [];
 
   @override
   void initState() {
     super.initState();
     _load();
+    // Initialize with existing messages from service
+    _bleMessages = List.from(bleService.messages);
+    // Listen for BLE messages from device and show a SnackBar
+    _bleMsgSub = bleService.messageStream.listen((msg) {
+      if (!mounted) return;
+      setState(() {
+        _bleMessages = List.from(bleService.messages);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _bleMsgSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -88,6 +110,41 @@ class _HomeScreenState extends State<HomeScreen> {
                 _greeting(),
                 style: const TextStyle(color: AppColors.foregroundMuted, fontSize: 14),
               ),
+              const SizedBox(height: 12),
+
+              // Persistent BLE message list
+              if (_bleMessages.isNotEmpty) ...[
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DeviceMessagesScreen())),
+                  child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.bgElevated,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Device messages', style: TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: ListView.separated(
+                          itemCount: _bleMessages.length < 5 ? _bleMessages.length : 5,
+                          separatorBuilder: (_, __) => const SizedBox(height: 6),
+                          itemBuilder: (context, idx) {
+                            final msg = _bleMessages[idx];
+                            return Text(msg, style: const TextStyle(fontSize: 13, color: AppColors.foreground));
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ),
+                const SizedBox(height: 16),
+              ],
               const SizedBox(height: 24),
 
               // Daily Recap Card

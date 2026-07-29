@@ -376,7 +376,9 @@ class ApiService {
       key = prefs.getString(_apiKeyKey);
     }
 
-    final request = http.MultipartRequest('POST', Uri.parse('$server/api/segments'));
+    final uri = Uri.parse('$server/api/segments');
+    print('[API] uploadSegment start uri=$uri recordedAt=$recordedAt durationMs=$durationMs audioBytes=${audioData.length}');
+    final request = http.MultipartRequest('POST', uri);
     request.headers['X-API-Key'] = key ?? '';
     request.headers['X-Recorded-At'] = recordedAt;
     request.headers['X-Duration-Ms'] = durationMs.toString();
@@ -393,8 +395,10 @@ class ApiService {
       filename: 'segment.adpcm',
     ));
 
-    final response = await request.send();
-    return response.statusCode == 201;
+    final streamedResponse = await request.send();
+    final responseBody = await streamedResponse.stream.bytesToString();
+    print('[API] uploadSegment response status=${streamedResponse.statusCode} body=$responseBody');
+    return streamedResponse.statusCode == 201;
   }
 }
 
