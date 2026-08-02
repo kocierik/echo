@@ -72,10 +72,14 @@ void main() {
     test('false upload result schedules retry and never sends UPLOAD_OK', () async {
       final scheduler = _FakeScheduler();
       final writes = <List<int>>[];
+      final statuses = <String>[];
       final controller = BleRelayController(
         upload: (_) async => false,
         writeControl: (value) async => writes.add(value),
         scheduleRetry: scheduler.schedule,
+        onStatus: (message, {required isError}) {
+          if (isError) statuses.add(message);
+        },
       )..setConnected(true);
 
       await controller.handleEvents([BleSegmentCompleted(_segment(1))]);
@@ -83,6 +87,7 @@ void main() {
 
       expect(writes, isEmpty);
       expect(scheduler.delays, [const Duration(seconds: 2)]);
+      expect(statuses, ['Segment 1 upload rejected; retrying']);
     });
 
     test('retries UPLOAD_OK without uploading the segment again', () async {

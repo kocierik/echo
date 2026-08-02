@@ -141,6 +141,10 @@ class BleRelayController {
 
     if (!_isCurrent(segment, generation)) return;
     if (!uploaded) {
+      onStatus?.call(
+        'Segment ${segment.id} upload rejected; retrying',
+        isError: true,
+      );
       _scheduleUploadRetry(segment, generation);
       return;
     }

@@ -399,13 +399,19 @@ class ApiService {
 
     final client = http.Client();
     try {
-      final statusCode = await (() async {
+      final response = await (() async {
         final streamedResponse = await client.send(request);
-        await streamedResponse.stream.drain<void>();
-        return streamedResponse.statusCode;
+        final body = await streamedResponse.stream.bytesToString();
+        return (statusCode: streamedResponse.statusCode, body: body);
       })().timeout(_segmentUploadTimeout);
-      debugPrint('[API] uploadSegment response status=$statusCode');
-      return statusCode == 201;
+      debugPrint('[API] uploadSegment response status=${response.statusCode}');
+      if (response.statusCode != 201) {
+        final detail = response.body.trim();
+        final visibleDetail = detail.length > 200 ? detail.substring(0, 200) : detail;
+        final suffix = visibleDetail.isEmpty ? '' : ': $visibleDetail';
+        throw Exception('HTTP ${response.statusCode}$suffix');
+      }
+      return true;
     } finally {
       client.close();
     }
