@@ -135,25 +135,18 @@ private:
     public:
         explicit ServerCallbacks(BleTransport& owner) : _owner(owner) {}
 
-        void onConnect(NimBLEServer*, NimBLEConnInfo& connInfo) override {
-            // Do not request conn param/DLE updates here: racing them against
-            // iOS's own MTU exchange right after connect causes BLE_ERR_CONN_SPVN_TMO.
-            Serial.printf(
-                "[BLE] onConnect handle=%u interval=%u latency=%u timeout=%u\n",
-                connInfo.getConnHandle(),
-                connInfo.getConnInterval(),
-                connInfo.getConnLatency(),
-                connInfo.getConnTimeout());
+        // Callbacks run on the NimBLE host task; Serial I/O here can block on a
+        // full USB CDC buffer long enough to miss the supervision timeout window.
+        // Log the same info later from update(), which runs on the Arduino task.
+        void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
             _owner.enqueueEvent(BleTransportEvent::connected());
         }
 
         void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
-            Serial.printf("[BLE] onDisconnect (reason=%d:%s)\n", reason, disconnectReasonName(reason));
             _owner.enqueueDisconnect(reason);
         }
 
         void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override {
-            Serial.printf("[BLE] onMTUChange mtu=%u\n", (unsigned)mtu);
             _owner.enqueueEvent(BleTransportEvent::mtuChanged(mtu));
         }
 
@@ -167,7 +160,6 @@ private:
 
         void onWrite(NimBLECharacteristic* characteristic, NimBLEConnInfo&) override {
             const NimBLEAttValue& value = characteristic->getValue();
-            Serial.printf("[BLE] control write (%u bytes)\n", value.size());
             _owner.enqueueEvent(BleTransportEvent::control(value.data(), value.size()));
         }
 

@@ -87,6 +87,27 @@ void test_transport_waits_for_ready_and_configures_ios_connection() {
         2, countOccurrences(source, "if (notified) ++notificationsSent;"));
 }
 
+void test_nimble_callbacks_avoid_serial_io_on_the_host_task() {
+    const std::string source = readSource("src/ble_transport.h");
+    const size_t serverCallbacksStart = source.find("class ServerCallbacks");
+    const size_t controlCallbacksStart = source.find("class ControlCallbacks");
+    const size_t controlCallbacksEnd = source.find("size_t payloadSizeForMtu", controlCallbacksStart);
+
+    TEST_ASSERT_TRUE(serverCallbacksStart != std::string::npos);
+    TEST_ASSERT_TRUE(controlCallbacksStart != std::string::npos);
+    TEST_ASSERT_TRUE(controlCallbacksEnd != std::string::npos);
+
+    const std::string serverCallbacksBody =
+        source.substr(serverCallbacksStart, controlCallbacksStart - serverCallbacksStart);
+    const std::string controlCallbacksBody =
+        source.substr(controlCallbacksStart, controlCallbacksEnd - controlCallbacksStart);
+
+    // A blocked USB CDC write inside a host-task callback can stall the NimBLE
+    // host long enough to miss the supervision timeout window; log elsewhere.
+    TEST_ASSERT_TRUE(serverCallbacksBody.find("Serial.") == std::string::npos);
+    TEST_ASSERT_TRUE(controlCallbacksBody.find("Serial.") == std::string::npos);
+}
+
 void test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay() {
     const std::string source = readMainSource();
     TEST_ASSERT_TRUE(source.find("preBufferCount - 1") != std::string::npos);
@@ -139,6 +160,7 @@ int main(int, char**) {
     RUN_TEST(test_crc_is_accumulated_during_encoding_and_not_scanned_by_transport);
     RUN_TEST(test_firmware_uses_approved_latency_constants);
     RUN_TEST(test_transport_waits_for_ready_and_configures_ios_connection);
+    RUN_TEST(test_nimble_callbacks_avoid_serial_io_on_the_host_task);
     RUN_TEST(test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay);
     RUN_TEST(test_muting_only_finalizes_the_live_segment);
     RUN_TEST(test_transport_gates_each_notification_at_the_deadline);
