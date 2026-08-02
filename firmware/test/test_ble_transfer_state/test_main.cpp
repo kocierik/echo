@@ -3,15 +3,15 @@
 #include "ble_transport_events.h"
 #include "ble_transfer_state.h"
 
-void test_ready_gates_transfer_and_first_window_is_eight_chunks() {
+void test_ready_gates_transfer_and_first_window_is_thirty_two_chunks() {
     BleTransferState state;
-    state.beginSegment(42, 20, 1000);
+    state.beginSegment(42, 40, 1000);
     TEST_ASSERT_EQUAL(BleTransferState::WAITING_READY, state.phase());
     TEST_ASSERT_FALSE(state.canSend(1000));
     state.onReady();
     TEST_ASSERT_TRUE(state.canSend(1000));
     TEST_ASSERT_EQUAL_UINT16(0, state.nextSequence());
-    for (uint16_t sequence = 0; sequence < 8; ++sequence) {
+    for (uint16_t sequence = 0; sequence < 32; ++sequence) {
         state.onChunkSent(sequence, 1000 + sequence);
     }
     TEST_ASSERT_EQUAL(BleTransferState::WAITING_ACK, state.phase());
@@ -20,21 +20,21 @@ void test_ready_gates_transfer_and_first_window_is_eight_chunks() {
 
 void test_valid_ack_advances_and_wrong_or_stale_ack_is_rejected() {
     BleTransferState state;
-    state.beginSegment(42, 12, 0);
+    state.beginSegment(42, 40, 0);
     state.onReady();
-    for (uint16_t sequence = 0; sequence < 8; ++sequence) state.onChunkSent(sequence, sequence);
-    TEST_ASSERT_FALSE(state.onAckWindow(7, 7, 10));
-    TEST_ASSERT_FALSE(state.onAckWindow(42, 6, 10));
-    TEST_ASSERT_TRUE(state.onAckWindow(42, 7, 10));
-    TEST_ASSERT_EQUAL_UINT16(8, state.nextSequence());
+    for (uint16_t sequence = 0; sequence < 32; ++sequence) state.onChunkSent(sequence, sequence);
+    TEST_ASSERT_FALSE(state.onAckWindow(7, 31, 40));
+    TEST_ASSERT_FALSE(state.onAckWindow(42, 30, 40));
+    TEST_ASSERT_TRUE(state.onAckWindow(42, 31, 40));
+    TEST_ASSERT_EQUAL_UINT16(32, state.nextSequence());
     TEST_ASSERT_EQUAL(BleTransferState::SENDING_WINDOW, state.phase());
 }
 
 void test_timeout_and_restart_request_restart_from_start() {
     BleTransferState state;
-    state.beginSegment(9, 10, 0);
+    state.beginSegment(9, 40, 0);
     state.onReady();
-    for (uint16_t sequence = 0; sequence < 8; ++sequence) state.onChunkSent(sequence, sequence);
+    for (uint16_t sequence = 0; sequence < 32; ++sequence) state.onChunkSent(sequence, sequence);
     TEST_ASSERT_TRUE(state.update(BleTransferState::ACK_TIMEOUT_MS + 10));
     TEST_ASSERT_EQUAL(BleTransferState::RESTARTING, state.phase());
     state.restartComplete(2000);
@@ -42,6 +42,38 @@ void test_timeout_and_restart_request_restart_from_start() {
     TEST_ASSERT_EQUAL(BleTransferState::SENDING_WINDOW, state.phase());
     TEST_ASSERT_TRUE(state.onRestartSegment(9));
     TEST_ASSERT_EQUAL(BleTransferState::RESTARTING, state.phase());
+}
+
+void test_burst_stops_on_budget_or_notification_failure() {
+    TEST_ASSERT_TRUE(BleBurstDecision::shouldContinue(true, true, 2999));
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(true, true, 3000));
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(false, true, 1));
+}
+
+void test_notification_gate_uses_wrap_safe_deadline() {
+    TEST_ASSERT_TRUE(BleBurstDecision::beforeDeadline(9999U, 10000U));
+    TEST_ASSERT_FALSE(BleBurstDecision::beforeDeadline(10000U, 10000U));
+    TEST_ASSERT_FALSE(BleBurstDecision::beforeDeadline(10001U, 10000U));
+    TEST_ASSERT_TRUE(BleBurstDecision::beforeDeadline(UINT32_MAX, 2U));
+    TEST_ASSERT_FALSE(BleBurstDecision::beforeDeadline(2U, 2U));
+}
+
+void test_burst_stops_when_window_or_segment_completion_blocks_sending() {
+    BleTransferState windowState;
+    windowState.onReady();
+    windowState.beginSegment(1, 40, 0);
+    for (uint16_t sequence = 0; sequence < 32; ++sequence) {
+        windowState.onChunkSent(sequence, sequence);
+    }
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(
+        true, windowState.canSend(32), 32));
+
+    BleTransferState completeState;
+    completeState.onReady();
+    completeState.beginSegment(2, 1, 0);
+    completeState.onChunkSent(0, 1);
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(
+        true, completeState.canSend(1), 1));
 }
 
 void test_upload_ok_only_after_every_chunk_acknowledged() {
@@ -145,9 +177,12 @@ void test_normal_status_request_does_not_clear_pending_error() {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_ready_gates_transfer_and_first_window_is_eight_chunks);
+    RUN_TEST(test_ready_gates_transfer_and_first_window_is_thirty_two_chunks);
     RUN_TEST(test_valid_ack_advances_and_wrong_or_stale_ack_is_rejected);
     RUN_TEST(test_timeout_and_restart_request_restart_from_start);
+    RUN_TEST(test_burst_stops_on_budget_or_notification_failure);
+    RUN_TEST(test_notification_gate_uses_wrap_safe_deadline);
+    RUN_TEST(test_burst_stops_when_window_or_segment_completion_blocks_sending);
     RUN_TEST(test_upload_ok_only_after_every_chunk_acknowledged);
     RUN_TEST(test_ready_is_cleared_by_disconnect_and_required_for_new_segment);
     RUN_TEST(test_transport_event_queue_copies_control_data_in_fifo_order);

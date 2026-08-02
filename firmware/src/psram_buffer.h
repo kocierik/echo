@@ -4,21 +4,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "ble_protocol.h"
+#include "buffered_segment.h"
 #include "config.h"
 #include "ring_buffer_layout.h"
 
 /**
  * Ring buffer on PSRAM for buffering audio segments awaiting BLE relay.
  */
-
-struct BufferedSegment {
-    uint32_t segmentId;
-    uint32_t dataLength;
-    uint32_t durationMs;
-    uint32_t silenceBeforeMs;
-    uint32_t capturedAtMs;
-    uint16_t avgEnergy;
-};
 
 class PSRAMBuffer {
 public:
@@ -30,7 +22,7 @@ public:
      */
     bool store(uint32_t segmentId, const uint8_t* data, size_t length,
                uint32_t durationMs, uint32_t silenceBeforeMs,
-               uint32_t capturedAtMs, uint16_t avgEnergy);
+               uint32_t capturedAtMs, uint16_t avgEnergy, uint32_t crc);
 
     /**
      * Peek at the oldest buffered segment without removing it.
@@ -56,7 +48,7 @@ public:
     size_t bytesUsed() const;
 
 private:
-    static constexpr size_t HEADER_SIZE = 22;
+    static constexpr size_t HEADER_SIZE = BufferedSegmentCodec::HEADER_SIZE;
 
     uint8_t* _buffer = nullptr;
     RingBufferLayout _layout{PSRAM_BUFFER_SIZE};
@@ -121,7 +113,7 @@ size_t PSRAMBuffer::bytesUsed() const {
 
 bool PSRAMBuffer::store(uint32_t segmentId, const uint8_t* data, size_t length,
                         uint32_t durationMs, uint32_t silenceBeforeMs,
-                        uint32_t capturedAtMs, uint16_t avgEnergy) {
+                        uint32_t capturedAtMs, uint16_t avgEnergy, uint32_t crc) {
     if (!_initialized || data == nullptr || length > UINT32_MAX || !hasSpace(length)) {
         return false;
     }
@@ -134,12 +126,16 @@ bool PSRAMBuffer::store(uint32_t segmentId, const uint8_t* data, size_t length,
         return false;
     }
 
-    EchoBleProtocol::writeU32(_buffer + offset, segmentId);
-    EchoBleProtocol::writeU32(_buffer + offset + 4, static_cast<uint32_t>(length));
-    EchoBleProtocol::writeU32(_buffer + offset + 8, durationMs);
-    EchoBleProtocol::writeU32(_buffer + offset + 12, silenceBeforeMs);
-    EchoBleProtocol::writeU32(_buffer + offset + 16, capturedAtMs);
-    EchoBleProtocol::writeU16(_buffer + offset + 20, avgEnergy);
+    const BufferedSegment header = {
+        segmentId,
+        static_cast<uint32_t>(length),
+        durationMs,
+        silenceBeforeMs,
+        capturedAtMs,
+        avgEnergy,
+        crc,
+    };
+    BufferedSegmentCodec::encode(header, _buffer + offset);
     memcpy(_buffer + offset + HEADER_SIZE, data, length);
     const uint16_t bufferedCount = _layout.count();
     xSemaphoreGive(_mutex);
@@ -158,12 +154,7 @@ bool PSRAMBuffer::peek(BufferedSegment& header, const uint8_t** data) {
         return false;
     }
     const size_t offset = _layout.frontOffset();
-    header.segmentId = EchoBleProtocol::readU32(_buffer + offset);
-    header.dataLength = EchoBleProtocol::readU32(_buffer + offset + 4);
-    header.durationMs = EchoBleProtocol::readU32(_buffer + offset + 8);
-    header.silenceBeforeMs = EchoBleProtocol::readU32(_buffer + offset + 12);
-    header.capturedAtMs = EchoBleProtocol::readU32(_buffer + offset + 16);
-    header.avgEnergy = EchoBleProtocol::readU16(_buffer + offset + 20);
+    header = BufferedSegmentCodec::decode(_buffer + offset);
     *data = _buffer + offset + HEADER_SIZE;
     xSemaphoreGive(_mutex);
     return true;
@@ -178,11 +169,10 @@ void PSRAMBuffer::dequeue() {
     }
 
     const size_t offset = _layout.frontOffset();
-    const uint32_t segmentId = EchoBleProtocol::readU32(_buffer + offset);
-    const uint32_t dataLength = EchoBleProtocol::readU32(_buffer + offset + 4);
-    _layout.pop(HEADER_SIZE + dataLength);
+    const BufferedSegment header = BufferedSegmentCodec::decode(_buffer + offset);
+    _layout.pop(HEADER_SIZE + header.dataLength);
     const uint16_t bufferedCount = _layout.count();
     xSemaphoreGive(_mutex);
     Serial.printf("[Buffer] Dequeued segment %lu (remaining: %u)\n",
-                  static_cast<unsigned long>(segmentId), bufferedCount);
+                  static_cast<unsigned long>(header.segmentId), bufferedCount);
 }

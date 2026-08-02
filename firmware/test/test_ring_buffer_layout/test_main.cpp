@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "buffered_segment.h"
 #include "ring_buffer_layout.h"
 
 void test_sequential_reservations_and_accounting() {
@@ -51,11 +52,30 @@ void test_full_to_empty_resets_offsets() {
     TEST_ASSERT_EQUAL_UINT32(0, offset);
 }
 
+void test_enlarged_segment_headers_wrap_without_losing_fifo_order() {
+    constexpr size_t entrySize = BufferedSegmentCodec::HEADER_SIZE + 10;
+    RingBufferLayout layout(80);
+    size_t offset = 0;
+
+    TEST_ASSERT_TRUE(layout.reserve(entrySize, offset));
+    TEST_ASSERT_EQUAL_UINT32(0, offset);
+    TEST_ASSERT_TRUE(layout.reserve(entrySize, offset));
+    TEST_ASSERT_EQUAL_UINT32(entrySize, offset);
+    layout.pop(entrySize);
+    TEST_ASSERT_TRUE(layout.reserve(entrySize, offset));
+    TEST_ASSERT_EQUAL_UINT32(0, offset);
+    TEST_ASSERT_EQUAL_UINT32(entrySize, layout.frontOffset());
+    layout.pop(entrySize);
+    TEST_ASSERT_EQUAL_UINT32(0, layout.frontOffset());
+    TEST_ASSERT_EQUAL_UINT16(1, layout.count());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_sequential_reservations_and_accounting);
     RUN_TEST(test_wrap_and_fifo_pop_jump_over_tail_gap);
     RUN_TEST(test_rejects_wrap_when_beginning_is_too_small);
     RUN_TEST(test_full_to_empty_resets_offsets);
+    RUN_TEST(test_enlarged_segment_headers_wrap_without_losing_fifo_order);
     return UNITY_END();
 }

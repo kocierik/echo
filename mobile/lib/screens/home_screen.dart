@@ -22,7 +22,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Conversation> _recentConvs = [];
   List<Map<String, dynamic>> _tasks = [];
   bool _loading = true;
-  StreamSubscription<String>? _bleMsgSub;
+  StreamSubscription<BleUiMessage>? _bleMsgSub;
   List<String> _bleMessages = [];
 
   @override
@@ -31,15 +31,19 @@ class _HomeScreenState extends State<HomeScreen> {
     _load();
     // Initialize with existing messages from service
     _bleMessages = List.from(bleService.messages);
-    // Listen for BLE messages from device and show a SnackBar
-    _bleMsgSub = bleService.messageStream.listen((msg) {
+    _bleMsgSub = bleService.uiMessageStream.listen((message) {
       if (!mounted) return;
       setState(() {
         _bleMessages = List.from(bleService.messages);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), duration: const Duration(seconds: 2)),
-      );
+      if (message.isError || message.isCompletion) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message.text),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     });
   }
 

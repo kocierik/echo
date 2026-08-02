@@ -52,6 +52,7 @@ class ChatSession {
 class ApiService {
   static const _serverKey = 'echo_server_url';
   static const _apiKeyKey = 'echo_api_key';
+  static const _segmentUploadTimeout = Duration(seconds: 20);
 
   final _secureStorage = const FlutterSecureStorage();
 
@@ -395,10 +396,18 @@ class ApiService {
       filename: 'segment.adpcm',
     ));
 
-    final streamedResponse = await request.send();
-    final responseBody = await streamedResponse.stream.bytesToString();
-    print('[API] uploadSegment response status=${streamedResponse.statusCode} body=$responseBody');
-    return streamedResponse.statusCode == 201;
+    final client = http.Client();
+    try {
+      final statusCode = await (() async {
+        final streamedResponse = await client.send(request);
+        await streamedResponse.stream.drain<void>();
+        return streamedResponse.statusCode;
+      })().timeout(_segmentUploadTimeout);
+      print('[API] uploadSegment response status=$statusCode');
+      return statusCode == 201;
+    } finally {
+      client.close();
+    }
   }
 }
 

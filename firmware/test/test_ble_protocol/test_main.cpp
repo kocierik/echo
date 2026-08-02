@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "ble_protocol.h"
+#include "buffered_segment.h"
 
 using namespace EchoBleProtocol;
 
@@ -19,6 +20,41 @@ void test_incremental_crc32_matches_one_shot_crc32() {
     crc = crc32Update(crc, bytes + 4, sizeof(bytes) - 4);
 
     TEST_ASSERT_EQUAL_HEX32(crc32(bytes, sizeof(bytes)), crc32Finalize(crc));
+}
+
+void test_buffered_segment_header_round_trips_stored_crc() {
+    const BufferedSegment header = {
+        0x78563412U, 4096U, 6000U, 800U, 123456U, 321U, 0xCBF43926U};
+    uint8_t encoded[BufferedSegmentCodec::HEADER_SIZE] = {};
+
+    BufferedSegmentCodec::encode(header, encoded);
+    const BufferedSegment decoded = BufferedSegmentCodec::decode(encoded);
+
+    TEST_ASSERT_EQUAL_UINT32(26, BufferedSegmentCodec::HEADER_SIZE);
+    TEST_ASSERT_EQUAL_HEX32(header.segmentId, decoded.segmentId);
+    TEST_ASSERT_EQUAL_UINT32(header.dataLength, decoded.dataLength);
+    TEST_ASSERT_EQUAL_UINT32(header.durationMs, decoded.durationMs);
+    TEST_ASSERT_EQUAL_UINT32(header.silenceBeforeMs, decoded.silenceBeforeMs);
+    TEST_ASSERT_EQUAL_UINT32(header.capturedAtMs, decoded.capturedAtMs);
+    TEST_ASSERT_EQUAL_UINT16(header.avgEnergy, decoded.avgEnergy);
+    TEST_ASSERT_EQUAL_HEX32(header.crc, decoded.crc);
+}
+
+void test_buffered_segment_header_exact_bytes() {
+    const BufferedSegment header = {
+        0x04030201U, 0x08070605U, 0x0C0B0A09U, 0x100F0E0DU,
+        0x14131211U, 0x1615U, 0x1A191817U};
+    const uint8_t expected[26] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+        0x19, 0x1A};
+    uint8_t encoded[BufferedSegmentCodec::HEADER_SIZE] = {};
+
+    BufferedSegmentCodec::encode(header, encoded);
+
+    TEST_ASSERT_EQUAL_UINT32(sizeof(expected), BufferedSegmentCodec::HEADER_SIZE);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, encoded, sizeof(expected));
 }
 
 void test_little_endian_round_trips() {
@@ -83,6 +119,7 @@ void test_notification_payload_is_capped_by_att_and_characteristic_limits() {
     TEST_ASSERT_EQUAL_UINT32(0, notificationValueSizeForMtu(3));
 
     TEST_ASSERT_EQUAL_UINT32(13, segmentDataPayloadSizeForMtu(23));
+    TEST_ASSERT_EQUAL_UINT32(237, segmentDataPayloadSizeForMtu(247));
     TEST_ASSERT_EQUAL_UINT32(505, segmentDataPayloadSizeForMtu(517));
     TEST_ASSERT_EQUAL_UINT32(0, segmentDataPayloadSizeForMtu(10, 7));
 }
@@ -138,6 +175,8 @@ int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_incremental_crc32_matches_one_shot_crc32);
+    RUN_TEST(test_buffered_segment_header_round_trips_stored_crc);
+    RUN_TEST(test_buffered_segment_header_exact_bytes);
     RUN_TEST(test_little_endian_round_trips);
     RUN_TEST(test_segment_start_exact_bytes);
     RUN_TEST(test_set_time_exact_bytes);

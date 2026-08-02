@@ -14,14 +14,14 @@
 
 // Audio buffer sizes
 #define PCM_BUFFER_SIZE 512      // Samples per I2S read (32ms at 16kHz)
-#define SEGMENT_DURATION_MS 15000 // Send segment every 15 seconds of speech max
+#define SEGMENT_DURATION_MS 6000  // Send segment every 6 seconds of speech max
 
 // ============================================================
 // VAD (Voice Activity Detection)
 // ============================================================
 #define VAD_ENERGY_THRESHOLD 500       // Minimum RMS energy to consider as speech
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
-#define VAD_SPEECH_END_FRAMES 60       // Consecutive frames below threshold to stop (~2s)
+#define VAD_SPEECH_END_FRAMES 25       // Consecutive frames below threshold to stop (~800ms)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame
 
 // Pre-buffer: keep last N frames of audio before VAD triggers
@@ -47,7 +47,7 @@
 #define BLE_SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define BLE_AUDIO_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BLE_CONTROL_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
-#define BLE_PREFERRED_MTU 517
+#define BLE_PREFERRED_MTU 247
 #define BLE_STATUS_ERROR_NONE 0
 #define BLE_STATUS_ERROR_BUFFER_FULL 1
 
