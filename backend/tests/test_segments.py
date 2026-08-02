@@ -1,7 +1,14 @@
 """Integration tests for POST /api/segments endpoint."""
 
+import uuid
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import AsyncClient
+
+from app.models.segment import Segment
+from app.models.transcription import Transcription
+from tests.conftest import TEST_USER_ID
 
 
 @pytest.mark.asyncio
@@ -95,3 +102,70 @@ async def test_ingest_segment_optional_silence(client: AsyncClient, auth_headers
     )
 
     assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_recent_segments_include_pending_and_completed_transcriptions(
+    client: AsyncClient, auth_headers, db_session
+):
+    now = datetime.now(timezone.utc)
+    completed = Segment(
+        user_id=TEST_USER_ID,
+        received_at=now,
+        recorded_at=now,
+        duration_ms=1600,
+        audio_path="/tmp/completed.adpcm",
+        audio_size_bytes=12800,
+        audio_energy=4200,
+        speaker="self",
+        transcription_status="completed",
+    )
+    pending = Segment(
+        user_id=TEST_USER_ID,
+        received_at=now - timedelta(seconds=1),
+        recorded_at=now - timedelta(seconds=1),
+        duration_ms=1200,
+        audio_path="/tmp/pending.adpcm",
+        audio_size_bytes=9600,
+        speaker="unknown",
+        transcription_status="pending",
+    )
+    other_user = Segment(
+        user_id=uuid.uuid4(),
+        received_at=now + timedelta(seconds=1),
+        recorded_at=now + timedelta(seconds=1),
+        duration_ms=900,
+        audio_path="/tmp/other.adpcm",
+        audio_size_bytes=7200,
+        transcription_status="pending",
+    )
+    db_session.add_all([completed, pending, other_user])
+    await db_session.flush()
+    db_session.add(
+        Transcription(
+            segment_id=completed.id,
+            text="[Tu] Ricordami di chiamare Marco",
+            language="it",
+            stt_provider="test",
+            stt_model="test",
+        )
+    )
+    await db_session.commit()
+
+    response = await client.get("/api/segments/recent?limit=10", headers=auth_headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [item["id"] for item in data] == [str(completed.id), str(pending.id)]
+    assert data[0]["text"] == "[Tu] Ricordami di chiamare Marco"
+    assert data[0]["speaker"] == "self"
+    assert data[0]["transcription_status"] == "completed"
+    assert data[1]["text"] is None
+    assert data[1]["conversation_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_recent_segments_require_authentication(client: AsyncClient):
+    response = await client.get("/api/segments/recent")
+
+    assert response.status_code in (401, 403)

@@ -81,6 +81,21 @@ class ApiService {
     }
   }
 
+  Future<String> getServerUrl() => _serverUrl;
+
+  Future<bool> validateCredentials(String serverUrl, String apiKey) async {
+    try {
+      final normalizedServer = serverUrl.trim().replaceFirst(RegExp(r'/$'), '');
+      final response = await http.get(
+        Uri.parse('$normalizedServer/api/conversations?limit=1'),
+        headers: {'X-API-Key': apiKey.trim()},
+      ).timeout(const Duration(seconds: 8));
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String> get _serverUrl async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_serverKey) ?? '';
@@ -166,7 +181,7 @@ class ApiService {
       final server = await _serverUrl;
       final headers = await _headers;
       final response = await http.get(
-        Uri.parse('$server/health'),
+        Uri.parse('$server/api/conversations?limit=1'),
         headers: headers,
       ).timeout(const Duration(seconds: 5));
       return response.statusCode == 200;
@@ -189,6 +204,22 @@ class ApiService {
     final data = jsonDecode(response.body);
     final items = data['conversations'] as List? ?? [];
     return items.map((e) => Conversation.fromJson(e)).toList();
+  }
+
+  Future<List<RecentSegment>> getRecentSegments({int limit = 50}) async {
+    final server = await _serverUrl;
+    final headers = await _headers;
+    final response = await http.get(
+      Uri.parse('$server/api/segments/recent?limit=$limit'),
+      headers: headers,
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Recent segments failed: HTTP ${response.statusCode}');
+    }
+    final items = jsonDecode(response.body) as List<dynamic>;
+    return items
+        .map((item) => RecentSegment.fromJson(item as Map<String, dynamic>))
+        .toList();
   }
 
   Future<ConversationDetail?> getConversationDetail(String id) async {
@@ -420,6 +451,45 @@ class ApiService {
 
 
 // --- Conversation Models ---
+
+class RecentSegment {
+  const RecentSegment({
+    required this.id,
+    required this.receivedAt,
+    required this.recordedAt,
+    required this.durationMs,
+    required this.transcriptionStatus,
+    required this.text,
+    required this.speaker,
+    required this.conversationId,
+  });
+
+  final String id;
+  final DateTime receivedAt;
+  final DateTime recordedAt;
+  final int durationMs;
+  final String transcriptionStatus;
+  final String? text;
+  final String? speaker;
+  final String? conversationId;
+
+  bool get isPending =>
+      transcriptionStatus == 'pending' || transcriptionStatus == 'processing';
+  bool get isFailed => transcriptionStatus == 'failed';
+
+  factory RecentSegment.fromJson(Map<String, dynamic> json) {
+    return RecentSegment(
+      id: json['id'] as String,
+      receivedAt: DateTime.parse(json['received_at'] as String),
+      recordedAt: DateTime.parse(json['recorded_at'] as String),
+      durationMs: json['duration_ms'] as int,
+      transcriptionStatus: json['transcription_status'] as String,
+      text: json['text'] as String?,
+      speaker: json['speaker'] as String?,
+      conversationId: json['conversation_id'] as String?,
+    );
+  }
+}
 
 class Conversation {
   final String id;

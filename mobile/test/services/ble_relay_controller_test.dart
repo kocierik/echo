@@ -41,6 +41,7 @@ void main() {
     test('finishes final ACK before upload and sends UPLOAD_OK only for true', () async {
       final ackComplete = Completer<void>();
       final writes = <List<int>>[];
+      final uploadedSegments = <int>[];
       var uploadCalls = 0;
       final controller = BleRelayController(
         upload: (_) async {
@@ -52,6 +53,7 @@ void main() {
           if (value.first == 0x11) return ackComplete.future;
           return Future.value();
         },
+        onUploaded: uploadedSegments.add,
       )..setConnected(true);
 
       final handling = controller.handleEvents([
@@ -67,6 +69,7 @@ void main() {
       await controller.attemptComplete;
       expect(uploadCalls, 1);
       expect(writes.map((value) => value.first), [0x11, 0x13]);
+      expect(uploadedSegments, [7]);
     });
 
     test('false upload result schedules retry and never sends UPLOAD_OK', () async {
@@ -92,6 +95,7 @@ void main() {
 
     test('retries UPLOAD_OK without uploading the segment again', () async {
       final scheduler = _FakeScheduler();
+      final uploadedSegments = <int>[];
       var uploadCalls = 0;
       var uploadOkWrites = 0;
       final controller = BleRelayController(
@@ -105,6 +109,7 @@ void main() {
           if (uploadOkWrites == 1) throw StateError('write failed');
         },
         scheduleRetry: scheduler.schedule,
+        onUploaded: uploadedSegments.add,
       )..setConnected(true);
 
       await controller.handleEvents([BleSegmentCompleted(_segment(10))]);
@@ -112,6 +117,7 @@ void main() {
       expect(uploadCalls, 1);
       expect(uploadOkWrites, 1);
       expect(scheduler.delays, [const Duration(seconds: 2)]);
+      expect(uploadedSegments, isEmpty);
 
       scheduler.fire(0);
       await _flush();
@@ -119,6 +125,7 @@ void main() {
       expect(uploadCalls, 1);
       expect(uploadOkWrites, 2);
       expect(scheduler.delays, [const Duration(seconds: 2)]);
+      expect(uploadedSegments, [10]);
     });
 
     test('disconnect cancels permanently failing UPLOAD_OK retries', () async {

@@ -29,10 +29,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       return;
     }
 
-    await _api.configure(server, key);
-    final ok = await _api.testConnection();
+    final ok = await _api.validateCredentials(server, key);
 
     if (ok) {
+      await _api.configure(server, key);
       widget.onComplete();
     } else {
       setState(() { _error = 'Connection failed. Check URL and key.'; _loading = false; });

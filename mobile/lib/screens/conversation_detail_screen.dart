@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
+import '../services/ble_service.dart';
 import '../theme/app_theme.dart';
 
 class ConversationDetailScreen extends StatefulWidget {
@@ -15,15 +18,32 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
   final _api = ApiService();
   ConversationDetail? _detail;
   bool _loading = true;
+  int _loadGeneration = 0;
+  StreamSubscription<int>? _uploadSubscription;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _uploadSubscription = bleService.segmentUploadedStream.listen((_) {
+      _load();
+      _refreshTimer?.cancel();
+      _refreshTimer = Timer(const Duration(seconds: 5), _load);
+    });
+  }
+
+  @override
+  void dispose() {
+    _uploadSubscription?.cancel();
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     final detail = await _api.getConversationDetail(widget.conversationId);
+    if (!mounted || generation != _loadGeneration) return;
     setState(() {
       _detail = detail;
       _loading = false;

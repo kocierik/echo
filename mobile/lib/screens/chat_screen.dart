@@ -5,6 +5,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import 'voice_chat_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -221,6 +222,14 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const VoiceChatScreen()),
+                      ),
+                      icon: const Icon(Icons.mic_none_rounded),
+                      tooltip: 'Ask by voice',
+                    ),
                     GestureDetector(
                       onTap: _canSend && !_isTyping ? _send : null,
                       child: AnimatedContainer(
