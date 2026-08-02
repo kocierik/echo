@@ -108,6 +108,13 @@ void test_nimble_callbacks_avoid_serial_io_on_the_host_task() {
     TEST_ASSERT_TRUE(controlCallbacksBody.find("Serial.") == std::string::npos);
 }
 
+void test_transport_does_not_force_max_tx_power() {
+    const std::string source = readSource("src/ble_transport.h");
+    // +20dBm can brown out the XIAO's regulator during notification bursts,
+    // corrupting radio timing into supervision timeouts.
+    TEST_ASSERT_TRUE(source.find("setPower(") == std::string::npos);
+}
+
 void test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay() {
     const std::string source = readMainSource();
     TEST_ASSERT_TRUE(source.find("preBufferCount - 1") != std::string::npos);
@@ -161,6 +168,7 @@ int main(int, char**) {
     RUN_TEST(test_firmware_uses_approved_latency_constants);
     RUN_TEST(test_transport_waits_for_ready_and_configures_ios_connection);
     RUN_TEST(test_nimble_callbacks_avoid_serial_io_on_the_host_task);
+    RUN_TEST(test_transport_does_not_force_max_tx_power);
     RUN_TEST(test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay);
     RUN_TEST(test_muting_only_finalizes_the_live_segment);
     RUN_TEST(test_transport_gates_each_notification_at_the_deadline);

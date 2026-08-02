@@ -20,11 +20,9 @@ public:
         NimBLEDevice::init(BLE_DEVICE_NAME);
         Serial.println("[BLE] NimBLEDevice initialized");
         NimBLEDevice::setMTU(BLE_PREFERRED_MTU);
-        if (NimBLEDevice::setPower(20, NimBLETxPowerType::All)) {
-            Serial.println("[BLE] TX power set to 20 dBm");
-        } else {
-            Serial.println("[BLE] failed to set BLE TX power");
-        }
+        // Max TX power (+20dBm) can brown out the XIAO's regulator during
+        // notification bursts, corrupting radio timing into supervision timeouts.
+        // Use the stack's default power instead of forcing the highest level.
 
         _server = NimBLEDevice::createServer();
         if (_server == nullptr) return false;
