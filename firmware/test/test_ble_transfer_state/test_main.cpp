@@ -35,7 +35,9 @@ void test_timeout_and_restart_request_restart_from_start() {
     state.beginSegment(9, 40, 0);
     state.onReady();
     for (uint16_t sequence = 0; sequence < 32; ++sequence) state.onChunkSent(sequence, sequence);
-    TEST_ASSERT_TRUE(state.update(BleTransferState::ACK_TIMEOUT_MS + 10));
+    const uint32_t lastChunkMs = BleTransferState::WINDOW_SIZE - 1;
+    TEST_ASSERT_FALSE(state.update(lastChunkMs + BleTransferState::ACK_TIMEOUT_MS - 1));
+    TEST_ASSERT_TRUE(state.update(lastChunkMs + BleTransferState::ACK_TIMEOUT_MS));
     TEST_ASSERT_EQUAL(BleTransferState::RESTARTING, state.phase());
     state.restartComplete(2000);
     TEST_ASSERT_EQUAL_UINT16(0, state.nextSequence());
