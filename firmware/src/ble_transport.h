@@ -135,16 +135,15 @@ private:
     public:
         explicit ServerCallbacks(BleTransport& owner) : _owner(owner) {}
 
-        void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo) override {
-            const uint16_t connHandle = connInfo.getConnHandle();
+        void onConnect(NimBLEServer*, NimBLEConnInfo& connInfo) override {
+            // Do not request conn param/DLE updates here: racing them against
+            // iOS's own MTU exchange right after connect causes BLE_ERR_CONN_SPVN_TMO.
             Serial.printf(
                 "[BLE] onConnect handle=%u interval=%u latency=%u timeout=%u\n",
-                connHandle,
+                connInfo.getConnHandle(),
                 connInfo.getConnInterval(),
                 connInfo.getConnLatency(),
                 connInfo.getConnTimeout());
-            server->updateConnParams(connHandle, 12, 24, 0, 400);
-            server->setDataLen(connHandle, 251);
             _owner.enqueueEvent(BleTransportEvent::connected());
         }
 
