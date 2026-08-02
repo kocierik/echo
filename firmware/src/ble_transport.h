@@ -58,6 +58,7 @@ public:
     void update(PSRAMBuffer& buffer) {
         const uint32_t burstStartedUs = micros();
         const uint32_t deadlineUs = burstStartedUs + BleBurstDecision::BURST_BUDGET_US;
+        uint8_t notificationsSent = 0;
         if (processPendingDisconnect()) return;
         while (beforeBurstDeadline(deadlineUs) && processNextEvent(buffer)) {}
         if (takeEventOverflow()) restartActive();
@@ -66,9 +67,10 @@ public:
         if (_pendingStatus.shouldNotify(_connected, _state.isReady())) {
             const bool notified = notifyBufferStatus(buffer, deadlineUs);
             _pendingStatus.onNotifyResult(notified);
+            if (notified) ++notificationsSent;
             if (!notified || !beforeBurstDeadline(deadlineUs)) return;
         }
-        if (!_connected || !_timeAnchor.isValid()) {
+        if (!_connected || !_timeAnchor.isValid() || !_state.isReady()) {
             return;
         }
         if (millis() < _notifyBackoffUntil) {
@@ -108,10 +110,12 @@ public:
             } else {
                 notified = sendNextChunk(deadlineUs);
             }
+            if (notified) ++notificationsSent;
         } while (BleBurstDecision::shouldContinue(
             notified,
             _state.canSend(millis()),
-            static_cast<uint32_t>(micros() - burstStartedUs)));
+            static_cast<uint32_t>(micros() - burstStartedUs),
+            notificationsSent));
     }
 
     bool isConnected() const { return _connected; }
@@ -131,8 +135,16 @@ private:
     public:
         explicit ServerCallbacks(BleTransport& owner) : _owner(owner) {}
 
-        void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
-            Serial.println("[BLE] onConnect");
+        void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo) override {
+            const uint16_t connHandle = connInfo.getConnHandle();
+            Serial.printf(
+                "[BLE] onConnect handle=%u interval=%u latency=%u timeout=%u\n",
+                connHandle,
+                connInfo.getConnInterval(),
+                connInfo.getConnLatency(),
+                connInfo.getConnTimeout());
+            server->updateConnParams(connHandle, 12, 24, 0, 400);
+            server->setDataLen(connHandle, 251);
             _owner.enqueueEvent(BleTransportEvent::connected());
         }
 
@@ -179,7 +191,11 @@ private:
         const bool ok = _audioCharacteristic->notify(data, length);
         if (!ok) {
             _notifyBackoffUntil = millis() + 10;
-            Serial.println("[BLE] notification failed; transfer paused");
+            const uint32_t nowMs = millis();
+            if (_lastNotifyFailureLogMs == 0 || nowMs - _lastNotifyFailureLogMs >= 1000) {
+                _lastNotifyFailureLogMs = nowMs;
+                Serial.println("[BLE] notification queue full; transfer paused");
+            }
         }
         return ok;
     }
@@ -417,6 +433,7 @@ private:
     const uint8_t* _segmentData = nullptr;
     size_t _chunkPayloadSize = 0;
     uint32_t _notifyBackoffUntil = 0;
+    uint32_t _lastNotifyFailureLogMs = 0;
     uint16_t _negotiatedMtu = 23;
     uint8_t _preambleStep = 0;
     bool _connected = false;

@@ -5,14 +5,17 @@
 class BleBurstDecision {
 public:
     static constexpr uint32_t BURST_BUDGET_US = 3000;
+    static constexpr uint8_t MAX_NOTIFICATIONS_PER_UPDATE = 4;
 
     static bool beforeDeadline(uint32_t nowUs, uint32_t deadlineUs) {
         return static_cast<int32_t>(nowUs - deadlineUs) < 0;
     }
 
     static bool shouldContinue(bool notificationSucceeded, bool canSend,
-                               uint32_t elapsedUs) {
-        return notificationSucceeded && canSend && elapsedUs < BURST_BUDGET_US;
+                               uint32_t elapsedUs, uint8_t notificationsSent) {
+        return notificationSucceeded && canSend &&
+               elapsedUs < BURST_BUDGET_US &&
+               notificationsSent < MAX_NOTIFICATIONS_PER_UPDATE;
     }
 };
 
