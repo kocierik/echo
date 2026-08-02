@@ -67,13 +67,14 @@ public:
         }
     }
 
-    bool onAckWindow(uint32_t segmentId, uint16_t highestSequence, uint32_t) {
+    bool onAckWindow(uint32_t segmentId, uint16_t highestSequence, uint32_t nowMs) {
         if (_phase != WAITING_ACK || segmentId != _segmentId || _nextSequence == 0 ||
             highestSequence != static_cast<uint16_t>(_nextSequence - 1)) {
             return false;
         }
         if (_nextSequence == _totalChunks) {
             _phase = WAITING_UPLOAD;
+            _deadlineMs = nowMs + ACK_TIMEOUT_MS;
         } else {
             _windowStart = _nextSequence;
             _phase = SENDING_WINDOW;
@@ -88,7 +89,8 @@ public:
     }
 
     bool update(uint32_t nowMs) {
-        if (_phase == WAITING_ACK && static_cast<int32_t>(nowMs - _deadlineMs) >= 0) {
+        const bool awaitingPeer = _phase == WAITING_ACK || _phase == WAITING_UPLOAD;
+        if (awaitingPeer && static_cast<int32_t>(nowMs - _deadlineMs) >= 0) {
             _phase = RESTARTING;
             return true;
         }
