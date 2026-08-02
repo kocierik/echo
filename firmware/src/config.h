@@ -19,7 +19,7 @@
 // ============================================================
 // VAD (Voice Activity Detection)
 // ============================================================
-#define VAD_ENERGY_THRESHOLD 500       // Minimum RMS energy to consider as speech
+#define VAD_ENERGY_THRESHOLD 2200      // Above observed ambient noise (~1200-1600 RMS)
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
 #define VAD_SPEECH_END_FRAMES 25       // Consecutive frames below threshold to stop (~800ms)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame

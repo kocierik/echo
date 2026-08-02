@@ -47,9 +47,10 @@ void test_timeout_and_restart_request_restart_from_start() {
 }
 
 void test_burst_stops_on_budget_or_notification_failure() {
-    TEST_ASSERT_TRUE(BleBurstDecision::shouldContinue(true, true, 2999));
-    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(true, true, 3000));
-    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(false, true, 1));
+    TEST_ASSERT_TRUE(BleBurstDecision::shouldContinue(true, true, 2999, 3));
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(true, true, 3000, 3));
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(false, true, 1, 3));
+    TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(true, true, 1, 4));
 }
 
 void test_notification_gate_uses_wrap_safe_deadline() {
@@ -68,14 +69,14 @@ void test_burst_stops_when_window_or_segment_completion_blocks_sending() {
         windowState.onChunkSent(sequence, sequence);
     }
     TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(
-        true, windowState.canSend(32), 32));
+        true, windowState.canSend(32), 32, 1));
 
     BleTransferState completeState;
     completeState.onReady();
     completeState.beginSegment(2, 1, 0);
     completeState.onChunkSent(0, 1);
     TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(
-        true, completeState.canSend(1), 1));
+        true, completeState.canSend(1), 1, 1));
 }
 
 void test_upload_ok_only_after_every_chunk_acknowledged() {

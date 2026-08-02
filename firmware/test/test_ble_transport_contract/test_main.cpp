@@ -57,9 +57,33 @@ void test_firmware_uses_approved_latency_constants() {
 
     TEST_ASSERT_TRUE(configSource.find("SEGMENT_DURATION_MS 6000") != std::string::npos);
     TEST_ASSERT_TRUE(configSource.find("VAD_SPEECH_END_FRAMES 25") != std::string::npos);
+    TEST_ASSERT_TRUE(configSource.find("VAD_ENERGY_THRESHOLD 2200") != std::string::npos);
     TEST_ASSERT_TRUE(configSource.find("BLE_PREFERRED_MTU 247") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("WINDOW_SIZE = 32") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("BURST_BUDGET_US = 3000") != std::string::npos);
+    TEST_ASSERT_TRUE(stateSource.find("MAX_NOTIFICATIONS_PER_UPDATE = 4") != std::string::npos);
+}
+
+void test_transport_waits_for_ready_and_configures_ios_connection() {
+    const std::string source = readSource("src/ble_transport.h");
+    const size_t readyGate = source.find("!_state.isReady()");
+    const size_t peek = source.find("buffer.peek(_segment, &_segmentData)");
+
+    TEST_ASSERT_TRUE(readyGate != std::string::npos);
+    TEST_ASSERT_TRUE(peek != std::string::npos);
+    TEST_ASSERT_TRUE(readyGate < peek);
+    TEST_ASSERT_TRUE(source.find("updateConnParams(connHandle, 12, 24, 0, 400)") !=
+                     std::string::npos);
+    TEST_ASSERT_TRUE(source.find("setDataLen(connHandle, 251)") != std::string::npos);
+    TEST_ASSERT_TRUE(source.find("advertiseOnDisconnect(true)") == std::string::npos);
+
+    const size_t notificationCounter = source.find("uint8_t notificationsSent = 0");
+    const size_t statusNotification = source.find("_pendingStatus.shouldNotify");
+    const size_t audioLoop = source.find("do {", statusNotification);
+    TEST_ASSERT_TRUE(notificationCounter < statusNotification);
+    TEST_ASSERT_TRUE(statusNotification < audioLoop);
+    TEST_ASSERT_EQUAL_UINT32(
+        2, countOccurrences(source, "if (notified) ++notificationsSent;"));
 }
 
 void test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay() {
@@ -113,6 +137,7 @@ int main(int, char**) {
     RUN_TEST(test_main_uses_ble_only_transport);
     RUN_TEST(test_crc_is_accumulated_during_encoding_and_not_scanned_by_transport);
     RUN_TEST(test_firmware_uses_approved_latency_constants);
+    RUN_TEST(test_transport_waits_for_ready_and_configures_ios_connection);
     RUN_TEST(test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay);
     RUN_TEST(test_muting_only_finalizes_the_live_segment);
     RUN_TEST(test_transport_gates_each_notification_at_the_deadline);
