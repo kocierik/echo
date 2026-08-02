@@ -42,9 +42,9 @@ class BleIndicator extends StatelessWidget {
 
   Color get _borderColor {
     switch (state) {
-      case BleConnectionState.connected: return AppColors.success.withOpacity(0.3);
+      case BleConnectionState.connected: return AppColors.success.withValues(alpha: 0.3);
       case BleConnectionState.scanning:
-      case BleConnectionState.connecting: return AppColors.accent.withOpacity(0.3);
+      case BleConnectionState.connecting: return AppColors.accent.withValues(alpha: 0.3);
       case BleConnectionState.disconnected: return AppColors.border;
     }
   }

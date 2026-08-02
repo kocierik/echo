@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'api_service.dart';
@@ -146,7 +147,7 @@ class BleService {
     await _cancelScan();
     _device = device;
     try {
-      print('[BLE] connecting to ${device.platformName} (${device.remoteId})');
+      debugPrint('[BLE] connecting to ${device.platformName} (${device.remoteId})');
       await device.connect(timeout: const Duration(seconds: 8));
       _connectionSub = device.connectionState.listen((connectionState) {
         if (connectionState == BluetoothConnectionState.disconnected) {
@@ -157,11 +158,11 @@ class BleService {
       if (Platform.isAndroid) {
         try {
           final mtu = await device.requestMtu(247);
-          print('[BLE] negotiated MTU $mtu');
+          debugPrint('[BLE] negotiated MTU $mtu');
         } catch (error) {
           if (!_mtuFailureLogged) {
             _mtuFailureLogged = true;
-            print('[BLE] MTU request failed: $error');
+            debugPrint('[BLE] MTU request failed: $error');
             _publishMessage('MTU request failed: $error', BleMessageKind.error);
           }
         }
@@ -201,7 +202,7 @@ class BleService {
       _setState(BleConnectionState.connected);
       _publishMessage('Echo device connected', BleMessageKind.phase);
     } catch (error) {
-      print('[BLE] connection failed: $error');
+      debugPrint('[BLE] connection failed: $error');
       _publishMessage('BLE connection failed: $error', BleMessageKind.error);
       try {
         await device.disconnect();

@@ -69,7 +69,7 @@ class _SkeletonCardState extends State<SkeletonCard> with SingleTickerProviderSt
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.foregroundMuted.withOpacity(_animation.value * 0.15),
+        color: AppColors.foregroundMuted.withValues(alpha: _animation.value * 0.15),
         borderRadius: BorderRadius.circular(4),
       ),
     );
