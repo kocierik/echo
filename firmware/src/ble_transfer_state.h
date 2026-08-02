@@ -2,6 +2,20 @@
 
 #include <cstdint>
 
+class BleBurstDecision {
+public:
+    static constexpr uint32_t BURST_BUDGET_US = 3000;
+
+    static bool beforeDeadline(uint32_t nowUs, uint32_t deadlineUs) {
+        return static_cast<int32_t>(nowUs - deadlineUs) < 0;
+    }
+
+    static bool shouldContinue(bool notificationSucceeded, bool canSend,
+                               uint32_t elapsedUs) {
+        return notificationSucceeded && canSend && elapsedUs < BURST_BUDGET_US;
+    }
+};
+
 class BleTransferState {
 public:
     enum Phase {
@@ -13,7 +27,7 @@ public:
         RESTARTING,
     };
 
-    static constexpr uint16_t WINDOW_SIZE = 8;
+    static constexpr uint16_t WINDOW_SIZE = 32;
     static constexpr uint32_t ACK_TIMEOUT_MS = 5000;
 
     void beginSegment(uint32_t segmentId, uint16_t totalChunks, uint32_t nowMs) {

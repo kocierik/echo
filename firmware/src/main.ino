@@ -56,10 +56,7 @@ uint32_t lastSilenceDurationMs = 0;
 uint32_t energySum = 0;
 uint16_t energyFrameCount = 0;
 uint32_t nextSegmentId = 1;
-
-// Test injection state: when microphone is muted, inject one test segment
-bool _testSegmentInjected = false;
-bool _prevMutedState = false;
+uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
 // ============================================================
 // Setup
@@ -117,55 +114,12 @@ void loop() {
     // Check mute state
     bool muted = indicators.isMuted();
     if (muted) {
-        // On mute transition, inject a single test segment into PSRAM
-        if (!_prevMutedState && !_testSegmentInjected) {
-            // Generate a short realistic ADPCM payload using the encoder
-            const uint8_t framesToGenerate = 4; // number of PCM frames to encode
-            size_t adpcmPos = 0;
-            encoder.reset();
-            int16_t pcm[PCM_BUFFER_SIZE];
-
-            for (uint8_t f = 0; f < framesToGenerate; f++) {
-                // simple alternating waveform to simulate audio
-                for (size_t i = 0; i < PCM_BUFFER_SIZE; i++) {
-                    pcm[i] = (int16_t)((i % 2 == 0) ? 800 : -800);
-                }
-                size_t adpcmBytes = encoder.encode(pcm, PCM_BUFFER_SIZE, adpcmFrame);
-                if (adpcmPos + adpcmBytes <= SEGMENT_MAX_SIZE) {
-                    memcpy(segmentBuffer + adpcmPos, adpcmFrame, adpcmBytes);
-                    adpcmPos += adpcmBytes;
-                } else {
-                    break;
-                }
-            }
-
-            const uint32_t segId = nextSegmentId++;
-            const uint32_t durationMs = framesToGenerate * VAD_FRAME_DURATION_MS; // approximate
-            if (adpcmPos == 0) {
-                Serial.println("[Main] Test generation produced no ADPCM bytes");
-            } else if (!buffer.store(segId, segmentBuffer, adpcmPos, durationMs, 0, millis(), 0)) {
-                Serial.println("[Main] PSRAM buffer full! Test segment lost.");
-                bleTransport.reportBufferFull();
-            } else {
-                Serial.printf("[Main] Stored TEST segment %u: %u bytes (buffered: %u)\n",
-                              segId, (unsigned)adpcmPos, (unsigned)buffer.count());
-                bleTransport.requestBufferStatus();
-            }
-            _testSegmentInjected = true;
-        }
-
-        // If we were recording, finalize the segment
         if (state == STATE_RECORDING) {
             finalizeSegment();
         }
 
-        _prevMutedState = true;
         delay(50);
         return;
-    } else {
-        // reset injection flag when unmuted
-        _prevMutedState = false;
-        _testSegmentInjected = false;
     }
 
     // Read audio frame from microphone
@@ -191,12 +145,14 @@ void loop() {
                 lastSilenceDurationMs = vad.getLastSilenceDurationMs();
                 energySum = 0;
                 energyFrameCount = 0;
+                segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
                 encoder.reset();
                 indicators.setRecording(true);
 
                 // Encode the pre-buffer first (captures speech onset)
+                const uint8_t replayFrames = preBufferCount - 1;
                 uint8_t readIdx = (preBufferWriteIdx - preBufferCount + PRE_BUFFER_FRAMES) % PRE_BUFFER_FRAMES;
-                for (uint8_t i = 0; i < preBufferCount; i++) {
+                for (uint8_t i = 0; i < replayFrames; i++) {
                     encodeFrame(preBuffer[readIdx], PCM_BUFFER_SIZE);
                     readIdx = (readIdx + 1) % PRE_BUFFER_FRAMES;
                 }
@@ -240,6 +196,8 @@ void encodeFrame(const int16_t* samples, size_t count) {
     if (segmentPos + adpcmBytes <= SEGMENT_MAX_SIZE) {
         memcpy(segmentBuffer + segmentPos, adpcmFrame, adpcmBytes);
         segmentPos += adpcmBytes;
+        segmentCrcAccumulator = EchoBleProtocol::crc32Update(
+            segmentCrcAccumulator, adpcmFrame, adpcmBytes);
     }
 }
 
@@ -280,6 +238,7 @@ void finalizeSegment() {
 
 
     const uint32_t segmentId = nextSegmentId++;
+    const uint32_t segmentCrc = EchoBleProtocol::crc32Finalize(segmentCrcAccumulator);
 
 
     indicators.setBlinking(true);
@@ -292,7 +251,8 @@ void finalizeSegment() {
             durationMs,
             lastSilenceDurationMs,
             segmentStartMs,
-            avgEnergy
+            avgEnergy,
+            segmentCrc
         )) {
 
         Serial.println(
@@ -340,6 +300,7 @@ void finalizeSegment() {
     segmentPos = 0;
     energySum = 0;
     energyFrameCount = 0;
+    segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
     vad.reset();
 

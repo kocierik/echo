@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../services/ble_service.dart';
@@ -11,17 +13,24 @@ class DeviceMessagesScreen extends StatefulWidget {
 
 class _DeviceMessagesScreenState extends State<DeviceMessagesScreen> {
   List<String> _messages = [];
+  StreamSubscription<String>? _messageSubscription;
 
   @override
   void initState() {
     super.initState();
     _messages = List.from(bleService.messages);
-    bleService.messageStream.listen((msg) {
+    _messageSubscription = bleService.messageStream.listen((msg) {
       if (!mounted) return;
       setState(() {
         _messages = List.from(bleService.messages);
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _messageSubscription?.cancel();
+    super.dispose();
   }
 
   void _clear() {
