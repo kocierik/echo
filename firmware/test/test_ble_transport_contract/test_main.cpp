@@ -72,9 +72,10 @@ void test_transport_waits_for_ready_and_configures_ios_connection() {
     TEST_ASSERT_TRUE(readyGate != std::string::npos);
     TEST_ASSERT_TRUE(peek != std::string::npos);
     TEST_ASSERT_TRUE(readyGate < peek);
-    TEST_ASSERT_TRUE(source.find("updateConnParams(connHandle, 12, 24, 0, 400)") !=
-                     std::string::npos);
-    TEST_ASSERT_TRUE(source.find("setDataLen(connHandle, 251)") != std::string::npos);
+    // Requesting conn param/DLE updates synchronously in onConnect races iOS's
+    // own MTU exchange and causes BLE_ERR_CONN_SPVN_TMO; must not return.
+    TEST_ASSERT_TRUE(source.find("updateConnParams(") == std::string::npos);
+    TEST_ASSERT_TRUE(source.find("setDataLen(") == std::string::npos);
     TEST_ASSERT_TRUE(source.find("advertiseOnDisconnect(true)") == std::string::npos);
 
     const size_t notificationCounter = source.find("uint8_t notificationsSent = 0");
