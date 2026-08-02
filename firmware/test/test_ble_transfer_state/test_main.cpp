@@ -46,6 +46,24 @@ void test_timeout_and_restart_request_restart_from_start() {
     TEST_ASSERT_EQUAL(BleTransferState::RESTARTING, state.phase());
 }
 
+void test_waiting_upload_times_out_and_restarts_the_same_segment() {
+    BleTransferState state;
+    state.beginSegment(9, 32, 0);
+    state.onReady();
+    for (uint16_t sequence = 0; sequence < 32; ++sequence) state.onChunkSent(sequence, sequence);
+    TEST_ASSERT_TRUE(state.onAckWindow(9, 31, 32));
+    TEST_ASSERT_EQUAL(BleTransferState::WAITING_UPLOAD, state.phase());
+
+    TEST_ASSERT_FALSE(state.update(32 + BleTransferState::ACK_TIMEOUT_MS - 1));
+    TEST_ASSERT_TRUE(state.update(32 + BleTransferState::ACK_TIMEOUT_MS));
+    TEST_ASSERT_EQUAL(BleTransferState::RESTARTING, state.phase());
+    TEST_ASSERT_EQUAL_UINT32(9, state.segmentId());
+
+    state.restartComplete(9000);
+    TEST_ASSERT_EQUAL(BleTransferState::SENDING_WINDOW, state.phase());
+    TEST_ASSERT_EQUAL_UINT16(0, state.nextSequence());
+}
+
 void test_burst_stops_on_budget_or_notification_failure() {
     TEST_ASSERT_TRUE(BleBurstDecision::shouldContinue(true, true, 2999, 3));
     TEST_ASSERT_FALSE(BleBurstDecision::shouldContinue(true, true, 3000, 3));
@@ -183,6 +201,7 @@ int main(int, char**) {
     RUN_TEST(test_ready_gates_transfer_and_first_window_is_thirty_two_chunks);
     RUN_TEST(test_valid_ack_advances_and_wrong_or_stale_ack_is_rejected);
     RUN_TEST(test_timeout_and_restart_request_restart_from_start);
+    RUN_TEST(test_waiting_upload_times_out_and_restarts_the_same_segment);
     RUN_TEST(test_burst_stops_on_budget_or_notification_failure);
     RUN_TEST(test_notification_gate_uses_wrap_safe_deadline);
     RUN_TEST(test_burst_stops_when_window_or_segment_completion_blocks_sending);
