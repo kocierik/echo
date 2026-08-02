@@ -124,7 +124,7 @@ class _RulesScreenState extends State<RulesScreen> {
                           alignment: Alignment.centerRight,
                           padding: const EdgeInsets.only(right: 20),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withOpacity(0.1),
+                            color: AppColors.error.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: const Icon(Icons.delete_rounded, color: AppColors.error),
@@ -136,7 +136,7 @@ class _RulesScreenState extends State<RulesScreen> {
                             color: AppColors.bgElevated,
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: enabled ? AppColors.accent.withOpacity(0.3) : AppColors.border,
+                              color: enabled ? AppColors.accent.withValues(alpha: 0.3) : AppColors.border,
                             ),
                           ),
                           child: Column(
@@ -155,7 +155,7 @@ class _RulesScreenState extends State<RulesScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: enabled ? AppColors.success.withOpacity(0.1) : AppColors.surface,
+                                        color: enabled ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Text(
@@ -177,7 +177,7 @@ class _RulesScreenState extends State<RulesScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: AppColors.accent.withOpacity(0.1),
+                                      color: AppColors.accent.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: const Text('IF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.accent)),
@@ -200,7 +200,7 @@ class _RulesScreenState extends State<RulesScreen> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: AppColors.success.withOpacity(0.1),
+                                      color: AppColors.success.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
                                     child: const Text('THEN', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: AppColors.success)),
@@ -246,7 +246,7 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_awesome_rounded, size: 48, color: AppColors.accent.withOpacity(0.5)),
+            Icon(Icons.auto_awesome_rounded, size: 48, color: AppColors.accent.withValues(alpha: 0.5)),
             const SizedBox(height: 16),
             const Text(
               'No rules yet',
@@ -435,7 +435,7 @@ class _CreateRuleSheetState extends State<_CreateRuleSheet> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: selected ? AppColors.accent.withOpacity(0.15) : AppColors.surface,
+                    color: selected ? AppColors.accent.withValues(alpha: 0.15) : AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: selected ? AppColors.accent : AppColors.border),
                   ),
@@ -456,7 +456,7 @@ class _CreateRuleSheetState extends State<_CreateRuleSheet> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: selected ? AppColors.success.withOpacity(0.15) : AppColors.surface,
+                    color: selected ? AppColors.success.withValues(alpha: 0.15) : AppColors.surface,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: selected ? AppColors.success : AppColors.border),
                   ),

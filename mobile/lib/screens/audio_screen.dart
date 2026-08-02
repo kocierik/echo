@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/skeleton.dart';
@@ -83,7 +82,7 @@ class _AudioScreenState extends State<AudioScreen> {
                             children: [
                               const Icon(Icons.wifi_off_rounded, color: AppColors.foregroundMuted, size: 32),
                               const SizedBox(height: 12),
-                              Text('Connection failed', style: const TextStyle(color: AppColors.foregroundMuted, fontSize: 14)),
+                              const Text('Connection failed', style: TextStyle(color: AppColors.foregroundMuted, fontSize: 14)),
                               const SizedBox(height: 12),
                               TextButton(
                                 onPressed: _load,
@@ -186,14 +185,14 @@ class _ConversationCard extends StatelessWidget {
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(Icons.access_time_rounded, size: 12, color: AppColors.foregroundMuted),
+                const Icon(Icons.access_time_rounded, size: 12, color: AppColors.foregroundMuted),
                 const SizedBox(width: 4),
                 Text(
                   _formatDate(conversation.startedAt),
                   style: const TextStyle(fontSize: 11, color: AppColors.foregroundMuted),
                 ),
                 const SizedBox(width: 12),
-                Icon(Icons.segment_rounded, size: 12, color: AppColors.foregroundMuted),
+                const Icon(Icons.segment_rounded, size: 12, color: AppColors.foregroundMuted),
                 const SizedBox(width: 4),
                 Text(
                   '${conversation.segmentCount} segments',
@@ -227,7 +226,7 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: isCompleted ? AppColors.success.withOpacity(0.1) : AppColors.surface,
+        color: isCompleted ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

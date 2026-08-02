@@ -233,14 +233,14 @@ class _ProviderCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.bgElevated,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: enabled ? AppColors.success.withOpacity(0.3) : AppColors.border),
+          border: Border.all(color: enabled ? AppColors.success.withValues(alpha: 0.3) : AppColors.border),
         ),
         child: Row(
           children: [
             Container(
               width: 40, height: 40,
               decoration: BoxDecoration(
-                color: enabled ? AppColors.success.withOpacity(0.1) : AppColors.surface,
+                color: enabled ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, size: 20, color: enabled ? AppColors.success : AppColors.foregroundMuted),
@@ -260,7 +260,7 @@ class _ProviderCard extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 42, minHeight: 24),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: enabled ? AppColors.success.withOpacity(0.1) : AppColors.surface,
+                color: enabled ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: pending

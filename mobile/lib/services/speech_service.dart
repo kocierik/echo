@@ -33,10 +33,12 @@ class SpeechService {
       onResult: (result) {
         onResult(result.recognizedWords);
       },
-      listenMode: stt.ListenMode.dictation,
-      localeId: 'it_IT',
-      cancelOnError: false,
-      partialResults: true,
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        localeId: 'it_IT',
+        cancelOnError: false,
+        partialResults: true,
+      ),
     );
   }
 

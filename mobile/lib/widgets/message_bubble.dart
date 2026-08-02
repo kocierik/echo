@@ -55,12 +55,12 @@ class MessageBubble extends StatelessWidget {
                         h2: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: AppColors.foreground),
                         h3: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.foreground),
                         listBullet: const TextStyle(fontSize: 15, color: AppColors.foreground),
-                        code: TextStyle(fontSize: 13, color: AppColors.accent, backgroundColor: AppColors.surface),
-                        codeblockDecoration: BoxDecoration(
+                        code: const TextStyle(fontSize: 13, color: AppColors.accent, backgroundColor: AppColors.surface),
+                        codeblockDecoration: const BoxDecoration(
                           color: AppColors.surface,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        blockquoteDecoration: BoxDecoration(
+                        blockquoteDecoration: const BoxDecoration(
                           border: Border(left: BorderSide(color: AppColors.accent, width: 3)),
                         ),
                         blockquotePadding: const EdgeInsets.only(left: 12),
@@ -118,9 +118,9 @@ class _FeedbackButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: active ? activeColor.withOpacity(0.1) : Colors.transparent,
+          color: active ? activeColor.withValues(alpha: 0.1) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: active ? activeColor.withOpacity(0.4) : AppColors.border),
+          border: Border.all(color: active ? activeColor.withValues(alpha: 0.4) : AppColors.border),
         ),
         child: Icon(icon, size: 14, color: active ? activeColor : AppColors.foregroundMuted),
       ),

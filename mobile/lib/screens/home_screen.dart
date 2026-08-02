@@ -262,9 +262,9 @@ class _LiveIndicatorState extends State<_LiveIndicator> with SingleTickerProvide
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: state == BleConnectionState.connected ? AppColors.success.withOpacity(0.08) : AppColors.surface,
+              color: state == BleConnectionState.connected ? AppColors.success.withValues(alpha: 0.08) : AppColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: state == BleConnectionState.connected ? AppColors.success.withOpacity(0.2) : AppColors.border),
+              border: Border.all(color: state == BleConnectionState.connected ? AppColors.success.withValues(alpha: 0.2) : AppColors.border),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -330,8 +330,8 @@ class _DigestCard extends StatelessWidget {
               spacing: 6,
               children: people.take(5).map((p) => Chip(
                 label: Text(p, style: const TextStyle(fontSize: 11, color: AppColors.accent)),
-                backgroundColor: AppColors.accent.withOpacity(0.08),
-                side: BorderSide(color: AppColors.accent.withOpacity(0.2)),
+                backgroundColor: AppColors.accent.withValues(alpha: 0.08),
+                side: BorderSide(color: AppColors.accent.withValues(alpha: 0.2)),
                 padding: EdgeInsets.zero,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               )).toList(),
@@ -430,7 +430,7 @@ class _RecentConvCard extends StatelessWidget {
           Container(
             width: 36, height: 36,
             decoration: BoxDecoration(
-              color: AppColors.accent.withOpacity(0.1),
+              color: AppColors.accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: const Icon(Icons.record_voice_over_rounded, size: 16, color: AppColors.accent),
@@ -472,7 +472,7 @@ class _TaskItem extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.bgElevated,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDone ? AppColors.success.withOpacity(0.2) : AppColors.border),
+        border: Border.all(color: isDone ? AppColors.success.withValues(alpha: 0.2) : AppColors.border),
       ),
       child: Row(
         children: [
@@ -481,7 +481,7 @@ class _TaskItem extends StatelessWidget {
             child: Container(
               width: 22, height: 22,
               decoration: BoxDecoration(
-                color: isDone ? AppColors.success.withOpacity(0.15) : Colors.transparent,
+                color: isDone ? AppColors.success.withValues(alpha: 0.15) : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: isDone ? AppColors.success : AppColors.foregroundMuted, width: 1.5),
               ),

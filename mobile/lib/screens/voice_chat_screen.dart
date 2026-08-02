@@ -175,9 +175,9 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                         width: double.infinity,
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: AppColors.accent.withOpacity(0.08),
+                          color: AppColors.accent.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.accent.withOpacity(0.2)),
+                          border: Border.all(color: AppColors.accent.withValues(alpha: 0.2)),
                         ),
                         child: Text(
                           _response,
@@ -231,7 +231,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (_isListening ? AppColors.error : AppColors.accent).withOpacity(0.4),
+                                    color: (_isListening ? AppColors.error : AppColors.accent).withValues(alpha: 0.4),
                                     blurRadius: _isListening ? 24 : 16,
                                     offset: const Offset(0, 4),
                                   ),

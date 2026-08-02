@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -378,7 +379,7 @@ class ApiService {
     }
 
     final uri = Uri.parse('$server/api/segments');
-    print('[API] uploadSegment start uri=$uri recordedAt=$recordedAt durationMs=$durationMs audioBytes=${audioData.length}');
+    debugPrint('[API] uploadSegment start uri=$uri recordedAt=$recordedAt durationMs=$durationMs audioBytes=${audioData.length}');
     final request = http.MultipartRequest('POST', uri);
     request.headers['X-API-Key'] = key ?? '';
     request.headers['X-Recorded-At'] = recordedAt;
@@ -403,7 +404,7 @@ class ApiService {
         await streamedResponse.stream.drain<void>();
         return streamedResponse.statusCode;
       })().timeout(_segmentUploadTimeout);
-      print('[API] uploadSegment response status=$statusCode');
+      debugPrint('[API] uploadSegment response status=$statusCode');
       return statusCode == 201;
     } finally {
       client.close();
