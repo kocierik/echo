@@ -51,6 +51,7 @@ class BleService {
                   : BleMessageKind.phase,
         );
       },
+      onUploaded: _segmentUploadedController.add,
     );
   }
 
@@ -86,6 +87,9 @@ class BleService {
 
   final _uiMessageController = StreamController<BleUiMessage>.broadcast();
   Stream<BleUiMessage> get uiMessageStream => _uiMessageController.stream;
+
+  final _segmentUploadedController = StreamController<int>.broadcast();
+  Stream<int> get segmentUploadedStream => _segmentUploadedController.stream;
 
   final List<String> _messages = [];
   List<String> get messages => List.unmodifiable(_messages);
@@ -382,6 +386,7 @@ class BleService {
     unawaited(_stateController.close());
     unawaited(_messageController.close());
     unawaited(_uiMessageController.close());
+    unawaited(_segmentUploadedController.close());
   }
 }
 

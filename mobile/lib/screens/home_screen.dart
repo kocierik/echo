@@ -4,12 +4,18 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../services/ble_service.dart';
 import '../widgets/skeleton.dart';
-import 'integrations_screen.dart';
-import 'device_messages_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback onAskTap;
-  const HomeScreen({super.key, required this.onAskTap});
+  final VoidCallback onTranscriptsTap;
+  final VoidCallback onSettingsTap;
+
+  const HomeScreen({
+    super.key,
+    required this.onAskTap,
+    required this.onTranscriptsTap,
+    required this.onSettingsTap,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -17,59 +23,51 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _api = ApiService();
-  Map<String, dynamic>? _stats;
   Map<String, dynamic>? _digest;
-  List<Conversation> _recentConvs = [];
+  List<RecentSegment> _recentSegments = [];
   List<Map<String, dynamic>> _tasks = [];
   bool _loading = true;
-  StreamSubscription<BleUiMessage>? _bleMsgSub;
-  List<String> _bleMessages = [];
+  int _loadGeneration = 0;
+  StreamSubscription<int>? _segmentUploadSubscription;
+  Timer? _delayedRefresh;
 
   @override
   void initState() {
     super.initState();
     _load();
-    // Initialize with existing messages from service
-    _bleMessages = List.from(bleService.messages);
-    _bleMsgSub = bleService.uiMessageStream.listen((message) {
-      if (!mounted) return;
-      setState(() {
-        _bleMessages = List.from(bleService.messages);
-      });
-      if (message.isError || message.isCompletion) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(message.text),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+    _segmentUploadSubscription = bleService.segmentUploadedStream.listen((_) {
+      _load();
+      _delayedRefresh?.cancel();
+      _delayedRefresh = Timer(const Duration(seconds: 4), _load);
     });
   }
 
   @override
   void dispose() {
-    _bleMsgSub?.cancel();
+    _segmentUploadSubscription?.cancel();
+    _delayedRefresh?.cancel();
     super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    final generation = ++_loadGeneration;
+    if (mounted && _recentSegments.isEmpty) setState(() => _loading = true);
     try {
-      final stats = await _api.getStats();
-      final convs = await _api.getConversations();
+      final recentSegments = await _api.getRecentSegments(limit: 3);
       final today = DateTime.now().toIso8601String().split('T')[0];
       final digest = await _api.getDigest(today);
       final tasks = await _api.getTasks();
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _stats = stats;
-        _recentConvs = convs.take(3).toList();
+        _recentSegments = recentSegments;
         _digest = digest;
         _tasks = tasks;
         _loading = false;
       });
     } catch (_) {
-      setState(() => _loading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -101,11 +99,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Text('Echo', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.foreground, letterSpacing: -0.5)),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.extension_rounded, size: 20, color: AppColors.foregroundMuted),
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const IntegrationsScreen())),
-                    tooltip: 'Integrations',
+                    icon: const Icon(Icons.settings_outlined, size: 20, color: AppColors.foregroundMuted),
+                    onPressed: widget.onSettingsTap,
+                    tooltip: 'Settings',
                   ),
-                  // Live indicator
                   _LiveIndicator(),
                 ],
               ),
@@ -116,42 +113,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
 
-              // Persistent BLE message list
-              if (_bleMessages.isNotEmpty) ...[
-                GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DeviceMessagesScreen())),
-                  child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.bgElevated,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Device messages', style: TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 80,
-                        child: ListView.separated(
-                          itemCount: _bleMessages.length < 5 ? _bleMessages.length : 5,
-                          separatorBuilder: (_, __) => const SizedBox(height: 6),
-                          itemBuilder: (context, idx) {
-                            final msg = _bleMessages[idx];
-                            return Text(msg, style: const TextStyle(fontSize: 13, color: AppColors.foreground));
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              const SizedBox(height: 24),
+              Row(
+                children: [
+                  const Text('LATEST', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, fontWeight: FontWeight.w600)),
+                  const Spacer(),
+                  TextButton(onPressed: widget.onTranscriptsTap, child: const Text('See all')),
+                ],
+              ),
+              if (_loading)
+                const SkeletonCard()
+              else if (_recentSegments.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 18),
+                  child: Text('Your latest transcripts will appear here.', style: TextStyle(fontSize: 13, color: AppColors.foregroundMuted)),
+                )
+              else
+                ..._recentSegments.map((segment) => _RecentTranscriptPreview(segment: segment)),
+              const SizedBox(height: 22),
 
-              // Daily Recap Card
               if (_loading)
                 const SkeletonCard()
               else if (_digest != null)
@@ -188,20 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 24),
               ],
 
-              // Stats Row
-              if (_stats != null) ...[
-                const Text('TODAY', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 10),
-                _StatsRow(stats: _stats!),
-                const SizedBox(height: 24),
-              ],
-
-              // Recent Conversations
-              if (_recentConvs.isNotEmpty) ...[
-                const Text('RECENT', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
-                const SizedBox(height: 10),
-                ..._recentConvs.map((c) => _RecentConvCard(conv: c)),
-              ],
             ],
           ),
         ),
@@ -221,6 +186,43 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDone = task['metadata_']?['done'] == true;
     await _api.updateEntity(id, metadata: {'done': !isDone});
     _load();
+  }
+}
+
+class _RecentTranscriptPreview extends StatelessWidget {
+  const _RecentTranscriptPreview({required this.segment});
+
+  final RecentSegment segment;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = segment.text?.replaceFirst(RegExp(r'^\[(Tu|Altri)\]\s*'), '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            segment.isPending ? Icons.sync_rounded : Icons.notes_rounded,
+            size: 17,
+            color: segment.isPending ? AppColors.accent : AppColors.foregroundMuted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text == null || text.isEmpty ? 'Transcribing...' : text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+                color: text == null ? AppColors.foregroundMuted : AppColors.foreground,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -365,94 +367,6 @@ class _EmptyDigestCard extends StatelessWidget {
     );
   }
 }
-
-class _StatsRow extends StatelessWidget {
-  final Map<String, dynamic> stats;
-  const _StatsRow({required this.stats});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _StatChip(label: 'Segments', value: '${stats['segments'] ?? 0}'),
-        const SizedBox(width: 8),
-        _StatChip(label: 'Entities', value: '${stats['entities'] ?? 0}'),
-        const SizedBox(width: 8),
-        _StatChip(label: 'Conversations', value: '${stats['conversations'] ?? 0}'),
-      ],
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  final String label;
-  final String value;
-  const _StatChip({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.bgElevated,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Column(
-          children: [
-            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.foreground)),
-            const SizedBox(height: 2),
-            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.foregroundMuted)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _RecentConvCard extends StatelessWidget {
-  final Conversation conv;
-  const _RecentConvCard({required this.conv});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.bgElevated,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36, height: 36,
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.record_voice_over_rounded, size: 16, color: AppColors.accent),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(conv.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.foreground), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text('${conv.segmentCount} segments', style: const TextStyle(fontSize: 11, color: AppColors.foregroundMuted)),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right_rounded, size: 18, color: AppColors.foregroundMuted),
-        ],
-      ),
-    );
-  }
-}
-
 
 class _TaskItem extends StatelessWidget {
   final Map<String, dynamic> task;

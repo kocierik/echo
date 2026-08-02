@@ -21,6 +21,7 @@ class BleRelayController {
     BleRetrySchedule? scheduleRetry,
     this.uploadTimeout = const Duration(seconds: 25),
     this.onStatus,
+    this.onUploaded,
   })  : _upload = upload,
         _writeControl = writeControl,
         _scheduleRetry = scheduleRetry ?? _scheduleTimer;
@@ -37,6 +38,7 @@ class BleRelayController {
   final BleRetrySchedule _scheduleRetry;
   final Duration uploadTimeout;
   final void Function(String message, {required bool isError})? onStatus;
+  final void Function(int segmentId)? onUploaded;
 
   Future<void> _controlTail = Future.value();
   Future<void>? _attempt;
@@ -173,6 +175,7 @@ class BleRelayController {
 
     _pendingSegment = null;
     _retryIndex = 0;
+    onUploaded?.call(segment.id);
     onStatus?.call('Segment ${segment.id} uploaded', isError: false);
   }
 

@@ -29,6 +29,54 @@ class SegmentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RecentSegmentResponse(BaseModel):
+    id: uuid.UUID
+    received_at: datetime
+    recorded_at: datetime
+    duration_ms: int
+    transcription_status: str
+    text: str | None
+    speaker: str | None
+    conversation_id: uuid.UUID | None
+
+
+@router.get("/recent", response_model=list[RecentSegmentResponse])
+async def list_recent_segments(
+    limit: int = 50,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return recent Segments immediately, including pending Transcriptions."""
+    from app.models.transcription import Transcription
+
+    transcription_text = (
+        select(Transcription.text)
+        .where(Transcription.segment_id == Segment.id)
+        .order_by(Transcription.created_at.desc())
+        .limit(1)
+        .scalar_subquery()
+    )
+    result = await db.execute(
+        select(Segment, transcription_text.label("text"))
+        .where(Segment.user_id == user_id)
+        .order_by(Segment.received_at.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    return [
+        RecentSegmentResponse(
+            id=segment.id,
+            received_at=segment.received_at,
+            recorded_at=segment.recorded_at,
+            duration_ms=segment.duration_ms,
+            transcription_status=segment.transcription_status,
+            text=text,
+            speaker=segment.speaker,
+            conversation_id=segment.conversation_id,
+        )
+        for segment, text in result.all()
+    ]
+
+
 @router.post("", response_model=SegmentResponse, status_code=status.HTTP_201_CREATED)
 @limiter.limit("60/minute")
 async def ingest_segment(
