@@ -58,7 +58,7 @@ class MessageBubble extends StatelessWidget {
                         code: const TextStyle(fontSize: 13, color: AppColors.accent, backgroundColor: AppColors.surface),
                         codeblockDecoration: const BoxDecoration(
                           color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.all(Radius.circular(8)),
                         ),
                         blockquoteDecoration: const BoxDecoration(
                           border: Border(left: BorderSide(color: AppColors.accent, width: 3)),
