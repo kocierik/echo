@@ -18,6 +18,8 @@
 #include "ble_transport.h"
 #include "psram_buffer.h"
 #include "indicators.h"
+#include "device_preferences.h"
+#include "mute_state.h"
 
 // ============================================================
 // Global instances
@@ -28,6 +30,10 @@ ADPCMEncoder encoder;
 BleTransport bleTransport;
 PSRAMBuffer buffer;
 Indicators indicators;
+DevicePreferences devicePreferences;
+MuteState muteState(
+    [](bool& muted) { return devicePreferences.loadMuted(muted); },
+    [](bool muted) { return devicePreferences.saveMuted(muted); });
 
 // ============================================================
 // State
@@ -58,6 +64,23 @@ uint16_t energyFrameCount = 0;
 uint32_t nextSegmentId = 1;
 uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
+void discardInProgressCapture();
+
+void handleMuteCommand(bool muted, void*) {
+    const bool changed = muteState.isMuted() != muted;
+    const bool persisted = muteState.setMuted(muted);
+
+    if (changed) discardInProgressCapture();
+
+    indicators.setMuted(muteState.isMuted());
+    bleTransport.setMuted(muteState.isMuted());
+
+    if (!persisted) {
+        Serial.println("[Privacy] Failed to persist mute state");
+    }
+    Serial.printf("[Privacy] Mute: %s\n", muteState.isMuted() ? "ON" : "OFF");
+}
+
 // ============================================================
 // Setup
 // ============================================================
@@ -69,6 +92,17 @@ void setup() {
     // Initialize indicators first (for visual feedback during boot)
     indicators.begin();
     indicators.setBlinking(true);
+
+    bleTransport.setMuteCommandCallback(handleMuteCommand, nullptr);
+
+    if (!devicePreferences.begin()) {
+        Serial.println("[Privacy] Preferences init failed; defaulting to listening");
+    }
+    if (!muteState.begin()) {
+        Serial.println("[Privacy] Mute state load failed; defaulting to listening");
+    }
+    indicators.setMuted(muteState.isMuted());
+    bleTransport.setMuted(muteState.isMuted());
 
     // Initialize PSRAM buffer
     if (!buffer.begin()) {
@@ -111,11 +145,9 @@ void loop() {
 
 
 
-    // Check mute state
-    bool muted = indicators.isMuted();
-    if (muted) {
-        if (state == STATE_RECORDING) {
-            finalizeSegment();
+    if (muteState.isMuted()) {
+        if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {
+            discardInProgressCapture();
         }
 
         delay(50);
@@ -191,6 +223,19 @@ void loop() {
 // Helpers
 // ============================================================
 
+void discardInProgressCapture() {
+    indicators.setRecording(false);
+    state = STATE_IDLE;
+    segmentPos = 0;
+    energySum = 0;
+    energyFrameCount = 0;
+    segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
+    encoder.reset();
+    vad.reset();
+    preBufferCount = 0;
+    preBufferWriteIdx = 0;
+}
+
 void encodeFrame(const int16_t* samples, size_t count) {
     size_t adpcmBytes = encoder.encode(samples, count, adpcmFrame);
     if (segmentPos + adpcmBytes <= SEGMENT_MAX_SIZE) {
@@ -244,7 +289,8 @@ void finalizeSegment() {
     indicators.setBlinking(true);
 
 
-    if (!buffer.store(
+    const auto storeNewest = [&]() {
+        return buffer.store(
             segmentId,
             segmentBuffer,
             segmentPos,
@@ -253,13 +299,33 @@ void finalizeSegment() {
             segmentStartMs,
             avgEnergy,
             segmentCrc
-        )) {
+        );
+    };
+
+    bool stored = storeNewest();
+    while (!stored) {
+        BufferedSegment oldest = {};
+        const uint8_t* oldestData = nullptr;
+        if (!buffer.peek(oldest, &oldestData)) break;
+
+        bleTransport.cancelActiveForOverflow(oldest.segmentId);
+        const uint32_t droppedSegmentId = buffer.dropOldest();
+        if (droppedSegmentId == 0) break;
+
+        bleTransport.reportBufferOverflow();
+        Serial.printf(
+            "[Main] Dropped segment %u for overflow (dropped total: %u)\n",
+            droppedSegmentId,
+            buffer.droppedSegmentCount()
+        );
+        stored = storeNewest();
+    }
+
+    if (!stored) {
 
         Serial.println(
-            "[Main] PSRAM buffer full! Segment lost."
+            "[Main] PSRAM buffer empty but newest segment still could not be stored. Segment lost."
         );
-
-        bleTransport.reportBufferFull();
 
     } else {
 

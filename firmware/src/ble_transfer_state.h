@@ -55,6 +55,15 @@ public:
         _nextSequence = 0;
     }
 
+    void cancelSegment() {
+        _phase = IDLE;
+        _segmentId = 0;
+        _totalChunks = 0;
+        _nextSequence = 0;
+        _windowStart = 0;
+        _deadlineMs = 0;
+    }
+
     bool canSend(uint32_t) const { return _phase == SENDING_WINDOW; }
 
     void onChunkSent(uint16_t sequence, uint32_t nowMs) {

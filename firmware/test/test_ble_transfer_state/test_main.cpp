@@ -122,6 +122,35 @@ void test_ready_is_cleared_by_disconnect_and_required_for_new_segment() {
     TEST_ASSERT_FALSE(state.canSend(0));
 }
 
+void test_cancel_segment_resets_transfer_but_preserves_ready() {
+    BleTransferState state;
+    state.onReady();
+    state.beginSegment(88, 3, 0);
+    state.onChunkSent(0, 1);
+
+    state.cancelSegment();
+
+    TEST_ASSERT_TRUE(state.isReady());
+    TEST_ASSERT_EQUAL(BleTransferState::IDLE, state.phase());
+    TEST_ASSERT_EQUAL_UINT32(0, state.segmentId());
+    TEST_ASSERT_EQUAL_UINT16(0, state.nextSequence());
+}
+
+void test_new_segment_can_begin_and_send_after_cancellation() {
+    BleTransferState state;
+    state.onReady();
+    state.beginSegment(88, 3, 0);
+    state.cancelSegment();
+
+    state.beginSegment(89, 2, 10);
+
+    TEST_ASSERT_EQUAL_UINT32(89, state.segmentId());
+    TEST_ASSERT_EQUAL(BleTransferState::SENDING_WINDOW, state.phase());
+    TEST_ASSERT_TRUE(state.canSend(10));
+    state.onChunkSent(0, 11);
+    TEST_ASSERT_EQUAL_UINT16(1, state.nextSequence());
+}
+
 void test_transport_event_queue_copies_control_data_in_fifo_order() {
     BleTransportEventQueue queue;
     const uint8_t ready[] = {EchoBleProtocol::FRAME_READY};
@@ -140,6 +169,16 @@ void test_transport_event_queue_copies_control_data_in_fifo_order() {
     TEST_ASSERT_EQUAL_UINT16(sizeof(uploadOk), event.controlLength);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(uploadOk, event.controlData, sizeof(uploadOk));
     TEST_ASSERT_FALSE(queue.pop(event));
+}
+
+void test_connected_event_carries_connection_handle() {
+    BleTransportEventQueue queue;
+    TEST_ASSERT_TRUE(queue.push(BleTransportEvent::connected(37)));
+
+    BleTransportEvent event = {};
+    TEST_ASSERT_TRUE(queue.pop(event));
+    TEST_ASSERT_EQUAL(BleTransportEventType::CONNECTED, event.type);
+    TEST_ASSERT_EQUAL_UINT16(37, event.connectionHandle);
 }
 
 void test_transport_event_queue_rejects_overflow_without_overwriting() {
@@ -207,7 +246,10 @@ int main(int, char**) {
     RUN_TEST(test_burst_stops_when_window_or_segment_completion_blocks_sending);
     RUN_TEST(test_upload_ok_only_after_every_chunk_acknowledged);
     RUN_TEST(test_ready_is_cleared_by_disconnect_and_required_for_new_segment);
+    RUN_TEST(test_cancel_segment_resets_transfer_but_preserves_ready);
+    RUN_TEST(test_new_segment_can_begin_and_send_after_cancellation);
     RUN_TEST(test_transport_event_queue_copies_control_data_in_fifo_order);
+    RUN_TEST(test_connected_event_carries_connection_handle);
     RUN_TEST(test_transport_event_queue_rejects_overflow_without_overwriting);
     RUN_TEST(test_control_event_preserves_invalid_length_without_copying_past_capacity);
     RUN_TEST(test_pending_status_waits_for_ready_and_successful_notification);

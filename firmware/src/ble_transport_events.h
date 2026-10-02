@@ -14,12 +14,15 @@ enum class BleTransportEventType : uint8_t {
 
 struct BleTransportEvent {
     BleTransportEventType type = BleTransportEventType::CONNECTED;
+    uint16_t connectionHandle = 0;
     uint16_t mtu = 0;
     uint16_t controlLength = 0;
     uint8_t controlData[EchoBleProtocol::MAX_CONTROL_FRAME_SIZE] = {};
 
-    static BleTransportEvent connected() {
-        return {};
+    static BleTransportEvent connected(uint16_t connectionHandle = 0) {
+        BleTransportEvent event;
+        event.connectionHandle = connectionHandle;
+        return event;
     }
 
     static BleTransportEvent mtuChanged(uint16_t mtu) {

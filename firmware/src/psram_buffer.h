@@ -35,6 +35,12 @@ public:
     /** Remove the oldest segment from the buffer. */
     void dequeue();
 
+    /** Drop the oldest segment and return its ID, or 0 when empty. */
+    uint32_t dropOldest();
+
+    /** Cumulative number of segments dropped due to overflow. */
+    uint32_t droppedSegmentCount() const;
+
     /** Number of buffered segments. */
     uint16_t count() const;
 
@@ -53,6 +59,7 @@ private:
     uint8_t* _buffer = nullptr;
     RingBufferLayout _layout{PSRAM_BUFFER_SIZE};
     mutable SemaphoreHandle_t _mutex = nullptr;
+    uint32_t _droppedSegmentCount = 0;
     bool _initialized = false;
 };
 
@@ -114,7 +121,8 @@ size_t PSRAMBuffer::bytesUsed() const {
 bool PSRAMBuffer::store(uint32_t segmentId, const uint8_t* data, size_t length,
                         uint32_t durationMs, uint32_t silenceBeforeMs,
                         uint32_t capturedAtMs, uint16_t avgEnergy, uint32_t crc) {
-    if (!_initialized || data == nullptr || length > UINT32_MAX || !hasSpace(length)) {
+    if (!_initialized || data == nullptr || length > UINT32_MAX ||
+        length > PSRAM_BUFFER_SIZE - HEADER_SIZE) {
         return false;
     }
 
@@ -146,7 +154,7 @@ bool PSRAMBuffer::store(uint32_t segmentId, const uint8_t* data, size_t length,
 }
 
 bool PSRAMBuffer::peek(BufferedSegment& header, const uint8_t** data) {
-    if (!_initialized || _layout.count() == 0 || data == nullptr) return false;
+    if (!_initialized || data == nullptr) return false;
 
     xSemaphoreTake(_mutex, portMAX_DELAY);
     if (_layout.count() == 0) {
@@ -175,4 +183,34 @@ void PSRAMBuffer::dequeue() {
     xSemaphoreGive(_mutex);
     Serial.printf("[Buffer] Dequeued segment %lu (remaining: %u)\n",
                   static_cast<unsigned long>(header.segmentId), bufferedCount);
+}
+
+uint32_t PSRAMBuffer::dropOldest() {
+    if (!_initialized) return 0;
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    if (_layout.count() == 0) {
+        xSemaphoreGive(_mutex);
+        return 0;
+    }
+
+    const size_t offset = _layout.frontOffset();
+    const BufferedSegment header = BufferedSegmentCodec::decode(_buffer + offset);
+    _layout.pop(HEADER_SIZE + header.dataLength);
+    ++_droppedSegmentCount;
+    const uint16_t bufferedCount = _layout.count();
+    const uint32_t droppedCount = _droppedSegmentCount;
+    xSemaphoreGive(_mutex);
+
+    Serial.printf("[Buffer] Dropped oldest segment %lu (remaining: %u, dropped: %lu)\n",
+                  static_cast<unsigned long>(header.segmentId), bufferedCount,
+                  static_cast<unsigned long>(droppedCount));
+    return header.segmentId;
+}
+
+uint32_t PSRAMBuffer::droppedSegmentCount() const {
+    if (!_initialized) return 0;
+    xSemaphoreTake(_mutex, portMAX_DELAY);
+    const uint32_t value = _droppedSegmentCount;
+    xSemaphoreGive(_mutex);
+    return value;
 }
