@@ -1,11 +1,12 @@
-"""Audio retention job: deletes audio files older than AUDIO_RETENTION_DAYS."""
+"""Delete expired audio while preserving segment metadata."""
 
 import asyncio
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -15,63 +16,105 @@ logger = logging.getLogger(__name__)
 
 # Run retention check every 6 hours
 RETENTION_CHECK_INTERVAL_S = 6 * 3600
+RETENTION_BATCH_SIZE = 100
+
+DeleteFile = Callable[[Path], None]
+
+
+def _delete_audio_file(audio_file: Path) -> None:
+    audio_file.unlink()
+
+
+def _build_retention_query(now: datetime):
+    if now.tzinfo is None or now.utcoffset() != timedelta(0):
+        raise ValueError("now must be UTC-aware")
+
+    completed_cutoff = now - timedelta(hours=settings.completed_audio_retention_hours)
+    incomplete_cutoff = now - timedelta(days=settings.incomplete_audio_retention_days)
+
+    return (
+        select(Segment)
+        .where(Segment.audio_path.isnot(None))
+        .where(Segment.audio_path != "")
+        .where(
+            or_(
+                and_(
+                    Segment.transcription_status == "completed",
+                    Segment.recorded_at < completed_cutoff,
+                ),
+                and_(
+                    Segment.transcription_status != "completed",
+                    Segment.recorded_at < incomplete_cutoff,
+                ),
+            )
+        )
+        .order_by(Segment.recorded_at.asc(), Segment.id.asc())
+        .limit(RETENTION_BATCH_SIZE)
+        .with_for_update(skip_locked=True)
+    )
 
 
 async def run_retention_loop():
-    """Periodically delete audio files older than the retention period."""
+    """Periodically clear audio using the completed and incomplete policies."""
     logger.info(
-        f"[Retention] Started — deleting audio older than {settings.audio_retention_days} days "
-        f"(checking every {RETENTION_CHECK_INTERVAL_S // 3600}h)"
+        "[Retention] Started: completed audio expires after %sh; "
+        "incomplete audio expires after %sd (checking every %sh)",
+        settings.completed_audio_retention_hours,
+        settings.incomplete_audio_retention_days,
+        RETENTION_CHECK_INTERVAL_S // 3600,
     )
 
     while True:
         try:
-            deleted = await cleanup_old_audio()
-            if deleted > 0:
-                logger.info(f"[Retention] Cleaned up {deleted} expired audio files")
-        except Exception as e:
-            logger.error(f"[Retention] Error during cleanup: {e}")
+            cleared = await cleanup_old_audio()
+            if cleared > 0:
+                logger.info("[Retention] Cleared %s expired audio records", cleared)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("[Retention] Error during cleanup")
 
         await asyncio.sleep(RETENTION_CHECK_INTERVAL_S)
 
 
-async def cleanup_old_audio() -> int:
-    """Delete audio files and clear paths for segments older than retention period.
+async def cleanup_old_audio(
+    *,
+    now: datetime | None = None,
+    session_factory=async_session,
+    delete_file: DeleteFile = _delete_audio_file,
+) -> int:
+    """Delete one expired audio batch and clear its storage metadata.
 
     Returns:
-        Number of audio files deleted.
+        Number of segment records whose audio fields were successfully cleared.
+        Missing files count as successfully cleared; deletion errors remain for retry.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=settings.audio_retention_days)
-    deleted_count = 0
+    effective_now = now or datetime.now(timezone.utc)
+    query = _build_retention_query(effective_now)
+    cleared_count = 0
 
-    async with async_session() as db:
-        # Find segments with audio files that are past retention
-        query = (
-            select(Segment)
-            .where(Segment.recorded_at < cutoff)
-            .where(Segment.audio_path.isnot(None))
-            .where(Segment.audio_path != "")
-            .limit(100)  # Process in batches
-        )
-
+    async with session_factory() as db:
         result = await db.execute(query)
         segments = result.scalars().all()
 
         for segment in segments:
-            # Delete the file
-            audio_file = Path(segment.audio_path)
-            if audio_file.exists():
-                try:
-                    audio_file.unlink()
-                    deleted_count += 1
-                except OSError as e:
-                    logger.warning(f"[Retention] Failed to delete {audio_file}: {e}")
-                    continue
+            audio_path = segment.audio_path
+            if not audio_path:
+                continue
 
-            # Clear the path in DB (keep the segment record)
-            segment.audio_path = ""
-            segment.audio_size_bytes = 0
+            audio_file = Path(audio_path)
+            try:
+                delete_file(audio_file)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                logger.warning("[Retention] Failed to delete %s: %s", audio_file, exc)
+                continue
+
+            segment.audio_path = None
+            segment.audio_size_bytes = None
+            cleared_count += 1
 
         await db.commit()
 
-    return deleted_count
+    return cleared_count

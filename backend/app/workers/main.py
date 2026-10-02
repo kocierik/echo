@@ -15,28 +15,28 @@ import json
 import logging
 import signal
 import uuid
+from contextlib import suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
 import redis.asyncio as redis
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import setup_logging
-from app.integrations.engine import trigger_integrations
-from app.models.chunk import Chunk
-from app.models.conversation import Conversation
-from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
-from app.services.chunking import chunk_text
-from app.services.deduplication import deduplicate_entities
+from app.services.analysis_pipeline import (
+    AnalysisPipeline,
+    assign_to_conversation,
+    extract_entities,
+    generate_conversation_summary,
+)
+from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.embedding_openai import get_embedding_service
-from app.services.entity_consolidation import consolidate_entities
-from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
@@ -56,6 +56,49 @@ logger = logging.getLogger(__name__)
 # Shutdown coordination
 SHUTDOWN_TIMEOUT_S = 30
 shutdown_event = asyncio.Event()
+
+REANALYSIS_LOCK_TTL_S = 300
+REANALYSIS_LOCK_RENEWAL_S = 120
+REANALYSIS_LOCK_BACKOFF_S = (2, 5, 10, 30)
+MAX_REANALYSES_PER_LOCK = 3
+
+_RENEW_LOCK_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('expire', KEYS[1], ARGV[2])
+end
+return 0
+"""
+
+_RELEASE_LOCK_SCRIPT = """
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
+
+_DELETE_LATEST_IF_UNCHANGED_SCRIPT = """
+-- Delete only the exact latest marker observed by this worker.
+if redis.call('get', KEYS[1]) == ARGV[1] then
+    return redis.call('del', KEYS[1])
+end
+return 0
+"""
+
+
+@dataclass(frozen=True)
+class ReanalysisPayload:
+    conversation_id: uuid.UUID
+    requested_at: datetime
+    attempts: int = 0
+
+    def to_json(self) -> str:
+        return json.dumps(
+            {
+                "conversation_id": str(self.conversation_id),
+                "requested_at": self.requested_at.isoformat(),
+                "attempts": self.attempts,
+            }
+        )
 
 
 def _handle_signal(sig: signal.Signals):
@@ -83,6 +126,353 @@ async def push_to_dead_letter(
     logger.warning(f"[DeadLetter] Segment {segment_id} pushed to dead letter (step={step})")
 
 
+async def push_reanalysis_to_dead_letter(
+    redis_client: redis.Redis,
+    raw_payload: str,
+    error: str,
+    *,
+    attempts: int = 0,
+    conversation_id: uuid.UUID | None = None,
+):
+    entry = {
+        "conversation_id": str(conversation_id) if conversation_id else None,
+        "step": "reanalysis",
+        "error": str(error)[:500],
+        "attempts": attempts,
+        "payload": raw_payload[:1000],
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await redis_client.lpush("queue:dead-letter", json.dumps(entry))
+    logger.warning(
+        "[DeadLetter] Reanalysis payload pushed to dead letter "
+        f"(conversation_id={conversation_id})"
+    )
+
+
+def _parse_aware_datetime(value: object) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError("requested_at must be an ISO timestamp string")
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("requested_at must include a timezone offset")
+    return parsed
+
+
+def _parse_reanalysis_payload(raw_payload: str | bytes) -> ReanalysisPayload:
+    decoded = raw_payload.decode() if isinstance(raw_payload, bytes) else raw_payload
+    data = json.loads(decoded)
+    if not isinstance(data, dict):
+        raise ValueError("reanalysis payload must be a JSON object")
+
+    conversation_id = uuid.UUID(str(data.get("conversation_id", "")))
+    requested_at = _parse_aware_datetime(data.get("requested_at"))
+    attempts = data.get("attempts", 0)
+    if isinstance(attempts, bool) or not isinstance(attempts, int) or attempts < 0:
+        raise ValueError("attempts must be a non-negative integer")
+    return ReanalysisPayload(conversation_id, requested_at, attempts)
+
+
+def _decode_redis_token(value: object) -> str | None:
+    if isinstance(value, bytes):
+        try:
+            return value.decode()
+        except UnicodeDecodeError:
+            return None
+    return value if isinstance(value, str) else None
+
+
+async def _renew_reanalysis_lock(
+    redis_client: redis.Redis,
+    lock_key: str,
+    lock_token: str,
+    lock_lost: asyncio.Event,
+):
+    try:
+        while True:
+            await asyncio.sleep(REANALYSIS_LOCK_RENEWAL_S)
+            renewed = await redis_client.eval(
+                _RENEW_LOCK_SCRIPT,
+                1,
+                lock_key,
+                lock_token,
+                REANALYSIS_LOCK_TTL_S,
+            )
+            if not renewed:
+                lock_lost.set()
+                logger.warning(f"[Reanalysis] Lost distributed lock {lock_key}")
+                return
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        lock_lost.set()
+        logger.exception(f"[Reanalysis] Failed to renew distributed lock {lock_key}")
+
+
+async def _owns_reanalysis_lock(
+    redis_client: redis.Redis,
+    lock_key: str,
+    lock_token: str,
+    lock_lost: asyncio.Event,
+) -> bool:
+    if lock_lost.is_set():
+        return False
+    try:
+        observed_token = await redis_client.get(lock_key)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        lock_lost.set()
+        logger.exception(f"[Reanalysis] Failed to verify distributed lock {lock_key}")
+        return False
+
+    owns_lock = _decode_redis_token(observed_token) == lock_token
+    if not owns_lock:
+        lock_lost.set()
+    return owns_lock
+
+
+async def _requeue_after_reanalysis_lock_loss(
+    redis_client: redis.Redis,
+    payload: ReanalysisPayload,
+    requested_at: datetime,
+) -> None:
+    max_retry_attempt = max(0, len(REANALYSIS_LOCK_BACKOFF_S) - 1)
+    retry_payload = ReanalysisPayload(
+        payload.conversation_id,
+        requested_at,
+        min(payload.attempts + 1, max_retry_attempt),
+    )
+    await redis_client.lpush("queue:reanalysis", retry_payload.to_json())
+    logger.warning(
+        f"[Reanalysis] Requeued conversation {payload.conversation_id} after lock loss"
+    )
+
+
+async def _process_reanalysis_payload(
+    redis_client: redis.Redis,
+    raw_payload: str | bytes,
+    llm_service,
+    embedding_service,
+):
+    decoded_payload = (
+        raw_payload.decode(errors="replace")
+        if isinstance(raw_payload, bytes)
+        else raw_payload
+    )
+    try:
+        payload = _parse_reanalysis_payload(raw_payload)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        await push_reanalysis_to_dead_letter(redis_client, decoded_payload, str(exc))
+        return
+
+    current_payload = payload.to_json()
+    lock_key = f"reanalysis:lock:{payload.conversation_id}"
+    lock_token = uuid.uuid4().hex
+    lock_acquired = False
+    lock_lost = asyncio.Event()
+    renewal_task: asyncio.Task | None = None
+
+    try:
+        lock_acquired = bool(
+            await redis_client.set(
+                lock_key,
+                lock_token,
+                nx=True,
+                ex=REANALYSIS_LOCK_TTL_S,
+            )
+        )
+        if not lock_acquired:
+            if payload.attempts >= len(REANALYSIS_LOCK_BACKOFF_S):
+                await push_reanalysis_to_dead_letter(
+                    redis_client,
+                    current_payload,
+                    "distributed lock unavailable",
+                    attempts=payload.attempts,
+                    conversation_id=payload.conversation_id,
+                )
+                return
+
+            await asyncio.sleep(REANALYSIS_LOCK_BACKOFF_S[payload.attempts])
+            retry_payload = ReanalysisPayload(
+                payload.conversation_id,
+                payload.requested_at,
+                payload.attempts + 1,
+            )
+            await redis_client.lpush("queue:reanalysis", retry_payload.to_json())
+            return
+
+        renewal_task = asyncio.create_task(
+            _renew_reanalysis_lock(
+                redis_client,
+                lock_key,
+                lock_token,
+                lock_lost,
+            ),
+            name=f"reanalysis_lock_{payload.conversation_id}",
+        )
+        processed_at = payload.requested_at
+        latest_key = f"reanalysis:latest:{payload.conversation_id}"
+
+        for run_index in range(MAX_REANALYSES_PER_LOCK):
+            if not await _owns_reanalysis_lock(
+                redis_client,
+                lock_key,
+                lock_token,
+                lock_lost,
+            ):
+                await _requeue_after_reanalysis_lock_loss(
+                    redis_client,
+                    payload,
+                    processed_at,
+                )
+                return
+
+            async with async_session() as db:
+                result = await reanalyse_conversation(
+                    db,
+                    payload.conversation_id,
+                    llm_service,
+                    embedding_service,
+                )
+            if not await _owns_reanalysis_lock(
+                redis_client,
+                lock_key,
+                lock_token,
+                lock_lost,
+            ):
+                await _requeue_after_reanalysis_lock_loss(
+                    redis_client,
+                    payload,
+                    processed_at,
+                )
+                return
+            if not result.found:
+                logger.warning(
+                    f"[Reanalysis] Conversation {payload.conversation_id} not found"
+                )
+                return
+
+            latest_raw = await redis_client.get(latest_key)
+            if latest_raw is None:
+                return
+            if isinstance(latest_raw, bytes):
+                latest_raw = latest_raw.decode()
+            try:
+                latest_at = _parse_aware_datetime(latest_raw)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"[Reanalysis] Ignoring invalid latest marker for "
+                    f"{payload.conversation_id}"
+                )
+                return
+
+            if latest_at <= processed_at:
+                await redis_client.eval(
+                    _DELETE_LATEST_IF_UNCHANGED_SCRIPT,
+                    1,
+                    latest_key,
+                    latest_raw,
+                )
+                return
+            if run_index == MAX_REANALYSES_PER_LOCK - 1:
+                latest_payload = ReanalysisPayload(
+                    payload.conversation_id,
+                    latest_at,
+                )
+                await redis_client.lpush("queue:reanalysis", latest_payload.to_json())
+                return
+            processed_at = latest_at
+
+    except asyncio.CancelledError:
+        await redis_client.lpush("queue:reanalysis", current_payload)
+        raise
+    except Exception as exc:
+        logger.exception(
+            f"[Reanalysis] Failed conversation {payload.conversation_id}: {exc}"
+        )
+        await push_reanalysis_to_dead_letter(
+            redis_client,
+            current_payload,
+            str(exc),
+            attempts=getattr(exc, "attempts", payload.attempts),
+            conversation_id=payload.conversation_id,
+        )
+    finally:
+        if renewal_task is not None:
+            renewal_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await renewal_task
+        if lock_acquired:
+            try:
+                await redis_client.eval(
+                    _RELEASE_LOCK_SCRIPT,
+                    1,
+                    lock_key,
+                    lock_token,
+                )
+            except Exception:
+                logger.exception(f"[Reanalysis] Failed to release lock {lock_key}")
+
+
+async def process_reanalysis(redis_client: redis.Redis):
+    """Consume corrected conversations and rebuild their derived memory."""
+    llm_service = get_llm_analysis_service()
+    embedding_service = get_embedding_service()
+
+    while not shutdown_event.is_set():
+        result = await redis_client.brpop("queue:reanalysis", timeout=2)
+        if result is None:
+            continue
+        _, payload = result
+        await _process_reanalysis_payload(
+            redis_client,
+            payload,
+            llm_service,
+            embedding_service,
+        )
+
+
+async def _claim_stt_audio(db, redis_client: redis.Redis, segment_id: uuid.UUID):
+    result = await db.execute(
+        select(Segment).where(Segment.id == segment_id).with_for_update()
+    )
+    segment = result.scalar_one_or_none()
+    if segment is None:
+        logger.warning(f"Segment {segment_id} not found")
+        return None
+
+    segment.transcription_status = "processing"
+    audio_path_value = segment.audio_path
+    if not audio_path_value:
+        error = "Audio path missing"
+        logger.error(f"{error} for segment {segment_id}")
+        segment.transcription_status = "failed"
+        await db.commit()
+        await push_to_dead_letter(redis_client, segment_id, "stt", error)
+        return None
+
+    audio_path = Path(audio_path_value)
+    try:
+        audio_data = audio_path.read_bytes()
+    except FileNotFoundError:
+        error = "Audio file not found"
+        logger.error(f"{error}: {audio_path}")
+        segment.transcription_status = "failed"
+        await db.commit()
+        await push_to_dead_letter(redis_client, segment_id, "stt", error)
+        return None
+    except OSError as exc:
+        logger.error(f"Unable to read audio file {audio_path}: {exc}")
+        segment.transcription_status = "failed"
+        await db.commit()
+        await push_to_dead_letter(redis_client, segment_id, "stt", str(exc))
+        return None
+
+    await db.commit()
+    return segment, audio_data
+
+
 async def process_stt(redis_client: redis.Redis):
     """Process STT queue: transcribe audio segments with context-aware prompting."""
     stt_service = get_stt_service()
@@ -98,29 +488,12 @@ async def process_stt(redis_client: redis.Redis):
         logger.info(f"Processing STT for segment {segment_id}")
 
         async with async_session() as db:
+            segment = None
             try:
-                # Get segment
-                segment = await db.get(Segment, segment_id)
-                if segment is None:
-                    logger.warning(f"Segment {segment_id} not found")
+                claimed_audio = await _claim_stt_audio(db, redis_client, segment_id)
+                if claimed_audio is None:
                     continue
-
-                # Update status
-                segment.transcription_status = "processing"
-                await db.commit()
-
-                # Read audio file
-                audio_path = Path(segment.audio_path)
-                if not audio_path.exists():
-                    logger.error(f"Audio file not found: {audio_path}")
-                    segment.transcription_status = "failed"
-                    await db.commit()
-                    await push_to_dead_letter(
-                        redis_client, segment_id, "stt", "Audio file not found"
-                    )
-                    continue
-
-                audio_data = audio_path.read_bytes()
+                segment, audio_data = claimed_audio
 
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
@@ -181,8 +554,9 @@ async def process_stt(redis_client: redis.Redis):
 
             except RetryExhaustedError as e:
                 logger.error(f"STT failed permanently for segment {segment_id}: {e}")
-                segment.transcription_status = "failed"
-                await db.commit()
+                if segment is not None:
+                    segment.transcription_status = "failed"
+                    await db.commit()
                 await push_to_dead_letter(
                     redis_client, segment_id, "stt", str(e.last_error), e.attempts
                 )
@@ -195,8 +569,9 @@ async def process_stt(redis_client: redis.Redis):
 
             except Exception as e:
                 logger.error(f"STT unexpected error for segment {segment_id}: {e}")
-                segment.transcription_status = "failed"
-                await db.commit()
+                if segment is not None:
+                    segment.transcription_status = "failed"
+                    await db.commit()
                 await push_to_dead_letter(redis_client, segment_id, "stt", str(e))
 
 
@@ -204,6 +579,7 @@ async def process_analysis(redis_client: redis.Redis):
     """Process analysis queue: extract entities, group conversations, create embeddings."""
     llm_service = get_llm_analysis_service()
     embedding_service = get_embedding_service()
+    pipeline = AnalysisPipeline(llm_service, embedding_service)
 
     while not shutdown_event.is_set():
         result = await redis_client.brpop("queue:analysis", timeout=2)
@@ -221,137 +597,11 @@ async def process_analysis(redis_client: redis.Redis):
                 if segment is None or segment.transcription is None:
                     continue
 
-                transcription = segment.transcription
-                user_id = segment.user_id
-
-                # --- Conversation grouping ---
-                conversation = await assign_to_conversation(db, segment)
-
-                # --- Fetch known people for context-aware extraction ---
-                known_people_query = (
-                    select(Entity.name)
-                    .where(Entity.user_id == user_id)
-                    .where(Entity.entity_type == "person")
-                    .order_by(Entity.updated_at.desc())
-                    .limit(20)
-                )
-                people_result = await db.execute(known_people_query)
-                known_people = [row[0] for row in people_result.all()]
-
-                # --- Entity extraction (with retry + known people context) ---
-                entities = await retry_with_backoff(
-                    extract_entities,
-                    llm_service,
-                    transcription.text,
-                    user_id,
-                    transcription.id,
-                    conversation.id,
-                    known_people=known_people,
-                    operation_name=f"Entity extraction segment {segment_id}",
-                )
-
-                # --- Consolidate with existing entities ---
-                # Update existing entities if new info refers to something already known,
-                # only insert truly new entities
-                new_entities = await consolidate_entities(db, entities, user_id)
-                for entity in new_entities:
-                    db.add(entity)
-
-                # Generate embeddings for NEW entities only (existing ones already have them)
-                if new_entities:
-                    entity_texts = [
-                        f"{e.name}: {e.content}" if e.content else e.name
-                        for e in new_entities
-                    ]
-                    entity_embeddings = await retry_with_backoff(
-                        embedding_service.embed_batch,
-                        entity_texts,
-                        operation_name=f"Entity embeddings segment {segment_id}",
-                    )
-                    for entity, emb in zip(new_entities, entity_embeddings):
-                        entity.embedding = emb
-
-                # Flush to persist entities before dedup
-                await db.flush()
-
-                # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
-                await deduplicate_entities(db, user_id, llm_service)
-
-                # --- Trigger integrations for new entities ---
-                for entity in new_entities:
-                    await trigger_integrations(db, user_id, entity)
-
-                # --- Evaluate user rules for new entities ---
-                from app.services.rules_engine import evaluate_rules
-                for entity in new_entities:
-                    await evaluate_rules(db, user_id, entity)
-
-                # --- Incremental chunking & embedding ---
-                # Only embed the NEW segment's text as an additional chunk,
-                # instead of re-chunking the entire conversation every time.
-                # Full re-chunking happens only when conversation is "completed".
-                new_text = transcription.text.strip()
-                if new_text and len(new_text.split()) > 5:
-                    # Get current max chunk_index for this conversation
-                    max_idx_query = (
-                        select(Chunk.chunk_index)
-                        .where(Chunk.conversation_id == conversation.id)
-                        .order_by(Chunk.chunk_index.desc())
-                        .limit(1)
-                    )
-                    max_idx_result = await db.execute(max_idx_query)
-                    max_idx_row = max_idx_result.first()
-                    next_index = (max_idx_row[0] + 1) if max_idx_row else 0
-
-                    # Chunk only the new text
-                    new_chunks = chunk_text(
-                        new_text, settings.chunk_size_tokens, settings.chunk_overlap_tokens
-                    )
-
-                    if new_chunks:
-                        new_embeddings = await retry_with_backoff(
-                            embedding_service.embed_batch,
-                            new_chunks,
-                            operation_name=f"Incremental embeddings segment {segment_id}",
-                        )
-                        for i, (text, embedding) in enumerate(zip(new_chunks, new_embeddings)):
-                            chunk = Chunk(
-                                conversation_id=conversation.id,
-                                text=text,
-                                token_count=len(text.split()),
-                                chunk_index=next_index + i,
-                                embedding=embedding,
-                            )
-                            db.add(chunk)
-
-                # --- Generate conversation title & summary (with retry) ---
-                # Get full conversation text for summary
-                conv_segments_query = (
-                    select(Transcription.text)
-                    .join(Segment, Segment.id == Transcription.segment_id)
-                    .where(Segment.conversation_id == conversation.id)
-                    .order_by(Segment.recorded_at)
-                )
-                result = await db.execute(conv_segments_query)
-                all_texts = [row[0] for row in result.all()]
-                full_text = " ".join(all_texts)
-
-                if full_text.strip() and len(full_text.split()) > 10:
-                    title, summary = await retry_with_backoff(
-                        generate_conversation_summary,
-                        llm_service,
-                        full_text,
-                        operation_name=f"Summary segment {segment_id}",
-                    )
-                    conversation.title = title
-                    conversation.summary = summary
-                    conversation.analysis_status = "completed"
-
-                await db.commit()
+                analysis_result = await pipeline.analyze_segment(db, segment)
                 logger.info(
                     f"Analysis completed for segment {segment_id}: "
-                    f"{len(entities)} entities, "
-                    f"{len(new_chunks) if new_text and len(new_text.split()) > 5 else 0} chunks"
+                    f"{analysis_result.extracted_entity_count} entities, "
+                    f"{analysis_result.chunk_count} chunks"
                 )
 
             except RetryExhaustedError as e:
@@ -375,164 +625,6 @@ async def process_analysis(redis_client: redis.Redis):
                 await push_to_dead_letter(redis_client, segment_id, "analysis", str(e))
 
 
-async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversation:
-    """Assign a segment to an existing or new conversation based on silence timeout."""
-    user_id = segment.user_id
-
-    # Find the latest conversation for this user
-    query = (
-        select(Conversation)
-        .where(Conversation.user_id == user_id)
-        .order_by(Conversation.started_at.desc())
-        .limit(1)
-    )
-    result = await db.execute(query)
-    latest_conversation = result.scalar_one_or_none()
-
-    # If silence before this segment exceeds timeout, create new conversation
-    silence_ms = segment.silence_before_ms or 0
-    should_create_new = (
-        latest_conversation is None or silence_ms >= settings.silence_timeout_ms
-    )
-
-    if should_create_new:
-        conversation = Conversation(
-            user_id=user_id,
-            started_at=segment.recorded_at,
-            analysis_status="pending",
-        )
-        db.add(conversation)
-        await db.flush()
-    else:
-        conversation = latest_conversation
-        conversation.ended_at = segment.recorded_at
-
-    # Link segment to conversation
-    segment.conversation_id = conversation.id
-    return conversation
-
-
-async def extract_entities(
-    llm_service,
-    text: str,
-    user_id: uuid.UUID,
-    transcription_id: uuid.UUID,
-    conversation_id: uuid.UUID,
-    known_people: list[str] | None = None,
-) -> list[Entity]:
-    """Use LLM to extract structured entities from transcription text.
-
-    Args:
-        llm_service: LLM service for extraction.
-        text: Transcription text to analyze.
-        user_id: Owner user ID.
-        transcription_id: Source transcription.
-        conversation_id: Parent conversation.
-        known_people: Optional list of known person names to help LLM
-                      recognize and normalize references.
-    """
-    # Build system prompt with known people context
-    people_context = ""
-    if known_people:
-        names_list = ", ".join(known_people[:15])
-        people_context = (
-            f"\n\nPersone già note all'utente: {names_list}. "
-            "Se riconosci riferimenti a queste persone (anche con varianti del nome, "
-            "soprannomi, o pronomi), usa il nome canonico dalla lista."
-        )
-
-    messages = [
-        LLMMessage(
-            role="system",
-            content=(
-                "Sei un sistema di estrazione di conoscenza. "
-                "Estrai entità strutturate dal testo fornito. "
-                "Rispondi in JSON con il seguente formato:\n"
-                '{"entities": [{"type": "person|task|idea|event|note", "name": "...", '
-                '"content": "...", "metadata": {...}}]}\n\n'
-                "Tipi:\n"
-                "- person: persone menzionate (metadata: {role, notes})\n"
-                "- task: azioni concrete e specifiche da fare, con un risultato chiaro. "
-                "NON estrarre come task: intenzioni vaghe, desideri generici, "
-                "o abitudini. Esempio task valido: 'Chiamare Marco domani'. "
-                "Esempio NON task: 'Devo mangiare meglio' "
-                "(metadata: {done: false, due_date, priority})\n"
-                "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
-                "- event: eventi, appuntamenti, date (metadata: {event_date, location})\n"
-                "- note: qualsiasi altra informazione rilevante (metadata: {tags})\n\n"
-                "Regole importanti:\n"
-                "- Estrai SOLO informazioni esplicitamente presenti nel testo\n"
-                "- Per i task, formula il nome come azione (verbo all'infinito)\n"
-                "- Per le persone, usa il nome completo se disponibile\n"
-                "- Ignora filler e parole senza contenuto informativo\n"
-                "- Se non ci sono entità da estrarre, rispondi con {\"entities\": []}."
-                f"{people_context}"
-            ),
-        ),
-        LLMMessage(role="user", content=f"Testo:\n\n{text}"),
-    ]
-
-    result = await llm_service.complete_json(messages)
-    entities_data = result.get("entities", [])
-
-    entities = []
-    for e in entities_data:
-        # Skip entities with empty names
-        name = e.get("name", "").strip()
-        if not name:
-            continue
-
-        entity = Entity(
-            user_id=user_id,
-            entity_type=e.get("type", "note"),
-            name=name,
-            content=e.get("content"),
-            metadata_=e.get("metadata", {}),
-            source_transcription_id=transcription_id,
-            conversation_id=conversation_id,
-        )
-        entities.append(entity)
-
-    return entities
-
-
-async def generate_conversation_summary(llm_service, full_text: str) -> tuple[str, str]:
-    """Generate a short title and summary for a conversation using LLM.
-
-    Args:
-        llm_service: LLM service instance.
-        full_text: Full concatenated transcription text of the conversation.
-
-    Returns:
-        Tuple of (title, summary).
-    """
-    # Truncate if too long (save tokens)
-    max_chars = 3000
-    text_for_summary = full_text[:max_chars] if len(full_text) > max_chars else full_text
-
-    messages = [
-        LLMMessage(
-            role="system",
-            content=(
-                "Sei un assistente che organizza conversazioni. "
-                "Dato il testo di una conversazione, genera:\n"
-                "1. Un titolo breve (max 60 caratteri) che descriva l'argomento principale\n"
-                "2. Un riassunto di 2-3 frasi con i punti chiave\n\n"
-                "Rispondi in JSON con il formato:\n"
-                '{"title": "...", "summary": "..."}\n\n'
-                "Rispondi in italiano."
-            ),
-        ),
-        LLMMessage(role="user", content=f"Conversazione:\n\n{text_for_summary}"),
-    ]
-
-    result = await llm_service.complete_json(messages)
-    title = result.get("title", "Conversazione senza titolo")
-    summary = result.get("summary", "")
-
-    return title, summary
-
-
 async def main():
     """Main entry point for the worker process."""
     logger.info("Starting Echo background worker...")
@@ -548,6 +640,7 @@ async def main():
     tasks = [
         asyncio.create_task(process_stt(redis_client), name="stt_worker"),
         asyncio.create_task(process_analysis(redis_client), name="analysis_worker"),
+        asyncio.create_task(process_reanalysis(redis_client), name="reanalysis_worker"),
         asyncio.create_task(run_retention_loop(), name="retention_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
     ]

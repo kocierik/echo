@@ -15,6 +15,7 @@ class Transcription(UUIDPrimaryKey, Base):
         UUID(as_uuid=True), ForeignKey("segments.id", ondelete="CASCADE"), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    speaker_label: Mapped[str | None] = mapped_column(String(10), nullable=True)
     language: Mapped[str] = mapped_column(String(10), nullable=False, default="it")
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -28,7 +29,13 @@ class Transcription(UUIDPrimaryKey, Base):
     # Relationships
     segment: Mapped["Segment"] = relationship(back_populates="transcription")
     entities: Mapped[list["Entity"]] = relationship(back_populates="source_transcription")
+    edits: Mapped[list["TranscriptionEdit"]] = relationship(
+        back_populates="transcription",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 from app.models.entity import Entity  # noqa: E402
 from app.models.segment import Segment  # noqa: E402
+from app.models.transcription_edit import TranscriptionEdit  # noqa: E402
