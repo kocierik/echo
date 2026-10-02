@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Echo Mobile UI Study</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+</head>
+<body>
+  <main class="studio">
+    <aside class="panel">
+      <div>
+        <p class="eyebrow">Echo mobile</p>
+        <h1>Core beta UI study</h1>
+        <p class="lede">Functional wireframes and high-fidelity mockups in dark and light themes.</p>
+      </div>
+
+      <div class="control-group">
+        <span class="control-label">View</span>
+        <div class="segmented" id="mode-control">
+          <button class="active" data-mode="visual">Visual mockups</button>
+          <button data-mode="wireframe">Wireframes</button>
+        </div>
+      </div>
+
+      <div class="control-group" id="theme-control-wrap">
+        <span class="control-label">Theme</span>
+        <div class="segmented" id="theme-control">
+          <button class="active" data-theme="dark">Dark</button>
+          <button data-theme="light">Light</button>
+        </div>
+      </div>
+
+      <div class="control-group" id="state-control-wrap">
+        <span class="control-label">Wearable state</span>
+        <div class="state-list" id="state-control">
+          <button class="active" data-state="listening"><span class="dot green"></span>Listening</button>
+          <button data-state="muted"><span class="dot red"></span>Muted</button>
+          <button data-state="connecting"><span class="dot blue"></span>Connecting</button>
+          <button data-state="offline"><span class="dot gray"></span>Offline</button>
+        </div>
+      </div>
+
+      <div class="control-group" id="screen-control-wrap">
+        <span class="control-label">Screen</span>
+        <div class="screen-list" id="screen-control">
+          <button class="active" data-screen="today">Today</button>
+          <button data-screen="transcripts">Transcripts</button>
+          <button data-screen="ask">Ask</button>
+          <button data-screen="settings">Settings</button>
+          <button data-screen="onboarding">Onboarding</button>
+          <button data-screen="device">Device detail</button>
+        </div>
+      </div>
+
+      <div class="principles">
+        <span class="control-label">Design principles</span>
+        <ul>
+          <li>Calm, trustworthy, discreet</li>
+          <li>Privacy control in thumb zone</li>
+          <li>Technical detail only on demand</li>
+          <li>Strong color is always semantic</li>
+        </ul>
+      </div>
+    </aside>
+
+    <section class="canvas">
+      <div class="phone" aria-label="iPhone mobile mockup">
+        <div class="island"></div>
+        <div id="app-root" class="app-shell"></div>
+      </div>
+      <p class="viewport-note">375 × 812 baseline · interactive prototype</p>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
