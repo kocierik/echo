@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
-from app.models.base import Base
+from app.models import Base
 
 # Use a test database (same postgres, different schema or in-memory approach)
 TEST_DATABASE_URL = settings.database_url
@@ -55,6 +55,7 @@ async def setup_database():
         # Clean up test data (but keep schema for next test)
         await conn.execute(text("DELETE FROM entities"))
         await conn.execute(text("DELETE FROM chunks"))
+        await conn.execute(text("DELETE FROM transcription_edits"))
         await conn.execute(text("DELETE FROM transcriptions"))
         await conn.execute(text("DELETE FROM segments"))
         await conn.execute(text("DELETE FROM conversations"))

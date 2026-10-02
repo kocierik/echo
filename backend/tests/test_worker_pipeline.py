@@ -4,13 +4,270 @@ Tests entity extraction and conversation summary generation
 using mock LLM services, without requiring Redis or a real database.
 """
 
+import json
 import uuid
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.models.entity import Entity
+from app.services.analysis_pipeline import AnalysisPipeline
+from app.workers import main as worker_main
 from app.workers.main import extract_entities, generate_conversation_summary
 from tests.mocks import MockLLMService
+
+
+class _QueryResult:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+
+class _PipelineDatabase:
+    def __init__(self, events):
+        self.events = events
+        self.query_results = [
+            _QueryResult([("Ada",)]),
+            _QueryResult([(3,)]),
+            _QueryResult(
+                [("Uno due tre quattro cinque sei.",), ("Sette otto nove dieci undici.",)]
+            ),
+        ]
+
+    async def execute(self, _query):
+        labels = ["known_people", "max_chunk", "full_text"]
+        self.events.append(labels[3 - len(self.query_results)])
+        return self.query_results.pop(0)
+
+    def add(self, value):
+        self.events.append("add_chunk" if value.__class__.__name__ == "Chunk" else "add_entity")
+
+    async def flush(self):
+        self.events.append("flush")
+
+    async def commit(self):
+        self.events.append("commit")
+
+
+class _PipelineEmbeddings:
+    def __init__(self, events):
+        self.events = events
+
+    async def embed_batch(self, texts):
+        label = "entity_embeddings" if texts[0].startswith("Ada:") else "chunk_embeddings"
+        self.events.append(label)
+        return [[0.1] * 1536 for _ in texts]
+
+
+class _ScalarOneResult:
+    def __init__(self, segment):
+        self._segment = segment
+
+    def scalar_one_or_none(self):
+        return self._segment
+
+
+class _SttDatabase:
+    def __init__(self, segment, events):
+        self.segment = segment
+        self.events = events
+        self.query = None
+
+    async def execute(self, query):
+        self.query = query
+        self.events.append("lock")
+        return _ScalarOneResult(self.segment)
+
+    async def commit(self):
+        self.events.append("commit")
+
+
+class _SttRedis:
+    def __init__(self):
+        self.pushes = []
+
+    async def lpush(self, queue, payload):
+        self.pushes.append((queue, payload))
+
+
+@pytest.mark.asyncio
+async def test_stt_claim_reads_audio_before_committing_processing(monkeypatch):
+    events = []
+    segment_id = uuid.uuid4()
+    segment = SimpleNamespace(
+        id=segment_id,
+        audio_path="audio.adpcm",
+        transcription_status="pending",
+    )
+    db = _SttDatabase(segment, events)
+
+    def read_bytes(_path):
+        events.append("read")
+        return b"audio"
+
+    monkeypatch.setattr(worker_main.Path, "read_bytes", read_bytes)
+
+    claimed = await worker_main._claim_stt_audio(db, _SttRedis(), segment_id)
+
+    assert claimed == (segment, b"audio")
+    assert events == ["lock", "read", "commit"]
+    assert segment.transcription_status == "processing"
+    sql = " ".join(str(db.query.compile(dialect=postgresql.dialect())).split())
+    assert "FOR UPDATE" in sql
+    assert "SKIP LOCKED" not in sql
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("audio_path", [None, "", "missing.adpcm"])
+async def test_stt_claim_fails_and_dead_letters_missing_audio(monkeypatch, audio_path):
+    events = []
+    segment_id = uuid.uuid4()
+    segment = SimpleNamespace(
+        id=segment_id,
+        audio_path=audio_path,
+        transcription_status="pending",
+    )
+    db = _SttDatabase(segment, events)
+    redis = _SttRedis()
+
+    def missing_file(_path):
+        raise FileNotFoundError
+
+    monkeypatch.setattr(worker_main.Path, "read_bytes", missing_file)
+
+    claimed = await worker_main._claim_stt_audio(db, redis, segment_id)
+
+    assert claimed is None
+    assert segment.transcription_status == "failed"
+    assert events[-1] == "commit"
+    assert redis.pushes[0][0] == "queue:dead-letter"
+    assert json.loads(redis.pushes[0][1])["step"] == "stt"
+
+
+async def _run_pipeline(monkeypatch, allow_side_effects):
+    import app.integrations.engine as integrations_module
+    import app.services.analysis_pipeline as pipeline_module
+    import app.services.rules_engine as rules_module
+
+    events = []
+    user_id = uuid.uuid4()
+    conversation = SimpleNamespace(
+        id=uuid.uuid4(), title=None, summary=None, analysis_status="pending"
+    )
+    transcription = SimpleNamespace(
+        id=uuid.uuid4(), text="Uno due tre quattro cinque sei sette otto nove dieci undici."
+    )
+    segment = SimpleNamespace(
+        id=uuid.uuid4(), user_id=user_id, transcription=transcription
+    )
+
+    async def fake_assign(_db, _segment):
+        events.append("assign")
+        return conversation
+
+    async def fake_extract(
+        _llm, _text, extracted_user_id, transcription_id, conversation_id, known_people=None
+    ):
+        events.append("extract")
+        assert extracted_user_id == user_id
+        assert transcription_id == transcription.id
+        assert conversation_id == conversation.id
+        assert known_people == ["Ada"]
+        return [
+            Entity(
+                user_id=user_id,
+                entity_type="person",
+                name="Ada",
+                content="Collega",
+                metadata_={},
+                source_transcription_id=transcription.id,
+                conversation_id=conversation.id,
+            )
+        ]
+
+    async def fake_summary(_llm, _full_text):
+        events.append("summary")
+        return "Titolo", "Riassunto"
+
+    async def fake_consolidate(_db, entities, _user_id):
+        events.append("consolidate")
+        return entities
+
+    async def fake_deduplicate(_db, _user_id, _llm):
+        events.append("deduplicate")
+        return 0
+
+    async def fake_integration(_db, _user_id, _entity):
+        if not allow_side_effects:
+            raise AssertionError("integrations must be skipped")
+        events.append("integration")
+
+    async def fake_rules(_db, _user_id, _entity):
+        if not allow_side_effects:
+            raise AssertionError("rules must be skipped")
+        events.append("rules")
+        return 0
+
+    async def direct_retry(coro_func, *args, **kwargs):
+        kwargs.pop("operation_name", None)
+        return await coro_func(*args, **kwargs)
+
+    monkeypatch.setattr(pipeline_module, "assign_to_conversation", fake_assign)
+    monkeypatch.setattr(pipeline_module, "extract_entities", fake_extract)
+    monkeypatch.setattr(pipeline_module, "generate_conversation_summary", fake_summary)
+    monkeypatch.setattr(pipeline_module, "consolidate_entities", fake_consolidate)
+    monkeypatch.setattr(pipeline_module, "deduplicate_entities", fake_deduplicate)
+    monkeypatch.setattr(pipeline_module, "retry_with_backoff", direct_retry)
+    monkeypatch.setattr(integrations_module, "trigger_integrations", fake_integration)
+    monkeypatch.setattr(rules_module, "evaluate_rules", fake_rules)
+
+    pipeline = AnalysisPipeline(MockLLMService(), _PipelineEmbeddings(events))
+    result = await pipeline.analyze_segment(
+        _PipelineDatabase(events), segment, allow_side_effects=allow_side_effects
+    )
+    return events, result
+
+
+@pytest.mark.asyncio
+async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
+    events, result = await _run_pipeline(monkeypatch, allow_side_effects=True)
+
+    assert events == [
+        "assign",
+        "known_people",
+        "extract",
+        "consolidate",
+        "add_entity",
+        "entity_embeddings",
+        "flush",
+        "deduplicate",
+        "integration",
+        "rules",
+        "max_chunk",
+        "chunk_embeddings",
+        "add_chunk",
+        "full_text",
+        "summary",
+        "commit",
+    ]
+    assert result.extracted_entity_count == 1
+    assert result.new_entity_count == 1
+    assert result.chunk_count == 1
+
+
+@pytest.mark.asyncio
+async def test_analysis_pipeline_can_disable_external_side_effects(monkeypatch):
+    events, _ = await _run_pipeline(monkeypatch, allow_side_effects=False)
+
+    assert "integration" not in events
+    assert "rules" not in events
+    assert events.index("deduplicate") < events.index("max_chunk")
 
 
 @pytest.mark.asyncio

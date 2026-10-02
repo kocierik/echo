@@ -27,7 +27,7 @@ class Entity(UUIDPrimaryKey, Base):
     )
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("conversations.id", ondelete="SET NULL"),
+        ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

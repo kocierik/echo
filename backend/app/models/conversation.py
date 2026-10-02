@@ -19,9 +19,15 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, Base):
     analysis_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
 
     # Relationships
-    segments: Mapped[list["Segment"]] = relationship(back_populates="conversation")
-    chunks: Mapped[list["Chunk"]] = relationship(back_populates="conversation")
-    entities: Mapped[list["Entity"]] = relationship(back_populates="conversation")
+    segments: Mapped[list["Segment"]] = relationship(
+        back_populates="conversation", passive_deletes=True
+    )
+    chunks: Mapped[list["Chunk"]] = relationship(
+        back_populates="conversation", passive_deletes=True
+    )
+    entities: Mapped[list["Entity"]] = relationship(
+        back_populates="conversation", passive_deletes=True
+    )
 
 
 from app.models.chunk import Chunk  # noqa: E402

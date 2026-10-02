@@ -1,9 +1,12 @@
 import hashlib
+import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -14,8 +17,19 @@ from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.segment import Segment
+from app.schemas.transcription import (
+    TranscriptionCorrectionRequest,
+    TranscriptionCorrectionResponse,
+)
+from app.services.transcription_editor import (
+    TranscriptionConflictError,
+    TranscriptionNotFoundError,
+    TranscriptionValidationError,
+    edit_transcription,
+)
 
 router = APIRouter(prefix="/segments", tags=["segments"])
+logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -75,6 +89,71 @@ async def list_recent_segments(
         )
         for segment, text in result.all()
     ]
+
+
+@router.patch(
+    "/{segment_id}/transcription",
+    response_model=TranscriptionCorrectionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={status.HTTP_200_OK: {"model": TranscriptionCorrectionResponse}},
+)
+async def correct_transcription(
+    segment_id: uuid.UUID,
+    correction: TranscriptionCorrectionRequest,
+    request: Request,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await edit_transcription(
+            db,
+            user_id=user_id,
+            segment_id=segment_id,
+            text=correction.text,
+            speaker=correction.speaker,
+        )
+    except TranscriptionNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Segment not found") from exc
+    except TranscriptionConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TranscriptionValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    response_payload = TranscriptionCorrectionResponse(
+        segment_id=result.segment_id,
+        transcription_id=result.transcription_id,
+        text=result.text,
+        speaker_label=result.speaker_label,
+        updated_at=result.updated_at,
+        reanalysis_status="unchanged" if not result.changed else "queued",
+    )
+    response_content = response_payload.model_dump(mode="json")
+    if not result.changed:
+        return JSONResponse(status_code=status.HTTP_200_OK, content=response_content)
+
+    queue_status = "queued"
+    queue_payload = json.dumps(
+        {
+            "conversation_id": str(result.conversation_id),
+            "requested_at": response_content["updated_at"],
+        }
+    )
+    try:
+        redis_client = request.app.state.redis
+        await redis_client.set(
+            f"reanalysis:latest:{result.conversation_id}",
+            response_content["updated_at"],
+        )
+        await redis_client.lpush("queue:reanalysis", queue_payload)
+    except Exception:
+        logger.exception(
+            "Failed to enqueue transcript reanalysis for conversation %s",
+            result.conversation_id,
+        )
+        queue_status = "queue_failed"
+
+    response_content["reanalysis_status"] = queue_status
+    return JSONResponse(status_code=status.HTTP_202_ACCEPTED, content=response_content)
 
 
 @router.post("", response_model=SegmentResponse, status_code=status.HTTP_201_CREATED)

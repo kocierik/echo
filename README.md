@@ -279,7 +279,8 @@ System statistics (counts + storage usage).
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection |
 | `OPENAI_API_KEY` | — | OpenAI API key (required) |
 | `AUDIO_STORAGE_PATH` | `/data/audio` | Audio file storage |
-| `AUDIO_RETENTION_DAYS` | `30` | Days to keep raw audio |
+| `COMPLETED_AUDIO_RETENTION_HOURS` | `24` | Hours to keep audio after transcription completes |
+| `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
 | `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Model for entity extraction |
 | `LLM_QUERY_MODEL` | `gpt-4o` | Model for RAG answers |

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,13 @@ from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
+from app.services.conversation_deleter import (
+    ConversationNotFoundError,
+    ConversationStorage,
+    ConversationStorageError,
+    delete_conversation,
+    get_conversation_storage,
+)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -179,3 +186,24 @@ async def get_conversation(
         transcriptions=transcriptions,
         entities=entities,
     )
+
+
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation_endpoint(
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    storage: ConversationStorage = Depends(get_conversation_storage),
+) -> Response:
+    """Permanently delete an owned conversation and its stored audio."""
+    try:
+        await delete_conversation(db, user_id, conversation_id, storage)
+    except ConversationNotFoundError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    except ConversationStorageError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Conversation audio storage is temporarily unavailable",
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

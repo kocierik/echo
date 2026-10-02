@@ -15,7 +15,8 @@ class Settings(BaseSettings):
 
     # Audio storage
     audio_storage_path: str = "/data/audio"
-    audio_retention_days: int = 30
+    completed_audio_retention_hours: int = 24
+    incomplete_audio_retention_days: int = 7
 
     # OpenAI
     openai_api_key: str = ""

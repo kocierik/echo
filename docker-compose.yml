@@ -14,6 +14,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0
       - AUDIO_STORAGE_PATH=/data/audio
+      - COMPLETED_AUDIO_RETENTION_HOURS=24
+      - INCOMPLETE_AUDIO_RETENTION_DAYS=7
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
@@ -38,6 +40,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo
       - REDIS_URL=redis://redis:6379/0
       - AUDIO_STORAGE_PATH=/data/audio
+      - COMPLETED_AUDIO_RETENTION_HOURS=24
+      - INCOMPLETE_AUDIO_RETENTION_DAYS=7
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
