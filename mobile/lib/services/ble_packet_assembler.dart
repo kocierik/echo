@@ -3,7 +3,7 @@ import 'dart:typed_data';
 const int _frameSegmentStart = 0x01;
 const int _frameSegmentMetadata = 0x02;
 const int _frameSegmentData = 0x03;
-const int _protocolVersion = 1;
+const int _protocolVersion = 2;
 const int _segmentStartSize = 20;
 const int _segmentMetadataSize = 19;
 const int _segmentDataHeaderSize = 7;

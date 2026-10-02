@@ -8,6 +8,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'api_service.dart';
 import 'ble_packet_assembler.dart';
 import 'ble_relay_controller.dart';
+import 'device_ble_port.dart';
+import 'device_protocol.dart';
+import 'network_policy.dart';
 
 class EchoBleUuids {
   static const serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
@@ -35,8 +38,14 @@ class BleUiMessage {
       };
 }
 
-class BleService {
-  BleService({ApiService? api}) : _api = api ?? ApiService() {
+class BleService implements DeviceBlePort {
+  BleService({
+    ApiService? api,
+    NetworkAccess? networkAccess,
+    NetworkPolicy? networkPolicy,
+  })  : _api = api ?? ApiService(),
+        _networkAccess = networkAccess ?? ConnectivityNetworkAccess(),
+        _networkPolicy = networkPolicy ?? NetworkPolicy() {
     _relay = BleRelayController(
       upload: _uploadSegment,
       writeControl: _writeControl,
@@ -51,13 +60,21 @@ class BleService {
                   : BleMessageKind.phase,
         );
       },
-      onUploaded: _segmentUploadedController.add,
+      onUploaded: (segmentId) {
+        _consecutiveUploadFailures = 0;
+        _segmentUploadedController.add(segmentId);
+      },
     );
   }
 
   static const _messageInterval = Duration(milliseconds: 250);
+  static const _scanDuration = Duration(seconds: 10);
+  static const _connectionTimeout = Duration(seconds: 35);
+  static const _forgetTimeout = Duration(seconds: 8);
 
   final ApiService _api;
+  final NetworkAccess _networkAccess;
+  final NetworkPolicy _networkPolicy;
   final BlePacketAssembler _assembler = BlePacketAssembler();
   late final BleRelayController _relay;
 
@@ -68,19 +85,52 @@ class BleService {
   StreamSubscription<List<int>>? _audioSub;
   StreamSubscription<List<int>>? _controlSub;
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
-  Timer? _scanTimeout;
+  Completer<BluetoothDevice>? _scanCompleter;
+  Completer<void>? _pendingConnection;
+  Completer<void>? _forgetAck;
+  Completer<void>? _forgetDisconnected;
+  Future<void>? _cleanupInFlight;
   Timer? _messageTimer;
   BleUiMessage? _pendingMessage;
   DateTime? _lastMessageAt;
   bool _mtuFailureLogged = false;
-  bool _cleaningConnection = false;
   bool _disposed = false;
+  int _connectionGeneration = 0;
+  int _consecutiveUploadFailures = 0;
 
   BleConnectionState _state = BleConnectionState.disconnected;
   BleConnectionState get state => _state;
 
   final _stateController = StreamController<BleConnectionState>.broadcast();
   Stream<BleConnectionState> get stateStream => _stateController.stream;
+
+  DeviceBlePhase _phase = DeviceBlePhase.disconnected;
+
+  @override
+  DeviceBlePhase get phase => _phase;
+
+  final _phaseController = StreamController<DeviceBlePhase>.broadcast();
+
+  @override
+  Stream<DeviceBlePhase> get phaseStream => _phaseController.stream;
+
+  @override
+  DeviceAdapterState get adapterState =>
+      _mapAdapterState(FlutterBluePlus.adapterStateNow);
+
+  @override
+  Stream<DeviceAdapterState> get adapterStateStream =>
+      FlutterBluePlus.adapterState.map(_mapAdapterState);
+
+  final _telemetryController = StreamController<DeviceTelemetry>.broadcast();
+
+  @override
+  Stream<DeviceTelemetry> get telemetryStream => _telemetryController.stream;
+
+  final _deviceInfoController = StreamController<DeviceInfo>.broadcast();
+
+  @override
+  Stream<DeviceInfo> get deviceInfoStream => _deviceInfoController.stream;
 
   final _messageController = StreamController<String>.broadcast();
   Stream<String> get messageStream => _messageController.stream;
@@ -91,46 +141,88 @@ class BleService {
   final _segmentUploadedController = StreamController<int>.broadcast();
   Stream<int> get segmentUploadedStream => _segmentUploadedController.stream;
 
+  final _uploadFailureController = StreamController<int>.broadcast();
+  Stream<int> get uploadFailureStream => _uploadFailureController.stream;
+
   final List<String> _messages = [];
   List<String> get messages => List.unmodifiable(_messages);
 
   Future<void> startScan() async {
-    if (_disposed || _state == BleConnectionState.scanning) return;
-    _setState(BleConnectionState.scanning);
+    if (_disposed || _scanCompleter != null) return;
+    try {
+      final device = await _scanForEcho();
+      await _connectDevice(device, pairing: true, autoConnect: false);
+    } catch (error) {
+      _publishMessage('BLE scan failed: $error', BleMessageKind.error);
+      await _cleanupConnection();
+    }
+  }
 
-    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
-      _publishMessage('Bluetooth is unavailable', BleMessageKind.error);
-      _setState(BleConnectionState.disconnected);
+  @override
+  Future<String> pair() async {
+    if (_disposed) throw StateError('BleService is disposed');
+    try {
+      final device = await _scanForEcho();
+      await _connectDevice(device, pairing: true, autoConnect: false);
+      return device.remoteId.str;
+    } catch (error) {
+      _publishMessage('BLE pairing failed: $error', BleMessageKind.error);
+      await _cleanupConnection();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> connectSaved(String remoteId) async {
+    if (_disposed) throw StateError('BleService is disposed');
+    final currentDevice = _device;
+    if (_phase == DeviceBlePhase.ready &&
+        currentDevice?.remoteId.str == remoteId) {
       return;
+    }
+    await _connectDevice(
+      BluetoothDevice.fromId(remoteId),
+      pairing: false,
+      autoConnect: true,
+    );
+  }
+
+  Future<BluetoothDevice> _scanForEcho() async {
+    if (_scanCompleter != null) {
+      throw StateError('BLE scan already in progress');
+    }
+    if (await FlutterBluePlus.adapterState.first != BluetoothAdapterState.on) {
+      throw StateError('Bluetooth is unavailable');
     }
 
     await _cancelScan();
+    _setPhase(DeviceBlePhase.scanning);
+    final completer = Completer<BluetoothDevice>();
+    _scanCompleter = completer;
     _scanSub = FlutterBluePlus.scanResults.listen(
       _onScanResults,
-      onError: (Object error) {
-        _publishMessage('BLE scan failed: $error', BleMessageKind.error);
-        unawaited(_cancelScan());
-        _setState(BleConnectionState.disconnected);
+      onError: (Object error, StackTrace stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
       },
     );
 
     try {
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-      _scanTimeout = Timer(const Duration(seconds: 10), () {
-        if (_state != BleConnectionState.scanning) return;
-        unawaited(_cancelScan());
-        _publishMessage('Echo device not found', BleMessageKind.error);
-        _setState(BleConnectionState.disconnected);
-      });
-    } catch (error) {
+      await FlutterBluePlus.startScan(timeout: _scanDuration);
+      return await completer.future.timeout(
+        _scanDuration,
+        onTimeout: () => throw TimeoutException('Echo device not found'),
+      );
+    } finally {
+      if (identical(_scanCompleter, completer)) _scanCompleter = null;
       await _cancelScan();
-      _publishMessage('BLE scan failed: $error', BleMessageKind.error);
-      _setState(BleConnectionState.disconnected);
     }
   }
 
   void _onScanResults(List<ScanResult> results) {
-    if (_state != BleConnectionState.scanning) return;
+    final completer = _scanCompleter;
+    if (completer == null || completer.isCompleted) return;
     for (final result in results) {
       final advertisedServices = result.advertisementData.serviceUuids
           .map((uuid) => uuid.toString().toLowerCase());
@@ -139,25 +231,92 @@ class BleService {
       final matchesService = advertisedServices.any(
         (uuid) => uuid.contains(EchoBleUuids.serviceUuid),
       );
-      if (matchesService || deviceName.contains('echo') || advertisedName.contains('echo')) {
-        _setState(BleConnectionState.connecting);
-        unawaited(_connect(result.device));
+        if (matchesService ||
+          deviceName.contains('echo') ||
+          advertisedName.contains('echo')) {
+        completer.complete(result.device);
         return;
       }
     }
   }
 
-  Future<void> _connect(BluetoothDevice device) async {
+  Future<void> _connectDevice(
+    BluetoothDevice device, {
+    required bool pairing,
+    required bool autoConnect,
+  }) async {
     await _cancelScan();
+    final previousDevice = _device;
+    if (previousDevice != null && previousDevice != device) {
+      try {
+        await previousDevice.disconnect();
+      } catch (_) {}
+    }
+    await _cleanupConnection(emitDisconnected: false);
+    final generation = ++_connectionGeneration;
     _device = device;
-    try {
-      debugPrint('[BLE] connecting to ${device.platformName} (${device.remoteId})');
-      await device.connect(timeout: const Duration(seconds: 8));
-      _connectionSub = device.connectionState.listen((connectionState) {
-        if (connectionState == BluetoothConnectionState.disconnected) {
-          unawaited(_onDisconnected());
+    _setPhase(DeviceBlePhase.connecting);
+    final connected = Completer<void>();
+    _pendingConnection = connected;
+    Object? connectionError;
+    StackTrace? connectionStackTrace;
+    var wasConnected = device.isConnected;
+    if (wasConnected) connected.complete();
+    _connectionSub = device.connectionState.listen(
+      (connectionState) {
+        if (_disposed || generation != _connectionGeneration) return;
+        if (connectionState == BluetoothConnectionState.connected) {
+          wasConnected = true;
+          if (!connected.isCompleted) connected.complete();
+          return;
         }
-      });
+        if (!wasConnected) return;
+        if (!connected.isCompleted) {
+          connectionError = StateError('BLE device disconnected');
+          connected.complete();
+        }
+        final forgotten = _forgetDisconnected;
+        if (_forgetAck?.isCompleted == true &&
+            forgotten != null &&
+            !forgotten.isCompleted) {
+          forgotten.complete();
+        }
+        unawaited(_cleanupConnection(expectedGeneration: generation));
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        connectionError = error;
+        connectionStackTrace = stackTrace;
+        if (!connected.isCompleted) {
+          connected.complete();
+        }
+      },
+    );
+
+    try {
+      debugPrint(
+        '[BLE] connecting to ${device.platformName} (${device.remoteId})',
+      );
+      if (autoConnect) {
+        await device.connect(autoConnect: true, mtu: null);
+      } else {
+        await device.connect(
+          timeout: const Duration(seconds: 8),
+          mtu: null,
+        );
+      }
+      if (device.isConnected && !connected.isCompleted) connected.complete();
+      await connected.future.timeout(_connectionTimeout);
+      if (identical(_pendingConnection, connected)) _pendingConnection = null;
+      final error = connectionError;
+      if (error != null) {
+        Error.throwWithStackTrace(
+          error,
+          connectionStackTrace ?? StackTrace.current,
+        );
+      }
+      if (_disposed || generation != _connectionGeneration) {
+        throw StateError('BLE connection was cancelled');
+      }
 
       if (Platform.isAndroid) {
         try {
@@ -172,29 +331,36 @@ class BleService {
         }
       }
 
+      if (pairing) _setPhase(DeviceBlePhase.bonding);
       final services = await device.discoverServices();
       final echoService = services.firstWhere(
         (service) => service.uuid == Guid(EchoBleUuids.serviceUuid),
         orElse: () => throw StateError('Echo service not found'),
       );
       _audioChar = echoService.characteristics.firstWhere(
-        (characteristic) => characteristic.uuid == Guid(EchoBleUuids.audioCharUuid),
+        (characteristic) =>
+            characteristic.uuid == Guid(EchoBleUuids.audioCharUuid),
         orElse: () => throw StateError('Audio characteristic not found'),
       );
       _controlChar = echoService.characteristics.firstWhere(
-        (characteristic) => characteristic.uuid == Guid(EchoBleUuids.controlCharUuid),
+        (characteristic) =>
+            characteristic.uuid == Guid(EchoBleUuids.controlCharUuid),
         orElse: () => throw StateError('Control characteristic not found'),
       );
 
       _audioSub = _audioChar!.onValueReceived.listen(
         (value) => unawaited(_onAudioPacket(value)),
-        onError: (Object error) =>
-            _publishMessage('Audio notification failed: $error', BleMessageKind.error),
+        onError: (Object error) => _publishMessage(
+          'Audio notification failed: $error',
+          BleMessageKind.error,
+        ),
       );
       _controlSub = _controlChar!.onValueReceived.listen(
         _onControlPacket,
-        onError: (Object error) =>
-            _publishMessage('Control notification failed: $error', BleMessageKind.error),
+        onError: (Object error) => _publishMessage(
+          'Control notification failed: $error',
+          BleMessageKind.error,
+        ),
       );
       await _audioChar!.setNotifyValue(true);
       await _controlChar!.setNotifyValue(true);
@@ -203,15 +369,22 @@ class BleService {
       await _relay.sendControl(_buildSetTime());
       await _relay.sendControl(const [0x10]);
 
-      _setState(BleConnectionState.connected);
+      if (_disposed || generation != _connectionGeneration) {
+        throw StateError('BLE connection was cancelled');
+      }
+      _setPhase(DeviceBlePhase.ready);
       _publishMessage('Echo device connected', BleMessageKind.phase);
     } catch (error) {
+      if (identical(_pendingConnection, connected)) {
+        _pendingConnection = null;
+      }
       debugPrint('[BLE] connection failed: $error');
       _publishMessage('BLE connection failed: $error', BleMessageKind.error);
       try {
         await device.disconnect();
       } catch (_) {}
-      await _onDisconnected();
+      await _cleanupConnection(expectedGeneration: generation);
+      rethrow;
     }
   }
 
@@ -251,22 +424,65 @@ class BleService {
   }
 
   void _onControlPacket(List<int> value) {
-    if (value.length == 8 && value.first == 0x20 && value.last != 0) {
+    if (value.isEmpty) return;
+    if (DeviceProtocol.isForgetBondOk(value)) {
+      final acknowledgement = _forgetAck;
+      if (acknowledgement != null && !acknowledgement.isCompleted) {
+        acknowledgement.complete();
+      }
+      return;
+    }
+
+    try {
+      switch (value.first) {
+        case 0x20:
+          _telemetryController.add(
+            DeviceProtocol.parseStatus(Uint8List.fromList(value)),
+          );
+        case 0x21:
+          _deviceInfoController.add(
+            DeviceProtocol.parseInfo(Uint8List.fromList(value)),
+          );
+      }
+    } on DeviceProtocolException catch (error) {
       _publishMessage(
-        'Wearable reported error ${value.last}',
+        'Invalid wearable control packet: ${error.message}',
         BleMessageKind.error,
       );
     }
   }
 
-  Future<bool> _uploadSegment(BleCompletedSegment segment) {
-    return _api.uploadSegment(
-      audioData: segment.adpcmBytes,
-      recordedAt: segment.recordedAt.toIso8601String(),
-      durationMs: segment.durationMs,
-      silenceBeforeMs: segment.silenceBeforeMs,
-      audioEnergy: segment.averageEnergy,
-    );
+  Future<bool> _uploadSegment(BleCompletedSegment segment) async {
+    try {
+      final networkTypes = await _networkAccess.currentTypes();
+      if (!_networkPolicy.canUpload(networkTypes)) {
+        _publishMessage(
+          'Segment ${segment.id} upload deferred by network policy; retrying',
+          BleMessageKind.error,
+        );
+        _recordUploadFailure();
+        return false;
+      }
+
+      final uploaded = await _api.uploadSegment(
+        audioData: segment.adpcmBytes,
+        recordedAt: segment.recordedAt.toIso8601String(),
+        durationMs: segment.durationMs,
+        silenceBeforeMs: segment.silenceBeforeMs,
+        audioEnergy: segment.averageEnergy,
+      );
+      if (!uploaded) _recordUploadFailure();
+      return uploaded;
+    } catch (_) {
+      _recordUploadFailure();
+      rethrow;
+    }
+  }
+
+  void _recordUploadFailure() {
+    if (_disposed) return;
+    _consecutiveUploadFailures++;
+    _uploadFailureController.add(_consecutiveUploadFailures);
   }
 
   Future<void> _writeControl(List<int> value) async {
@@ -275,6 +491,46 @@ class BleService {
       throw StateError('Control characteristic unavailable');
     }
     await characteristic.write(value, withoutResponse: false);
+  }
+
+  @override
+  Future<void> setMuted(bool muted) =>
+      _writeControl(DeviceProtocol.setMuted(muted));
+
+  @override
+  Future<void> forgetBond() async {
+    if (_disposed) throw StateError('BleService is disposed');
+    if (_phase != DeviceBlePhase.ready || _controlChar == null) {
+      throw StateError('Echo device is not ready');
+    }
+    if (_forgetAck != null || _forgetDisconnected != null) {
+      throw StateError('Forget bond already in progress');
+    }
+
+    final acknowledgement = Completer<void>();
+    final disconnected = Completer<void>();
+    _forgetAck = acknowledgement;
+    _forgetDisconnected = disconnected;
+    try {
+      await _writeControl(DeviceProtocol.forgetBond());
+      await acknowledgement.future.timeout(
+        _forgetTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Timed out waiting for forget-bond acknowledgement',
+        ),
+      );
+      await disconnected.future.timeout(
+        _forgetTimeout,
+        onTimeout: () => throw TimeoutException(
+          'Timed out waiting for wearable to disconnect after forget-bond acknowledgement',
+        ),
+      );
+    } finally {
+      if (identical(_forgetAck, acknowledgement)) _forgetAck = null;
+      if (identical(_forgetDisconnected, disconnected)) {
+        _forgetDisconnected = null;
+      }
+    }
   }
 
   Uint8List _buildSetTime() {
@@ -287,6 +543,7 @@ class BleService {
     return bytes;
   }
 
+  @override
   Future<void> disconnect() async {
     _relay.setConnected(false);
     final device = _device;
@@ -297,35 +554,88 @@ class BleService {
         _publishMessage('BLE disconnect failed: $error', BleMessageKind.error);
       }
     }
-    await _onDisconnected();
+    await _cleanupConnection();
   }
 
-  Future<void> _onDisconnected() async {
-    if (_cleaningConnection) return;
-    _cleaningConnection = true;
+  Future<void> _cleanupConnection({
+    int? expectedGeneration,
+    bool emitDisconnected = true,
+  }) async {
+    if (expectedGeneration != null &&
+        expectedGeneration != _connectionGeneration) {
+      return;
+    }
+    final existingCleanup = _cleanupInFlight;
+    if (existingCleanup != null) {
+      await existingCleanup;
+      return;
+    }
+
+    final cleanup = Completer<void>();
+    _cleanupInFlight = cleanup.future;
+    _connectionGeneration++;
+    final cleanupGeneration = _connectionGeneration;
     _relay.setConnected(false);
     _assembler.reset();
-    await _audioSub?.cancel();
-    await _controlSub?.cancel();
-    await _connectionSub?.cancel();
+    final audioSub = _audioSub;
+    final controlSub = _controlSub;
+    final connectionSub = _connectionSub;
+    final pendingConnection = _pendingConnection;
     _audioSub = null;
     _controlSub = null;
     _connectionSub = null;
+    _pendingConnection = null;
     _device = null;
     _audioChar = null;
     _controlChar = null;
-    if (!_disposed) _setState(BleConnectionState.disconnected);
-    _cleaningConnection = false;
+    if (pendingConnection != null && !pendingConnection.isCompleted) {
+      pendingConnection.complete();
+    }
+    try {
+      await audioSub?.cancel();
+      await controlSub?.cancel();
+      await connectionSub?.cancel();
+      if (!_disposed &&
+          emitDisconnected &&
+          cleanupGeneration == _connectionGeneration) {
+        _setPhase(DeviceBlePhase.disconnected);
+      }
+    } finally {
+      cleanup.complete();
+      if (identical(_cleanupInFlight, cleanup.future)) {
+        _cleanupInFlight = null;
+      }
+    }
   }
 
   Future<void> _cancelScan() async {
-    _scanTimeout?.cancel();
-    _scanTimeout = null;
     await _scanSub?.cancel();
     _scanSub = null;
     if (FlutterBluePlus.isScanningNow) {
       await FlutterBluePlus.stopScan();
     }
+  }
+
+  void _setPhase(DeviceBlePhase phase) {
+    if (_disposed || _phase == phase) return;
+    _phase = phase;
+    _phaseController.add(phase);
+    _setState(switch (phase) {
+      DeviceBlePhase.disconnected => BleConnectionState.disconnected,
+      DeviceBlePhase.scanning => BleConnectionState.scanning,
+      DeviceBlePhase.connecting || DeviceBlePhase.bonding =>
+          BleConnectionState.connecting,
+      DeviceBlePhase.ready => BleConnectionState.connected,
+    });
+  }
+
+  static DeviceAdapterState _mapAdapterState(BluetoothAdapterState state) {
+    if (state == BluetoothAdapterState.on) return DeviceAdapterState.on;
+    if (state == BluetoothAdapterState.off) return DeviceAdapterState.off;
+    if (state == BluetoothAdapterState.unauthorized) {
+      return DeviceAdapterState.unauthorized;
+    }
+    return DeviceAdapterState.unavailable;
   }
 
   void _setState(BleConnectionState state) {
@@ -371,23 +681,44 @@ class BleService {
     _uiMessageController.add(message);
   }
 
-  void dispose() {
+  @override
+  Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    _scanTimeout?.cancel();
+    _connectionGeneration++;
     _messageTimer?.cancel();
-    unawaited(_scanSub?.cancel());
-    unawaited(_audioSub?.cancel());
-    unawaited(_controlSub?.cancel());
-    unawaited(_connectionSub?.cancel());
-    unawaited(FlutterBluePlus.stopScan());
+    final pendingConnection = _pendingConnection;
+    _pendingConnection = null;
+    if (pendingConnection != null && !pendingConnection.isCompleted) {
+      pendingConnection.complete();
+    }
+    final scanCompleter = _scanCompleter;
+    if (scanCompleter != null && !scanCompleter.isCompleted) {
+      scanCompleter.completeError(StateError('BleService is disposed'));
+    }
+    _scanCompleter = null;
+    await _cancelScan();
+    final device = _device;
+    if (device != null) {
+      try {
+        await device.disconnect();
+      } catch (_) {}
+    }
+    await _audioSub?.cancel();
+    await _controlSub?.cancel();
+    await _connectionSub?.cancel();
     _relay.dispose();
+    _api.dispose();
     _assembler.reset();
-    unawaited(_stateController.close());
-    unawaited(_messageController.close());
-    unawaited(_uiMessageController.close());
-    unawaited(_segmentUploadedController.close());
+    await _stateController.close();
+    await _phaseController.close();
+    await _telemetryController.close();
+    await _deviceInfoController.close();
+    await _messageController.close();
+    await _uiMessageController.close();
+    await _segmentUploadedController.close();
+    await _uploadFailureController.close();
   }
 }
 
-final bleService = BleService();
+late BleService bleService;

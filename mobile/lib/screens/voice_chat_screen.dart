@@ -46,6 +46,7 @@ class _VoiceChatScreenState extends State<VoiceChatScreen>
     _pulseController.dispose();
     _speech.dispose();
     _textController.dispose();
+    _api.dispose();
     super.dispose();
   }
 

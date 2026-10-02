@@ -42,11 +42,12 @@ class _DeviceMessagesScreenState extends State<DeviceMessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Device messages'),
-        backgroundColor: AppColors.bgBase,
-        foregroundColor: AppColors.foreground,
+        backgroundColor: palette.background,
+        foregroundColor: palette.text,
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -55,26 +56,25 @@ class _DeviceMessagesScreenState extends State<DeviceMessagesScreen> {
           ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.bgBase, AppColors.bgDeep],
-          ),
-        ),
+      body: ColoredBox(
+        color: palette.background,
         child: SafeArea(
           child: _messages.isEmpty
-              ? const Center(child: Text('No device messages', style: TextStyle(color: AppColors.foregroundMuted)))
+              ? Center(
+                  child: Text(
+                    'No device messages',
+                    style: TextStyle(color: palette.text2),
+                  ),
+                )
               : ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: _messages.length,
-                  separatorBuilder: (_, __) => const Divider(color: AppColors.border),
+                  separatorBuilder: (_, __) => Divider(color: palette.border),
                   itemBuilder: (context, i) {
                     final msg = _messages[i];
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(msg, style: const TextStyle(color: AppColors.foreground)),
+                      child: Text(msg, style: TextStyle(color: palette.text)),
                     );
                   },
                 ),

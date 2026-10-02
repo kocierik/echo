@@ -37,6 +37,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
   void dispose() {
     _uploadSubscription?.cancel();
     _refreshTimer?.cancel();
+    _api.dispose();
     super.dispose();
   }
 

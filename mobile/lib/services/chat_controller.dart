@@ -1,0 +1,384 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../models/chat_message.dart';
+import '../models/chat_session.dart';
+import 'api_exception.dart';
+import 'api_service.dart';
+import 'voice_input.dart';
+
+typedef ChatClock = DateTime Function();
+
+@immutable
+final class ChatState {
+  ChatState({
+    required List<ChatMessage> messages,
+    required this.sessionId,
+    required this.title,
+    required this.sending,
+    required this.loadingSession,
+    required this.error,
+    required this.composerText,
+    required this.listening,
+  }) : messages = List<ChatMessage>.unmodifiable(messages);
+
+  factory ChatState.initial() => ChatState(
+        messages: const [],
+        sessionId: null,
+        title: null,
+        sending: false,
+        loadingSession: false,
+        error: null,
+        composerText: '',
+        listening: false,
+      );
+
+  final List<ChatMessage> messages;
+  final String? sessionId;
+  final String? title;
+  final bool sending;
+  final bool loadingSession;
+  final String? error;
+  final String composerText;
+  final bool listening;
+
+  bool get canRetry => messages.any(
+        (message) => message.isUser && message.failed,
+      );
+
+  ChatState copyWith({
+    List<ChatMessage>? messages,
+    Object? sessionId = _unset,
+    Object? title = _unset,
+    bool? sending,
+    bool? loadingSession,
+    Object? error = _unset,
+    String? composerText,
+    bool? listening,
+  }) {
+    return ChatState(
+      messages: messages ?? this.messages,
+      sessionId:
+          identical(sessionId, _unset) ? this.sessionId : sessionId as String?,
+      title: identical(title, _unset) ? this.title : title as String?,
+      sending: sending ?? this.sending,
+      loadingSession: loadingSession ?? this.loadingSession,
+      error: identical(error, _unset) ? this.error : error as String?,
+      composerText: composerText ?? this.composerText,
+      listening: listening ?? this.listening,
+    );
+  }
+}
+
+final class ChatController extends ChangeNotifier {
+  ChatController({
+    required ChatApi api,
+    required VoiceInput voiceInput,
+    ChatClock? clock,
+  })  : _api = api,
+        _voiceInput = voiceInput,
+        _clock = clock ?? DateTime.now;
+
+  final ChatApi _api;
+  final VoiceInput _voiceInput;
+  final ChatClock _clock;
+
+  ChatApi get api => _api;
+
+  ChatState _state = ChatState.initial();
+  ChatState get state => _state;
+
+  int _generation = 0;
+  int _voiceGeneration = 0;
+  bool _disposed = false;
+
+  void setComposerText(String text) {
+    if (_disposed || text == _state.composerText) return;
+    _emit(_state.copyWith(composerText: text));
+  }
+
+  Future<void> send(String text) async {
+    final question = text.trim();
+    if (question.isEmpty || _state.sending || _state.loadingSession) return;
+
+    final messages = [
+      ..._state.messages,
+      ChatMessage(
+        text: question,
+        isUser: true,
+        timestamp: _clock(),
+      ),
+    ];
+    final userIndex = messages.length - 1;
+    _emit(_state.copyWith(
+      messages: messages,
+      title: _state.title ?? question,
+      sending: true,
+      error: null,
+      composerText: '',
+    ));
+    await _query(question, userIndex: userIndex);
+  }
+
+  Future<void> retryLastFailed() async {
+    if (_state.sending || _state.loadingSession) return;
+    final userIndex = _state.messages.lastIndexWhere(
+      (message) => message.isUser && message.failed,
+    );
+    if (userIndex < 0) return;
+
+    final messages = [..._state.messages];
+    final question = messages[userIndex].text;
+    messages[userIndex] = messages[userIndex].copyWith(failed: false);
+    _emit(_state.copyWith(
+      messages: messages,
+      sending: true,
+      error: null,
+    ));
+    await _query(question, userIndex: userIndex);
+  }
+
+  Future<void> _query(String question, {required int userIndex}) async {
+    final generation = _generation;
+    try {
+      final response = await _api.query(
+        question,
+        sessionId: _state.sessionId,
+      );
+      if (!_isCurrent(generation)) return;
+      final assistantIndex = _state.messages
+              .where((message) => !message.isUser && message.index != null)
+              .length +
+          1;
+      _emit(_state.copyWith(
+        messages: [
+          ..._state.messages,
+          ChatMessage(
+            text: response.answer,
+            isUser: false,
+            index: assistantIndex,
+            timestamp: _clock(),
+            sources: _mapSources(response.sources),
+          ),
+        ],
+        sessionId: response.sessionId,
+        sending: false,
+        error: null,
+      ));
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final messages = [..._state.messages];
+      if (userIndex < messages.length) {
+        messages[userIndex] = messages[userIndex].copyWith(failed: true);
+      }
+      _emit(_state.copyWith(
+        messages: messages,
+        sending: false,
+        error: _errorMessage(error, 'Could not send your question.'),
+      ));
+    }
+  }
+
+  void newChat() {
+    _generation++;
+    _voiceGeneration++;
+    if (_state.listening) unawaited(_voiceInput.cancel());
+    _emit(ChatState.initial());
+  }
+
+  Future<void> loadSession(String id) async {
+    final generation = ++_generation;
+    _voiceGeneration++;
+    if (_state.listening) unawaited(_voiceInput.cancel());
+    _emit(ChatState.initial().copyWith(
+      sessionId: id,
+      loadingSession: true,
+    ));
+
+    try {
+      final detail = await _api.getSessionDetail(id);
+      if (!_isCurrent(generation)) return;
+      var assistantIndex = 0;
+      final messages = detail.messages.map((message) {
+        final isUser = message.role == 'user';
+        if (!isUser) assistantIndex++;
+        return ChatMessage(
+          text: message.content,
+          isUser: isUser,
+          index: isUser ? null : assistantIndex,
+          timestamp: message.timestamp,
+          sources: _mapSources(message.citations ?? const []),
+        );
+      }).toList();
+      _emit(_state.copyWith(
+        messages: messages,
+        sessionId: detail.id,
+        title: detail.title,
+        loadingSession: false,
+        error: null,
+      ));
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final notFound = error is ApiException && error.code == 'not_found';
+      _emit(_state.copyWith(
+        sessionId: notFound ? null : id,
+        loadingSession: false,
+        error: _errorMessage(error, 'Could not load this chat.'),
+      ));
+    }
+  }
+
+  Future<void> deleteSession(String id) async {
+    await _api.deleteSession(id);
+    if (_disposed) return;
+    if (_state.sessionId == id) newChat();
+  }
+
+  Future<void> sendFeedback(int messageIndex, String rating) async {
+    final sessionId = _state.sessionId;
+    if (sessionId == null) return;
+    final listIndex = _state.messages.indexWhere(
+      (message) => !message.isUser && message.index == messageIndex,
+    );
+    if (listIndex < 0) return;
+
+    final generation = _generation;
+    final previous = _state.messages[listIndex];
+    final messages = [..._state.messages];
+    messages[listIndex] = previous.copyWith(feedback: rating);
+    _emit(_state.copyWith(messages: messages, error: null));
+
+    try {
+      await _api.sendFeedback(
+        sessionId: sessionId,
+        messageIndex: messageIndex,
+        rating: rating,
+        chunkIds: previous.sources
+            .map((source) => source.chunkId)
+            .whereType<String>()
+            .toList(),
+      );
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final currentIndex = _state.messages.indexWhere(
+        (message) => !message.isUser && message.index == messageIndex,
+      );
+      if (currentIndex < 0) return;
+      final reverted = [..._state.messages];
+      reverted[currentIndex] = previous;
+      _emit(_state.copyWith(
+        messages: reverted,
+        error: _errorMessage(error, 'Could not save feedback.'),
+      ));
+    }
+  }
+
+  Future<void> startVoice() async {
+    if (_state.listening) return;
+    final generation = ++_voiceGeneration;
+    _emit(_state.copyWith(error: null));
+    try {
+      if (!await _voiceInput.available()) {
+        if (_isVoiceCurrent(generation)) {
+          _emit(_state.copyWith(error: 'Voice input is unavailable.'));
+        }
+        return;
+      }
+      if (!await _voiceInput.request()) {
+        if (_isVoiceCurrent(generation)) {
+          _emit(_state.copyWith(error: 'Microphone permission was denied.'));
+        }
+        return;
+      }
+      if (!_isVoiceCurrent(generation)) return;
+      _emit(_state.copyWith(listening: true));
+      await _voiceInput.start(
+        onPartial: (text) => _onVoiceText(generation, text),
+        onFinal: (text) => _onVoiceText(generation, text),
+      );
+    } catch (error) {
+      if (!_isVoiceCurrent(generation)) return;
+      _emit(_state.copyWith(
+        listening: false,
+        error: _errorMessage(error, 'Could not start voice input.'),
+      ));
+    }
+  }
+
+  Future<void> stopVoice() async {
+    if (!_state.listening) return;
+    final generation = _voiceGeneration;
+    try {
+      await _voiceInput.stop();
+    } catch (error) {
+      if (_isVoiceCurrent(generation)) {
+        _emit(_state.copyWith(
+          error: _errorMessage(error, 'Could not stop voice input.'),
+        ));
+      }
+    } finally {
+      if (_isVoiceCurrent(generation)) {
+        _emit(_state.copyWith(listening: false));
+      }
+    }
+  }
+
+  void _onVoiceText(int generation, String text) {
+    if (!_isVoiceCurrent(generation) || !_state.listening) return;
+    _emit(_state.copyWith(composerText: text));
+  }
+
+  List<ChatSource> _mapSources(List<Map<String, dynamic>> sources) {
+    return List<ChatSource>.generate(sources.length, (index) {
+      final source = sources[index];
+      final rawUrl = source['url'];
+      final url = rawUrl is String && rawUrl.isNotEmpty
+          ? Uri.tryParse(rawUrl)
+          : null;
+      return ChatSource(
+        label: _sourceLabel(source, index),
+        text: source['text'] is String ? source['text'] as String : '',
+        chunkId:
+            source['chunk_id'] is String ? source['chunk_id'] as String : null,
+        url: url?.hasScheme == true ? url : null,
+      );
+    });
+  }
+
+  String _sourceLabel(Map<String, dynamic> source, int index) {
+    final label = source['label'];
+    if (label is String && label.trim().isNotEmpty) return label.trim();
+    return 'Source ${index + 1}';
+  }
+
+  String _errorMessage(Object error, String fallback) {
+    if (error is ApiException) return error.message;
+    final message = error.toString().replaceFirst('Exception: ', '').trim();
+    return message.isEmpty ? fallback : message;
+  }
+
+  bool _isCurrent(int generation) =>
+      !_disposed && generation == _generation;
+
+  bool _isVoiceCurrent(int generation) =>
+      !_disposed && generation == _voiceGeneration;
+
+  void _emit(ChatState state) {
+    if (_disposed) return;
+    _state = state;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _generation++;
+    _voiceGeneration++;
+    unawaited(_voiceInput.cancel());
+    super.dispose();
+  }
+}
+
+const _unset = Object();
