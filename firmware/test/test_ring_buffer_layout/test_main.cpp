@@ -70,6 +70,31 @@ void test_enlarged_segment_headers_wrap_without_losing_fifo_order() {
     TEST_ASSERT_EQUAL_UINT16(1, layout.count());
 }
 
+void test_drop_oldest_allows_fragmented_reservation_to_retry_and_wrap() {
+    RingBufferLayout layout(100);
+    size_t offset = 0;
+
+    TEST_ASSERT_TRUE(layout.reserve(30, offset));
+    TEST_ASSERT_EQUAL_UINT32(0, offset);
+    TEST_ASSERT_TRUE(layout.reserve(30, offset));
+    TEST_ASSERT_EQUAL_UINT32(30, offset);
+    TEST_ASSERT_TRUE(layout.reserve(30, offset));
+    TEST_ASSERT_EQUAL_UINT32(60, offset);
+
+    layout.pop(30);
+    TEST_ASSERT_FALSE(layout.reserve(35, offset));
+    TEST_ASSERT_EQUAL_UINT32(30, layout.frontOffset());
+
+    layout.pop(30);
+    TEST_ASSERT_TRUE(layout.reserve(35, offset));
+    TEST_ASSERT_EQUAL_UINT32(0, offset);
+    TEST_ASSERT_EQUAL_UINT32(60, layout.frontOffset());
+
+    layout.pop(30);
+    TEST_ASSERT_EQUAL_UINT32(0, layout.frontOffset());
+    TEST_ASSERT_EQUAL_UINT16(1, layout.count());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_sequential_reservations_and_accounting);
@@ -77,5 +102,6 @@ int main(int, char**) {
     RUN_TEST(test_rejects_wrap_when_beginning_is_too_small);
     RUN_TEST(test_full_to_empty_resets_offsets);
     RUN_TEST(test_enlarged_segment_headers_wrap_without_losing_fifo_order);
+    RUN_TEST(test_drop_oldest_allows_fragmented_reservation_to_retry_and_wrap);
     return UNITY_END();
 }

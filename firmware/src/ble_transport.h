@@ -5,6 +5,7 @@
 #include <freertos/FreeRTOS.h>
 
 #include "ble_protocol.h"
+#include "bond_policy.h"
 #include "ble_transport_events.h"
 #include "ble_transfer_state.h"
 #include "config.h"
@@ -12,12 +13,27 @@
 
 class BleTransport {
 public:
+    typedef void (*MuteCommandCallback)(bool muted, void* context);
+
     BleTransport()
         : _serverCallbacks(*this), _controlCallbacks(*this) {}
+
+    void setMuteCommandCallback(MuteCommandCallback callback, void* context) {
+        _muteCommandCallback = callback;
+        _muteCommandContext = context;
+    }
+
+    void setMuted(bool muted) {
+        _muted = muted;
+        _pendingStatus.request();
+    }
 
     bool begin() {
         Serial.println("[BLE] init");
         NimBLEDevice::init(BLE_DEVICE_NAME);
+        NimBLEDevice::setSecurityAuth(true, false, true);
+        NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
+        restoreBondPolicy();
         Serial.println("[BLE] NimBLEDevice initialized");
         NimBLEDevice::setMTU(BLE_PREFERRED_MTU);
         // Max TX power (+20dBm) can brown out the XIAO's regulator during
@@ -31,11 +47,14 @@ public:
         NimBLEService* service = _server->createService(BLE_SERVICE_UUID);
         if (service == nullptr) return false;
         _audioCharacteristic = service->createCharacteristic(
-            BLE_AUDIO_CHARACTERISTIC_UUID, NIMBLE_PROPERTY::NOTIFY,
+            BLE_AUDIO_CHARACTERISTIC_UUID,
+            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC | NIMBLE_PROPERTY::NOTIFY,
             EchoBleProtocol::NIMBLE_CHARACTERISTIC_MAX_LENGTH);
         _controlCharacteristic = service->createCharacteristic(
             BLE_CONTROL_CHARACTERISTIC_UUID,
-            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY,
+            NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::READ_ENC |
+            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC |
+            NIMBLE_PROPERTY::NOTIFY,
             EchoBleProtocol::NIMBLE_CHARACTERISTIC_MAX_LENGTH);
         if (_audioCharacteristic == nullptr || _controlCharacteristic == nullptr) return false;
 
@@ -61,6 +80,7 @@ public:
         while (beforeBurstDeadline(deadlineUs) && processNextEvent(buffer)) {}
         if (takeEventOverflow()) restartActive();
         if (!beforeBurstDeadline(deadlineUs)) return;
+        if (processPendingForgetBond(deadlineUs)) return;
 
         if (_pendingStatus.shouldNotify(_connected, _state.isReady())) {
             const bool notified = notifyBufferStatus(buffer, deadlineUs);
@@ -123,9 +143,19 @@ public:
         _pendingStatus.request();
     }
 
-    void reportBufferFull() {
-        Serial.println("[BLE] reportBufferFull");
-        _pendingStatus.request(BLE_STATUS_ERROR_BUFFER_FULL);
+    bool cancelActiveForOverflow(uint32_t segmentId) {
+        if (!_active || _segment.segmentId != segmentId) return false;
+        _state.cancelSegment();
+        _active = false;
+        _segmentData = nullptr;
+        _preambleStep = 0;
+        return true;
+    }
+
+    void reportBufferOverflow() {
+        Serial.println("[BLE] reportBufferOverflow");
+        _overflowSinceLastStatus = true;
+        _pendingStatus.request();
     }
 
 private:
@@ -136,8 +166,11 @@ private:
         // Callbacks run on the NimBLE host task; Serial I/O here can block on a
         // full USB CDC buffer long enough to miss the supervision timeout window.
         // Log the same info later from update(), which runs on the Arduino task.
-        void onConnect(NimBLEServer*, NimBLEConnInfo&) override {
-            _owner.enqueueEvent(BleTransportEvent::connected());
+        void onConnect(NimBLEServer* server, NimBLEConnInfo& connInfo) override {
+            const uint16_t connectionHandle = connInfo.getConnHandle();
+            if (!NimBLEDevice::startSecurity(connectionHandle)) {
+                server->disconnect(connectionHandle);
+            }
         }
 
         void onDisconnect(NimBLEServer*, NimBLEConnInfo&, int reason) override {
@@ -146,6 +179,23 @@ private:
 
         void onMTUChange(uint16_t mtu, NimBLEConnInfo&) override {
             _owner.enqueueEvent(BleTransportEvent::mtuChanged(mtu));
+        }
+
+        void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+            const uint16_t connectionHandle = connInfo.getConnHandle();
+            if (!connInfo.isEncrypted() || !connInfo.isBonded()) {
+                _owner._server->disconnect(connectionHandle);
+                return;
+            }
+
+            const std::string identity = connInfo.getIdAddress().toString();
+            if (!_owner._bondPolicy.accept(identity)) {
+                NimBLEDevice::deleteBond(connInfo.getIdAddress());
+                _owner._server->disconnect(connectionHandle);
+                return;
+            }
+
+            _owner.enqueueEvent(BleTransportEvent::connected(connInfo.getConnHandle()));
         }
 
     private:
@@ -164,6 +214,16 @@ private:
     private:
         BleTransport& _owner;
     };
+
+    void restoreBondPolicy() {
+        if (NimBLEDevice::getNumBonds() == 0) return;
+
+        _bondPolicy.restore(NimBLEDevice::getBondedAddress(0).toString());
+        while (NimBLEDevice::getNumBonds() > 1) {
+            const NimBLEAddress extraBond = NimBLEDevice::getBondedAddress(1);
+            if (!NimBLEDevice::deleteBond(extraBond)) break;
+        }
+    }
 
     size_t payloadSizeForMtu() const {
         const uint16_t mtu = _negotiatedMtu >= 23 ? _negotiatedMtu : 23;
@@ -189,14 +249,47 @@ private:
         return ok;
     }
 
+    bool processPendingForgetBond(uint32_t deadlineUs) {
+        if (!_forgetBondPending || !_connected) return false;
+        if (_controlCharacteristic == nullptr || _server == nullptr ||
+            _connectionHandle == UINT16_MAX) {
+            return true;
+        }
+        if (!beforeBurstDeadline(deadlineUs)) return true;
+
+        const uint8_t frame[] = {EchoBleProtocol::FRAME_FORGET_BOND_OK};
+        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return true;
+
+        _forgetBondPending = false;
+        const std::string acceptedIdentity = _bondPolicy.acceptedIdentity();
+        _bondPolicy.forget();
+        if (!NimBLEDevice::deleteAllBonds()) {
+            _bondPolicy.restore(acceptedIdentity);
+            Serial.println("[BLE] failed to delete bonds after forget acknowledgement");
+            return true;
+        }
+
+        _server->disconnect(_connectionHandle);
+        _connected = false;
+        return true;
+    }
+
     bool notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs) {
         if (_controlCharacteristic == nullptr) return false;
         uint8_t frame[EchoBleProtocol::DEVICE_STATUS_SIZE] = {};
-        EchoBleProtocol::encodeDeviceStatus(
-            buffer.count(), static_cast<uint32_t>(buffer.bytesUsed()),
-            _pendingStatus.errorCode(), frame, sizeof(frame));
+        const EchoBleProtocol::DeviceStatus status = {
+            _muted,
+            _overflowSinceLastStatus,
+            255,
+            buffer.count(),
+            static_cast<uint32_t>(buffer.bytesUsed()),
+            buffer.droppedSegmentCount(),
+        };
+        EchoBleProtocol::encodeDeviceStatusV2(status, frame, sizeof(frame));
         if (!beforeBurstDeadline(deadlineUs)) return false;
-        return _controlCharacteristic->notify(frame, sizeof(frame));
+        const bool notified = _controlCharacteristic->notify(frame, sizeof(frame));
+        if (notified) _overflowSinceLastStatus = false;
+        return notified;
     }
 
     bool sendSegmentStart(uint32_t deadlineUs) {
@@ -300,6 +393,9 @@ private:
         Serial.printf("[BLE] processing pending disconnect (reason=%d:%s)\n", _lastDisconnectReason,
                       disconnectReasonName(_lastDisconnectReason));
         _connected = false;
+        _connectionHandle = UINT16_MAX;
+        _negotiatedMtu = 23;
+        _forgetBondPending = false;
         _active = false;
         _segmentData = nullptr;
         _state.onDisconnected();
@@ -326,12 +422,12 @@ private:
             case BleTransportEventType::CONNECTED:
                 Serial.println("[BLE] event CONNECTED");
                 _connected = true;
-                _negotiatedMtu = 23;
+                _connectionHandle = event.connectionHandle;
                 _pendingStatus.request();
                 break;
             case BleTransportEventType::MTU_CHANGED:
                 Serial.printf("[BLE] event MTU_CHANGED mtu=%u\n", event.mtu);
-                if (_connected) _negotiatedMtu = event.mtu;
+                _negotiatedMtu = event.mtu;
                 break;
             case BleTransportEventType::CONTROL:
                 Serial.printf("[BLE] event CONTROL len=%u\n", event.controlLength);
@@ -361,6 +457,12 @@ private:
                               frame.timezoneOffsetMinutes);
                 _timeAnchor.set(frame.unixMilliseconds, millis(), frame.timezoneOffsetMinutes);
                 break;
+            case EchoBleProtocol::FRAME_SET_MUTED:
+                Serial.printf("[BLE] control FRAME_SET_MUTED muted=%d\n", frame.muted);
+                if (_muteCommandCallback != nullptr) {
+                    _muteCommandCallback(frame.muted, _muteCommandContext);
+                }
+                break;
             case EchoBleProtocol::FRAME_READY:
                 Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
@@ -380,6 +482,9 @@ private:
             case EchoBleProtocol::FRAME_UPLOAD_OK:
                 Serial.printf("[BLE] control FRAME_UPLOAD_OK seg=%u\n", frame.segmentId);
                 acceptUpload(frame.segmentId, buffer);
+                break;
+            case EchoBleProtocol::FRAME_FORGET_BOND:
+                _forgetBondPending = true;
                 break;
             default:
                 Serial.printf("[BLE] control unknown type=%u\n", frame.type);
@@ -415,6 +520,7 @@ private:
     NimBLECharacteristic* _controlCharacteristic = nullptr;
     ServerCallbacks _serverCallbacks;
     ControlCallbacks _controlCallbacks;
+    BondPolicy _bondPolicy;
     BleTransferState _state;
     BleTransportEventQueue _events;
     BlePendingStatus _pendingStatus;
@@ -423,13 +529,19 @@ private:
     size_t _chunkPayloadSize = 0;
     uint32_t _notifyBackoffUntil = 0;
     uint32_t _lastNotifyFailureLogMs = 0;
+    uint16_t _connectionHandle = UINT16_MAX;
     uint16_t _negotiatedMtu = 23;
     uint8_t _preambleStep = 0;
     bool _connected = false;
     bool _active = false;
+    bool _muted = false;
+    bool _overflowSinceLastStatus = false;
     bool _disconnectPending = false;
     bool _eventOverflowPending = false;
+    bool _forgetBondPending = false;
     int _lastDisconnectReason = 0;
+    MuteCommandCallback _muteCommandCallback = nullptr;
+    void* _muteCommandContext = nullptr;
     portMUX_TYPE _eventMux = portMUX_INITIALIZER_UNLOCKED;
     EchoBleProtocol::TimeAnchor _timeAnchor;
 };

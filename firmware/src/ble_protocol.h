@@ -13,8 +13,12 @@ constexpr uint8_t FRAME_ACK_WINDOW = 0x11;
 constexpr uint8_t FRAME_RESTART_SEGMENT = 0x12;
 constexpr uint8_t FRAME_UPLOAD_OK = 0x13;
 constexpr uint8_t FRAME_SET_TIME = 0x14;
+constexpr uint8_t FRAME_SET_MUTED = 0x15;
+constexpr uint8_t FRAME_FORGET_BOND = 0x16;
+constexpr uint8_t FRAME_FORGET_BOND_OK = 0x17;
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
-constexpr uint8_t PROTOCOL_VERSION = 1;
+constexpr uint8_t FRAME_DEVICE_INFO = 0x21;
+constexpr uint8_t PROTOCOL_VERSION = 2;
 
 constexpr size_t SEGMENT_START_SIZE = 20;
 constexpr size_t SEGMENT_METADATA_SIZE = 19;
@@ -23,7 +27,11 @@ constexpr size_t READY_SIZE = 1;
 constexpr size_t ACK_WINDOW_SIZE = 7;
 constexpr size_t SEGMENT_COMMAND_SIZE = 5;
 constexpr size_t SET_TIME_SIZE = 11;
-constexpr size_t DEVICE_STATUS_SIZE = 8;
+constexpr size_t SET_MUTED_SIZE = 2;
+constexpr size_t FORGET_BOND_SIZE = 1;
+constexpr size_t FORGET_BOND_OK_SIZE = 1;
+constexpr size_t DEVICE_STATUS_SIZE = 14;
+constexpr size_t DEVICE_INFO_SIZE = 5;
 constexpr size_t MAX_CONTROL_FRAME_SIZE = SET_TIME_SIZE;
 constexpr size_t ATT_NOTIFICATION_OVERHEAD = 3;
 constexpr size_t NIMBLE_CHARACTERISTIC_MAX_LENGTH = 512;
@@ -121,6 +129,22 @@ struct SetTime {
     int16_t timezoneOffsetMinutes;
 };
 
+struct DeviceStatus {
+    bool muted;
+    bool overflowed;
+    uint8_t batteryPercent;
+    uint16_t bufferCount;
+    uint32_t bufferBytes;
+    uint32_t droppedSegments;
+};
+
+struct DeviceInfo {
+    uint8_t protocolVersion;
+    uint8_t firmwareMajor;
+    uint8_t firmwareMinor;
+    uint8_t firmwarePatch;
+};
+
 class TimeAnchor {
 public:
     void set(uint64_t unixMilliseconds, uint32_t deviceMilliseconds,
@@ -156,6 +180,7 @@ struct ControlFrame {
     uint16_t sequence;
     uint64_t unixMilliseconds;
     int16_t timezoneOffsetMinutes;
+    bool muted;
 };
 
 inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, size_t capacity) {
@@ -208,14 +233,66 @@ inline size_t encodeSetTime(const SetTime& frame, uint8_t* output, size_t capaci
     return SET_TIME_SIZE;
 }
 
-inline size_t encodeDeviceStatus(uint16_t count, uint32_t bytesUsed, uint8_t errorCode,
-                                 uint8_t* output, size_t capacity) {
-    if (output == nullptr || capacity < DEVICE_STATUS_SIZE) return 0;
+inline bool isValidBatteryPercent(uint8_t batteryPercent) {
+    return batteryPercent <= 100 || batteryPercent == 255;
+}
+
+inline size_t encodeDeviceStatusV2(const DeviceStatus& status,
+                                   uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < DEVICE_STATUS_SIZE ||
+        !isValidBatteryPercent(status.batteryPercent)) return 0;
     output[0] = FRAME_DEVICE_STATUS;
-    writeU16(output + 1, count);
-    writeU32(output + 3, bytesUsed);
-    output[7] = errorCode;
+    output[1] = PROTOCOL_VERSION;
+    output[2] = static_cast<uint8_t>((status.muted ? 0x01 : 0x00) |
+                                     (status.overflowed ? 0x02 : 0x00));
+    output[3] = status.batteryPercent;
+    writeU16(output + 4, status.bufferCount);
+    writeU32(output + 6, status.bufferBytes);
+    writeU32(output + 10, status.droppedSegments);
     return DEVICE_STATUS_SIZE;
+}
+
+inline size_t encodeDeviceStatusV2(bool muted, bool overflowed, uint8_t batteryPercent,
+                                   uint16_t bufferCount, uint32_t bufferBytes,
+                                   uint32_t droppedSegments,
+                                   uint8_t* output, size_t capacity) {
+    const DeviceStatus status = {
+        muted, overflowed, batteryPercent, bufferCount, bufferBytes, droppedSegments};
+    return encodeDeviceStatusV2(status, output, capacity);
+}
+
+inline bool decodeDeviceStatusV2(const uint8_t* input, size_t length, DeviceStatus& status) {
+    if (input == nullptr || length != DEVICE_STATUS_SIZE ||
+        input[0] != FRAME_DEVICE_STATUS || input[1] != PROTOCOL_VERSION ||
+        (input[2] & 0xFC) != 0 || !isValidBatteryPercent(input[3])) return false;
+    status.muted = (input[2] & 0x01) != 0;
+    status.overflowed = (input[2] & 0x02) != 0;
+    status.batteryPercent = input[3];
+    status.bufferCount = readU16(input + 4);
+    status.bufferBytes = readU32(input + 6);
+    status.droppedSegments = readU32(input + 10);
+    return true;
+}
+
+inline size_t encodeDeviceInfo(const DeviceInfo& info, uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < DEVICE_INFO_SIZE ||
+        info.protocolVersion != PROTOCOL_VERSION) return 0;
+    output[0] = FRAME_DEVICE_INFO;
+    output[1] = info.protocolVersion;
+    output[2] = info.firmwareMajor;
+    output[3] = info.firmwareMinor;
+    output[4] = info.firmwarePatch;
+    return DEVICE_INFO_SIZE;
+}
+
+inline bool decodeDeviceInfo(const uint8_t* input, size_t length, DeviceInfo& info) {
+    if (input == nullptr || length != DEVICE_INFO_SIZE ||
+        input[0] != FRAME_DEVICE_INFO || input[1] != PROTOCOL_VERSION) return false;
+    info.protocolVersion = input[1];
+    info.firmwareMajor = input[2];
+    info.firmwareMinor = input[3];
+    info.firmwarePatch = input[4];
+    return true;
 }
 
 inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame& frame) {
@@ -240,6 +317,12 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
             frame.unixMilliseconds = readU64(input + 1);
             frame.timezoneOffsetMinutes = static_cast<int16_t>(readU16(input + 9));
             return true;
+        case FRAME_SET_MUTED:
+            if (length != SET_MUTED_SIZE || input[1] > 1) return false;
+            frame.muted = input[1] == 1;
+            return true;
+        case FRAME_FORGET_BOND:
+            return length == FORGET_BOND_SIZE;
         default:
             return false;
     }

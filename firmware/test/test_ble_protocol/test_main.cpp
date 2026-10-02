@@ -69,9 +69,9 @@ void test_little_endian_round_trips() {
 
 void test_segment_start_exact_bytes() {
     const SegmentStart frame = {
-        0x78563412U, 1U, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
+        0x78563412U, 2U, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
     const uint8_t expected[] = {
-        0x01, 0x12, 0x34, 0x56, 0x78, 0x01, 0x11, 0x22, 0x33, 0x44,
+        0x01, 0x12, 0x34, 0x56, 0x78, 0x02, 0x11, 0x22, 0x33, 0x44,
         0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xAA, 0xBB, 0xCC, 0xDD};
     uint8_t encoded[SEGMENT_START_SIZE] = {};
 
@@ -82,6 +82,111 @@ void test_segment_start_exact_bytes() {
     TEST_ASSERT_TRUE(decodeSegmentStart(encoded, sizeof(encoded), decoded));
     TEST_ASSERT_EQUAL_HEX32(frame.segmentId, decoded.segmentId);
     TEST_ASSERT_EQUAL_HEX32(frame.crc, decoded.crc);
+}
+
+void test_device_status_v2_exact_bytes_and_round_trips() {
+    uint8_t bytes[DEVICE_STATUS_SIZE] = {};
+    TEST_ASSERT_EQUAL_UINT32(14, encodeDeviceStatusV2(
+        true, true, 255, 3, 12000, 7, bytes, sizeof(bytes)));
+    const uint8_t expected[] = {
+        0x20, 0x02, 0x03, 0xFF, 0x03, 0x00,
+        0xE0, 0x2E, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, bytes, sizeof(expected));
+
+    DeviceStatus decoded = {};
+    TEST_ASSERT_TRUE(decodeDeviceStatusV2(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_TRUE(decoded.muted);
+    TEST_ASSERT_TRUE(decoded.overflowed);
+    TEST_ASSERT_EQUAL_UINT8(255, decoded.batteryPercent);
+    TEST_ASSERT_EQUAL_UINT16(3, decoded.bufferCount);
+    TEST_ASSERT_EQUAL_UINT32(12000, decoded.bufferBytes);
+    TEST_ASSERT_EQUAL_UINT32(7, decoded.droppedSegments);
+}
+
+void test_device_info_exact_bytes_and_round_trips() {
+    const DeviceInfo info = {PROTOCOL_VERSION, 1, 2, 3};
+    const uint8_t expected[] = {0x21, 0x02, 0x01, 0x02, 0x03};
+    uint8_t bytes[DEVICE_INFO_SIZE] = {};
+
+    TEST_ASSERT_EQUAL_UINT32(
+        DEVICE_INFO_SIZE, encodeDeviceInfo(info, bytes, sizeof(bytes)));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, bytes, sizeof(expected));
+
+    DeviceInfo decoded = {};
+    TEST_ASSERT_TRUE(decodeDeviceInfo(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT8(PROTOCOL_VERSION, decoded.protocolVersion);
+    TEST_ASSERT_EQUAL_UINT8(1, decoded.firmwareMajor);
+    TEST_ASSERT_EQUAL_UINT8(2, decoded.firmwareMinor);
+    TEST_ASSERT_EQUAL_UINT8(3, decoded.firmwarePatch);
+}
+
+void test_status_and_info_reject_malformed_frames() {
+    const uint8_t validStatus[] = {
+        0x20, 0x02, 0x00, 0x64, 0x01, 0x00,
+        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00};
+    uint8_t malformedStatus[DEVICE_STATUS_SIZE] = {};
+    DeviceStatus status = {};
+
+    std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
+    malformedStatus[0] = FRAME_DEVICE_INFO;
+    TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
+    std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
+    malformedStatus[1] = 1;
+    TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
+    std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
+    malformedStatus[2] = 0x04;
+    TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
+    std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
+    malformedStatus[3] = 101;
+    TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
+    TEST_ASSERT_FALSE(decodeDeviceStatusV2(validStatus, sizeof(validStatus) - 1, status));
+
+    const uint8_t validInfo[] = {FRAME_DEVICE_INFO, PROTOCOL_VERSION, 1, 2, 3};
+    uint8_t malformedInfo[DEVICE_INFO_SIZE] = {};
+    DeviceInfo info = {};
+    std::memcpy(malformedInfo, validInfo, sizeof(validInfo));
+    malformedInfo[0] = FRAME_DEVICE_STATUS;
+    TEST_ASSERT_FALSE(decodeDeviceInfo(malformedInfo, sizeof(malformedInfo), info));
+    std::memcpy(malformedInfo, validInfo, sizeof(validInfo));
+    malformedInfo[1] = 1;
+    TEST_ASSERT_FALSE(decodeDeviceInfo(malformedInfo, sizeof(malformedInfo), info));
+    TEST_ASSERT_FALSE(decodeDeviceInfo(validInfo, sizeof(validInfo) - 1, info));
+}
+
+void test_status_and_info_encoders_reject_invalid_values_and_short_buffers() {
+    uint8_t statusBytes[DEVICE_STATUS_SIZE] = {};
+    TEST_ASSERT_EQUAL_UINT32(0, encodeDeviceStatusV2(
+        false, false, 101, 0, 0, 0, statusBytes, sizeof(statusBytes)));
+    TEST_ASSERT_EQUAL_UINT32(0, encodeDeviceStatusV2(
+        false, false, 255, 0, 0, 0, statusBytes, sizeof(statusBytes) - 1));
+
+    const DeviceInfo info = {PROTOCOL_VERSION, 1, 2, 3};
+    uint8_t infoBytes[DEVICE_INFO_SIZE] = {};
+    TEST_ASSERT_EQUAL_UINT32(
+        0, encodeDeviceInfo(info, infoBytes, sizeof(infoBytes) - 1));
+}
+
+void test_privacy_control_frames_decode_exact_lengths_and_values() {
+    const uint8_t muted[] = {FRAME_SET_MUTED, 1};
+    const uint8_t listening[] = {FRAME_SET_MUTED, 0};
+    const uint8_t invalidMute[] = {FRAME_SET_MUTED, 2};
+    const uint8_t shortMute[] = {FRAME_SET_MUTED};
+    const uint8_t forget[] = {FRAME_FORGET_BOND};
+    const uint8_t longForget[] = {FRAME_FORGET_BOND, 0};
+    const uint8_t forgetOk[] = {FRAME_FORGET_BOND_OK};
+    ControlFrame decoded = {};
+
+    TEST_ASSERT_TRUE(decodeControlFrame(muted, sizeof(muted), decoded));
+    TEST_ASSERT_TRUE(decoded.muted);
+    TEST_ASSERT_TRUE(decodeControlFrame(listening, sizeof(listening), decoded));
+    TEST_ASSERT_FALSE(decoded.muted);
+    TEST_ASSERT_FALSE(decodeControlFrame(invalidMute, sizeof(invalidMute), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(shortMute, sizeof(shortMute), decoded));
+    TEST_ASSERT_TRUE(decodeControlFrame(forget, sizeof(forget), decoded));
+    TEST_ASSERT_EQUAL_UINT8(FRAME_FORGET_BOND, decoded.type);
+    TEST_ASSERT_EQUAL_UINT32(FORGET_BOND_OK_SIZE, sizeof(forgetOk));
+    TEST_ASSERT_FALSE(decodeControlFrame(longForget, sizeof(longForget), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(forgetOk, sizeof(forgetOk), decoded));
 }
 
 void test_set_time_exact_bytes() {
@@ -179,6 +284,11 @@ int main(int, char**) {
     RUN_TEST(test_buffered_segment_header_exact_bytes);
     RUN_TEST(test_little_endian_round_trips);
     RUN_TEST(test_segment_start_exact_bytes);
+    RUN_TEST(test_device_status_v2_exact_bytes_and_round_trips);
+    RUN_TEST(test_device_info_exact_bytes_and_round_trips);
+    RUN_TEST(test_status_and_info_reject_malformed_frames);
+    RUN_TEST(test_status_and_info_encoders_reject_invalid_values_and_short_buffers);
+    RUN_TEST(test_privacy_control_frames_decode_exact_lengths_and_values);
     RUN_TEST(test_set_time_exact_bytes);
     RUN_TEST(test_control_frames_reject_truncation_and_unknown_types);
     RUN_TEST(test_notification_payload_is_capped_by_att_and_characteristic_limits);
