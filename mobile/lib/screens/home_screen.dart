@@ -1,442 +1,445 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../models/device_status.dart';
+import '../models/segment.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
-import '../services/ble_service.dart';
-import '../widgets/skeleton.dart';
+import '../widgets/privacy_control.dart';
+import '../widgets/today_memory_preview.dart';
+import 'transcript_detail_screen.dart';
 
-class HomeScreen extends StatefulWidget {
-  final VoidCallback onAskTap;
-  final VoidCallback onTranscriptsTap;
-  final VoidCallback onSettingsTap;
+typedef LatestMemoryLoader = Future<List<RecentSegment>> Function();
 
+final class HomeScreen extends StatefulWidget {
   const HomeScreen({
+    required this.deviceStatus,
+    required this.setMuted,
+    required this.onAsk,
+    required this.onTranscripts,
+    this.onReconnect,
+    this.latestMemoryLoader,
+    this.api,
+    this.segmentUploadedStream,
+    this.onMuteAcknowledged,
     super.key,
-    required this.onAskTap,
-    required this.onTranscriptsTap,
-    required this.onSettingsTap,
   });
+
+  final DeviceStatus deviceStatus;
+  final Future<void> Function(bool muted) setMuted;
+  final Future<void> Function()? onReconnect;
+  final VoidCallback onAsk;
+  final VoidCallback onTranscripts;
+  final LatestMemoryLoader? latestMemoryLoader;
+  final ApiService? api;
+  final Stream<Object?>? segmentUploadedStream;
+  final Future<void> Function()? onMuteAcknowledged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final _api = ApiService();
-  Map<String, dynamic>? _digest;
-  List<RecentSegment> _recentSegments = [];
-  List<Map<String, dynamic>> _tasks = [];
-  bool _loading = true;
+final class _HomeScreenState extends State<HomeScreen> {
+  static const _muteAcknowledgementTimeout = Duration(seconds: 8);
+
+  late final ApiService _api;
+  late final bool _ownsApi;
+  StreamSubscription<Object?>? _segmentUploadSubscription;
+  Timer? _muteTimeout;
+  RecentSegment? _latestMemory;
+  String? _memoryError;
+  String? _privacyError;
+  String? _announcement;
+  bool _memoryLoading = true;
+  bool _privacyBusy = false;
+  bool? _requestedMuted;
   int _loadGeneration = 0;
-  StreamSubscription<int>? _segmentUploadSubscription;
-  Timer? _delayedRefresh;
 
   @override
   void initState() {
     super.initState();
-    _load();
-    _segmentUploadSubscription = bleService.segmentUploadedStream.listen((_) {
-      _load();
-      _delayedRefresh?.cancel();
-      _delayedRefresh = Timer(const Duration(seconds: 4), _load);
-    });
+    final injectedApi = widget.api;
+    _ownsApi = injectedApi == null;
+    _api = injectedApi ?? ApiService();
+    _subscribeToUploads();
+    unawaited(_loadLatestMemory(showLoading: true));
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.segmentUploadedStream != widget.segmentUploadedStream) {
+      unawaited(_segmentUploadSubscription?.cancel());
+      _subscribeToUploads();
+    }
+
+    final requestedMuted = _requestedMuted;
+    if (requestedMuted == null ||
+        oldWidget.deviceStatus == widget.deviceStatus ||
+        !_isRequestedTelemetry(widget.deviceStatus, requestedMuted)) {
+      return;
+    }
+
+    _muteTimeout?.cancel();
+    _requestedMuted = null;
+    _privacyBusy = false;
+    _privacyError = null;
+    _announcement = requestedMuted
+        ? 'Microphone muted'
+        : 'Microphone listening resumed';
+    setState(() {});
+    unawaited(
+      (widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call(),
+    );
   }
 
   @override
   void dispose() {
-    _segmentUploadSubscription?.cancel();
-    _delayedRefresh?.cancel();
+    _loadGeneration++;
+    _muteTimeout?.cancel();
+    unawaited(_segmentUploadSubscription?.cancel());
+    if (_ownsApi) _api.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _subscribeToUploads() {
+    _segmentUploadSubscription = widget.segmentUploadedStream?.listen((_) {
+      unawaited(_loadLatestMemory());
+    });
+  }
+
+  Future<void> _loadLatestMemory({bool showLoading = false}) async {
     final generation = ++_loadGeneration;
-    if (mounted && _recentSegments.isEmpty) setState(() => _loading = true);
+    if (showLoading && mounted) {
+      setState(() {
+        _memoryLoading = true;
+        _memoryError = null;
+      });
+    }
+
     try {
-      final recentSegments = await _api.getRecentSegments(limit: 3);
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      final digest = await _api.getDigest(today);
-      final tasks = await _api.getTasks();
+      final loader = widget.latestMemoryLoader ??
+          () => _api.getRecentSegments(limit: 20);
+      final segments = await loader();
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _recentSegments = recentSegments;
-        _digest = digest;
-        _tasks = tasks;
-        _loading = false;
+        _latestMemory = segments.cast<RecentSegment?>().firstWhere(
+              (segment) =>
+                  segment != null &&
+                  segment.isCompleted &&
+                  stripMemoryPrefix(segment.text ?? '').isNotEmpty,
+              orElse: () => null,
+            );
+        _memoryLoading = false;
+        _memoryError = null;
       });
     } catch (_) {
-      if (mounted && generation == _loadGeneration) {
-        setState(() => _loading = false);
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _memoryLoading = false;
+        _memoryError = 'Could not load the latest memory.';
+      });
     }
+  }
+
+  Future<void> _requestMuted(bool muted) async {
+    if (_privacyBusy) return;
+    setState(() {
+      _requestedMuted = muted;
+      _privacyBusy = true;
+      _privacyError = null;
+      _announcement = muted
+          ? 'Requesting microphone mute'
+          : 'Requesting listening resume';
+    });
+
+    _muteTimeout?.cancel();
+    _muteTimeout = Timer(_muteAcknowledgementTimeout, () {
+      if (!mounted || _requestedMuted != muted) return;
+      setState(() {
+        _requestedMuted = null;
+        _privacyBusy = false;
+        _privacyError = 'Echo did not confirm the microphone change.';
+        _announcement = _privacyError;
+      });
+    });
+
+    try {
+      await widget.setMuted(muted);
+    } catch (_) {
+      if (!mounted || _requestedMuted != muted) return;
+      _muteTimeout?.cancel();
+      setState(() {
+        _requestedMuted = null;
+        _privacyBusy = false;
+        _privacyError = 'Echo could not update the microphone.';
+        _announcement = _privacyError;
+      });
+    }
+  }
+
+  Future<void> _reconnect() async {
+    final reconnect = widget.onReconnect;
+    if (reconnect == null || _privacyBusy) return;
+    setState(() {
+      _privacyBusy = true;
+      _privacyError = null;
+      _announcement = 'Reconnecting Echo';
+    });
+    try {
+      await reconnect();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _privacyError = 'Echo could not start reconnecting.';
+        _announcement = _privacyError;
+      });
+    } finally {
+      if (mounted) setState(() => _privacyBusy = false);
+    }
+  }
+
+  Future<void> _openLatestMemory() async {
+    final segment = _latestMemory;
+    if (segment == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => TranscriptDetailScreen(segment: segment, api: _api),
+      ),
+    );
+    if (!mounted) return;
+    await _loadLatestMemory();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.bgBase, AppColors.bgDeep],
-        ),
-      ),
+    final palette = EchoPalette.of(context);
+    final presentation = _presentation(widget.deviceStatus.connectionState);
+    final visual = _visualFor(presentation, palette);
+    final privacyAction = switch (presentation) {
+      PrivacyControlPresentation.listening => () => _requestMuted(true),
+      PrivacyControlPresentation.muted => () => _requestMuted(false),
+      PrivacyControlPresentation.connecting => null,
+      PrivacyControlPresentation.offline =>
+        widget.onReconnect == null ? null : _reconnect,
+    };
+
+    return ColoredBox(
+      color: palette.background,
       child: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _load,
-          color: AppColors.accent,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-            children: [
-              // Header
-              Row(
-                children: [
-                  Container(
-                    width: 8, height: 8,
-                    decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text('Echo', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: AppColors.foreground, letterSpacing: -0.5)),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined, size: 20, color: AppColors.foregroundMuted),
-                    onPressed: widget.onSettingsTap,
-                    tooltip: 'Settings',
-                  ),
-                  _LiveIndicator(),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _greeting(),
-                style: const TextStyle(color: AppColors.foregroundMuted, fontSize: 14),
-              ),
-              const SizedBox(height: 12),
-
-              Row(
-                children: [
-                  const Text('LATEST', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, fontWeight: FontWeight.w600)),
-                  const Spacer(),
-                  TextButton(onPressed: widget.onTranscriptsTap, child: const Text('See all')),
-                ],
-              ),
-              if (_loading)
-                const SkeletonCard()
-              else if (_recentSegments.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Text('Your latest transcripts will appear here.', style: TextStyle(fontSize: 13, color: AppColors.foregroundMuted)),
-                )
-              else
-                ..._recentSegments.map((segment) => _RecentTranscriptPreview(segment: segment)),
-              const SizedBox(height: 22),
-
-              if (_loading)
-                const SkeletonCard()
-              else if (_digest != null)
-                _DigestCard(digest: _digest!)
-              else
-                _EmptyDigestCard(),
-
-              const SizedBox(height: 24),
-
-              // Tasks from conversations
-              if (!_loading && _tasks.isNotEmpty) ...[
-                Row(
-                  children: [
-                    const Text('TASKS', style: TextStyle(fontSize: 11, color: AppColors.foregroundMuted, letterSpacing: 0.5, fontWeight: FontWeight.w500)),
-                    const Spacer(),
-                    Text('${_tasks.length} pending', style: const TextStyle(fontSize: 10, color: AppColors.foregroundMuted)),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ..._tasks.take(5).map((t) => _TaskItem(
-                  task: t,
-                  onToggle: () => _toggleTask(t),
-                )),
-                if (_tasks.length > 5)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Center(
-                      child: Text(
-                        '+ ${_tasks.length - 5} more tasks',
-                        style: const TextStyle(fontSize: 12, color: AppColors.accent),
-                      ),
+        top: false,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        _TodayHeader(date: DateTime.now()),
+                        const SizedBox(height: 20),
+                        _DeviceHero(visual: visual),
+                        const SizedBox(height: 18),
+                        TodayMemoryPreview(
+                          loading: _memoryLoading,
+                          segment: _latestMemory,
+                          error: _memoryError,
+                          onRetry: () => unawaited(
+                            _loadLatestMemory(showLoading: true),
+                          ),
+                          onTap: _latestMemory == null
+                              ? null
+                              : () => unawaited(_openLatestMemory()),
+                          onViewAll: widget.onTranscripts,
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.center,
+                          child: TextButton.icon(
+                            onPressed: widget.onAsk,
+                            icon: const Icon(Icons.auto_awesome_outlined),
+                            label: const Text('Ask Echo'),
+                          ),
+                        ),
+                        const Spacer(),
+                        PrivacyControl(
+                          presentation: presentation,
+                          onPressed: privacyAction,
+                          busy: _privacyBusy,
+                          error: _privacyError,
+                          onRetry: privacyAction,
+                          announcement: _announcement,
+                        ),
+                      ],
                     ),
                   ),
-                const SizedBox(height: 24),
-              ],
-
-            ],
-          ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
   }
-
-  String _greeting() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  }
-
-  Future<void> _toggleTask(Map<String, dynamic> task) async {
-    final id = task['id'];
-    final isDone = task['metadata_']?['done'] == true;
-    await _api.updateEntity(id, metadata: {'done': !isDone});
-    _load();
-  }
 }
 
-class _RecentTranscriptPreview extends StatelessWidget {
-  const _RecentTranscriptPreview({required this.segment});
+bool _isRequestedTelemetry(DeviceStatus status, bool requestedMuted) {
+  return status.connectionState ==
+      (requestedMuted
+          ? DeviceConnectionState.muted
+          : DeviceConnectionState.listening);
+}
 
-  final RecentSegment segment;
+PrivacyControlPresentation _presentation(DeviceConnectionState state) {
+  return switch (state) {
+    DeviceConnectionState.listening => PrivacyControlPresentation.listening,
+    DeviceConnectionState.muted => PrivacyControlPresentation.muted,
+    DeviceConnectionState.scanning ||
+    DeviceConnectionState.connecting ||
+    DeviceConnectionState.bonding ||
+    DeviceConnectionState.reconnecting => PrivacyControlPresentation.connecting,
+    DeviceConnectionState.unpaired ||
+    DeviceConnectionState.bluetoothOff ||
+    DeviceConnectionState.offline ||
+    DeviceConnectionState.error => PrivacyControlPresentation.offline,
+  };
+}
+
+_DeviceVisual _visualFor(
+  PrivacyControlPresentation presentation,
+  EchoPalette palette,
+) {
+  return switch (presentation) {
+    PrivacyControlPresentation.listening => _DeviceVisual(
+        title: 'Listening',
+        detail: 'Your microphone is active and private controls are ready.',
+        icon: Icons.graphic_eq_rounded,
+        color: palette.green,
+      ),
+    PrivacyControlPresentation.muted => _DeviceVisual(
+        title: 'Microphone muted',
+        detail: 'Echo is not listening. Resume whenever you are ready.',
+        icon: Icons.mic_off_rounded,
+        color: palette.red,
+      ),
+    PrivacyControlPresentation.connecting => _DeviceVisual(
+        title: 'Connecting',
+        detail: 'Echo is restoring the private device connection.',
+        icon: Icons.bluetooth_searching_rounded,
+        color: palette.amber,
+      ),
+    PrivacyControlPresentation.offline => _DeviceVisual(
+        title: 'Echo is offline',
+        detail: 'Reconnect when the device is nearby and Bluetooth is on.',
+        icon: Icons.bluetooth_disabled_rounded,
+        color: palette.blue,
+      ),
+  };
+}
+
+final class _TodayHeader extends StatelessWidget {
+  const _TodayHeader({required this.date});
+
+  final DateTime date;
 
   @override
   Widget build(BuildContext context) {
-    final text = segment.text?.replaceFirst(RegExp(r'^\[(Tu|Altri)\]\s*'), '');
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            segment.isPending ? Icons.sync_rounded : Icons.notes_rounded,
-            size: 17,
-            color: segment.isPending ? AppColors.accent : AppColors.foregroundMuted,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text == null || text.isEmpty ? 'Transcribing...' : text,
+    final palette = EchoPalette.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text('Echo', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(width: 10),
+        Text(
+          'Today',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: palette.text2,
+              ),
+        ),
+        const Spacer(),
+        Text(
+          _formatDate(date),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: palette.text2,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+final class _DeviceHero extends StatelessWidget {
+  const _DeviceHero({required this.visual});
+
+  final _DeviceVisual visual;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: '${visual.title}. ${visual.detail}',
+      child: SizedBox(
+        height: 148,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(visual.icon, size: 48, color: visual.color),
+            const SizedBox(height: 12),
+            Text(
+              visual.title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineMedium,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              visual.detail,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: text == null ? AppColors.foregroundMuted : AppColors.foreground,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LiveIndicator extends StatefulWidget {
-  @override
-  State<_LiveIndicator> createState() => _LiveIndicatorState();
-}
-
-class _LiveIndicatorState extends State<_LiveIndicator> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() { _controller.dispose(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<BleConnectionState>(
-      stream: bleService.stateStream,
-      initialData: bleService.state,
-      builder: (context, snap) {
-        final state = snap.data ?? BleConnectionState.disconnected;
-        return GestureDetector(
-          onTap: () {
-            if (state == BleConnectionState.disconnected) {
-              bleService.startScan();
-            } else if (state == BleConnectionState.connected) {
-              bleService.disconnect();
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: state == BleConnectionState.connected ? AppColors.success.withValues(alpha: 0.08) : AppColors.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: state == BleConnectionState.connected ? AppColors.success.withValues(alpha: 0.2) : AppColors.border),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  state == BleConnectionState.connected ? Icons.bluetooth_connected_rounded : Icons.bluetooth_disabled_rounded,
-                  size: 14,
-                  color: state == BleConnectionState.connected ? AppColors.success : AppColors.foregroundMuted,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  state == BleConnectionState.connected ? 'Device' : (state == BleConnectionState.scanning ? 'Scanning...' : 'No device'),
-                  style: TextStyle(fontSize: 11, color: state == BleConnectionState.connected ? AppColors.success : AppColors.foregroundMuted),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _DigestCard extends StatelessWidget {
-  final Map<String, dynamic> digest;
-  const _DigestCard({required this.digest});
-
-  @override
-  Widget build(BuildContext context) {
-    final summary = digest['summary'] ?? '';
-    final people = List<String>.from(digest['people'] ?? []);
-    final convCount = digest['conversation_count'] ?? 0;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.bgElevated,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.auto_awesome_rounded, size: 16, color: AppColors.accent),
-              const SizedBox(width: 8),
-              const Text('Daily Recap', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.foreground)),
-              const Spacer(),
-              Text('$convCount conversations', style: const TextStyle(fontSize: 11, color: AppColors.foregroundMuted)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            summary,
-            style: const TextStyle(fontSize: 14, color: AppColors.foreground, height: 1.5),
-            maxLines: 4,
-            overflow: TextOverflow.ellipsis,
-          ),
-          if (people.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              children: people.take(5).map((p) => Chip(
-                label: Text(p, style: const TextStyle(fontSize: 11, color: AppColors.accent)),
-                backgroundColor: AppColors.accent.withValues(alpha: 0.08),
-                side: BorderSide(color: AppColors.accent.withValues(alpha: 0.2)),
-                padding: EdgeInsets.zero,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              )).toList(),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: EchoPalette.of(context).text2,
+                  ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _EmptyDigestCard extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.bgElevated,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: const Column(
-        children: [
-          Icon(Icons.auto_awesome_outlined, size: 28, color: AppColors.foregroundMuted),
-          SizedBox(height: 10),
-          Text('No recap yet today', style: TextStyle(fontSize: 14, color: AppColors.foreground, fontWeight: FontWeight.w500)),
-          SizedBox(height: 4),
-          Text('Start a conversation and your\ndaily recap will appear here', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
-        ],
-      ),
-    );
-  }
+final class _DeviceVisual {
+  const _DeviceVisual({
+    required this.title,
+    required this.detail,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String detail;
+  final IconData icon;
+  final Color color;
 }
 
-class _TaskItem extends StatelessWidget {
-  final Map<String, dynamic> task;
-  final VoidCallback onToggle;
-  const _TaskItem({required this.task, required this.onToggle});
-
-  @override
-  Widget build(BuildContext context) {
-    final name = task['name'] ?? '';
-    final content = task['content'] ?? '';
-    final isDone = task['metadata_']?['done'] == true;
-    final createdAt = task['created_at'] ?? '';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.bgElevated,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isDone ? AppColors.success.withValues(alpha: 0.2) : AppColors.border),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: onToggle,
-            child: Container(
-              width: 22, height: 22,
-              decoration: BoxDecoration(
-                color: isDone ? AppColors.success.withValues(alpha: 0.15) : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: isDone ? AppColors.success : AppColors.foregroundMuted, width: 1.5),
-              ),
-              child: isDone ? const Icon(Icons.check_rounded, size: 14, color: AppColors.success) : null,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: isDone ? AppColors.foregroundMuted : AppColors.foreground,
-                    decoration: isDone ? TextDecoration.lineThrough : null,
-                  ),
-                ),
-                if (content.isNotEmpty)
-                  Text(content, style: const TextStyle(fontSize: 11, color: AppColors.foregroundMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          if (createdAt.isNotEmpty)
-            Text(_formatDay(createdAt), style: const TextStyle(fontSize: 10, color: AppColors.foregroundMuted)),
-        ],
-      ),
-    );
-  }
-
-  String _formatDay(String iso) {
-    try {
-      final dt = DateTime.parse(iso);
-      final now = DateTime.now();
-      if (dt.day == now.day && dt.month == now.month) return 'Today';
-      if (dt.day == now.day - 1 && dt.month == now.month) return 'Yesterday';
-      return '${dt.day}/${dt.month}';
-    } catch (_) {
-      return '';
-    }
-  }
+String _formatDate(DateTime value) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${months[value.month - 1]} ${value.day}';
 }

@@ -103,7 +103,7 @@ void main() {
 
       expect(assembler.add(validStart.sublist(0, validStart.length - 1)), _restart);
       expect(assembler.add([...validStart, 0]), _restart);
-      final wrongVersion = Uint8List.fromList(validStart)..[5] = 2;
+      final wrongVersion = Uint8List.fromList(validStart)..[5] = 1;
       expect(assembler.add(wrongVersion), _restart);
 
       expect(
@@ -294,7 +294,7 @@ Uint8List _start({
   final data = ByteData.sublistView(bytes);
   data.setUint8(0, 0x01);
   data.setUint32(1, segmentId, Endian.little);
-  data.setUint8(5, 1);
+  data.setUint8(5, 2);
   data.setUint32(6, totalLength, Endian.little);
   data.setUint32(10, durationMs, Endian.little);
   data.setUint16(14, totalChunks, Endian.little);

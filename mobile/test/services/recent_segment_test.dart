@@ -1,4 +1,4 @@
-import 'package:echo_app/services/api_service.dart';
+import 'package:echo_app/models/segment.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -30,5 +30,51 @@ void main() {
     expect(completed.text, '[Tu] Prenota il treno');
     expect(completed.conversationId, 'conversation-id');
     expect(completed.recordedAt.isUtc, isTrue);
+  });
+
+  test('parses transcription correction states strictly', () {
+    final queued = TranscriptionCorrectionResult.fromJson({
+      'segment_id': 'segment-1',
+      'transcription_id': 'transcription-1',
+      'text': 'Corrected memory',
+      'speaker_label': 'self',
+      'updated_at': '2026-10-02T12:00:00Z',
+      'reanalysis_status': 'queued',
+    });
+    final queueFailed = TranscriptionCorrectionResult.fromJson({
+      'segment_id': 'segment-1',
+      'transcription_id': 'transcription-1',
+      'text': 'Corrected memory',
+      'speaker_label': 'other',
+      'updated_at': '2026-10-02T12:00:00Z',
+      'reanalysis_status': 'queue_failed',
+    });
+    final unchanged = TranscriptionCorrectionResult.fromJson({
+      'segment_id': 'segment-1',
+      'transcription_id': 'transcription-1',
+      'text': 'Corrected memory',
+      'speaker_label': 'unknown',
+      'updated_at': '2026-10-02T12:00:00Z',
+      'reanalysis_status': 'unchanged',
+    });
+
+    expect(queued.queued, isTrue);
+    expect(queueFailed.queueFailed, isTrue);
+    expect(unchanged.unchanged, isTrue);
+    expect(queued.updatedAt.isUtc, isTrue);
+  });
+
+  test('rejects malformed correction results', () {
+    expect(
+      () => TranscriptionCorrectionResult.fromJson({
+        'segment_id': 'segment-1',
+        'transcription_id': 42,
+        'text': 'Corrected memory',
+        'speaker_label': 'self',
+        'updated_at': '2026-10-02T12:00:00Z',
+        'reanalysis_status': 'queued',
+      }),
+      throwsA(isA<TypeError>()),
+    );
   });
 }

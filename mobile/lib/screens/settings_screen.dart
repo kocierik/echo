@@ -1,238 +1,168 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
+import '../services/app_controller.dart';
+import '../services/app_runtime.dart';
+import '../services/device_controller.dart';
+import '../services/network_policy.dart';
+import '../services/onboarding_controller.dart';
+import '../services/session_controller.dart';
 import '../theme/app_theme.dart';
+import 'device_detail_screen.dart';
 import 'device_messages_screen.dart';
-import 'integrations_screen.dart';
-import 'rules_screen.dart';
+import 'settings/about_settings_screen.dart';
+import 'settings/automations_settings_screen.dart';
+import 'settings/connection_settings_screen.dart';
+import 'settings/privacy_settings_screen.dart';
+import 'settings/settings_components.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    this.deviceController,
+    this.appController,
+    this.sessionController,
+    this.networkPolicy,
+    this.preferences,
+    this.onRequireOnboarding,
+    this.onOpenTranscripts,
+    this.apiServiceFactory,
+    this.diagnosticsBuilder,
+    this.rulesBuilder,
+    this.integrationsBuilder,
+    super.key,
+  });
+
+  final DeviceController? deviceController;
+  final AppController? appController;
+  final SessionController? sessionController;
+  final NetworkPolicy? networkPolicy;
+  final SharedPreferences? preferences;
+  final VoidCallback? onRequireOnboarding;
+  final VoidCallback? onOpenTranscripts;
+  final ApiService Function()? apiServiceFactory;
+  final WidgetBuilder? diagnosticsBuilder;
+  final WidgetBuilder? rulesBuilder;
+  final WidgetBuilder? integrationsBuilder;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _api = ApiService();
-  final _serverController = TextEditingController();
-  final _keyController = TextEditingController();
-  bool _loading = true;
-  bool _saving = false;
-  bool _showKey = false;
-  String? _error;
-  String? _success;
+  late final DeviceController _deviceController;
+  late final AppController _appController;
+  late final SessionController _sessionController;
+  late final NetworkPolicy _networkPolicy;
+  late final SharedPreferences _preferences;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    final fullyInjected = widget.deviceController != null &&
+        widget.appController != null &&
+        widget.sessionController != null &&
+        widget.networkPolicy != null &&
+        widget.preferences != null;
+    final coordinator = fullyInjected ? null : AppRuntime.coordinator;
+    _deviceController =
+        widget.deviceController ?? coordinator!.deviceController;
+    _appController = widget.appController ?? coordinator!.appController;
+    _sessionController =
+        widget.sessionController ?? coordinator!.sessionController;
+    _networkPolicy = widget.networkPolicy ?? coordinator!.networkPolicy;
+    _preferences = widget.preferences ?? coordinator!.preferences;
   }
 
-  @override
-  void dispose() {
-    _serverController.dispose();
-    _keyController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final server = await _api.getServerUrl();
-    if (!mounted) return;
-    setState(() {
-      _serverController.text = server;
-      _loading = false;
-    });
-  }
-
-  Future<void> _save() async {
-    final server = _serverController.text.trim();
-    final key = _keyController.text.trim();
-    if (server.isEmpty || key.isEmpty) {
-      setState(() {
-        _error = 'Enter both server URL and API key.';
-        _success = null;
-      });
-      return;
+  Future<void> _clearOnboardingProgress() async {
+    final removed = await Future.wait([
+      _preferences.remove(OnboardingController.completedKey),
+      _preferences.remove(OnboardingController.highestStepKey),
+      _preferences.remove('echo_onboarding_complete'),
+    ]);
+    if (removed.any((success) => !success)) {
+      throw StateError('Could not clear onboarding progress');
     }
+  }
 
-    setState(() {
-      _saving = true;
-      _error = null;
-      _success = null;
-    });
-    final valid = await _api.validateCredentials(server, key);
-    if (!mounted) return;
-    if (!valid) {
-      setState(() {
-        _saving = false;
-        _error = 'Connection failed. Check the URL and API key.';
-      });
-      return;
-    }
-
-    await _api.configure(server, key);
-    if (!mounted) return;
-    _keyController.clear();
-    setState(() {
-      _saving = false;
-      _success = 'Connection settings saved.';
-    });
+  void _push(Widget page) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Scaffold(
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: palette.background,
       appBar: AppBar(title: const Text('Settings')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.only(bottom: 40),
-              children: [
-                const _SectionTitle('CONNECTION'),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _serverController,
-                        keyboardType: TextInputType.url,
-                        autocorrect: false,
-                        decoration: const InputDecoration(
-                          labelText: 'Server URL',
-                          hintText: 'https://echo.example.com',
-                          prefixIcon: Icon(Icons.cloud_outlined),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: _keyController,
-                        obscureText: !_showKey,
-                        autocorrect: false,
-                        enableSuggestions: false,
-                        decoration: InputDecoration(
-                          labelText: 'New API key',
-                          hintText: 'Required to update settings',
-                          prefixIcon: const Icon(Icons.key_rounded),
-                          suffixIcon: IconButton(
-                            tooltip: _showKey ? 'Hide API key' : 'Show API key',
-                            onPressed: () => setState(() => _showKey = !_showKey),
-                            icon: Icon(_showKey ? Icons.visibility_off : Icons.visibility),
-                          ),
-                        ),
-                      ),
-                      if (_error != null) ...[
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(_error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
-                        ),
-                      ],
-                      if (_success != null) ...[
-                        const SizedBox(height: 12),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(_success!, style: const TextStyle(color: AppColors.success, fontSize: 13)),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: _saving ? null : _save,
-                          icon: _saving
-                              ? const SizedBox.square(
-                                  dimension: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.check_rounded),
-                          label: Text(_saving ? 'Checking...' : 'Test and save'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: AppColors.border),
-                const _SectionTitle('AUTOMATIONS'),
-                _SettingsRow(
-                  icon: Icons.auto_awesome_rounded,
-                  title: 'Rules',
-                  subtitle: 'Run actions when Echo recognizes something',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RulesScreen()),
-                  ),
-                ),
-                _SettingsRow(
-                  icon: Icons.extension_rounded,
-                  title: 'Integrations',
-                  subtitle: 'Google Calendar, Todoist, Notion and more',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const IntegrationsScreen()),
-                  ),
-                ),
-                const Divider(height: 1, color: AppColors.border),
-                const _SectionTitle('DEVICE'),
-                _SettingsRow(
-                  icon: Icons.monitor_heart_outlined,
-                  title: 'Device diagnostics',
-                  subtitle: 'BLE transfer and upload messages',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const DeviceMessagesScreen()),
-                  ),
-                ),
-              ],
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 32),
+        children: [
+          const SettingsSection('DEVICE'),
+          SettingsRow(
+            icon: Icons.watch_outlined,
+            title: 'Device',
+            subtitle: 'Status, storage, software, and pairing.',
+            onTap: () => _push(DeviceDetailScreen(
+              appController: _appController,
+              deviceController: _deviceController,
+              resetOnboarding: _clearOnboardingProgress,
+              onRequireOnboarding: widget.onRequireOnboarding,
+            )),
+          ),
+          SettingsRow(
+            icon: Icons.wifi_rounded,
+            title: 'Connection',
+            subtitle: 'Backend server and upload network.',
+            onTap: () => _push(ConnectionSettingsScreen(
+              networkPolicy: _networkPolicy,
+              preferences: _preferences,
+              apiServiceFactory: widget.apiServiceFactory,
+            )),
+          ),
+          SettingsRow(
+            icon: Icons.shield_outlined,
+            title: 'Privacy',
+            subtitle: 'Retention, microphone, and transcripts.',
+            onTap: () => _push(PrivacySettingsScreen(
+              appController: _appController,
+              onOpenTranscripts: widget.onOpenTranscripts,
+            )),
+          ),
+          const SettingsSection('ECHO'),
+          SettingsRow(
+            icon: Icons.auto_awesome_outlined,
+            title: 'Automations',
+            subtitle: 'Rules and connected services.',
+            onTap: () => _push(AutomationsSettingsScreen(
+              rulesBuilder: widget.rulesBuilder,
+              integrationsBuilder: widget.integrationsBuilder,
+            )),
+          ),
+          SettingsRow(
+            icon: Icons.monitor_heart_outlined,
+            title: 'Diagnostics',
+            subtitle: 'BLE transfer and upload messages.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: widget.diagnosticsBuilder ??
+                    (_) => const DeviceMessagesScreen(),
+              ),
             ),
-    );
-  }
-}
-
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 10),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 11,
-          color: AppColors.foregroundMuted,
-          fontWeight: FontWeight.w600,
-        ),
+          ),
+          SettingsRow(
+            icon: Icons.info_outline_rounded,
+            title: 'About',
+            subtitle: 'Appearance, version, licenses, and account.',
+            onTap: () => _push(AboutSettingsScreen(
+              appController: _appController,
+              sessionController: _sessionController,
+              onLoggedOut: widget.onRequireOnboarding ?? () {},
+            )),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-      leading: Icon(icon, color: AppColors.accent),
-      title: Text(title, style: const TextStyle(fontSize: 15, color: AppColors.foreground)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.foregroundMuted)),
-      trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.foregroundMuted),
-      onTap: onTap,
     );
   }
 }

@@ -1,8 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../models/chat_session.dart';
+import '../models/segment.dart';
+import 'api_exception.dart';
+import 'transcript_controller.dart';
 
 class QueryResponse {
   final String answer;
@@ -27,369 +35,604 @@ class QueryResponse {
   }
 }
 
-class ChatSession {
-  final String id;
-  final String title;
-  final String updatedAt;
-  final int messageCount;
-
-  ChatSession({
-    required this.id,
-    required this.title,
-    required this.updatedAt,
-    required this.messageCount,
+abstract interface class ChatApi {
+  Future<QueryResponse> query(String question, {String? sessionId});
+  Future<List<ChatSessionSummary>> getSessions();
+  Future<ChatSessionDetail> getSessionDetail(String id);
+  Future<void> deleteSession(String id);
+  Future<void> sendFeedback({
+    required String sessionId,
+    required int messageIndex,
+    required String rating,
+    List<String> chunkIds = const [],
   });
-
-  factory ChatSession.fromJson(Map<String, dynamic> json) {
-    return ChatSession(
-      id: json['id'] ?? '',
-      title: json['title'] ?? 'Chat',
-      updatedAt: json['updated_at'] ?? '',
-      messageCount: json['message_count'] ?? 0,
-    );
-  }
 }
 
-class ApiService {
-  static const _serverKey = 'echo_server_url';
-  static const _apiKeyKey = 'echo_api_key';
-  static const _segmentUploadTimeout = Duration(seconds: 20);
+abstract interface class TranscriptMemoryApi {
+  Future<TranscriptionCorrectionResult> correctTranscription(
+    String segmentId,
+    String text,
+    String speaker,
+  );
+  Future<void> deleteConversation(String conversationId);
+}
 
-  final _secureStorage = const FlutterSecureStorage();
+abstract interface class ApiCredentialStore {
+  Future<bool> get configured;
+  Future<String> get serverUrl;
+  Future<Map<String, String>> get headers;
+  Future<void> configure(String serverUrl, String apiKey);
+  Future<void> clear();
+}
 
-  Future<bool> isConfigured() async {
-    final prefs = await SharedPreferences.getInstance();
-    final server = prefs.getString(_serverKey);
-    String? key;
-    try {
-      key = await _secureStorage.read(key: _apiKeyKey);
-    } catch (_) {
-      // Fallback: keyring not available (Linux without gnome-keyring)
-      key = prefs.getString(_apiKeyKey);
-    }
-    return server != null && server.isNotEmpty && key != null && key.isNotEmpty;
+final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
+  SharedPreferencesApiCredentialStore({
+    FlutterSecureStorage secureStorage = const FlutterSecureStorage(),
+    Future<SharedPreferences> Function()? preferences,
+  })  : _secureStorage = secureStorage,
+        _preferences = preferences ?? SharedPreferences.getInstance;
+
+  static const serverKey = 'echo_server_url';
+  static const apiKeyKey = 'echo_api_key';
+
+  final FlutterSecureStorage _secureStorage;
+  final Future<SharedPreferences> Function() _preferences;
+
+  @override
+  Future<bool> get configured async {
+    final preferences = await _preferences();
+    final server = preferences.getString(serverKey);
+    final key = await _readApiKey(preferences);
+    return server != null &&
+        server.isNotEmpty &&
+        key != null &&
+        key.isNotEmpty;
   }
 
-  Future<void> configure(String serverUrl, String apiKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_serverKey, serverUrl.trimRight());
-    try {
-      await _secureStorage.write(key: _apiKeyKey, value: apiKey.trim());
-    } catch (_) {
-      // Fallback: store in shared_preferences (less secure, but works on Linux)
-      await prefs.setString(_apiKeyKey, apiKey.trim());
-    }
+  @override
+  Future<String> get serverUrl async {
+    final preferences = await _preferences();
+    return preferences.getString(serverKey) ?? '';
   }
 
-  Future<String> getServerUrl() => _serverUrl;
-
-  Future<bool> validateCredentials(String serverUrl, String apiKey) async {
-    try {
-      final normalizedServer = serverUrl.trim().replaceFirst(RegExp(r'/$'), '');
-      final response = await http.get(
-        Uri.parse('$normalizedServer/api/conversations?limit=1'),
-        headers: {'X-API-Key': apiKey.trim()},
-      ).timeout(const Duration(seconds: 8));
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<String> get _serverUrl async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_serverKey) ?? '';
-  }
-
-  Future<Map<String, String>> get _headers async {
-    String? key;
-    try {
-      key = await _secureStorage.read(key: _apiKeyKey);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      key = prefs.getString(_apiKeyKey);
-    }
+  @override
+  Future<Map<String, String>> get headers async {
+    final preferences = await _preferences();
+    final key = await _readApiKey(preferences);
     return {
       'X-API-Key': key ?? '',
       'Content-Type': 'application/json',
     };
   }
 
+  @override
+  Future<void> configure(String serverUrl, String apiKey) async {
+    final preferences = await _preferences();
+    final normalizedServer =
+        serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final normalizedKey = apiKey.trim();
+    await preferences.setString(serverKey, normalizedServer);
+    try {
+      await _secureStorage.write(key: apiKeyKey, value: normalizedKey);
+    } catch (_) {
+      await preferences.setString(apiKeyKey, normalizedKey);
+      return;
+    }
+    await preferences.remove(apiKeyKey);
+  }
+
+  @override
+  Future<void> clear() async {
+    Object? firstError;
+    try {
+      await _secureStorage.delete(key: apiKeyKey);
+    } catch (error) {
+      firstError = error;
+    }
+
+    try {
+      final preferences = await _preferences();
+      try {
+        await preferences.remove(apiKeyKey);
+      } catch (error) {
+        firstError ??= error;
+      }
+      try {
+        await preferences.remove(serverKey);
+      } catch (error) {
+        firstError ??= error;
+      }
+    } catch (error) {
+      firstError ??= error;
+    }
+
+    if (firstError != null) {
+      throw StateError('Failed to clear API credentials: $firstError');
+    }
+  }
+
+  Future<String?> _readApiKey(SharedPreferences preferences) async {
+    try {
+      final key = await _secureStorage.read(key: apiKeyKey);
+      if (key != null && key.isNotEmpty) return key;
+    } catch (_) {}
+    return preferences.getString(apiKeyKey);
+  }
+}
+
+class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
+  ApiService({
+    http.Client? client,
+    ApiCredentialStore? credentialStore,
+    Duration requestTimeout = const Duration(seconds: 10),
+    Duration uploadTimeout = const Duration(seconds: 20),
+  })  : _client = client ?? http.Client(),
+        _credentialStore =
+            credentialStore ?? SharedPreferencesApiCredentialStore(),
+        _requestTimeout = requestTimeout,
+        _uploadTimeout = uploadTimeout,
+        _ownsClient = client == null;
+
+  final http.Client _client;
+  final ApiCredentialStore _credentialStore;
+  final Duration _requestTimeout;
+  final Duration _uploadTimeout;
+  final bool _ownsClient;
+
+  Future<bool> isConfigured() => _credentialStore.configured;
+
+  Future<void> configure(String serverUrl, String apiKey) =>
+      _credentialStore.configure(serverUrl, apiKey);
+
+  Future<void> clearConfiguration() => _credentialStore.clear();
+
+  Future<String> getServerUrl() => _credentialStore.serverUrl;
+
+  Future<bool> validateCredentials(String serverUrl, String apiKey) async {
+    final normalizedServer =
+        serverUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$normalizedServer/api/conversations?limit=1'),
+        headers: {'X-API-Key': apiKey.trim()},
+      ),
+      expectedStatuses: const {200, 401, 403},
+      decodeJson: false,
+    );
+    return response.statusCode == 200;
+  }
+
+  @override
   Future<QueryResponse> query(String question, {String? sessionId}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
     final body = <String, dynamic>{'question': question, 'top_k': 5};
     if (sessionId != null) body['session_id'] = sessionId;
 
-    final response = await http.post(
-      Uri.parse('$server/api/query'),
-      headers: headers,
-      body: jsonEncode(body),
+    final response = await _send(
+      () => _client.post(
+        Uri.parse('$server/api/query'),
+        headers: headers,
+        body: jsonEncode(body),
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
     );
-
-    if (response.statusCode != 200) {
-      throw Exception('Query failed: ${response.statusCode} ${response.body}');
-    }
-
-    return QueryResponse.fromJson(jsonDecode(response.body));
+    return _parseDecoded(
+      response.data,
+      (data) => QueryResponse.fromJson(data as Map<String, dynamic>),
+    );
   }
 
-  Future<List<ChatSession>> getSessions() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-
-    final response = await http.get(
-      Uri.parse('$server/api/chat-sessions'),
-      headers: headers,
+  @override
+  Future<List<ChatSessionSummary>> getSessions() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/chat-sessions'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
     );
-
-    if (response.statusCode != 200) return [];
-
-    final data = jsonDecode(response.body);
-    final items = data['items'] as List? ?? [];
-    return items.map((e) => ChatSession.fromJson(e)).toList();
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
+      return items
+          .map((item) => ChatSessionSummary.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList();
+    });
   }
 
+  @override
+  Future<ChatSessionDetail> getSessionDetail(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/chat-sessions/$id'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(
+      response.data,
+      (data) => ChatSessionDetail.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
   Future<void> deleteSession(String id) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    await http.delete(Uri.parse('$server/api/chat-sessions/$id'), headers: headers);
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(
+        Uri.parse('$server/api/chat-sessions/$id'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
   }
 
+  @override
   Future<void> sendFeedback({
     required String sessionId,
     required int messageIndex,
     required String rating,
     List<String> chunkIds = const [],
   }) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    await http.post(
-      Uri.parse('$server/api/query/feedback'),
-      headers: headers,
-      body: jsonEncode({
-        'session_id': sessionId,
-        'message_index': messageIndex,
-        'rating': rating,
-        'source_chunk_ids': chunkIds,
-      }),
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.post(
+        Uri.parse('$server/api/query/feedback'),
+        headers: headers,
+        body: jsonEncode({
+          'session_id': sessionId,
+          'message_index': messageIndex,
+          'rating': rating,
+          'source_chunk_ids': chunkIds,
+        }),
+      ),
+      expectedStatuses: const {201},
+      expectedShape: _JsonShape.map,
     );
   }
 
   Future<bool> testConnection() async {
-    try {
-      final server = await _serverUrl;
-      final headers = await _headers;
-      final response = await http.get(
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
         Uri.parse('$server/api/conversations?limit=1'),
         headers: headers,
-      ).timeout(const Duration(seconds: 5));
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
+      ),
+      expectedStatuses: const {200, 401, 403},
+      decodeJson: false,
+    );
+    return response.statusCode == 200;
   }
 
   Future<List<Conversation>> getConversations() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-
-    final response = await http.get(
-      Uri.parse('$server/api/conversations?limit=50'),
-      headers: headers,
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/conversations?limit=50'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
     );
-
-    if (response.statusCode != 200) return [];
-
-    final data = jsonDecode(response.body);
-    final items = data['conversations'] as List? ?? [];
-    return items.map((e) => Conversation.fromJson(e)).toList();
+    return _parseDecoded(response.data, (data) {
+      final items =
+          (data as Map<String, dynamic>)['conversations'] as List<dynamic>;
+      return items
+          .map((item) => Conversation.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList();
+    });
   }
 
+  @override
   Future<List<RecentSegment>> getRecentSegments({int limit = 50}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(
-      Uri.parse('$server/api/segments/recent?limit=$limit'),
-      headers: headers,
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/segments/recent?limit=$limit'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
     );
-    if (response.statusCode != 200) {
-      throw Exception('Recent segments failed: HTTP ${response.statusCode}');
-    }
-    final items = jsonDecode(response.body) as List<dynamic>;
-    return items
-        .map((item) => RecentSegment.fromJson(item as Map<String, dynamic>))
-        .toList();
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) => RecentSegment.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList();
+    });
+  }
+
+  @override
+  Future<TranscriptionCorrectionResult> correctTranscription(
+    String segmentId,
+    String text,
+    String speaker,
+  ) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.patch(
+        Uri.parse('$server/api/segments/$segmentId/transcription'),
+        headers: headers,
+        body: jsonEncode({
+          'text': text.trim(),
+          'speaker': speaker,
+        }),
+      ),
+      expectedStatuses: const {200, 202},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(
+      response.data,
+      (data) => TranscriptionCorrectionResult.fromJson(
+        data as Map<String, dynamic>,
+      ),
+    );
   }
 
   Future<ConversationDetail?> getConversationDetail(String id) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-
-    final response = await http.get(
-      Uri.parse('$server/api/conversations/$id'),
-      headers: headers,
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/conversations/$id'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
     );
+    return _parseDecoded(
+      response.data,
+      (data) => ConversationDetail.fromJson(data as Map<String, dynamic>),
+    );
+  }
 
-    if (response.statusCode != 200) return null;
-    return ConversationDetail.fromJson(jsonDecode(response.body));
+  @override
+  Future<void> deleteConversation(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(
+        Uri.parse('$server/api/conversations/$id'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
   }
 
   Future<Map<String, dynamic>?> getStats() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/stats'), headers: headers);
-    if (response.statusCode != 200) return null;
-    return jsonDecode(response.body);
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server/api/stats'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>?> getDigest(String date) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/digest/$date'), headers: headers);
-    if (response.statusCode != 200) return null;
-    return jsonDecode(response.body);
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/digest/$date'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   Future<List<Map<String, dynamic>>> getTasks({bool? done}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    // Only fetch undone tasks, most recent first, limited
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
     var url = '$server/api/entities?entity_type=task&limit=8';
     if (done != null) url += '&done=$done';
-    final response = await http.get(Uri.parse(url), headers: headers);
-    if (response.statusCode != 200) return [];
-    final data = jsonDecode(response.body);
-    final tasks = List<Map<String, dynamic>>.from(data['entities'] ?? []);
-    // Filter: only undone tasks from last 3 days
-    final cutoff = DateTime.now().subtract(const Duration(days: 3));
-    return tasks.where((t) {
-      final isDone = t['metadata_']?['done'] == true;
-      if (isDone) return false;
-      final created = DateTime.tryParse(t['created_at'] ?? '');
-      if (created == null) return true;
-      return created.isAfter(cutoff);
-    }).toList();
+    final response = await _send(
+      () => _client.get(Uri.parse(url), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final rawTasks =
+          (data as Map<String, dynamic>)['entities'] as List<dynamic>;
+      final tasks = rawTasks
+          .map((item) => item as Map<String, dynamic>)
+          .toList();
+      final cutoff = DateTime.now().subtract(const Duration(days: 3));
+      return tasks.where((task) {
+        final metadata = task['metadata_'];
+        final isDone =
+            metadata is Map<String, dynamic> && metadata['done'] == true;
+        if (isDone) return false;
+        final createdAt = task['created_at'];
+        if (createdAt != null && createdAt is! String) {
+          throw const FormatException('created_at must be a string');
+        }
+        final created = DateTime.tryParse(createdAt as String? ?? '');
+        return created == null || created.isAfter(cutoff);
+      }).toList();
+    });
   }
 
-  Future<void> updateEntity(String id, {String? name, String? content, Map<String, dynamic>? metadata}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
+  Future<void> updateEntity(
+    String id, {
+    String? name,
+    String? content,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
     if (content != null) body['content'] = content;
     if (metadata != null) body['metadata_'] = metadata;
-    await http.patch(Uri.parse('$server/api/entities/$id'), headers: headers, body: jsonEncode(body));
+    await _send(
+      () => _client.patch(
+        Uri.parse('$server/api/entities/$id'),
+        headers: headers,
+        body: jsonEncode(body),
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
   }
 
   // --- Integrations ---
 
   Future<List<Map<String, dynamic>>> getAvailableProviders() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/integrations/available'), headers: headers);
-    if (response.statusCode != 200) return [];
-    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    return _getMapList('/api/integrations/available');
   }
 
   Future<List<Map<String, dynamic>>> getUserIntegrations() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/integrations'), headers: headers);
-    if (response.statusCode != 200) return [];
-    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    return _getMapList('/api/integrations');
   }
 
-  Future<void> createIntegration(String provider, Map<String, dynamic> config) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    await http.post(
-      Uri.parse('$server/api/integrations'),
-      headers: headers,
-      body: jsonEncode({'provider': provider, 'config': config, 'enabled': true}),
+  Future<void> createIntegration(
+    String provider,
+    Map<String, dynamic> config,
+  ) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.post(
+        Uri.parse('$server/api/integrations'),
+        headers: headers,
+        body: jsonEncode({
+          'provider': provider,
+          'config': config,
+          'enabled': true,
+        }),
+      ),
+      expectedStatuses: const {201},
+      expectedShape: _JsonShape.map,
     );
   }
 
-  Future<void> updateIntegration(String id, {bool? enabled, Map<String, dynamic>? config}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
+  Future<void> updateIntegration(
+    String id, {
+    bool? enabled,
+    Map<String, dynamic>? config,
+  }) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
     final body = <String, dynamic>{};
     if (enabled != null) body['enabled'] = enabled;
     if (config != null) body['config'] = config;
-    await http.patch(Uri.parse('$server/api/integrations/$id'), headers: headers, body: jsonEncode(body));
+    await _send(
+      () => _client.patch(
+        Uri.parse('$server/api/integrations/$id'),
+        headers: headers,
+        body: jsonEncode(body),
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
   }
 
   Future<String> getOAuthUrl(String provider) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(
-      Uri.parse('$server/api/integrations/oauth/$provider/authorize'),
-      headers: headers,
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/integrations/oauth/$provider/authorize'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
     );
-    if (response.statusCode != 200) {
-      var message = 'OAuth request failed (${response.statusCode})';
-      try {
-        final data = jsonDecode(response.body);
-        if (data is Map<String, dynamic> && data['detail'] is String) {
-          message = data['detail'];
-        }
-      } catch (_) {}
-      throw Exception(message);
-    }
-
-    final data = jsonDecode(response.body);
-    final authorizeUrl = data['authorize_url'];
-    if (authorizeUrl is! String || authorizeUrl.isEmpty) {
-      throw Exception('OAuth authorization URL missing');
-    }
-    return authorizeUrl;
+    return _parseDecoded(response.data, (data) {
+      final authorizeUrl =
+          (data as Map<String, dynamic>)['authorize_url'];
+      if (authorizeUrl is! String || authorizeUrl.isEmpty) {
+        throw const FormatException('authorize_url is missing');
+      }
+      return authorizeUrl;
+    });
   }
 
   // --- Rules ---
 
   Future<List<Map<String, dynamic>>> getRules() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/rules'), headers: headers);
-    if (response.statusCode != 200) return [];
-    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    return _getMapList('/api/rules');
   }
 
   Future<List<Map<String, dynamic>>> getRuleTemplates() async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.get(Uri.parse('$server/api/rules/templates/examples'), headers: headers);
-    if (response.statusCode != 200) return [];
-    return List<Map<String, dynamic>>.from(jsonDecode(response.body));
+    return _getMapList('/api/rules/templates/examples');
   }
 
   Future<Map<String, dynamic>?> createRule(Map<String, dynamic> rule) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    final response = await http.post(
-      Uri.parse('$server/api/rules'),
-      headers: headers,
-      body: jsonEncode(rule),
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.post(
+        Uri.parse('$server/api/rules'),
+        headers: headers,
+        body: jsonEncode(rule),
+      ),
+      expectedStatuses: const {201},
+      expectedShape: _JsonShape.map,
     );
-    if (response.statusCode != 201) return null;
-    return jsonDecode(response.body);
+    return response.data as Map<String, dynamic>;
   }
 
-  Future<void> updateRule(String id, {bool? enabled, String? name, Map<String, dynamic>? conditions, List? actions}) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
+  Future<void> updateRule(
+    String id, {
+    bool? enabled,
+    String? name,
+    Map<String, dynamic>? conditions,
+    List? actions,
+  }) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
     final body = <String, dynamic>{};
     if (enabled != null) body['enabled'] = enabled;
     if (name != null) body['name'] = name;
     if (conditions != null) body['conditions'] = conditions;
     if (actions != null) body['actions'] = actions;
-    await http.patch(Uri.parse('$server/api/rules/$id'), headers: headers, body: jsonEncode(body));
+    await _send(
+      () => _client.patch(
+        Uri.parse('$server/api/rules/$id'),
+        headers: headers,
+        body: jsonEncode(body),
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
   }
 
   Future<void> deleteRule(String id) async {
-    final server = await _serverUrl;
-    final headers = await _headers;
-    await http.delete(Uri.parse('$server/api/rules/$id'), headers: headers);
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(
+        Uri.parse('$server/api/rules/$id'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
   }
 
   /// Upload an audio segment to the backend (used by BLE relay)
@@ -400,19 +643,16 @@ class ApiService {
     int? silenceBeforeMs,
     int? audioEnergy,
   }) async {
-    final server = await _serverUrl;
-    String? key;
-    try {
-      key = await _secureStorage.read(key: _apiKeyKey);
-    } catch (_) {
-      final prefs = await SharedPreferences.getInstance();
-      key = prefs.getString(_apiKeyKey);
-    }
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
 
     final uri = Uri.parse('$server/api/segments');
-    debugPrint('[API] uploadSegment start uri=$uri recordedAt=$recordedAt durationMs=$durationMs audioBytes=${audioData.length}');
+    debugPrint(
+      '[API] uploadSegment start uri=$uri recordedAt=$recordedAt '
+      'durationMs=$durationMs audioBytes=${audioData.length}',
+    );
     final request = http.MultipartRequest('POST', uri);
-    request.headers['X-API-Key'] = key ?? '';
+    request.headers['X-API-Key'] = headers['X-API-Key'] ?? '';
     request.headers['X-Recorded-At'] = recordedAt;
     request.headers['X-Duration-Ms'] = durationMs.toString();
     if (silenceBeforeMs != null) {
@@ -422,74 +662,225 @@ class ApiService {
       request.headers['X-Audio-Energy'] = audioEnergy.toString();
     }
 
-    request.files.add(http.MultipartFile.fromBytes(
-      'audio',
-      audioData,
-      filename: 'segment.adpcm',
-    ));
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'audio',
+        audioData,
+        filename: 'segment.adpcm',
+      ),
+    );
 
-    final client = http.Client();
+    _UploadResponse response;
     try {
-      final response = await (() async {
-        final streamedResponse = await client.send(request);
+      response = await (() async {
+        final streamedResponse = await _client.send(request);
         final body = await streamedResponse.stream.bytesToString();
-        return (statusCode: streamedResponse.statusCode, body: body);
-      })().timeout(_segmentUploadTimeout);
-      debugPrint('[API] uploadSegment response status=${response.statusCode}');
-      if (response.statusCode != 201) {
-        final detail = response.body.trim();
-        final visibleDetail = detail.length > 200 ? detail.substring(0, 200) : detail;
-        final suffix = visibleDetail.isEmpty ? '' : ': $visibleDetail';
-        throw Exception('HTTP ${response.statusCode}$suffix');
-      }
-      return true;
-    } finally {
-      client.close();
+        return _UploadResponse(streamedResponse.statusCode, body);
+      })().timeout(_uploadTimeout);
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+
+    debugPrint(
+      '[API] uploadSegment response status=${response.statusCode}',
+    );
+    if (response.statusCode != 201) {
+      throw _statusException(response.statusCode, response.body);
+    }
+    return true;
+  }
+
+  void dispose() {
+    if (_ownsClient) _client.close();
+  }
+
+  Future<List<Map<String, dynamic>>> _getMapList(String path) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server$path'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
+    );
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) => item as Map<String, dynamic>)
+          .toList();
+    });
+  }
+
+  Future<_ApiResponse> _send(
+    Future<http.Response> Function() request, {
+    required Set<int> expectedStatuses,
+    bool decodeJson = true,
+    _JsonShape expectedShape = _JsonShape.any,
+  }) async {
+    late final http.Response response;
+    try {
+      response = await request().timeout(_requestTimeout);
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+
+    if (!expectedStatuses.contains(response.statusCode)) {
+      throw _statusException(response.statusCode, response.body);
+    }
+
+    final data = decodeJson
+        ? _decodeJson(response.body, expectedShape: expectedShape)
+        : null;
+    return _ApiResponse(response.statusCode, data);
+  }
+
+  Object? _decodeJson(
+    String body, {
+    required _JsonShape expectedShape,
+  }) {
+    late final Object? data;
+    try {
+      data = jsonDecode(body);
+    } on FormatException {
+      throw _invalidResponseException();
+    }
+
+    if (expectedShape == _JsonShape.map && data is! Map<String, dynamic>) {
+      throw _invalidResponseException();
+    }
+    if (expectedShape == _JsonShape.list && data is! List<dynamic>) {
+      throw _invalidResponseException();
+    }
+    return data;
+  }
+
+  T _parseDecoded<T>(Object? data, T Function(Object? data) parse) {
+    try {
+      return parse(data);
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw _invalidResponseException();
     }
   }
-}
 
+  ApiException _statusException(int statusCode, String body) {
+    final detail = _extractDetail(body);
+    final message = detail ?? 'Request failed with HTTP $statusCode.';
+    return switch (statusCode) {
+      401 => ApiException(
+          statusCode: statusCode,
+          code: 'unauthorized',
+          message: message,
+          retryable: false,
+        ),
+      403 => ApiException(
+          statusCode: statusCode,
+          code: 'forbidden',
+          message: message,
+          retryable: false,
+        ),
+      404 => ApiException(
+          statusCode: statusCode,
+          code: 'not_found',
+          message: message,
+          retryable: false,
+        ),
+      409 => ApiException(
+          statusCode: statusCode,
+          code: 'conflict',
+          message: message,
+          retryable: false,
+        ),
+      422 => ApiException(
+          statusCode: statusCode,
+          code: 'validation',
+          message: message,
+          retryable: false,
+        ),
+      408 => ApiException(
+          statusCode: statusCode,
+          code: 'timeout',
+          message: message,
+          retryable: true,
+        ),
+      429 => ApiException(
+          statusCode: statusCode,
+          code: 'rate_limited',
+          message: message,
+          retryable: true,
+        ),
+      >= 500 => ApiException(
+          statusCode: statusCode,
+          code: 'server',
+          message: message,
+          retryable: true,
+        ),
+      _ => ApiException(
+          statusCode: statusCode,
+          code: 'http',
+          message: message,
+          retryable: false,
+        ),
+    };
+  }
 
-// --- Conversation Models ---
+  String? _extractDetail(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is Map<String, dynamic>) {
+        final detail = data['detail'];
+        if (detail is String && detail.isNotEmpty) return detail;
+      }
+    } catch (_) {}
+    return null;
+  }
 
-class RecentSegment {
-  const RecentSegment({
-    required this.id,
-    required this.receivedAt,
-    required this.recordedAt,
-    required this.durationMs,
-    required this.transcriptionStatus,
-    required this.text,
-    required this.speaker,
-    required this.conversationId,
-  });
+  ApiException _timeoutException() => const ApiException(
+        statusCode: null,
+        code: 'timeout',
+        message: 'The request timed out.',
+        retryable: true,
+      );
 
-  final String id;
-  final DateTime receivedAt;
-  final DateTime recordedAt;
-  final int durationMs;
-  final String transcriptionStatus;
-  final String? text;
-  final String? speaker;
-  final String? conversationId;
+  ApiException _offlineException(Object error) => ApiException(
+        statusCode: null,
+        code: 'offline',
+        message: 'The server could not be reached: $error',
+        retryable: true,
+      );
 
-  bool get isPending =>
-      transcriptionStatus == 'pending' || transcriptionStatus == 'processing';
-  bool get isFailed => transcriptionStatus == 'failed';
-
-  factory RecentSegment.fromJson(Map<String, dynamic> json) {
-    return RecentSegment(
-      id: json['id'] as String,
-      receivedAt: DateTime.parse(json['received_at'] as String),
-      recordedAt: DateTime.parse(json['recorded_at'] as String),
-      durationMs: json['duration_ms'] as int,
-      transcriptionStatus: json['transcription_status'] as String,
-      text: json['text'] as String?,
-      speaker: json['speaker'] as String?,
-      conversationId: json['conversation_id'] as String?,
-    );
+  ApiException _invalidResponseException() => const ApiException(
+        statusCode: null,
+        code: 'invalid_response',
+        message: 'The server returned an invalid response.',
+        retryable: false,
+      );
   }
 }
+
+enum _JsonShape { any, map, list }
+
+final class _ApiResponse {
+  const _ApiResponse(this.statusCode, this.data);
+
+  final int statusCode;
+  final Object? data;
+}
+
+final class _UploadResponse {
+  const _UploadResponse(this.statusCode, this.body);
+
+  final int statusCode;
+  final String body;
+}
+
 
 class Conversation {
   final String id;
