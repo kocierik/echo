@@ -52,8 +52,6 @@ final class PrivacyControl extends StatelessWidget {
                   return config.background;
                 }),
                 foregroundColor: WidgetStatePropertyAll(config.foreground),
-                disabledForegroundColor:
-                    WidgetStatePropertyAll(config.foreground),
                 side: WidgetStatePropertyAll(
                   BorderSide(color: config.border),
                 ),

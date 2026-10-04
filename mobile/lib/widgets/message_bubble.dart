@@ -63,6 +63,7 @@ final class MessageBubble extends StatelessWidget {
                     border: Border(left: BorderSide(color: palette.blue, width: 3)),
                   ),
                 ),
+              ),
             if (message.failed)
               Padding(
                 padding: const EdgeInsets.only(top: 6),

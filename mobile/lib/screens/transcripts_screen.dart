@@ -65,7 +65,9 @@ class _TranscriptsScreenState extends State<TranscriptsScreen> {
       _ownsController = true;
     }
     final api = widget.api ?? _ownedApi;
-    if (api is TranscriptMemoryApi) _detailApi = api;
+    if (api is TranscriptMemoryApi) {
+      _detailApi = api as TranscriptMemoryApi;
+    }
     _controller.addListener(_handleStateChanged);
     unawaited(_controller.initialize());
   }
