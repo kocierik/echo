@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'models/app_view_state.dart';
+import 'models/device_status.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/onboarding_screen.dart';
@@ -13,7 +14,6 @@ import 'services/api_service.dart';
 import 'services/app_controller.dart';
 import 'services/app_lifecycle_coordinator.dart';
 import 'services/app_runtime.dart';
-import 'services/app_preferences.dart';
 import 'services/ble_service.dart';
 import 'services/device_ble_port.dart';
 import 'services/device_controller.dart';
@@ -205,12 +205,12 @@ class _AppRouterState extends State<AppRouter> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
+      return Scaffold(
         body: Center(
           child: Semantics(
             label: 'Loading setup progress',
             liveRegion: true,
-            child: CircularProgressIndicator(),
+            child: const CircularProgressIndicator(),
           ),
         ),
       );
@@ -323,8 +323,7 @@ class MainShell extends StatelessWidget {
     BuildContext context,
     DeviceConnectionState connectionState,
   ) {
-    final cancelReconnect = onCancelReconnect ??
-        (deviceController == null ? null : deviceController!.cancelReconnect);
+    final cancelReconnect = onCancelReconnect ?? deviceController?.cancelReconnect;
     return switch (connectionState) {
       DeviceConnectionState.unpaired ||
       DeviceConnectionState.bluetoothOff ||
