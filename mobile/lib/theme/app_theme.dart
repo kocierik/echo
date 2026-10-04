@@ -102,18 +102,18 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
 }
 
 class AppColors {
-  static const bgDeep = EchoPalette.dark.background;
-  static const bgBase = EchoPalette.dark.background;
-  static const bgElevated = EchoPalette.dark.surface;
-  static const surface = EchoPalette.dark.surface2;
-  static const foreground = EchoPalette.dark.text;
-  static const foregroundMuted = EchoPalette.dark.text2;
-  static const accent = EchoPalette.dark.blue;
+  static const bgDeep = Color(0xFF080A0D);
+  static const bgBase = Color(0xFF080A0D);
+  static const bgElevated = Color(0xFF111419);
+  static const surface = Color(0xFF171B21);
+  static const foreground = Color(0xFFF4F6F8);
+  static const foregroundMuted = Color(0xFF9CA3AE);
+  static const accent = Color(0xFF4385FF);
   static const accentGlow = Color(0x334385FF);
-  static const border = EchoPalette.dark.border;
-  static const success = EchoPalette.dark.green;
-  static const warning = EchoPalette.dark.amber;
-  static const error = EchoPalette.dark.red;
+  static const border = Color(0xFF252A32);
+  static const success = Color(0xFF46D69A);
+  static const warning = Color(0xFFFFBD59);
+  static const error = Color(0xFFFF6B74);
 }
 
 class AppTheme {

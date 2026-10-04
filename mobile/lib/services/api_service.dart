@@ -862,7 +862,6 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
         message: 'The server returned an invalid response.',
         retryable: false,
       );
-  }
 }
 
 enum _JsonShape { any, map, list }
