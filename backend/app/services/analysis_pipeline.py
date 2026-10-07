@@ -148,28 +148,10 @@ class AnalysisPipeline:
                     )
                     db.add(chunk)
 
-        # --- Generate conversation title & summary (with retry) ---
-        # Get full conversation text for summary
-        conv_segments_query = (
-            select(Transcription.text)
-            .join(Segment, Segment.id == Transcription.segment_id)
-            .where(Segment.conversation_id == conversation.id)
-            .order_by(Segment.recorded_at)
-        )
-        result = await db.execute(conv_segments_query)
-        all_texts = [row[0] for row in result.all()]
-        full_text = " ".join(all_texts)
-
-        if full_text.strip() and len(full_text.split()) > 10:
-            title, summary = await retry_with_backoff(
-                generate_conversation_summary,
-                self.llm_service,
-                full_text,
-                operation_name=f"Summary segment {segment.id}",
-            )
-            conversation.title = title
-            conversation.summary = summary
-            conversation.analysis_status = "completed"
+        # Summary generation is intentionally disabled so the app keeps the raw
+        # spoken transcript as the canonical text. The summary can still be added
+        # later as an explicit, separate feature in a dedicated screen.
+        conversation.analysis_status = "completed"
 
         await db.commit()
         return AnalysisResult(len(entities), len(new_entities), len(new_chunks))

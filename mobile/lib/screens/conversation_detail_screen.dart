@@ -99,14 +99,7 @@ class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
             ),
           ),
         ),
-        // Summary
-        if (d.summary.isNotEmpty)
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-              child: Text(d.summary, style: const TextStyle(fontSize: 13, color: AppColors.foregroundMuted, height: 1.5)),
-            ),
-          ),
+        // Summary intentionally hidden so the transcript view reflects the raw spoken text.
         // Entities
         if (d.entities.isNotEmpty)
           SliverToBoxAdapter(
