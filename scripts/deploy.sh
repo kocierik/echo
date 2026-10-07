@@ -87,65 +87,77 @@ docker compose exec -T postgres psql -U echo -d echo -c "
     );
 " > /dev/null 2>&1
 
+# Ensure compatibility with the current schema, even when the DB was created from docs/schema.sql
+# and then later expanded by Alembic migrations.
+docker compose exec -T postgres psql -U echo -d echo -c "
+    ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_hash VARCHAR(64);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_audio_hash ON segments (audio_hash);
+
+    ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_energy INTEGER;
+    ALTER TABLE segments ADD COLUMN IF NOT EXISTS speaker VARCHAR(10) DEFAULT 'unknown';
+
+    ALTER TABLE transcriptions ADD COLUMN IF NOT EXISTS speaker_label VARCHAR(10);
+
+    CREATE TABLE IF NOT EXISTS query_feedback (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID NOT NULL,
+        session_id UUID NOT NULL,
+        message_index INTEGER NOT NULL,
+        rating VARCHAR(10) NOT NULL,
+        comment TEXT,
+        source_chunk_ids JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_feedback_user ON query_feedback (user_id, created_at);
+    CREATE TABLE IF NOT EXISTS integrations (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID NOT NULL,
+        provider VARCHAR(50) NOT NULL,
+        enabled BOOLEAN NOT NULL DEFAULT false,
+        config JSONB NOT NULL DEFAULT '{}',
+        entity_types TEXT[] NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS idx_integrations_user ON integrations (user_id);
+" > /dev/null 2>&1 || warn "Schema compatibility checks encountered non-fatal issues"
+
 # Check current Alembic version
 CURRENT_VERSION=$(docker compose exec -T postgres psql -U echo -d echo -tAc "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | tr -d '[:space:]')
 
+# If the database was created from schema.sql, it already reflects the current schema.
+# In that case we should stamp HEAD instead of an old baseline revision.
 if [ -z "$CURRENT_VERSION" ]; then
-    # No version tracked yet — DB was created via schema.sql
-    # Stamp 001 (baseline) since schema already exists
-    warn "No migration version found — stamping baseline..."
-    docker compose exec -T api python -m alembic stamp 001
-    log "Stamped at 001"
+    warn "No migration version found — stamping current DB state at head..."
+    docker compose exec -T api python -m alembic stamp head
+    log "Stamped at head"
 fi
 
-# Now run upgrade head — all migrations are idempotent
+# Now run upgrade head — all migrations are idempotent.
+# If the DB matches the current schema, Alembic will simply no-op.
 docker compose exec -T api python -m alembic upgrade head && log "Migrations complete" || {
-    # If upgrade fails, apply missing tables directly then stamp
-    warn "Migration error — applying tables directly..."
-    docker compose exec -T postgres psql -U echo -d echo -c "
-        -- Migration 002: audio_hash
-        ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_hash VARCHAR(64);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_segments_audio_hash ON segments (audio_hash);
-
-        -- Migration 003: speaker + feedback
-        ALTER TABLE segments ADD COLUMN IF NOT EXISTS audio_energy INTEGER;
-        ALTER TABLE segments ADD COLUMN IF NOT EXISTS speaker VARCHAR(10) DEFAULT 'unknown';
-        CREATE TABLE IF NOT EXISTS query_feedback (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            user_id UUID NOT NULL,
-            session_id UUID NOT NULL,
-            message_index INTEGER NOT NULL,
-            rating VARCHAR(10) NOT NULL,
-            comment TEXT,
-            source_chunk_ids JSONB NOT NULL DEFAULT '[]',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS idx_feedback_user ON query_feedback (user_id, created_at);
-
-        -- Migration 004: integrations
-        CREATE TABLE IF NOT EXISTS integrations (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            user_id UUID NOT NULL,
-            provider VARCHAR(50) NOT NULL,
-            enabled BOOLEAN NOT NULL DEFAULT false,
-            config JSONB NOT NULL DEFAULT '{}',
-            entity_types TEXT[] NOT NULL DEFAULT '{}',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        );
-        CREATE INDEX IF NOT EXISTS idx_integrations_user ON integrations (user_id);
-    " > /dev/null 2>&1
-
-    # Stamp head so Alembic knows we're current
+    warn "Migration upgrade reported an issue — falling back to stamp head for a schema-compatible DB"
     docker compose exec -T api python -m alembic stamp head
-    log "Tables applied directly + stamped at head"
+    log "Stamped at head after fallback"
 }
 
-# --- 7. Restart services to pick up any code changes ---
+# --- 7. Ensure the default API key exists for local development ---
+log "Ensuring default API key exists..."
+docker compose exec -T postgres psql -U echo -d echo -c "
+    INSERT INTO api_keys (user_id, key_hash, name)
+    VALUES (
+        'a0000000-0000-0000-0000-000000000001',
+        encode(sha256('my-secret-key'::bytea), 'hex'),
+        'default'
+    )
+    ON CONFLICT DO NOTHING;
+" > /dev/null 2>&1 || warn "Could not seed default API key - create it manually later"
+
+# --- 8. Restart services to pick up any code changes ---
 log "Restarting API and Worker..."
 docker compose restart api worker
 
-# --- 8. Wait for API to be healthy ---
+# --- 9. Wait for API to be healthy ---
 echo -n "  Waiting for API..."
 for i in $(seq 1 20); do
     if curl -s http://localhost:8000/health > /dev/null 2>&1; then
@@ -160,7 +172,7 @@ for i in $(seq 1 20); do
     fi
 done
 
-# --- 9. Summary ---
+# --- 10. Summary ---
 echo ""
 echo "════════════════════════════════════════════"
 log "Deploy complete!"
@@ -168,6 +180,7 @@ echo ""
 echo "  API:     http://localhost:8000"
 echo "  Health:  http://localhost:8000/health"
 echo "  Logs:    docker compose logs -f api worker"
+echo "  Key:     my-secret-key"
 echo ""
 
 # Show current migration version

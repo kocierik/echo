@@ -51,6 +51,7 @@ private:
     bool _speechEnded = false;
     uint32_t _silenceStartMs = 0;
     uint32_t _lastSilenceDurationMs = 0;
+    uint32_t _lastDebugMs = 0;
 
     uint32_t calculateRMS(const int16_t* samples, size_t count);
 };
@@ -63,6 +64,11 @@ bool VAD::process(const int16_t* samples, size_t count) {
 
     _energy = calculateRMS(samples, count);
     bool frameHasSpeech = (_energy > VAD_ENERGY_THRESHOLD);
+
+    if (_state == VAD_SILENCE && millis() - _lastDebugMs > 5000) {
+        Serial.printf("[VAD] idle energy: %u (threshold: %u)\n", _energy, VAD_ENERGY_THRESHOLD);
+        _lastDebugMs = millis();
+    }
 
     switch (_state) {
         case VAD_SILENCE:
@@ -123,4 +129,5 @@ void VAD::reset() {
     _speechEnded = false;
     _silenceStartMs = millis();
     _lastSilenceDurationMs = 0;
+    _lastDebugMs = 0;
 }

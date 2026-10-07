@@ -16,7 +16,9 @@ build/
 .idea/
 *.swp
 *.swo
-
+macos/
+windows/
+web/
 .kiro
 # OS
 .DS_Store

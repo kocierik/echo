@@ -91,11 +91,11 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
                               ),
                             ),
                           )
-                        : const Center(
+                        : Center(
                             child: Semantics(
                               label: 'Loading setup progress',
                               liveRegion: true,
-                              child: CircularProgressIndicator(),
+                              child: const CircularProgressIndicator(),
                             ),
                           ),
                   ),
@@ -158,10 +158,10 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
             child: FilledButton(
               onPressed: state.busy ? null : () => _handlePrimary(state),
               child: state.busy
-                  ? const Semantics(
+                  ? Semantics(
                       label: 'Working',
                       liveRegion: true,
-                      child: SizedBox(
+                      child: const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
