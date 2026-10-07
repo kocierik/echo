@@ -171,11 +171,11 @@ final class _ChatScreenState extends State<ChatScreen> {
 
   Widget _messageArea(ChatState state, EchoPalette palette) {
     if (state.loadingSession) {
-      return const Center(
-        key: Key('chat-session-loading'),
+      return Center(
+        key: const Key('chat-session-loading'),
         child: Semantics(
           label: 'Loading chat',
-          child: CircularProgressIndicator(),
+          child: const CircularProgressIndicator(),
         ),
       );
     }

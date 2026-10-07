@@ -19,7 +19,12 @@
 // ============================================================
 // VAD (Voice Activity Detection)
 // ============================================================
-#define VAD_ENERGY_THRESHOLD 2200      // Above observed ambient noise (~1200-1600 RMS)
+// Keep this intentionally low for the XIAO ESP32-S3 Sense mic. The previous
+// value was tuned too aggressively and could suppress speech detection entirely
+// unless the user spoke very close to the mic. The simulator uses ~500 as the
+// standard default threshold; keep the firmware in the same range for easier
+// calibration in real usage.
+#define VAD_ENERGY_THRESHOLD 500       // RMS energy threshold for speech detection
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
 #define VAD_SPEECH_END_FRAMES 25       // Consecutive frames below threshold to stop (~800ms)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame

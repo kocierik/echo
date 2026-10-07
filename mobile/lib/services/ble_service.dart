@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -297,9 +296,14 @@ class BleService implements DeviceBlePort {
         '[BLE] connecting to ${device.platformName} (${device.remoteId})',
       );
       if (autoConnect) {
-        await device.connect(autoConnect: true, mtu: null);
+        await device.connect(
+          license: License.nonprofit,
+          autoConnect: true,
+          mtu: null,
+        );
       } else {
         await device.connect(
+          license: License.nonprofit,
           timeout: const Duration(seconds: 8),
           mtu: null,
         );
