@@ -128,6 +128,33 @@ void main() {
     expect(notificationPort.shownIds, isEmpty);
   });
 
+  test('resume triggers reconnect recovery when available', () async {
+    var reconnectCalls = 0;
+    final resumeBinding = await AppLifecycleCoordinator.startBinding(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.offline,
+      ),
+      statusStream: states.stream,
+      uploadFailureStream: uploadFailures.stream,
+      segmentUploadedStream: uploads.stream,
+      notifications: notifications,
+      networkAccess: network,
+      startController: () async {},
+      reconnectOnResume: () async {
+        reconnectCalls++;
+      },
+      addObserver: observers.add,
+      removeObserver: observers.remove,
+    );
+
+    resumeBinding.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(reconnectCalls, 1);
+
+    await resumeBinding.dispose();
+  });
+
   test('dispose cancels subscriptions and unregisters observer', () async {
     await binding.dispose();
     states.add(const DeviceStatus(

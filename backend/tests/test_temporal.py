@@ -74,6 +74,18 @@ class TestExtractDateRange:
         assert result is not None
         assert result.date_from.date().isoformat() == "2026-07-20"
 
+    def test_data_assoluta_italiana(self):
+        result = extract_date_range("cosa ho fatto il 7 ottobre?", now=NOW)
+        assert result is not None
+        assert result.date_from.date().isoformat() == "2026-10-07"
+        assert result.date_to.date().isoformat() == "2026-10-07"
+
+    def test_data_assoluta_slash(self):
+        result = extract_date_range("cosa ho fatto il 07/10/2026?", now=NOW)
+        assert result is not None
+        assert result.date_from.date().isoformat() == "2026-10-07"
+        assert result.date_to.date().isoformat() == "2026-10-07"
+
     def test_no_temporal_reference(self):
         result = extract_date_range("chi è Marco?", now=NOW)
         assert result is None

@@ -37,6 +37,18 @@ DAYS_EN = {
     "friday": 4, "saturday": 5, "sunday": 6,
 }
 
+MONTHS_IT = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+MONTHS_EN = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+
 
 def _start_of_day(d: date) -> datetime:
     """Get start of day as timezone-aware datetime."""
@@ -56,6 +68,15 @@ def _last_weekday(target_weekday: int, today: date) -> date:
     return today - timedelta(days=days_back)
 
 
+def _parse_absolute_date(day: int, month: int, year: int | None, now: datetime) -> DateRange | None:
+    """Build a one-day range for an explicit calendar date."""
+    try:
+        target_date = date(year or now.year, month, day)
+    except ValueError:
+        return None
+    return DateRange(_start_of_day(target_date), _end_of_day(target_date))
+
+
 def extract_date_range(query: str, now: datetime | None = None) -> DateRange | None:
     """Extract a date range from a natural language query.
 
@@ -69,6 +90,7 @@ def extract_date_range(query: str, now: datetime | None = None) -> DateRange | N
     - "lunedì scorso" / "last monday" (etc.)
     - "ultimi N giorni" / "last N days"
     - "N giorni fa" / "N days ago"
+    - "7 ottobre" / "7/10" / "7 ottobre 2026"
 
     Args:
         query: The user's natural language question.
@@ -82,6 +104,37 @@ def extract_date_range(query: str, now: datetime | None = None) -> DateRange | N
 
     today = now.date()
     q = query.lower().strip()
+
+    # --- explicit absolute dates: "7 ottobre", "7 ottobre 2026", "7/10/2026" ---
+    absolute_patterns = [
+        r"\b(?:il\s+)?(\d{1,2})\s+(?:di\s+)?([a-zàèéìòù]+)(?:\s+(\d{4}))?\b",
+        r"\b(?:il\s+)?(\d{1,2})\s*[/.-]\s*(\d{1,2})(?:\s*[/.-]\s*(\d{4}))?\b",
+    ]
+    for pattern in absolute_patterns:
+        match = re.search(pattern, q)
+        if not match:
+            continue
+        if len(match.groups()) == 3:
+            day, month_name_or_num, year = match.groups()
+        else:
+            day, month_name_or_num = match.groups()
+            year = None
+
+        if month_name_or_num is not None and month_name_or_num.isdigit():
+            month = int(month_name_or_num)
+        else:
+            month_key = month_name_or_num.lower()
+            month = MONTHS_IT.get(month_key) or MONTHS_EN.get(month_key)
+            if month is None:
+                continue
+
+        day_int = int(day)
+        year_int = int(year) if year is not None else None
+        if day_int <= 0 or month <= 0 or month > 12:
+            continue
+        result = _parse_absolute_date(day_int, month, year_int, now)
+        if result is not None:
+            return result
 
     # --- "ieri" / "yesterday" ---
     if re.search(r"\bieri\b", q) or re.search(r"\byesterday\b", q):

@@ -35,19 +35,24 @@ final class NotificationService {
 
   Future<void> scheduleDisconnected() async {
     if (_disconnectScheduled) return;
-    await _port.schedule(
-      id: disconnectId,
-      title: 'Echo disconnected',
-      body: 'Echo has been disconnected for two minutes.',
-      delay: const Duration(minutes: 2),
-    );
     _disconnectScheduled = true;
+    try {
+      await _port.schedule(
+        id: disconnectId,
+        title: 'Echo disconnected',
+        body: 'Echo has been disconnected for two minutes.',
+        delay: const Duration(minutes: 2),
+      );
+    } catch (_) {
+      _disconnectScheduled = false;
+      rethrow;
+    }
   }
 
   Future<void> cancelDisconnected() async {
     if (!_disconnectScheduled) return;
-    await _port.cancel(disconnectId);
     _disconnectScheduled = false;
+    await _port.cancel(disconnectId);
   }
 
   Future<void> showLoss(int droppedCount) => _port.show(
