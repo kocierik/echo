@@ -96,6 +96,7 @@ final class AppLifecycleCoordinator {
       notifications: notificationService,
       networkAccess: networkAccess,
       startController: deviceController.start,
+      reconnectOnResume: deviceController.reconnect,
     );
     return AppLifecycleCoordinator._(
       bleService: bleService,
@@ -118,6 +119,7 @@ final class AppLifecycleCoordinator {
     required NotificationService notifications,
     required NetworkAccess networkAccess,
     required Future<void> Function() startController,
+    Future<void> Function()? reconnectOnResume,
     LifecycleObserverCallback? addObserver,
     LifecycleObserverCallback? removeObserver,
   }) async {
@@ -128,6 +130,7 @@ final class AppLifecycleCoordinator {
       segmentUploadedStream: segmentUploadedStream,
       notifications: notifications,
       networkAccess: networkAccess,
+      reconnectOnResume: reconnectOnResume,
       addObserver: addObserver ?? WidgetsBinding.instance.addObserver,
       removeObserver: removeObserver ?? WidgetsBinding.instance.removeObserver,
     );
@@ -154,10 +157,12 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
     required Stream<int> segmentUploadedStream,
     required NotificationService notifications,
     required NetworkAccess networkAccess,
+    Future<void> Function()? reconnectOnResume,
     required LifecycleObserverCallback addObserver,
     required LifecycleObserverCallback removeObserver,
   })  : _notifications = notifications,
         _networkAccess = networkAccess,
+        _reconnectOnResume = reconnectOnResume,
         _removeObserver = removeObserver,
         _droppedSegments = initialStatus.droppedSegments {
     _statusSubscription = statusStream.listen(_onStatus);
@@ -170,6 +175,7 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
 
   final NotificationService _notifications;
   final NetworkAccess _networkAccess;
+  final Future<void> Function()? _reconnectOnResume;
   final LifecycleObserverCallback _removeObserver;
   late final StreamSubscription<DeviceStatus> _statusSubscription;
   late final StreamSubscription<int> _uploadFailureSubscription;
@@ -216,8 +222,14 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (_disposed || state != AppLifecycleState.resumed) return;
-    unawaited(_refreshNetworkTypes());
+    if (_disposed) return;
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshNetworkTypes());
+      final reconnect = _reconnectOnResume;
+      if (reconnect != null) {
+        unawaited(reconnect());
+      }
+    }
   }
 
   Future<void> _refreshNetworkTypes() async {
