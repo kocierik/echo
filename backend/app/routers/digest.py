@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.core.timezone import to_user_local_date
 from app.models.digest import Digest
 from app.workers.digest import generate_digest_for_date
 
@@ -42,7 +43,7 @@ async def list_digests(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to look back"),
 ):
     """List recent daily digests for the user."""
-    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+    cutoff = to_user_local_date(datetime.now(timezone.utc)) - timedelta(days=days)
 
     query = (
         select(Digest)
@@ -91,7 +92,7 @@ async def generate_digest(
     Useful for generating digests for past days or re-generating today's digest.
     """
     # Don't allow future dates
-    if target_date > datetime.now(timezone.utc).date():
+    if target_date > to_user_local_date(datetime.now(timezone.utc)):
         raise HTTPException(status_code=400, detail="Cannot generate digest for future dates")
 
     # Delete existing digest for this date (allows regeneration)

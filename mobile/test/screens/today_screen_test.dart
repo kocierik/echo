@@ -339,7 +339,7 @@ void main() {
     await _pumpToday(tester, dailySummaryLoader: () async => null);
     await tester.pump();
     expect(
-      find.text('No summary yet. Echo writes one every evening.'),
+      find.text('No summary yet. Echo writes one each night for the day before.'),
       findsOneWidget,
     );
   });

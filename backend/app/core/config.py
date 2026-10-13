@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     # API
     api_prefix: str = "/api"
 
+    # Bearer token Prometheus uses for /metrics (without it, /metrics needs an API key)
+    metrics_token: str = ""
+
     # CORS — comma-separated allowed origins (use "*" to allow all)
     cors_origins: str = "*"
 
@@ -71,6 +74,9 @@ class Settings(BaseSettings):
 
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"
+
+    # Local hour (in user_timezone) when the daily digest of the previous day is written
+    digest_local_hour: int = 4
 
     # Default duration of timed calendar events when none is specified
     default_event_duration_minutes: int = 60

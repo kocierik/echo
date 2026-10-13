@@ -1,7 +1,7 @@
 """User timezone helpers (single-user beta: one configured IANA zone)."""
 
 import logging
-from datetime import date, datetime, timezone, tzinfo
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from functools import lru_cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -21,6 +21,14 @@ def user_zone() -> tzinfo:
             settings.user_timezone,
         )
         return timezone.utc
+
+
+def local_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """[start, end) of a calendar day in the user's timezone, as aware datetimes."""
+    zone = user_zone()
+    start = datetime.combine(day, time.min, tzinfo=zone)
+    end = datetime.combine(day + timedelta(days=1), time.min, tzinfo=zone)
+    return start, end
 
 
 def to_user_local_date(moment: datetime) -> date:
