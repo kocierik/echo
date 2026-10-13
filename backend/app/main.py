@@ -1,7 +1,9 @@
+import hmac
+import uuid
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -9,6 +11,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy import text
 
+from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
@@ -159,19 +162,26 @@ async def health(request: Request):
 
 
 @app.get("/api/stats")
-async def stats():
-    """System statistics: counts and storage usage."""
+async def stats(user_id: uuid.UUID = Depends(get_current_user_id)):
+    """Counts and storage usage for the authenticated user's memory."""
     async with async_session() as db:
-        result = await db.execute(text("""
+        result = await db.execute(
+            text("""
             SELECT
-                (SELECT count(*) FROM segments) AS segments,
-                (SELECT count(*) FROM transcriptions) AS transcriptions,
-                (SELECT count(*) FROM conversations) AS conversations,
-                (SELECT count(*) FROM entities) AS entities,
-                (SELECT count(*) FROM chunks) AS chunks,
-                (SELECT coalesce(sum(audio_size_bytes), 0)
-                    FROM segments WHERE audio_path != '') AS audio_bytes
-        """))
+                (SELECT count(*) FROM segments WHERE user_id = :uid) AS segments,
+                (SELECT count(*) FROM transcriptions t
+                    JOIN segments s ON s.id = t.segment_id
+                    WHERE s.user_id = :uid) AS transcriptions,
+                (SELECT count(*) FROM conversations WHERE user_id = :uid) AS conversations,
+                (SELECT count(*) FROM entities WHERE user_id = :uid) AS entities,
+                (SELECT count(*) FROM chunks c
+                    JOIN conversations cv ON cv.id = c.conversation_id
+                    WHERE cv.user_id = :uid) AS chunks,
+                (SELECT coalesce(sum(audio_size_bytes), 0) FROM segments
+                    WHERE user_id = :uid AND audio_path != '') AS audio_bytes
+            """),
+            {"uid": user_id},
+        )
         row = result.one()
 
     return {
@@ -184,7 +194,24 @@ async def stats():
     }
 
 
-@app.get("/metrics")
+async def _authorize_metrics(request: Request) -> None:
+    """Bearer METRICS_TOKEN when configured (for Prometheus), else a valid API key."""
+    from fastapi import HTTPException
+
+    if settings.metrics_token:
+        expected = f"Bearer {settings.metrics_token}"
+        provided = request.headers.get("authorization", "")
+        if hmac.compare_digest(provided.encode(), expected.encode()):
+            return
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        async with async_session() as db:
+            await get_current_user_id(api_key=api_key, db=db)
+        return
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
+
+@app.get("/metrics", dependencies=[Depends(_authorize_metrics)])
 async def prometheus_metrics():
     """Prometheus-compatible metrics endpoint."""
     from fastapi.responses import PlainTextResponse

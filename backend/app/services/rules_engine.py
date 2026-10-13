@@ -5,7 +5,7 @@ Supports conditions on:
 - name_contains: substring match on entity name (case-insensitive)
 - content_contains: substring match on entity content
 - metadata.*: dot-notation access to metadata fields (e.g. metadata.priority = "high")
-- speaker: match speaker tag (self, other)
+- speaker: who spoke in the source Segment (self/other/unknown; "tu"/"altri" also accepted)
 
 Actions:
 - webhook: POST JSON to a URL
@@ -23,11 +23,13 @@ import uuid
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entity import Entity
 from app.models.rule import Rule
+from app.models.segment import Segment
+from app.models.transcription import Transcription
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,14 @@ async def evaluate_rules(db: AsyncSession, user_id: uuid.UUID, entity: Entity) -
     )
     rules = result.scalars().all()
 
+    # The speaker lives on the source Segment: look it up only if a rule needs it
+    speaker = None
+    if any("speaker" in (rule.conditions or {}) for rule in rules):
+        speaker = await _entity_speaker(db, entity)
+
     triggered = 0
     for rule in rules:
-        if _matches_conditions(rule.conditions, entity):
+        if _matches_conditions(rule.conditions, entity, speaker=speaker):
             logger.info(f"[Rules] Rule '{rule.name}' triggered by entity '{entity.name}'")
             await _execute_actions(rule.actions, entity, db, user_id)
 
@@ -58,7 +65,39 @@ async def evaluate_rules(db: AsyncSession, user_id: uuid.UUID, entity: Entity) -
     return triggered
 
 
-def _matches_conditions(conditions: dict, entity: Entity) -> bool:
+_SPEAKER_ALIASES = {
+    "self": "self", "tu": "self", "you": "self", "me": "self", "io": "self",
+    "other": "other", "others": "other", "altri": "other", "altro": "other",
+    "unknown": "unknown",
+}
+
+
+def normalize_speaker(value) -> str | None:
+    """Canonical speaker label (self/other/unknown) for rule values and data."""
+    if value is None:
+        return None
+    return _SPEAKER_ALIASES.get(str(value).strip().strip("[]").lower())
+
+
+async def _entity_speaker(db: AsyncSession, entity: Entity) -> str | None:
+    """Speaker of the Segment the entity was extracted from (corrected label first)."""
+    if entity.source_transcription_id is None:
+        return None
+    result = await db.execute(
+        select(Transcription.speaker_label, Segment.speaker)
+        .join(Segment, Segment.id == Transcription.segment_id)
+        .where(Transcription.id == entity.source_transcription_id)
+    )
+    row = result.first()
+    if row is None:
+        return None
+    speaker_label, segment_speaker = row
+    return normalize_speaker(speaker_label or segment_speaker)
+
+
+def _matches_conditions(
+    conditions: dict, entity: Entity, speaker: str | None = None
+) -> bool:
     """Check if ALL conditions match the entity (AND logic)."""
     if not conditions:
         return True  # No conditions = always match
@@ -66,7 +105,10 @@ def _matches_conditions(conditions: dict, entity: Entity) -> bool:
     for key, expected in conditions.items():
         actual = _get_entity_value(key, entity)
 
-        if key.endswith("_contains"):
+        if key == "speaker":
+            if speaker is None or normalize_speaker(expected) != speaker:
+                return False
+        elif key.endswith("_contains"):
             # Substring match
             field = key.replace("_contains", "")
             actual = _get_entity_value(field, entity)
@@ -95,11 +137,6 @@ def _get_entity_value(key: str, entity: Entity):
         return entity.name
     elif key == "content":
         return entity.content
-    elif key == "speaker":
-        # Speaker is in the transcription text prefix [Tu] or [Altri]
-        if entity.content and entity.content.startswith("["):
-            return entity.content.split("]")[0].strip("[").lower()
-        return None
     elif key.startswith("metadata."):
         meta_key = key.replace("metadata.", "")
         return entity.metadata_.get(meta_key) if entity.metadata_ else None

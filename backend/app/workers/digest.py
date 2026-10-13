@@ -18,7 +18,9 @@ from datetime import date, datetime, time, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import async_session
+from app.core.timezone import local_day_bounds, user_zone
 from app.models.conversation import Conversation
 from app.models.digest import Digest
 from app.models.entity import Entity
@@ -30,8 +32,20 @@ from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
-# Run digest generation at this hour (UTC)
-DIGEST_HOUR_UTC = 21  # 21:00 UTC = 23:00 CET
+
+def next_digest_run(now: datetime) -> tuple[datetime, date]:
+    """Next run time and the local day it summarizes.
+
+    Runs at settings.digest_local_hour in the user's timezone and summarizes
+    the day that has just ended (the previous local day).
+    """
+    zone = user_zone()
+    local_now = now.astimezone(zone)
+    run_day = local_now.date()
+    if local_now.time() >= time(settings.digest_local_hour):
+        run_day += timedelta(days=1)
+    run_at = datetime.combine(run_day, time(settings.digest_local_hour), tzinfo=zone)
+    return run_at, run_day - timedelta(days=1)
 
 
 async def generate_digest_for_date(
@@ -58,14 +72,13 @@ async def generate_digest_for_date(
         return None
 
     # Get all conversations for this user on target_date
-    day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-    day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+    day_start, day_end = local_day_bounds(target_date)
 
     conversations_query = (
         select(Conversation)
         .where(Conversation.user_id == user_id)
         .where(Conversation.started_at >= day_start)
-        .where(Conversation.started_at <= day_end)
+        .where(Conversation.started_at < day_end)
         .order_by(Conversation.started_at)
     )
     result = await db.execute(conversations_query)
@@ -191,22 +204,18 @@ async def generate_digest_for_date(
 
 
 async def run_digest_loop(shutdown_event: asyncio.Event | None = None):
-    """Periodic loop that generates digests at DIGEST_HOUR_UTC.
-
-    Generates yesterday's digest for all users that have conversations.
-    """
-    logger.info(f"[Digest] Loop started — generating at {DIGEST_HOUR_UTC}:00 UTC daily")
+    """Periodic loop: at settings.digest_local_hour, digest the day that just ended."""
+    logger.info(
+        f"[Digest] Loop started — generating at {settings.digest_local_hour}:00 "
+        f"{settings.user_timezone} for the previous day"
+    )
 
     while True:
         if shutdown_event and shutdown_event.is_set():
             break
 
         now = datetime.now(timezone.utc)
-
-        # Calculate next run time
-        next_run = now.replace(hour=DIGEST_HOUR_UTC, minute=0, second=0, microsecond=0)
-        if now >= next_run:
-            next_run += timedelta(days=1)
+        next_run, target_day = next_digest_run(now)
 
         wait_seconds = (next_run - now).total_seconds()
         logger.info(f"[Digest] Next run in {wait_seconds / 3600:.1f}h ({next_run.isoformat()})")
@@ -219,22 +228,19 @@ async def run_digest_loop(shutdown_event: asyncio.Event | None = None):
             await asyncio.sleep(sleep_time)
             wait_seconds -= sleep_time
 
-        # Generate digests for yesterday
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date()
-        await generate_digests_for_all_users(yesterday)
+        await generate_digests_for_all_users(target_day)
 
 
 async def generate_digests_for_all_users(target_date: date):
     """Generate digests for all users that had conversations on target_date."""
     async with async_session() as db:
         # Find all users with conversations on that date
-        day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+        day_start, day_end = local_day_bounds(target_date)
 
         users_query = (
             select(Conversation.user_id)
             .where(Conversation.started_at >= day_start)
-            .where(Conversation.started_at <= day_end)
+            .where(Conversation.started_at < day_end)
             .distinct()
         )
         result = await db.execute(users_query)

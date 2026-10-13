@@ -99,7 +99,7 @@ final class TodaySummarySection extends StatelessWidget {
           )
         else if (digest == null)
           const _SectionEmpty(
-            message: 'No summary yet. Echo writes one every evening.',
+            message: 'No summary yet. Echo writes one each night for the day before.',
           )
         else
           Padding(
