@@ -17,7 +17,7 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
                                                                     ┌──────────▼──────────────────┐
                                                                     │      Background worker      │
                                                                     │ STT → speaker → entities →  │
-                                                                    │ chunks/embeddings → rules   │
+                                                                    │ chunks/embeddings          │
                                                                     │ + reanalysis, summaries,    │
                                                                     │   digest, retention, DLQ    │
                                                                     └──────────┬──────────────────┘
@@ -143,11 +143,11 @@ echo/
 ├── mobile/               # Flutter app (iOS-first)
 ├── backend/
 │   ├── app/
-│   │   ├── core/         # config, auth, database, logging, circuit breaker, timezone, OAuth state
+│   │   ├── core/         # config, auth, database, logging, circuit breaker, timezone
 │   │   ├── models/       # SQLAlchemy models
 │   │   ├── routers/      # HTTP API
-│   │   ├── services/     # STT/LLM/embeddings, analysis, RAG helpers, calendar, rules
-│   │   ├── integrations/ # Integration engine (Todoist, Calendar, Notion, Telegram, Slack)
+│   │   ├── services/     # STT/LLM/embeddings, analysis, RAG helpers
+│   │   ├── actions/      # Composio actions (toolkits, policy, confirmations, audit)
 │   │   └── workers/      # Worker entry, retry, reanalysis, summaries, digest, retention
 │   ├── alembic/          # Migrations
 │   ├── static/           # Web UI + admin dashboard
@@ -165,7 +165,7 @@ All `/api` endpoints require the `X-API-Key` header.
   Idempotent on audio content + `recorded_at`.
 - `GET /api/segments/recent?limit=50` — latest Segments, including pending transcriptions.
 - `PATCH /api/segments/{id}/transcription` — correct text and speaker (`self`/`other`/`unknown`);
-  audited, then the Conversation is reanalysed without triggering integrations or rules.
+  audited, then the Conversation is reanalysed.
 
 ### Query and chat
 - `POST /api/query` — RAG over memory with follow-ups and temporal filtering:
@@ -180,8 +180,8 @@ All `/api` endpoints require the `X-API-Key` header.
 }
 ```
 
-  Either date bound may be omitted. It can also run Google Calendar actions
-  ("crea un evento domani alle 15 per un'ora", "sposta il dentista alle 18").
+  Either date bound may be omitted. Requests to use a connected app ("manda una mail a Marco") are
+  routed to the actions agent, see [Actions (Composio)](#actions-composio).
 - `GET /api/chat-sessions`, `GET /api/chat-sessions/{id}`, `DELETE /api/chat-sessions/{id}` — complete chat history.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
 
@@ -192,16 +192,31 @@ All `/api` endpoints require the `X-API-Key` header.
   `PATCH|DELETE /api/entities/{id}`, `POST /api/entities/{id}/merge`, `POST /api/entities/deduplicate`.
 - `GET /api/digest?days=7`, `GET /api/digest/{date}`, `POST /api/digest/{date}` — daily digests.
 
-### Automations
-- `GET|POST /api/rules`, `GET|PATCH|DELETE /api/rules/{id}`, `GET /api/rules/templates/examples`.
-- `GET /api/integrations/available`, `GET|POST /api/integrations`, `PATCH|DELETE /api/integrations/{id}`.
-- `GET /api/integrations/oauth/google/authorize` → Google consent URL (signed, single-use `state`);
-  `GET /api/integrations/oauth/google/callback`.
+### Actions
+- See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
 
 ### Operations
 - `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
 - `GET /health` (no auth), `GET /api/stats` (the caller's counts),
   `GET /metrics` (Prometheus; `Authorization: Bearer $METRICS_TOKEN` or an API key).
+
+## Actions (Composio)
+
+Echo can act on connected apps (email, calendar, chat...) through [Composio](https://composio.dev).
+
+1. Create an API key in the Composio dashboard and set `COMPOSIO_API_KEY` in `.env`.
+2. Connect your accounts from the app's Integrations screen.
+3. Ask for something with a voice request that starts with "Echo, ..." (for example
+   "Echo, segna il dentista martedì alle dieci"), or from the chat. Sensitive actions wait for your
+   confirmation in the app.
+
+Endpoints (all under `/api/actions`):
+- `GET /toolkits` — available toolkits and their connection state.
+- `POST /toolkits/{slug}/connect` — start connecting an account.
+- `DELETE /toolkits/{slug}` — disconnect it.
+- `POST /pending/{id}/confirm`, `POST /pending/{id}/cancel` — confirm or cancel a pending action.
+- `GET /log` — audit log of executed actions.
+- `GET /voice-updates` — outcomes of voice requests.
 
 ## Configuration
 
@@ -220,13 +235,11 @@ All `/api` endpoints require the `X-API-Key` header.
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
-| `USER_TIMEZONE` | `Europe/Rome` | Timezone for calendar events and relative dates |
-| `DEFAULT_EVENT_DURATION_MINUTES` | `60` | Duration of calendar events when none is said |
+| `USER_TIMEZONE` | `Europe/Rome` | Timezone for relative dates and the digest |
 | `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | — | Google Calendar OAuth |
-| `OAUTH_STATE_SECRET` | Google client secret | Secret that signs the OAuth `state` |
+| `COMPOSIO_API_KEY` | — | Composio API key, enables third-party actions |
 
 ## Design Decisions
 

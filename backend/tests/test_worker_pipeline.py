@@ -160,10 +160,8 @@ async def test_stt_claim_fails_and_dead_letters_missing_audio(monkeypatch, audio
 _DEFAULT_TEXT = "Uno due tre quattro cinque sei sette otto nove dieci undici."
 
 
-async def _run_pipeline(monkeypatch, allow_side_effects, text=_DEFAULT_TEXT, captured=None):
-    import app.integrations.engine as integrations_module
+async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
     import app.services.analysis_pipeline as pipeline_module
-    import app.services.rules_engine as rules_module
 
     events = []
     user_id = uuid.uuid4()
@@ -224,17 +222,6 @@ async def _run_pipeline(monkeypatch, allow_side_effects, text=_DEFAULT_TEXT, cap
         events.append("deduplicate")
         return 0
 
-    async def fake_integration(_db, _user_id, _entity):
-        if not allow_side_effects:
-            raise AssertionError("integrations must be skipped")
-        events.append("integration")
-
-    async def fake_rules(_db, _user_id, _entity):
-        if not allow_side_effects:
-            raise AssertionError("rules must be skipped")
-        events.append("rules")
-        return 0
-
     async def direct_retry(coro_func, *args, **kwargs):
         kwargs.pop("operation_name", None)
         return await coro_func(*args, **kwargs)
@@ -245,21 +232,17 @@ async def _run_pipeline(monkeypatch, allow_side_effects, text=_DEFAULT_TEXT, cap
     monkeypatch.setattr(pipeline_module, "consolidate_entities", fake_consolidate)
     monkeypatch.setattr(pipeline_module, "deduplicate_entities", fake_deduplicate)
     monkeypatch.setattr(pipeline_module, "retry_with_backoff", direct_retry)
-    monkeypatch.setattr(integrations_module, "trigger_integrations", fake_integration)
-    monkeypatch.setattr(rules_module, "evaluate_rules", fake_rules)
 
     embeddings = _PipelineEmbeddings(events)
     pipeline = AnalysisPipeline(MockLLMService(), embeddings)
-    result = await pipeline.analyze_segment(
-        _PipelineDatabase(events), segment, allow_side_effects=allow_side_effects
-    )
+    result = await pipeline.analyze_segment(_PipelineDatabase(events), segment)
     captured["chunk_texts"] = embeddings.chunk_texts
     return events, result
 
 
 @pytest.mark.asyncio
 async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
-    events, result = await _run_pipeline(monkeypatch, allow_side_effects=True)
+    events, result = await _run_pipeline(monkeypatch)
 
     assert events == [
         "assign",
@@ -270,8 +253,6 @@ async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
         "entity_embeddings",
         "flush",
         "deduplicate",
-        "integration",
-        "rules",
         "max_chunk",
         "chunk_embeddings",
         "add_chunk",
@@ -282,15 +263,6 @@ async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
     assert result.extracted_entity_count == 1
     assert result.new_entity_count == 1
     assert result.chunk_count == 1
-
-
-@pytest.mark.asyncio
-async def test_analysis_pipeline_can_disable_external_side_effects(monkeypatch):
-    events, _ = await _run_pipeline(monkeypatch, allow_side_effects=False)
-
-    assert "integration" not in events
-    assert "rules" not in events
-    assert events.index("deduplicate") < events.index("max_chunk")
 
 
 @pytest.mark.asyncio
@@ -305,7 +277,7 @@ async def test_analysis_pipeline_can_disable_external_side_effects(monkeypatch):
 )
 async def test_analysis_pipeline_extracts_from_the_full_text(monkeypatch, text):
     captured = {}
-    events, _ = await _run_pipeline(monkeypatch, True, text=text, captured=captured)
+    events, _ = await _run_pipeline(monkeypatch, text=text, captured=captured)
 
     assert captured["extract_text"] == text
     assert captured["chunk_texts"] == [text]

@@ -83,21 +83,6 @@ class Settings(BaseSettings):
     # Local hour (in user_timezone) when the daily digest of the previous day is written
     digest_local_hour: int = 4
 
-    # Default duration of timed calendar events when none is specified
-    default_event_duration_minutes: int = 60
-
-    # Google OAuth2 (for Calendar integration)
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_redirect_uri: str = ""  # e.g. https://yourdomain.com/api/integrations/google/callback
-
-    # Secret used to sign OAuth `state` values; falls back to google_client_secret
-    oauth_state_secret: str = ""
-
-    @property
-    def effective_oauth_state_secret(self) -> str:
-        return self.oauth_state_secret or self.google_client_secret
-
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",

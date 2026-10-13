@@ -24,10 +24,7 @@ from app.routers import (
     digest,
     entities,
     feedback,
-    integrations,
-    oauth,
     query,
-    rules,
     segments,
 )
 
@@ -104,9 +101,6 @@ app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
-app.include_router(integrations.router, prefix=settings.api_prefix)
-app.include_router(oauth.router, prefix=settings.api_prefix)
-app.include_router(rules.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
 
 

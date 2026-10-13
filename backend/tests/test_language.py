@@ -1,12 +1,12 @@
 """Unit tests: English app texts, answers in the language of the question."""
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import pytest
 
 from app.routers import query
-from app.services import analysis_pipeline, chat_actions
+from app.services import analysis_pipeline
 from app.services.language import detect_language
 from app.services.temporal import DateRange
 from app.services.transcription_enhancer import speaker_prefix
@@ -84,69 +84,6 @@ def test_no_results_message_follows_the_question_language():
     assert query.no_results_message("What happened?", period).startswith(
         "I couldn't find anything in your memory for that period."
     )
-
-
-# --- Chat actions reply in the language of the question ---
-
-
-def _patch_find(monkeypatch, matches):
-    async def fake_find(_db, _user_id, summary, day=None):
-        return matches
-
-    monkeypatch.setattr(chat_actions, "find_events", fake_find)
-
-
-@pytest.mark.asyncio
-async def test_action_replies_in_english(monkeypatch):
-    _patch_find(monkeypatch, [{"id": "e1", "summary": "Dentist", "start": "2026-10-14"}])
-
-    async def fake_delete(_db, _user_id, _event_id):
-        return True
-
-    monkeypatch.setattr(chat_actions, "delete_event", fake_delete)
-
-    reply = await chat_actions._execute_action(
-        None, USER_ID, "calendar_delete", {"target": {"summary": "dentist"}}, language="en"
-    )
-
-    assert reply == "✅ Deleted **Dentist**."
-
-
-@pytest.mark.asyncio
-async def test_action_replies_in_italian(monkeypatch):
-    _patch_find(monkeypatch, [])
-
-    reply = await chat_actions._execute_action(
-        None, USER_ID, "calendar_delete", {"target": {"summary": "Yoga"}}, language="it"
-    )
-
-    assert reply == 'Non ho trovato "Yoga" nei prossimi 14 giorni.'
-
-
-@pytest.mark.asyncio
-async def test_calendar_list_in_english(monkeypatch):
-    async def fake_list(_db, _user_id, date_from=None, date_to=None):
-        return [{"id": "e1", "summary": "Lunch", "start": "2026-10-14T13:00:00+02:00"}]
-
-    monkeypatch.setattr(chat_actions, "list_events", fake_list)
-
-    reply = await chat_actions._execute_action(
-        None,
-        USER_ID,
-        "calendar_list",
-        {"date_from": "2026-10-20", "date_to": "2026-10-25"},
-        language="en",
-    )
-
-    assert reply.startswith("📅 Your events from 20/10 to 25/10:")
-    assert "• **Lunch** — 13:00" in reply
-
-
-def test_human_dates_in_both_languages():
-    tuesday = date(2026, 10, 20)
-
-    assert chat_actions._format_date_human(tuesday.isoformat(), "en") == "Tuesday 20/10"
-    assert chat_actions._format_date_human(tuesday.isoformat(), "it") == "martedì 20/10"
 
 
 # --- Summaries and digest are in English ---
