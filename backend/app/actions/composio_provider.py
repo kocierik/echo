@@ -16,7 +16,10 @@ SDK surface used (all synchronous):
   (This is what `toolkits.authorize` does internally, so no COMPOSIO_AUTH_CONFIG_IDS setting.)
 - `toolkits.get(slug)` -> object with `.slug`, `.name`, `.meta.description`;
   `toolkits.get(query={"search": q, "limit": n})` -> list of the same shape.
-- `tools.get(user_id, toolkits=[..])` -> list of OpenAI tool dicts, function.name = tool slug.
+- `tools.get(user_id, toolkits=[..], limit=n)` / `tools.get(user_id, tools=[slugs])` -> list
+  of OpenAI tool dicts, function.name = tool slug. `tools.get` has no "important" filter;
+  the raw `client.tools.list(toolkit_slug="a,b", important="true", limit=n)` has (items with
+  `.slug`).
 - `tools.execute(slug, arguments, user_id=..., dangerously_skip_version_check=True)` ->
   dict `{"successful": bool, "data": dict, "error": str | None}`.
 """
@@ -26,7 +29,7 @@ import functools
 import logging
 from typing import Any
 
-from app.actions.policy import toolkit_of
+from app.actions.policy import CREATE_TOOLS, toolkit_of
 from app.actions.provider import (
     INITIAL_TOOLKITS,
     AccountNotConnectedError,
@@ -40,6 +43,34 @@ logger = logging.getLogger(__name__)
 
 SDK_TIMEOUT_SECONDS = 20
 SEARCH_LIMIT = 20
+# Tool schemas offered to the model per request (token cost and tool-choice quality).
+MAX_OFFERED_TOOLS = 100
+# Always offered when their toolkit is connected: the create tools and the known
+# send/reply/update/delete tools of the initial toolkits.
+REQUIRED_TOOLS = (
+    *sorted(CREATE_TOOLS),
+    "GMAIL_SEND_EMAIL",
+    "GMAIL_REPLY_TO_THREAD",
+    "GMAIL_SEND_DRAFT",
+    "GMAIL_FORWARD_MESSAGE",
+    "GMAIL_DELETE_MESSAGE",
+    "GMAIL_MOVE_TO_TRASH",
+    "GOOGLECALENDAR_UPDATE_EVENT",
+    "GOOGLECALENDAR_PATCH_EVENT",
+    "GOOGLECALENDAR_DELETE_EVENT",
+    "SLACK_SEND_MESSAGE",
+    "SLACK_SENDS_A_MESSAGE_TO_A_SLACK_CHANNEL",
+    "SLACK_UPDATES_A_SLACK_MESSAGE",
+    "SLACK_DELETES_A_MESSAGE_FROM_A_CHAT",
+    "TELEGRAM_SEND_MESSAGE",
+    "TELEGRAM_EDIT_MESSAGE",
+    "TELEGRAM_DELETE_MESSAGE",
+    "TODOIST_UPDATE_TASK",
+    "TODOIST_CLOSE_TASK",
+    "TODOIST_DELETE_TASK",
+    "NOTION_UPDATE_PAGE",
+    "NOTION_ARCHIVE_NOTION_PAGE",
+)
 
 
 async def _call(fn, *args, **kwargs):
@@ -148,11 +179,86 @@ class ComposioActionProvider:
 
         await _call(delete)
 
-    async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
-        if not toolkits:
+    def _important_slugs(self, toolkits: list[str]) -> list[str]:
+        """Composio's "important" (featured) tools of these toolkits.
+
+        `tools.get` has no such filter in composio 0.15.0; the raw API listing does.
+        """
+        response = self.client.client.tools.list(
+            toolkit_slug=",".join(toolkits), important="true", limit=MAX_OFFERED_TOOLS
+        )
+        return [item.slug for item in response.items]
+
+    async def _best_effort(self, fn, *args, **kwargs) -> list:
+        try:
+            return list(await _call(fn, *args, **kwargs))
+        except ActionProviderError:
+            logger.warning("Composio tool lookup failed; offering the other tools")
             return []
-        tools = await _call(self.client.tools.get, user_id, toolkits=list(toolkits))
-        return [dict(t) for t in tools]
+
+    async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
+        """At most MAX_OFFERED_TOOLS schemas: required write tools, important ones, then
+        the rest shared across the connected toolkits; initial toolkits first."""
+        wanted = list(dict.fromkeys(toolkits))
+        if not wanted:
+            return []
+        initial = [t for t in INITIAL_TOOLKITS if t in wanted]
+        others = [t for t in wanted if t not in INITIAL_TOOLKITS]
+        order = [*initial, *others]
+        required = [s for s in REQUIRED_TOOLS if toolkit_of(s) in initial]
+        get = self.client.tools.get
+
+        async def none() -> list:
+            return []
+
+        required_tools, important, fill_initial, fill_others = await asyncio.gather(
+            self._best_effort(get, user_id, tools=required) if required else none(),
+            self._best_effort(self._important_slugs, initial) if initial else none(),
+            _call(get, user_id, toolkits=initial, limit=MAX_OFFERED_TOOLS)
+            if initial else none(),
+            _call(get, user_id, toolkits=others, limit=MAX_OFFERED_TOOLS)
+            if others else none(),
+        )
+
+        picked: dict[str, dict] = {}
+
+        def add(schema) -> None:
+            schema = dict(schema)
+            name = schema.get("function", {}).get("name")
+            if name and name not in picked and len(picked) < MAX_OFFERED_TOOLS:
+                picked[name] = schema
+
+        for schema in required_tools:
+            add(schema)
+        fill = [dict(t) for t in (*fill_initial, *fill_others)]
+        by_name = {t.get("function", {}).get("name"): t for t in fill}
+        missing = [s for s in important if s not in picked and s not in by_name]
+        for slug in important:
+            if slug in by_name:
+                add(by_name[slug])
+        if missing and len(picked) < MAX_OFFERED_TOOLS:
+            for schema in await self._best_effort(get, user_id, tools=missing):
+                add(schema)
+
+        # Share the remaining slots round-robin so every connected toolkit gets tools
+        buckets: dict[str, list[dict]] = {tk: [] for tk in order}
+        for schema in fill:
+            tk = toolkit_of(schema.get("function", {}).get("name", ""))
+            buckets.setdefault(tk, []).append(schema)
+        queues = [iter(b) for b in buckets.values()]
+        while queues and len(picked) < MAX_OFFERED_TOOLS:
+            for queue in list(queues):
+                schema = next(queue, None)
+                if schema is None:
+                    queues.remove(queue)
+                else:
+                    add(schema)
+
+        rank = {tk: i for i, tk in enumerate(order)}
+        return sorted(
+            picked.values(),
+            key=lambda s: rank.get(toolkit_of(s["function"]["name"]), len(rank)),
+        )
 
     async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult:
         toolkit = toolkit_of(tool)
