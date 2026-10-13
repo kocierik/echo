@@ -1,6 +1,8 @@
 """Query API: natural language search over personal memory with RAG."""
 
 import json
+import logging
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -12,6 +14,9 @@ from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.actions.agent import run_action_agent
+from app.actions.composio_provider import get_action_provider
+from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.chat_session import ChatSession
@@ -21,6 +26,8 @@ from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.temporal import DateRange, extract_date_range
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -49,11 +56,69 @@ class SourceChunk(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PendingActionOut(BaseModel):
+    id: uuid.UUID
+    summary: str
+    status: str
+    expires_at: datetime
+
+
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
     session_id: str
     date_filter: dict | None = None
+    pending_action: PendingActionOut | None = None
+
+
+# Words that may introduce a request on a connected tool (prefix match, IT + EN).
+# Messages without them skip the provider and the intent check and go straight to RAG.
+_TOOL_HINT = re.compile(
+    r"\b(calendar|calendario|agenda|event|appuntament|appointment|riunion|meeting|"
+    r"call\b|impegn|programma|schedul|fiss|prenot|organizz|segna|crea|aggiung|add\b|"
+    r"book|spost|rimand|anticip|posticip|resched|move|cancell|elimin|annull|delete|"
+    r"remove|cancel|rinomin|rename|modific|cambi|change|"
+    r"mail|e-mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
+    r"inbox)",
+    re.IGNORECASE,
+)
+
+NEEDS_TOOLS_PROMPT = """You route requests for a personal assistant. The user has these
+connected tools: {toolkits}. Decide whether the request needs one of those tools
+(read or change something in them) or can be answered from Echo's memory of the user's
+recorded conversations only. Use the recent conversation for follow-ups.
+Respond with ONLY a JSON object: {{"needs_tools": true}} or {{"needs_tools": false}}."""
+
+
+def might_need_tools(question: str, history: list[dict]) -> bool:
+    """Cheap pre-check before spending a provider call and an LLM call."""
+    if _TOOL_HINT.search(question):
+        return True
+    last_assistant = next(
+        (m for m in reversed(history) if m.get("role") == "assistant"), None
+    )
+    return bool(last_assistant and last_assistant.get("actions"))
+
+
+async def needs_tools(llm, question: str, history: list[dict], connected: list[str]) -> bool:
+    """Ask the LLM whether the request needs a connected toolkit. Any error -> False."""
+    if not connected:
+        return False
+    try:
+        messages = [
+            LLMMessage(
+                role="system",
+                content=NEEDS_TOOLS_PROMPT.format(toolkits=", ".join(connected)),
+            )
+        ]
+        for msg in history[-6:]:
+            messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
+        messages.append(LLMMessage(role="user", content=question))
+        result = await llm.complete_json(messages, temperature=0.0)
+        return result.get("needs_tools") is True
+    except Exception:
+        logger.warning("Tool intent check failed; using the memory path", exc_info=True)
+        return False
 
 
 async def _get_session_history(
@@ -117,22 +182,54 @@ async def query_memory(
         # Redis context expired: resume follow-up context from the persisted session
         history = await _load_persisted_history(db, user_id, session_uuid)
 
-    # --- Action Detection: check if user wants to DO something (not just ask) ---
-    from app.services.chat_actions import detect_and_execute_action
-
-    action_result = await detect_and_execute_action(db, user_id, body.question, history)
-    if action_result is not None:
-        # Action was executed — return result directly (skip RAG)
-        await _record_turn(
-            redis_client, db, user_id, session_id, history, body.question, action_result
-        )
-
-        return QueryResponse(
-            answer=action_result,
-            sources=[],
-            session_id=session_id,
-            date_filter=None,
-        )
+    # --- Tool requests (Gmail, Calendar, Slack, ...) go to the action agent ---
+    llm_service = get_llm_query_service()
+    if might_need_tools(body.question, history):
+        provider = None
+        connected: list[str] = []
+        try:
+            provider = get_action_provider()
+            toolkits = await provider.list_toolkits(str(user_id))
+            connected = [t.slug for t in toolkits if t.connected]
+        except ActionProviderError:
+            logger.info("Action provider unavailable; using the memory path")
+        if connected and await needs_tools(llm_service, body.question, history, connected):
+            outcome = await run_action_agent(
+                db,
+                user_id,
+                body.question,
+                history,
+                session_id=session_uuid,
+                source="chat",
+                provider=provider,
+                llm=llm_service,
+            )
+            pending = outcome.pending_action
+            extra: dict = {"actions": True}
+            pending_out = None
+            if pending is not None:
+                extra["pending_action"] = {
+                    "id": str(pending.id),
+                    "summary": pending.summary,
+                    "status": "pending",
+                }
+                pending_out = PendingActionOut(
+                    id=pending.id,
+                    summary=pending.summary,
+                    status=pending.status,
+                    expires_at=pending.expires_at,
+                )
+            await _record_turn(
+                redis_client, db, user_id, session_id, history, body.question,
+                outcome.answer, extra,
+            )
+            return QueryResponse(
+                answer=outcome.answer,
+                sources=[],
+                session_id=session_id,
+                date_filter=None,
+                pending_action=pending_out,
+            )
 
     # 1. Determine date filter: explicit params take priority, then NLP extraction
     date_range = None
@@ -173,8 +270,6 @@ async def query_memory(
     sources = [SourceChunk(**src) for src in memory.sources]
 
     # 7. Generate answer via LLM (with conversation history)
-    llm_service = get_llm_query_service()
-
     system_prompt = rag_system_prompt(date_range)
 
     messages = [LLMMessage(role="system", content=system_prompt)]
@@ -214,7 +309,11 @@ async def _load_persisted_history(
     )
     messages = result.scalar_one_or_none() or []
     return [
-        {"role": m["role"], "content": m["content"]}
+        {
+            "role": m["role"],
+            "content": m["content"],
+            **({"actions": True} if m.get("actions") else {}),
+        }
         for m in messages[-MAX_HISTORY_MESSAGES:]
     ]
 
@@ -227,11 +326,12 @@ async def _record_turn(
     history: list[dict],
     question: str,
     answer: str,
+    assistant_extra: dict | None = None,
 ):
     """Append one question/answer turn to the Redis context and the Postgres session."""
     turn = [
         {"role": "user", "content": question},
-        {"role": "assistant", "content": answer},
+        {"role": "assistant", "content": answer, **(assistant_extra or {})},
     ]
     history.extend(turn)
     await _save_session_history(redis_client, session_id, history)
