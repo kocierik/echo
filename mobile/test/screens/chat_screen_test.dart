@@ -129,6 +129,30 @@ void main() {
     expect(find.text('Non è andata a buon fine: nessuna rete'), findsOneWidget);
   });
 
+  testWidgets('an unknown outcome says to check the app and shows no buttons',
+      (tester) async {
+    final api = await pumpWithAction(tester);
+    api.confirmHandler = (_) async => const ConfirmResult(
+          status: 'unknown',
+          message: 'I couldn\'t confirm whether it went through — '
+              'check Gmail before trying again.',
+        );
+
+    await tester.tap(find.byKey(const Key('action-confirm-act-1')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Unknown — check the app'), findsOneWidget);
+    expect(find.text('Done'), findsNothing);
+    expect(
+      find.text('I couldn\'t confirm whether it went through — '
+          'check Gmail before trying again.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('action-confirm-act-1')), findsNothing);
+    expect(find.byKey(const Key('action-cancel-act-1')), findsNothing);
+  });
+
   testWidgets('expired confirm shows the expiry message and no buttons',
       (tester) async {
     final api = await pumpWithAction(tester);

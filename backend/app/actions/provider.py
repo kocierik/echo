@@ -19,10 +19,16 @@ class ToolResult:
     ok: bool
     data: dict | list | str | None = None
     error: str | None = None
+    # The call may or may not have taken effect (it timed out after being sent).
+    unknown: bool = False
 
 
 class ActionProviderError(Exception):
     pass
+
+
+class ActionOutcomeUnknown(ActionProviderError):  # noqa: N818
+    """An execute call timed out: the action may or may not have happened."""
 
 
 class AccountNotConnectedError(ActionProviderError):

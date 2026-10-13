@@ -5,7 +5,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.audit import log_action
-from app.actions.provider import ActionProvider, ActionProviderError, ToolResult
+from app.actions.provider import (
+    ActionOutcomeUnknown,
+    ActionProvider,
+    ActionProviderError,
+    ToolResult,
+)
 from app.models.pending_action import PendingAction
 
 PENDING_TTL = timedelta(minutes=30)
@@ -80,11 +85,16 @@ async def confirm_pending_action(
 
     try:
         result = await provider.execute(str(user_id), action.tool, action.arguments)
+    except ActionOutcomeUnknown as exc:
+        result = ToolResult(ok=False, error=str(exc) or type(exc).__name__, unknown=True)
     except ActionProviderError as exc:
         result = ToolResult(ok=False, error=str(exc) or type(exc).__name__)
 
     await log_action(db, user_id, action.source, action.tool, action.arguments, result)
-    action.status = "executed" if result.ok else "failed"
+    if result.ok:
+        action.status = "executed"
+    else:
+        action.status = "unknown" if result.unknown else "failed"
     action.resolved_at = now
     await db.flush()
     return result

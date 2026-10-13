@@ -306,7 +306,7 @@ final class ChatController extends ChangeNotifier {
     try {
       final result = await _api.confirmPendingAction(id);
       if (!_isCurrent(generation)) return;
-      _finishAction(id, result.failed ? 'failed' : 'executed', result.message);
+      _finishAction(id, result.status, result.message);
     } on ApiException catch (error) {
       if (!_isCurrent(generation)) return;
       if (error.code == 'expired') {

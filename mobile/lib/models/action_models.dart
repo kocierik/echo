@@ -75,20 +75,24 @@ final class PendingAction {
       );
 }
 
-/// Result of confirming a pending action: [status] is `executed` or `failed`;
+/// Result of confirming a pending action: [status] is `executed`, `failed`
+/// or `unknown` (the request timed out: it may or may not have happened);
 /// [message] is the (possibly localized) text to show the user.
 final class ConfirmResult {
   const ConfirmResult({required this.status, required this.message});
+
+  static const statuses = {'executed', 'failed', 'unknown'};
 
   final String status;
   final String message;
 
   bool get failed => status == 'failed';
+  bool get unknown => status == 'unknown';
 
   factory ConfirmResult.fromJson(Map<String, dynamic> json) {
     final status = json['status'];
-    if (status != 'executed' && status != 'failed') {
-      throw const FormatException('status must be executed or failed');
+    if (!statuses.contains(status)) {
+      throw const FormatException('status must be executed, failed or unknown');
     }
     return ConfirmResult(
       status: status as String,

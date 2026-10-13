@@ -14,10 +14,12 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.audit import log_action, pending_summary
+from app.actions.availability import APP_NAMES
 from app.actions.pending import create_pending_action
 from app.actions.policy import ToolTier, classify_call, toolkit_of
 from app.actions.provider import (
     AccountNotConnectedError,
+    ActionOutcomeUnknown,
     ActionProvider,
     ActionProviderError,
     ToolResult,
@@ -65,6 +67,9 @@ TEXTS = {
             "Please try a more specific request."
         ),
         "no_answer": "I couldn't produce an answer. Please try again.",
+        "unknown": (
+            "I couldn't confirm whether it went through — check {toolkit} before trying again."
+        ),
     },
     "it": {
         "confirm": "Conferma nell'app per procedere.",
@@ -81,17 +86,20 @@ TEXTS = {
             "Prova con una richiesta più specifica."
         ),
         "no_answer": "Non sono riuscito a produrre una risposta. Riprova.",
+        "unknown": (
+            "Non sono riuscito a verificare se è andata a buon fine: "
+            "controlla {toolkit} prima di riprovare."
+        ),
     },
 }
 
-TOOLKIT_NAMES = {
-    "gmail": "Gmail",
-    "googlecalendar": "Google Calendar",
-    "slack": "Slack",
-    "telegram": "Telegram",
-    "todoist": "Todoist",
-    "notion": "Notion",
-}
+TOOLKIT_NAMES = APP_NAMES
+
+# Told to the model when an execute call timed out after being sent.
+_UNKNOWN_NOTE = (
+    "The request timed out after it was sent: it may or may not have been done. "
+    "Do not say it was done or not done, and do not retry it."
+)
 
 _NOTHING_FOUND = "Nothing found in memory for this query."
 
@@ -127,6 +135,8 @@ class _Failure:
     tool: str
     toolkit: str
     not_connected: bool
+    # Timed out after being sent: reported with the "check {App}" note, never as failed.
+    unknown: bool = False
 
 
 def _system_prompt() -> str:
@@ -176,13 +186,36 @@ def _final_answer(
     answer = (content or "").strip()
     unresolved: list[_Failure] = []
     for failure in failures:
-        if failure.tool in succeeded or any(f.toolkit == failure.toolkit for f in unresolved):
+        if failure.unknown or failure.tool in succeeded:
+            continue
+        if any(f.toolkit == failure.toolkit for f in unresolved):
             continue
         if not _mentions(answer, failure.toolkit):
             unresolved.append(failure)
     if unresolved:
         answer = "\n".join(_failure_text(f, texts) for f in unresolved)
-    return answer or texts["no_answer"]
+    if not answer and not _unknown_notes(failures, succeeded, texts):
+        return texts["no_answer"]
+    return _with_unknown_notes(answer, failures, succeeded, texts)
+
+
+def _unknown_notes(failures: list[_Failure], succeeded: set[str], texts: dict) -> list[str]:
+    """One "check {App}" note per toolkit with a call whose outcome is unknown."""
+    notes: list[str] = []
+    for failure in failures:
+        if not failure.unknown or failure.tool in succeeded:
+            continue
+        note = texts["unknown"].format(toolkit=_toolkit_label(failure.toolkit))
+        if note not in notes:
+            notes.append(note)
+    return notes
+
+
+def _with_unknown_notes(
+    answer: str, failures: list[_Failure], succeeded: set[str], texts: dict
+) -> str:
+    notes = [n for n in _unknown_notes(failures, succeeded, texts) if n not in answer]
+    return "\n".join(part for part in (answer, *notes) if part)
 
 
 async def _offered_tools(
@@ -255,7 +288,9 @@ async def run_action_agent(
                 confirm_call.name, confirm_call.arguments, summary,
             )
             return AgentOutcome(
-                answer=f"{summary}\n{texts['confirm']}",
+                answer=_with_unknown_notes(
+                    f"{summary}\n{texts['confirm']}", failures, succeeded, texts
+                ),
                 pending_action=pending,
                 executed_tools=executed,
             )
@@ -271,7 +306,10 @@ async def run_action_agent(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
             ))
 
-    return AgentOutcome(answer=texts["step_limit"], executed_tools=executed)
+    return AgentOutcome(
+        answer=_with_unknown_notes(texts["step_limit"], failures, succeeded, texts),
+        executed_tools=executed,
+    )
 
 
 async def _run_tool(
@@ -300,6 +338,8 @@ async def _run_tool(
     not_connected = False
     try:
         result = await provider.execute(str(user_id), call.name, call.arguments)
+    except ActionOutcomeUnknown as exc:
+        result = ToolResult(ok=False, error=str(exc) or type(exc).__name__, unknown=True)
     except AccountNotConnectedError as exc:
         not_connected = True
         result = ToolResult(ok=False, error=str(exc))
@@ -312,5 +352,11 @@ async def _run_tool(
     if result.ok:
         succeeded.add(call.name)
         return serialize_tool_result(result.data)
-    failures.append(_Failure(tool=call.name, toolkit=toolkit, not_connected=not_connected))
+    failures.append(_Failure(
+        tool=call.name, toolkit=toolkit, not_connected=not_connected, unknown=result.unknown,
+    ))
+    if result.unknown:
+        return serialize_tool_result({
+            "error": result.error or "Timed out", "outcome": "unknown", "note": _UNKNOWN_NOTE,
+        })
     return serialize_tool_result({"error": result.error or "Tool failed"})

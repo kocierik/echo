@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.actions.availability import APP_NAMES
 from app.actions.composio_provider import get_action_provider
 from app.actions.pending import (
     PendingActionExpired,
@@ -16,6 +17,7 @@ from app.actions.pending import (
     cancel_pending_action,
     confirm_pending_action,
 )
+from app.actions.policy import toolkit_of
 from app.actions.provider import ActionProvider, ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
@@ -33,6 +35,13 @@ _MESSAGES = {
         "it": "Non è andata a buon fine: {error}",
     },
     "cancelled": {"en": "Cancelled.", "it": "Annullato."},
+    "unknown": {
+        "en": "I couldn't confirm whether it went through — check {app} before trying again.",
+        "it": (
+            "Non sono riuscito a verificare se è andata a buon fine: "
+            "controlla {app} prima di riprovare."
+        ),
+    },
 }
 
 
@@ -124,7 +133,9 @@ async def _record_outcome(
             "",
         )
     lang = detect_language(last_user) if last_user else "en"
-    text = _MESSAGES[status][lang].format(error=error or "")
+    toolkit = toolkit_of(action.tool) if action is not None and action.tool else ""
+    app = APP_NAMES.get(toolkit, toolkit.title() or "the app")
+    text = _MESSAGES[status][lang].format(error=error or "", app=app)
 
     if session is not None:
         messages = []
@@ -161,7 +172,10 @@ async def confirm_action(
         await db.commit()  # persist the "expired" status; get_db would roll back
         raise HTTPException(status_code=410, detail="Action expired") from exc
 
-    status = "executed" if result.ok else "failed"
+    if result.ok:
+        status = "executed"
+    else:
+        status = "unknown" if result.unknown else "failed"
     message = await _record_outcome(db, user_id, action_id, status, result.error)
     return {"status": status, "message": message}
 

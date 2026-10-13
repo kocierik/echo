@@ -489,3 +489,49 @@ async def test_create_event_without_attendees_runs_immediately():
 
     assert provider.executed == [("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})]
     assert outcome.pending_action is None and outcome.answer == "Added."
+
+
+async def test_timeout_during_execution_is_reported_as_unknown():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    db = FakeSession()
+    provider = _provider(
+        ["GOOGLECALENDAR_CREATE_EVENT"],
+        connected={"googlecalendar"},
+        results={"GOOGLECALENDAR_CREATE_EVENT": ActionOutcomeUnknown("timed out")},
+    )
+    llm = RecordingLLM([
+        _calls(("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})),
+        _text("Google Calendar did not answer in time."),
+    ])
+
+    outcome = await _run(db, "Add the dentist tomorrow at 10", provider, llm)
+
+    (log,) = db.of(ActionLog)
+    assert log.outcome == "unknown"
+    (tool_msg,) = _tool_messages(llm.call_log[1])
+    assert json.loads(tool_msg.content)["outcome"] == "unknown"
+    assert outcome.answer.startswith("Google Calendar did not answer in time.")
+    assert outcome.answer.endswith(
+        "I couldn't confirm whether it went through — check Google Calendar before trying again."
+    )
+    assert "nothing was done" not in outcome.answer
+
+
+async def test_unknown_outcome_note_in_italian_even_without_a_model_answer():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    db = FakeSession()
+    provider = _provider(
+        ["TODOIST_CREATE_TASK"],
+        connected={"todoist"},
+        results={"TODOIST_CREATE_TASK": ActionOutcomeUnknown("timed out")},
+    )
+    llm = RecordingLLM([_calls(("TODOIST_CREATE_TASK", {"content": "latte"})), _text("")])
+
+    outcome = await _run(db, "Crea un task per comprare il latte", provider, llm)
+
+    assert outcome.answer == (
+        "Non sono riuscito a verificare se è andata a buon fine: "
+        "controlla Todoist prima di riprovare."
+    )

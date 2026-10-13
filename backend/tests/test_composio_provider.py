@@ -237,3 +237,52 @@ async def test_tools_for_survives_a_failing_important_listing():
     tools = await ComposioActionProvider(client=client).tools_for("u1", ["gmail"])
     names = [t["function"]["name"] for t in tools]
     assert "GMAIL_SEND_EMAIL" in names and len(names) == 100
+
+
+async def test_execute_timeout_is_an_unknown_outcome(monkeypatch):
+    import time
+
+    from app.actions.provider import ActionOutcomeUnknown
+
+    class Slow(StubClient):
+        def _execute(self, slug, arguments, **kw):
+            time.sleep(0.3)
+            return {"successful": True, "data": {}}
+
+    monkeypatch.setattr(composio_provider, "SDK_TIMEOUT_SECONDS", 0.05)
+    with pytest.raises(ActionOutcomeUnknown):
+        await ComposioActionProvider(client=Slow(active=["gmail"])).execute(
+            "u1", "GMAIL_SEND_EMAIL", {}
+        )
+
+
+async def test_execute_sdk_timeout_error_is_unknown_but_other_errors_are_not():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    class APITimeoutError(Exception):
+        pass
+
+    timeout = StubClient(active=["gmail"], execute_error=APITimeoutError("read timeout"))
+    with pytest.raises(ActionOutcomeUnknown):
+        await ComposioActionProvider(client=timeout).execute("u1", "GMAIL_SEND_EMAIL", {})
+
+    refused = StubClient(active=["gmail"], execute_error=ConnectionError("refused"))
+    with pytest.raises(ActionProviderError) as exc:
+        await ComposioActionProvider(client=refused).execute("u1", "GMAIL_SEND_EMAIL", {})
+    assert not isinstance(exc.value, ActionOutcomeUnknown)
+
+
+async def test_lookup_timeout_is_a_plain_provider_error(monkeypatch):
+    import time
+
+    from app.actions.provider import ActionOutcomeUnknown
+
+    class SlowList(StubClient):
+        def _list(self, **kw):
+            time.sleep(0.3)
+            return _ns(items=[])
+
+    monkeypatch.setattr(composio_provider, "SDK_TIMEOUT_SECONDS", 0.05)
+    with pytest.raises(ActionProviderError) as exc:
+        await ComposioActionProvider(client=SlowList()).connected_toolkits("u1")
+    assert not isinstance(exc.value, ActionOutcomeUnknown)

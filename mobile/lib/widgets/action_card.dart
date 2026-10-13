@@ -27,6 +27,8 @@ final class ActionCard extends StatelessWidget {
         return 'Done';
       case 'failed':
         return 'Failed';
+      case 'unknown':
+        return 'Unknown — check the app';
       case 'cancelled':
         return 'Cancelled';
       case 'expired':
@@ -84,11 +86,12 @@ final class ActionCard extends StatelessWidget {
               label,
               key: Key('action-status-${action.id}'),
               style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: action.status == 'executed'
-                        ? palette.green
-                        : action.status == 'failed'
-                            ? palette.red
-                            : palette.text2,
+                    color: switch (action.status) {
+                      'executed' => palette.green,
+                      'failed' => palette.red,
+                      'unknown' => palette.amber,
+                      _ => palette.text2,
+                    },
                   ),
             ),
         ],

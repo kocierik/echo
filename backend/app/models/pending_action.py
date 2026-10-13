@@ -12,7 +12,7 @@ class PendingAction(UUIDPrimaryKey, Base):
     """A write action awaiting user confirmation.
 
     source: chat | voice
-    status: pending | executed | failed | cancelled | expired
+    status: pending | executed | failed | unknown | cancelled | expired
     """
 
     __tablename__ = "pending_actions"

@@ -552,6 +552,31 @@ void main() {
       expect(result.message, 'Sent');
     });
 
+    test('confirmPendingAction accepts an unknown outcome', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'status': 'unknown',
+            'message': 'Check Gmail before trying again.',
+          }));
+
+      final result = await service.confirmPendingAction('p1');
+
+      expect(result.status, 'unknown');
+      expect(result.unknown, isTrue);
+      expect(result.failed, isFalse);
+    });
+
+    test('confirmPendingAction rejects an unexpected status', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'status': 'maybe',
+            'message': '',
+          }));
+
+      await _expectApiException(
+        service.confirmPendingAction('p1'),
+        code: 'invalid_response',
+      );
+    });
+
     test('confirmPendingAction maps 409 and 410', () async {
       final conflict = _service(
         (request) => _jsonResponse(request, 409, {'detail': 'Already done'}),
