@@ -1,6 +1,6 @@
 import pytest
 
-from app.actions.policy import ToolTier, classify_tool, toolkit_of
+from app.actions.policy import ToolTier, classify_call, classify_tool, toolkit_of
 from app.actions.provider import AccountNotConnectedError, ToolResult
 from tests.fakes.action_provider import FakeActionProvider
 
@@ -54,3 +54,36 @@ async def test_fake_execute():
     with pytest.raises(AccountNotConnectedError) as exc:
         await fake.execute("u", "SLACK_SEND_MESSAGE", {})
     assert exc.value.toolkit == "slack"
+
+
+@pytest.mark.parametrize(
+    "slug,arguments,tier",
+    [
+        ("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"}, ToolTier.CREATE),
+        ("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Sync", "attendees": []}, ToolTier.CREATE),
+        (
+            "GOOGLECALENDAR_CREATE_EVENT",
+            {"summary": "Sync", "attendees": ["ada@x.it"]},
+            ToolTier.CONFIRM,
+        ),
+        ("GOOGLECALENDAR_CREATE_EVENT", {"send_updates": "all"}, ToolTier.CONFIRM),
+        ("TODOIST_CREATE_TASK", {"content": "Milk"}, ToolTier.CREATE),
+        ("TODOIST_CREATE_TASK", {"content": "Milk", "responsible_uid": "42"}, ToolTier.CONFIRM),
+        ("TODOIST_CREATE_TASK", {"content": "Milk", "assignee_id": ""}, ToolTier.CREATE),
+        ("GMAIL_CREATE_EMAIL_DRAFT", {"recipient_email": "ada@x.it"}, ToolTier.CONFIRM),
+        ("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it"}, ToolTier.CONFIRM),
+        ("GMAIL_CREATE_EMAIL_DRAFT", {"to_addresses": ["ada@x.it"]}, ToolTier.CONFIRM),
+        ("GMAIL_CREATE_EMAIL_DRAFT", {"extra_cc": ["b@x.it"]}, ToolTier.CONFIRM),
+        ("GMAIL_CREATE_EMAIL_DRAFT", {"bcc": "b@x.it"}, ToolTier.CONFIRM),
+        ("NOTION_CREATE_NOTION_PAGE", {"title": "Ideas", "guest_ids": ["u"]}, ToolTier.CONFIRM),
+        ("NOTION_CREATE_NOTION_PAGE", {"title": "Ideas", "invitees": "x"}, ToolTier.CONFIRM),
+        # A key that only contains the letters of a keyword is not a recipient
+        ("NOTION_CREATE_NOTION_PAGE", {"title": "Ideas", "account_id": "a"}, ToolTier.CREATE),
+        ("NOTION_CREATE_NOTION_PAGE", {"title": "Ideas", "topic": "a"}, ToolTier.CREATE),
+        # Non-create tiers are unchanged
+        ("GMAIL_FETCH_EMAILS", {"to": "ada@x.it"}, ToolTier.READ),
+        ("GMAIL_SEND_EMAIL", {}, ToolTier.CONFIRM),
+    ],
+)
+def test_classify_call_escalates_creates_that_notify_people(slug, arguments, tier):
+    assert classify_call(slug, arguments) == tier

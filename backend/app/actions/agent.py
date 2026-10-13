@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.audit import log_action, summarize_arguments
 from app.actions.pending import create_pending_action
-from app.actions.policy import ToolTier, classify_tool, toolkit_of
+from app.actions.policy import ToolTier, classify_call, toolkit_of
 from app.actions.provider import (
     AccountNotConnectedError,
     ActionProvider,
@@ -242,7 +242,8 @@ async def run_action_agent(
         confirm_call = next(
             (
                 call for call in response.tool_calls
-                if call.name in offered and classify_tool(call.name) == ToolTier.CONFIRM
+                if call.name in offered
+                and classify_call(call.name, call.arguments) == ToolTier.CONFIRM
             ),
             None,
         )
