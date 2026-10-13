@@ -178,6 +178,21 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
+  testWidgets('another 503 shows the error and Retry, not the setup text',
+      (tester) async {
+    api.error = const ApiException(
+      statusCode: 503,
+      code: 'unavailable',
+      message: 'Service Unavailable',
+      retryable: true,
+    );
+    await pumpScreen(tester);
+
+    expect(find.textContaining("aren't set up"), findsNothing);
+    expect(find.text('Service Unavailable'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+  });
+
   testWidgets('other errors show the message and Retry', (tester) async {
     api.error = const ApiException(
       statusCode: 500,

@@ -286,3 +286,18 @@ async def test_lookup_timeout_is_a_plain_provider_error(monkeypatch):
     with pytest.raises(ActionProviderError) as exc:
         await ComposioActionProvider(client=SlowList()).connected_toolkits("u1")
     assert not isinstance(exc.value, ActionOutcomeUnknown)
+
+
+async def test_client_is_created_without_tracking(monkeypatch):
+    import composio
+
+    created = {}
+
+    class FakeComposio:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+
+    monkeypatch.setattr(composio, "Composio", FakeComposio)
+    monkeypatch.setattr(composio_provider.settings, "composio_api_key", "key-1")
+    ComposioActionProvider().client  # noqa: B018
+    assert created == {"api_key": "key-1", "allow_tracking": False}

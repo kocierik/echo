@@ -110,7 +110,8 @@ class ComposioActionProvider:
                 raise ActionProviderError("Composio is not configured")
             from composio import Composio
 
-            self._client = Composio(api_key=settings.composio_api_key)
+            # No SDK telemetry: it would send call metadata and errors to Composio
+            self._client = Composio(api_key=settings.composio_api_key, allow_tracking=False)
         return self._client
 
     def _active_slugs(self, user_id: str, toolkit: str | None = None) -> list:
