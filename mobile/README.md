@@ -43,11 +43,14 @@ then requests Bluetooth, notification and microphone permissions and pairs the w
 
 - **Today:** wearable status, latest transcripts, open tasks, daily summary, pause/resume.
 - **Transcripts:** grouped by day, searchable; edit text and speaker, delete a conversation.
-- **Ask:** chat with your memory (text or voice), follow-ups, resumable history, feedback.
-- **Settings:** device, connection policy (Wi-Fi only), privacy, rules and integrations,
-  diagnostics, appearance, logout.
+- **Ask:** chat with your memory (text or voice), follow-ups, resumable history, feedback;
+  requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
+  conversation collects answers to "Echo, …" requests spoken to the wearable.
+- **Settings:** device, connection policy (Wi-Fi only), privacy, Automations (Integrations
+  through Composio and the Activity log), diagnostics, appearance, logout.
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
-  for disconnection, audio loss and repeated upload failures.
+  for disconnection, audio loss, repeated upload failures and new voice-request answers
+  (shown the next time the app wakes up).
 
 ## Architecture
 
