@@ -80,7 +80,7 @@ void main() {
   testWidgets('Confirm calls the API once, disables buttons, shows Done',
       (tester) async {
     final api = await pumpWithAction(tester);
-    final pending = Completer<String>();
+    final pending = Completer<ConfirmResult>();
     api.confirmHandler = (_) => pending.future;
 
     await tester.tap(find.byKey(const Key('action-confirm-act-1')));
@@ -103,13 +103,30 @@ void main() {
       isNull,
     );
 
-    pending.complete('Done.');
+    pending.complete(const ConfirmResult(status: 'executed', message: 'Done.'));
     await tester.pump();
     await tester.pump();
 
     expect(find.byKey(const Key('action-confirm-act-1')), findsNothing);
     expect(find.text('Done'), findsOneWidget);
     expect(find.text('Done.'), findsOneWidget);
+  });
+
+  testWidgets('an Italian failed result shows Failed, not Done',
+      (tester) async {
+    final api = await pumpWithAction(tester);
+    api.confirmHandler = (_) async => const ConfirmResult(
+          status: 'failed',
+          message: 'Non è andata a buon fine: nessuna rete',
+        );
+
+    await tester.tap(find.byKey(const Key('action-confirm-act-1')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Failed'), findsOneWidget);
+    expect(find.text('Done'), findsNothing);
+    expect(find.text('Non è andata a buon fine: nessuna rete'), findsOneWidget);
   });
 
   testWidgets('expired confirm shows the expiry message and no buttons',
@@ -207,12 +224,13 @@ final class _FakeChatApi implements ChatApi {
   final confirms = <String>[];
   final cancels = <String>[];
   List<ChatSessionSummary> sessions = const [];
-  Future<String> Function(String id)? confirmHandler;
+  Future<ConfirmResult> Function(String id)? confirmHandler;
 
   @override
-  Future<String> confirmPendingAction(String id) {
+  Future<ConfirmResult> confirmPendingAction(String id) {
     confirms.add(id);
-    return confirmHandler?.call(id) ?? Future.value('Done.');
+    return confirmHandler?.call(id) ??
+        Future.value(const ConfirmResult(status: 'executed', message: 'Done.'));
   }
 
   @override

@@ -67,21 +67,35 @@ void main() {
       expect(controller.state.busyActionIds, isEmpty);
     });
 
-    test('confirm with a failure message marks the card failed', () async {
+    test('a failed result marks the card failed regardless of language',
+        () async {
       await withPending();
-      api.confirmHandler = (_) async => "That didn't work: no network";
+      api.confirmHandler = (_) async => const ConfirmResult(
+            status: 'failed',
+            message: 'Non è andata a buon fine: nessuna rete',
+          );
       await controller.confirmAction('act-1');
 
       expect(card().status, 'failed');
       expect(
         controller.state.messages.last.text,
-        "That didn't work: no network",
+        'Non è andata a buon fine: nessuna rete',
       );
+    });
+
+    test('an executed result with an unusual message is still executed',
+        () async {
+      await withPending();
+      api.confirmHandler = (_) async =>
+          const ConfirmResult(status: 'executed', message: 'Fatto.');
+      await controller.confirmAction('act-1');
+
+      expect(card().status, 'executed');
     });
 
     test('a second confirm while in flight is ignored', () async {
       await withPending();
-      final pending = Completer<String>();
+      final pending = Completer<ConfirmResult>();
       api.confirmHandler = (_) => pending.future;
 
       final first = controller.confirmAction('act-1');
@@ -89,7 +103,7 @@ void main() {
       await controller.cancelAction('act-1');
 
       expect(controller.state.busyActionIds, {'act-1'});
-      pending.complete('Done.');
+      pending.complete(const ConfirmResult(status: 'executed', message: 'Done.'));
       await Future.wait([first, second]);
 
       expect(api.confirms, ['act-1']);
@@ -505,13 +519,14 @@ final class _FakeChatApi implements ChatApi {
 
   final confirms = <String>[];
   final cancels = <String>[];
-  Future<String> Function(String id)? confirmHandler;
+  Future<ConfirmResult> Function(String id)? confirmHandler;
   Future<void> Function(String id)? cancelHandler;
 
   @override
-  Future<String> confirmPendingAction(String id) {
+  Future<ConfirmResult> confirmPendingAction(String id) {
     confirms.add(id);
-    return confirmHandler?.call(id) ?? Future.value('Done.');
+    return confirmHandler?.call(id) ??
+        Future.value(const ConfirmResult(status: 'executed', message: 'Done.'));
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_message.dart';
 import 'package:echo_app/models/chat_session.dart';
 import 'package:echo_app/screens/chat_screen.dart';
@@ -282,7 +283,8 @@ final class _FakeChatApi implements ChatApi {
   }) async {}
 
   @override
-  Future<String> confirmPendingAction(String id) async => 'Done.';
+  Future<ConfirmResult> confirmPendingAction(String id) async =>
+      const ConfirmResult(status: 'executed', message: 'Done.');
 
   @override
   Future<void> cancelPendingAction(String id) async {}
