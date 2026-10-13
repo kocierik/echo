@@ -294,27 +294,37 @@ async def test_analysis_pipeline_can_disable_external_side_effects(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_analysis_pipeline_extracts_only_the_text_before_a_voice_request(monkeypatch):
-    text = "[You] Ok. Echo, segnami il dentista martedì alle dieci di mattina"
+@pytest.mark.parametrize(
+    "text",
+    [
+        # find_wake hits but it is a mention: Marco must still be extracted
+        "[You] ho comprato un Echo nuovo con Marco e domani lo proviamo insieme",
+        # a request to Echo: the extraction prompt tells the LLM to skip it
+        "[You] Ok. Echo, segnami il dentista martedì alle dieci di mattina",
+    ],
+)
+async def test_analysis_pipeline_extracts_from_the_full_text(monkeypatch, text):
     captured = {}
     events, _ = await _run_pipeline(monkeypatch, True, text=text, captured=captured)
 
-    assert captured["extract_text"] == "[You] Ok."
-    # Chunks keep the full spoken text
+    assert captured["extract_text"] == text
     assert captured["chunk_texts"] == [text]
     assert "extract" in events
 
 
 @pytest.mark.asyncio
-async def test_analysis_pipeline_skips_extraction_for_a_pure_voice_request(monkeypatch):
-    text = "[You] Echo, segnami il dentista martedì alle dieci di mattina"
-    captured = {}
-    events, result = await _run_pipeline(monkeypatch, True, text=text, captured=captured)
+async def test_extract_entities_prompt_treats_echo_requests_as_commands():
+    llm = MockLLMService()
+    await extract_entities(
+        llm, "Echo, segnami il dentista giovedì", uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    )
 
-    assert "extract" not in events
-    assert "extract_text" not in captured
-    assert result.extracted_entity_count == 0
-    assert captured["chunk_texts"] == [text]
+    system = llm.call_log[0][0].content
+    assert '"Echo"' in system
+    assert "Echo, segnami il dentista giovedì" in system
+    assert "Ehi Echo, riassumimi le mail" in system
+    assert "non estrarre entità" in system
+    assert "testo normale" in system
 
 
 @pytest.mark.asyncio

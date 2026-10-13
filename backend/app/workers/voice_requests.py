@@ -5,6 +5,10 @@ Every POLL_INTERVAL_S this loop takes the queued ids (oldest first): items whose
 is still being spoken or transcribed go back to the queue; ready ones are confirmed with
 the cheap LLM, answered by the action agent (or from memory when no app is connected)
 and appended, question and answer with ISO timestamps, to the user's voice session.
+
+If answering fails once the request is confirmed, the transaction is rolled back, the
+audit rows of tools that already ran are written again and the user gets a short
+localized "couldn't complete that" reply, so an action never happens silently.
 """
 
 import asyncio
@@ -27,9 +31,11 @@ from app.actions.voice import (
     strip_speaker_tag,
 )
 from app.core.database import async_session
+from app.models.action_log import ActionLog
 from app.models.segment import Segment
 from app.routers.query import no_results_message, rag_system_prompt
 from app.services.embedding_openai import get_embedding_service
+from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
 from app.services.llm_openai import get_llm_analysis_service, get_llm_query_service
 from app.services.memory_retrieval import retrieve_memory_context
@@ -47,9 +53,64 @@ DONE_TTL_S = 7 * 24 * 3600
 HISTORY_MESSAGES = 10
 
 
+FAILURE_TEXTS = {
+    "en": {
+        "failed": "Sorry, I couldn't complete that request. Please try again.",
+        "failed_partial": (
+            "Sorry, I couldn't complete that request. Some steps may already have run: "
+            "check the action log in the app."
+        ),
+    },
+    "it": {
+        "failed": "Mi dispiace, non sono riuscito a completare la richiesta. Riprova.",
+        "failed_partial": (
+            "Mi dispiace, non sono riuscito a completare la richiesta. Alcuni passaggi "
+            "potrebbero essere già stati eseguiti: controlla il registro azioni nell'app."
+        ),
+    },
+}
+
+# ActionLog columns copied back after a rollback (the id is regenerated).
+_AUDIT_COLUMNS = (
+    "user_id", "source", "toolkit", "tool", "arguments_summary", "outcome", "error",
+    "created_at",
+)
+
+
 @dataclass
 class _Claim:
     claimed: bool = False
+    # Set once the request is confirmed: a failure from then on is reported to the user.
+    user_id: uuid.UUID | None = None
+    command: str | None = None
+
+
+class _AuditRecorder:
+    """Session wrapper that remembers the audit rows added through it.
+
+    The agent adds an ActionLog row for every tool it executes and leaves the commit to
+    the caller; if answering fails afterwards, the rollback would erase the record of
+    actions that really happened. The recorder keeps them so they can be written again.
+    """
+
+    def __init__(self, db: AsyncSession):
+        self._db = db
+        self.audit_rows: list[ActionLog] = []
+
+    def add(self, obj, *args, **kwargs):
+        if isinstance(obj, ActionLog):
+            self.audit_rows.append(obj)
+        return self._db.add(obj, *args, **kwargs)
+
+    def snapshot_audit(self) -> list[dict]:
+        """Column values of the recorded rows (read before a rollback discards them)."""
+        return [
+            {column: getattr(row, column, None) for column in _AUDIT_COLUMNS}
+            for row in self.audit_rows
+        ]
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
 
 
 def _utcnow() -> datetime:
@@ -170,6 +231,8 @@ async def _process(
     if not await is_assistant_request(get_llm_analysis_service(), heard):
         logger.info(f"[Voice] Segment {segment_id}: not a request to Echo")
         return True
+    claim.user_id = segment.user_id
+    claim.command = command
 
     voice_session = await get_or_create_voice_session(db, segment.user_id)
     history = [
@@ -179,8 +242,14 @@ async def _process(
     ]
     asked_at = _utcnow().isoformat()
     answer, extra = await _answer(db, segment.user_id, command, history, voice_session.id)
-    answered_at = _utcnow()
+    _append_turn(voice_session, command, asked_at, answer, extra)
+    await db.commit()
+    logger.info(f"[Voice] Answered request from segment {segment_id}")
+    return True
 
+
+def _append_turn(voice_session, command: str, asked_at: str, answer: str, extra: dict):
+    answered_at = _utcnow()
     # Reassign (not mutate) so SQLAlchemy detects the JSONB change
     voice_session.messages = [
         *(voice_session.messages or []),
@@ -193,9 +262,19 @@ async def _process(
         },
     ]
     voice_session.updated_at = answered_at
+
+
+async def _report_failure(db: AsyncSession, claim: _Claim, audit: list[dict]) -> None:
+    """After a rollback: restore executed tools' audit rows and tell the user it failed."""
+    for values in audit:
+        if values.get("created_at") is None:
+            values = {k: v for k, v in values.items() if k != "created_at"}  # use the default
+        db.add(ActionLog(**values))
+    texts = FAILURE_TEXTS[detect_language(claim.command)]
+    reply = texts["failed_partial"] if audit else texts["failed"]
+    voice_session = await get_or_create_voice_session(db, claim.user_id)
+    _append_turn(voice_session, claim.command, _utcnow().isoformat(), reply, {})
     await db.commit()
-    logger.info(f"[Voice] Answered request from segment {segment_id}")
-    return True
 
 
 async def handle_voice_item(redis_client, raw) -> bool:
@@ -211,7 +290,8 @@ async def handle_voice_item(redis_client, raw) -> bool:
         return True
 
     claim = _Claim()
-    async with async_session() as db:
+    async with async_session() as session:
+        db = _AuditRecorder(session)
         try:
             return await _process(db, redis_client, segment_id, claim)
         except asyncio.CancelledError:
@@ -219,9 +299,19 @@ async def handle_voice_item(redis_client, raw) -> bool:
                 await redis_client.lpush(VOICE_QUEUE, raw)
             raise
         except Exception:
-            logger.exception(f"[Voice] Request from segment {segment_id} failed; dropped")
+            logger.exception(f"[Voice] Request from segment {segment_id} failed")
+            audit = db.snapshot_audit()
             with suppress(Exception):
-                await db.rollback()
+                await session.rollback()
+            if claim.command is not None:
+                try:
+                    await _report_failure(session, claim, audit)
+                except Exception:
+                    logger.exception(
+                        f"[Voice] Could not record the failure of segment {segment_id}"
+                    )
+                    with suppress(Exception):
+                        await session.rollback()
             return True
 
 
