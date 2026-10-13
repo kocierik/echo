@@ -17,6 +17,7 @@ from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
 from app.routers import (
+    actions,
     admin,
     chat_sessions,
     conversations,
@@ -106,6 +107,7 @@ app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(integrations.router, prefix=settings.api_prefix)
 app.include_router(oauth.router, prefix=settings.api_prefix)
 app.include_router(rules.router, prefix=settings.api_prefix)
+app.include_router(actions.router, prefix=settings.api_prefix)
 
 
 def get_redis(request: Request) -> aioredis.Redis:
