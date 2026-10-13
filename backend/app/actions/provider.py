@@ -1,0 +1,47 @@
+"""Provider-agnostic interface for third-party actions (Composio implements it)."""
+
+from dataclasses import dataclass
+from typing import Protocol
+
+INITIAL_TOOLKITS = ("gmail", "googlecalendar", "slack", "telegram", "todoist", "notion")
+
+
+@dataclass(frozen=True)
+class Toolkit:
+    slug: str
+    name: str
+    description: str
+    connected: bool
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    ok: bool
+    data: dict | list | str | None = None
+    error: str | None = None
+
+
+class ActionProviderError(Exception):
+    pass
+
+
+class AccountNotConnectedError(ActionProviderError):
+    def __init__(self, toolkit: str):
+        super().__init__(f"Account not connected for toolkit: {toolkit}")
+        self.toolkit = toolkit
+
+
+class ActionProvider(Protocol):
+    async def list_toolkits(self, user_id: str, query: str | None = None) -> list[Toolkit]: ...
+
+    async def connect_link(
+        self, user_id: str, toolkit: str, callback_url: str | None
+    ) -> str: ...
+
+    async def disconnect(self, user_id: str, toolkit: str) -> None: ...
+
+    async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
+        """OpenAI tool schemas; function.name is the tool slug."""
+        ...
+
+    async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult: ...
