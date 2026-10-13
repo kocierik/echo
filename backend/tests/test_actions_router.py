@@ -125,7 +125,7 @@ async def test_confirm_appends_message_and_updates_status():
         },
     ]
     p = FakeActionProvider(connected={"gmail"})
-    out = await r.confirm_action(a.id, user_id=USER, db=db, provider=p)
+    out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
     assert out == {"status": "executed", "message": "Fatto."}
     assert s.messages[1]["pending_action"]["status"] == "executed"
     last = s.messages[-1]
@@ -140,7 +140,7 @@ async def test_confirm_failed_english_message():
     p = FakeActionProvider(
         connected={"gmail"}, results={TOOL: ToolResult(ok=False, error="boom")}
     )
-    out = await r.confirm_action(a.id, user_id=USER, db=db, provider=p)
+    out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
     assert out == {"status": "failed", "message": "That didn't work: boom"}
 
 
@@ -148,7 +148,8 @@ async def test_confirm_without_session():
     db = FakeDb()
     a = await _pending(db)
     out = await r.confirm_action(
-        a.id, user_id=USER, db=db, provider=FakeActionProvider(connected={"gmail"})
+        a.id, user_id=USER, db=db, redis_client=None,
+        provider=FakeActionProvider(connected={"gmail"}),
     )
     assert out["status"] == "executed" and out["message"] == "Done."
 
@@ -156,19 +157,25 @@ async def test_confirm_without_session():
 async def test_confirm_error_mapping_and_expired_commits():
     db = FakeDb()
     with pytest.raises(HTTPException) as e:
-        await r.confirm_action(uuid.uuid4(), user_id=USER, db=db, provider=FakeActionProvider())
+        await r.confirm_action(
+            uuid.uuid4(), user_id=USER, db=db, redis_client=None, provider=FakeActionProvider()
+        )
     assert e.value.status_code == 404
 
     a = await _pending(db)
     a.status = "executed"
     with pytest.raises(HTTPException) as e:
-        await r.confirm_action(a.id, user_id=USER, db=db, provider=FakeActionProvider())
+        await r.confirm_action(
+            a.id, user_id=USER, db=db, redis_client=None, provider=FakeActionProvider()
+        )
     assert e.value.status_code == 409
 
     a.status = "pending"
     a.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
     with pytest.raises(HTTPException) as e:
-        await r.confirm_action(a.id, user_id=USER, db=db, provider=FakeActionProvider())
+        await r.confirm_action(
+            a.id, user_id=USER, db=db, redis_client=None, provider=FakeActionProvider()
+        )
     assert e.value.status_code == 410
     assert db.commits == 1 and a.status == "expired"
 
@@ -177,16 +184,16 @@ async def test_cancel():
     db = FakeDb()
     s = _session([{"role": "user", "content": "send an email"}])
     a = await _pending(db, s)
-    out = await r.cancel_action(a.id, user_id=USER, db=db)
+    out = await r.cancel_action(a.id, user_id=USER, db=db, redis_client=None)
     assert out == {"status": "cancelled"}
     assert s.messages[-1]["content"] == "Cancelled."
 
     with pytest.raises(HTTPException) as e:
-        await r.cancel_action(a.id, user_id=USER, db=db)
+        await r.cancel_action(a.id, user_id=USER, db=db, redis_client=None)
     assert e.value.status_code == 409
     db.action = None
     with pytest.raises(HTTPException) as e:
-        await r.cancel_action(uuid.uuid4(), user_id=USER, db=db)
+        await r.cancel_action(uuid.uuid4(), user_id=USER, db=db, redis_client=None)
     assert e.value.status_code == 404
 
 
@@ -194,7 +201,7 @@ async def test_session_of_other_user_is_untouched():
     db = FakeDb()
     s = _session([{"role": "user", "content": "x"}], user=uuid.uuid4())
     a = await _pending(db, s)
-    await r.cancel_action(a.id, user_id=USER, db=db)
+    await r.cancel_action(a.id, user_id=USER, db=db, redis_client=None)
     assert len(s.messages) == 1
 
 
@@ -255,7 +262,7 @@ async def test_confirm_with_unknown_outcome_tells_the_user_to_check():
     p = FakeActionProvider(
         connected={"gmail"}, results={TOOL: ActionOutcomeUnknown("Composio request timed out")}
     )
-    out = await r.confirm_action(a.id, user_id=USER, db=db, provider=p)
+    out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
     assert out == {
         "status": "unknown",
         "message": (
@@ -265,4 +272,92 @@ async def test_confirm_with_unknown_outcome_tells_the_user_to_check():
     }
     assert a.status == "unknown"
     assert s.messages[1]["pending_action"]["status"] == "unknown"
+    assert s.messages[-1]["content"] == out["message"]
+
+
+# --- R28 ---------------------------------------------------------------------------------
+
+
+class _Redis:
+    def __init__(self):
+        self.store = {}
+        self.ttl = {}
+
+    async def get(self, key):
+        return self.store.get(key)
+
+    async def set(self, key, value, ex=None):
+        self.store[key] = value
+        self.ttl[key] = ex
+
+
+async def test_outcome_message_is_flagged_and_added_to_the_redis_context():
+    import json
+
+    db = FakeDb()
+    s = _session([{"role": "user", "content": "send an email to Ada"}])
+    a = await _pending(db, s)
+    redis = _Redis()
+    history = [{"role": "user", "content": f"q{i}"} for i in range(20)]
+    redis.store[f"session:{s.id}"] = json.dumps(history).encode()
+
+    await r.confirm_action(
+        a.id, user_id=USER, db=db, redis_client=redis,
+        provider=FakeActionProvider(connected={"gmail"}),
+    )
+
+    assert s.messages[-1]["outcome"] is True
+    stored = json.loads(redis.store[f"session:{s.id}"])
+    assert len(stored) == 20  # trimmed like query.py
+    assert stored[-1] == {"role": "assistant", "content": "Done.", "actions": True}
+    assert stored[0] == {"role": "user", "content": "q1"}
+    assert redis.ttl[f"session:{s.id}"] == 30 * 60
+
+
+async def test_outcome_without_redis_context_or_for_voice_sessions_is_not_cached():
+    db = FakeDb()
+    redis = _Redis()
+    chat = _session([{"role": "user", "content": "send an email"}])
+    a = await _pending(db, chat)
+    await r.cancel_action(a.id, user_id=USER, db=db, redis_client=redis)
+    assert redis.store == {}  # context expired: nothing to append to
+    assert chat.messages[-1]["outcome"] is True
+
+    db = FakeDb()
+    voice = _session([{"role": "user", "content": "send an email"}], kind="voice")
+    a = await _pending(db, voice)
+    redis.store[f"session:{voice.id}"] = b"[]"
+    await r.cancel_action(a.id, user_id=USER, db=db, redis_client=redis)
+    assert redis.store[f"session:{voice.id}"] == b"[]"
+
+
+async def test_voice_updates_skip_confirm_outcome_messages():
+    db = FakeDb()
+    t0 = datetime(2026, 1, 1, 10, 0, tzinfo=timezone.utc)
+    s = _session(
+        [
+            {"role": "assistant", "content": "Confirm?", "timestamp": t0.isoformat()},
+            {
+                "role": "assistant",
+                "content": "Done.",
+                "timestamp": (t0 + timedelta(minutes=1)).isoformat(),
+                "outcome": True,
+            },
+        ],
+        kind="voice",
+    )
+    db.rows = [s]
+    out = await r.voice_updates(since=None, user_id=USER, db=db)
+    assert [m["content"] for m in out["messages"]] == ["Confirm?"]
+
+
+async def test_provider_error_text_is_capped_at_200_chars():
+    db = FakeDb()
+    s = _session([{"role": "user", "content": "please send an email to Ada"}])
+    a = await _pending(db, s)
+    p = FakeActionProvider(
+        connected={"gmail"}, results={TOOL: ToolResult(ok=False, error="x" * 1000)}
+    )
+    out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
+    assert out["message"] == "That didn't work: " + "x" * 200
     assert s.messages[-1]["content"] == out["message"]

@@ -14,6 +14,9 @@ typedef UrlLauncher = Future<bool> Function(Uri uri);
 Future<bool> _defaultLauncher(Uri uri) =>
     launchUrl(uri, mode: LaunchMode.externalApplication);
 
+/// Detail of the backend's 503 when COMPOSIO_API_KEY is missing.
+const notConfiguredDetail = 'Composio is not configured';
+
 class IntegrationsScreen extends StatefulWidget {
   const IntegrationsScreen({this.api, this.launcher, super.key});
 
@@ -83,7 +86,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
       if (!mounted || id != _requestId) return;
       setState(() {
         _loading = false;
-        _unavailable = error.code == 'unavailable';
+        // Only the server's "no API key" 503 is a setup state; other 503s
+        // (e.g. a proxy) are ordinary errors with Retry.
+        _unavailable = error.code == 'unavailable' &&
+            error.message == notConfiguredDetail;
         _error = _unavailable ? null : error.message;
       });
     } catch (_) {

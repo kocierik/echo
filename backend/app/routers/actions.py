@@ -1,9 +1,11 @@
 """Actions API: Composio toolkits, confirmations, audit log and voice updates."""
 
+import json
+import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,9 +26,15 @@ from app.core.database import get_db
 from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
+from app.routers.query import _save_session_history
 from app.services.language import detect_language
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/actions", tags=["actions"])
+
+# Raw provider error text shown in chat and confirm responses.
+_ERROR_MAX = 200
 
 _MESSAGES = {
     "executed": {"en": "Done.", "it": "Fatto."},
@@ -67,6 +75,10 @@ def _get_provider() -> ActionProvider:
         return get_action_provider()
     except ActionProviderError as exc:
         raise HTTPException(status_code=503, detail="Composio is not configured") from exc
+
+
+def _get_redis(request: Request):
+    return request.app.state.redis
 
 
 def _provider_failure(exc: ActionProviderError) -> HTTPException:
@@ -115,10 +127,34 @@ async def disconnect_toolkit(
     return Response(status_code=204)
 
 
+async def _append_to_context(redis_client, session_id: uuid.UUID, text: str) -> None:
+    """Add the outcome to the session's Redis context (if still alive) for the next turn."""
+    if redis_client is None:
+        return
+    try:
+        raw = await redis_client.get(f"session:{session_id}")
+        if raw is None:
+            return
+        history = json.loads(raw)
+        history.append({"role": "assistant", "content": text, "actions": True})
+        await _save_session_history(redis_client, str(session_id), history)
+    except Exception:
+        logger.warning("Could not add the action outcome to the chat context", exc_info=True)
+
+
 async def _record_outcome(
-    db: AsyncSession, user_id: uuid.UUID, action_id: uuid.UUID, status: str, error: str | None
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    action_id: uuid.UUID,
+    status: str,
+    error: str | None,
+    redis_client=None,
 ) -> str:
-    """Append the localized outcome message to the action's chat session."""
+    """Append the localized outcome message to the action's chat session.
+
+    The message carries "outcome": True (so /voice-updates does not notify it) and, for
+    a chat session whose Redis context is still alive, is added to that context too.
+    """
     action = await db.get(PendingAction, action_id)
     session = None
     if action is not None and action.session_id is not None:
@@ -135,7 +171,7 @@ async def _record_outcome(
     lang = detect_language(last_user) if last_user else "en"
     toolkit = toolkit_of(action.tool) if action is not None and action.tool else ""
     app = APP_NAMES.get(toolkit, toolkit.title() or "the app")
-    text = _MESSAGES[status][lang].format(error=error or "", app=app)
+    text = _MESSAGES[status][lang].format(error=(error or "")[:_ERROR_MAX], app=app)
 
     if session is not None:
         messages = []
@@ -149,9 +185,12 @@ async def _record_outcome(
                 "role": "assistant",
                 "content": text,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "outcome": True,
             }
         )
         session.messages = messages
+        if session.kind == "chat":
+            await _append_to_context(redis_client, session.id, text)
     return text
 
 
@@ -160,6 +199,7 @@ async def confirm_action(
     action_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
+    redis_client=Depends(_get_redis),
     provider: ActionProvider = Depends(_get_provider),
 ):
     try:
@@ -176,7 +216,9 @@ async def confirm_action(
         status = "executed"
     else:
         status = "unknown" if result.unknown else "failed"
-    message = await _record_outcome(db, user_id, action_id, status, result.error)
+    message = await _record_outcome(
+        db, user_id, action_id, status, result.error, redis_client
+    )
     return {"status": status, "message": message}
 
 
@@ -185,6 +227,7 @@ async def cancel_action(
     action_id: uuid.UUID,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
+    redis_client=Depends(_get_redis),
 ):
     try:
         await cancel_pending_action(db, user_id, action_id)
@@ -192,7 +235,7 @@ async def cancel_action(
         raise HTTPException(status_code=404, detail="Pending action not found") from exc
     except PendingActionResolved as exc:
         raise HTTPException(status_code=409, detail="Action already resolved") from exc
-    await _record_outcome(db, user_id, action_id, "cancelled", None)
+    await _record_outcome(db, user_id, action_id, "cancelled", None, redis_client)
     return {"status": "cancelled"}
 
 
@@ -252,7 +295,8 @@ async def voice_updates(
     messages = []
     if session is not None:
         for m in session.messages:
-            if m.get("role") != "assistant":
+            # Confirm/cancel outcomes answer a tap in the app: no notification
+            if m.get("role") != "assistant" or m.get("outcome"):
                 continue
             ts = _parse_ts(m.get("timestamp"))
             if ts is None or (since is not None and ts <= since):
