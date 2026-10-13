@@ -1,0 +1,304 @@
+"""Tool-calling agent: reads and acts on the user's connected tools, with confirmations.
+
+READ and CREATE tools run immediately (each audited); the first CONFIRM-tier call of a
+model turn becomes a pending action the user confirms in the app, and the loop stops
+without executing anything else from that turn.
+"""
+
+import json
+import logging
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.actions.audit import log_action, summarize_arguments
+from app.actions.pending import create_pending_action
+from app.actions.policy import ToolTier, classify_tool, toolkit_of
+from app.actions.provider import (
+    AccountNotConnectedError,
+    ActionProvider,
+    ActionProviderError,
+    ToolResult,
+)
+from app.core.config import settings
+from app.core.timezone import user_zone
+from app.models.pending_action import PendingAction
+from app.services.language import detect_language
+from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
+from app.services.memory_retrieval import retrieve_memory_context
+
+logger = logging.getLogger(__name__)
+
+MAX_TOOL_RESULT_CHARS = 12_000
+TRUNCATION_SUFFIX = "[truncated]"
+
+SEARCH_MEMORY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_memory",
+        "description": (
+            "Search Echo's memory of the user's recorded conversations "
+            "(what was said, by whom, when). Use it for questions about the user's past."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "What to look for in memory."},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+TEXTS = {
+    "en": {
+        "confirm": "Confirm in the app to proceed.",
+        "not_connected": "{toolkit} isn't connected. Connect it in the app and try again.",
+        "provider_error": (
+            "I couldn't reach {toolkit}, so nothing was done. Please try again later."
+        ),
+        "unreachable": "I couldn't reach your connected apps right now. Please try again later.",
+        "step_limit": (
+            "I couldn't finish this request in a reasonable number of steps. "
+            "Please try a more specific request."
+        ),
+        "no_answer": "I couldn't produce an answer. Please try again.",
+    },
+    "it": {
+        "confirm": "Conferma nell'app per procedere.",
+        "not_connected": "{toolkit} non è collegato. Collegalo nell'app e riprova.",
+        "provider_error": (
+            "Non sono riuscito a raggiungere {toolkit}, quindi non è stato fatto nulla. "
+            "Riprova più tardi."
+        ),
+        "unreachable": (
+            "Non riesco a raggiungere le app collegate in questo momento. Riprova più tardi."
+        ),
+        "step_limit": (
+            "Non sono riuscito a completare la richiesta in un numero ragionevole di passaggi. "
+            "Prova con una richiesta più specifica."
+        ),
+        "no_answer": "Non sono riuscito a produrre una risposta. Riprova.",
+    },
+}
+
+TOOLKIT_NAMES = {
+    "gmail": "Gmail",
+    "googlecalendar": "Google Calendar",
+    "slack": "Slack",
+    "telegram": "Telegram",
+    "todoist": "Todoist",
+    "notion": "Notion",
+}
+
+_NOTHING_FOUND = "Nothing found in memory for this query."
+
+_SYSTEM_PROMPT = """You are Echo, the user's personal assistant. You can search the user's \
+memory of recorded conversations (search_memory) and use the tools of their connected apps.
+
+Now: {now} (timezone {timezone}). Today's date is {today}.
+
+Rules:
+- Answer in the same language as the user's request.
+- Be concise. When summarizing emails, messages or events, keep only what matters.
+- Never say an action was done unless its tool result confirms it. If a tool returns an \
+error, say what failed and name the app.
+- For anything that sends something to other people, modifies or deletes, just call the \
+tool: Echo asks the user to confirm in the app before it runs. Do not ask for confirmation \
+in the text yourself.
+- Calendar: the default event duration is 1 hour. Use the user's timezone ({timezone}) for \
+all times. When the user gives a new time for an event, keep its day and duration unless \
+told otherwise. When no event id is known, find the event by title and day by listing \
+events first.
+"""
+
+
+@dataclass
+class AgentOutcome:
+    answer: str
+    pending_action: PendingAction | None = None
+    executed_tools: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _Failure:
+    toolkit: str
+    not_connected: bool
+
+
+def _system_prompt() -> str:
+    now = datetime.now(user_zone())
+    return _SYSTEM_PROMPT.format(
+        now=now.strftime("%A %Y-%m-%d %H:%M"),
+        today=now.date().isoformat(),
+        timezone=settings.user_timezone,
+    )
+
+
+def _tool_name(schema: dict) -> str:
+    return schema.get("function", {}).get("name", "")
+
+
+def serialize_tool_result(value) -> str:
+    """JSON for the model, truncated to MAX_TOOL_RESULT_CHARS (suffix included)."""
+    text = json.dumps(value, default=str, ensure_ascii=False)
+    if len(text) > MAX_TOOL_RESULT_CHARS:
+        text = text[: MAX_TOOL_RESULT_CHARS - len(TRUNCATION_SUFFIX)] + TRUNCATION_SUFFIX
+    return text
+
+
+def _toolkit_label(toolkit: str) -> str:
+    return TOOLKIT_NAMES.get(toolkit, toolkit.title())
+
+
+def _failure_text(failure: _Failure, texts: dict) -> str:
+    key = "not_connected" if failure.not_connected else "provider_error"
+    return texts[key].format(toolkit=_toolkit_label(failure.toolkit))
+
+
+def _mentions(answer: str, toolkit: str) -> bool:
+    lowered = answer.lower()
+    return toolkit in lowered or _toolkit_label(toolkit).lower() in lowered
+
+
+def _final_answer(
+    content: str, failures: list[_Failure], succeeded: set[str], texts: dict
+) -> str:
+    """The model's answer, made explicit about toolkits whose calls only failed."""
+    answer = (content or "").strip()
+    unresolved = []
+    for failure in failures:
+        if failure.toolkit in succeeded or any(f.toolkit == failure.toolkit for f in unresolved):
+            continue
+        if not _mentions(answer, failure.toolkit):
+            unresolved.append(failure)
+    if unresolved:
+        notices = "\n".join(_failure_text(f, texts) for f in unresolved)
+        # Nothing external worked: drop the model's text so it cannot claim success.
+        answer = notices if not succeeded else f"{answer}\n{notices}".strip()
+    return answer or texts["no_answer"]
+
+
+async def _offered_tools(provider: ActionProvider, user_id: uuid.UUID) -> list[dict]:
+    toolkits = await provider.list_toolkits(str(user_id))
+    connected = [t.slug for t in toolkits if t.connected]
+    if not connected:
+        return []
+    return await provider.tools_for(str(user_id), connected)
+
+
+async def run_action_agent(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    request: str,
+    history: list[dict],
+    *,
+    session_id: uuid.UUID | None,
+    source: str,
+    provider: ActionProvider,
+    llm: LLMService,
+    max_steps: int = 6,
+) -> AgentOutcome:
+    """Run the tool-calling loop for one request. The caller commits the session."""
+    texts = TEXTS[detect_language(request)]
+
+    try:
+        external_tools = await _offered_tools(provider, user_id)
+    except ActionProviderError:
+        logger.warning("Action provider unreachable while listing tools", exc_info=True)
+        return AgentOutcome(answer=texts["unreachable"])
+    offered = {_tool_name(schema) for schema in external_tools}
+    tools = [SEARCH_MEMORY_TOOL, *external_tools]
+
+    messages = [LLMMessage(role="system", content=_system_prompt())]
+    for item in history:
+        if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
+            messages.append(LLMMessage(role=item["role"], content=item["content"]))
+    messages.append(LLMMessage(role="user", content=request))
+
+    executed: list[str] = []
+    failures: list[_Failure] = []
+    succeeded: set[str] = set()
+
+    for _ in range(max_steps):
+        response = await llm.complete_with_tools(list(messages), tools)
+        if not response.tool_calls:
+            answer = _final_answer(response.content, failures, succeeded, texts)
+            return AgentOutcome(answer=answer, executed_tools=executed)
+
+        confirm_call = next(
+            (
+                call for call in response.tool_calls
+                if call.name in offered and classify_tool(call.name) == ToolTier.CONFIRM
+            ),
+            None,
+        )
+        if confirm_call is not None:
+            # Only the first confirm-tier call is kept; nothing else from this turn runs.
+            summary = f"{confirm_call.name}: {summarize_arguments(confirm_call.arguments)}"
+            pending = await create_pending_action(
+                db, user_id, session_id, source,
+                confirm_call.name, confirm_call.arguments, summary,
+            )
+            return AgentOutcome(
+                answer=f"{summary}\n{texts['confirm']}",
+                pending_action=pending,
+                executed_tools=executed,
+            )
+
+        messages.append(LLMMessage(
+            role="assistant", content=response.content or "", tool_calls=response.tool_calls,
+        ))
+        for call in response.tool_calls:
+            content = await _run_tool(
+                db, user_id, source, provider, call, offered, executed, failures, succeeded,
+            )
+            messages.append(LLMMessage(
+                role="tool", content=content, tool_call_id=call.id, name=call.name,
+            ))
+
+    return AgentOutcome(answer=texts["step_limit"], executed_tools=executed)
+
+
+async def _run_tool(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    source: str,
+    provider: ActionProvider,
+    call: LLMToolCall,
+    offered: set[str],
+    executed: list[str],
+    failures: list[_Failure],
+    succeeded: set[str],
+) -> str:
+    """Run one READ/CREATE call (or search_memory) and return the tool message content."""
+    if call.name == "search_memory":
+        query = str(call.arguments.get("query") or "").strip()
+        if not query:
+            return serialize_tool_result({"error": "query is required"})
+        memory = await retrieve_memory_context(db, user_id, query)
+        return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
+
+    if call.name not in offered:
+        return serialize_tool_result({"error": f"Unknown tool: {call.name}"})
+
+    toolkit = toolkit_of(call.name)
+    not_connected = False
+    try:
+        result = await provider.execute(str(user_id), call.name, call.arguments)
+    except AccountNotConnectedError as exc:
+        not_connected = True
+        result = ToolResult(ok=False, error=str(exc))
+    except ActionProviderError as exc:
+        result = ToolResult(ok=False, error=str(exc) or type(exc).__name__)
+
+    executed.append(call.name)
+    await log_action(db, user_id, source, call.name, call.arguments, result)
+
+    if result.ok:
+        succeeded.add(toolkit)
+        return serialize_tool_result(result.data)
+    failures.append(_Failure(toolkit=toolkit, not_connected=not_connected))
+    return serialize_tool_result({"error": result.error or "Tool failed"})
