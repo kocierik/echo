@@ -159,7 +159,7 @@ async def test_confirm_tool_creates_pending_action_and_is_not_executed():
     pending = outcome.pending_action
     assert pending is not None
     assert pending.tool == "GMAIL_SEND_EMAIL" and pending.arguments == args
-    assert pending.summary == "GMAIL_SEND_EMAIL: to=ada@x.it, subject=Hi, body=(5 chars)"
+    assert pending.summary == "Send email to ada@x.it: Hi\nhello"
     assert pending.session_id == SESSION and pending.source == "chat"
     assert pending.status == "pending" and pending.user_id == USER
     assert outcome.answer == f"{pending.summary}\nConfirm in the app to proceed."
