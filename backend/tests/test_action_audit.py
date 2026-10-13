@@ -1,4 +1,4 @@
-from app.actions.audit import summarize_arguments
+from app.actions.audit import pending_summary, summarize_arguments
 
 
 def test_argument_summary_hides_bodies():
@@ -13,3 +13,62 @@ def test_summary_truncates_values_and_total():
     assert len(s) < 100
     big = {f"k{i}": "v" * 80 for i in range(20)}
     assert len(summarize_arguments(big)) <= 300
+
+
+def test_argument_summary_redacts_body_like_keys_by_substring():
+    s = summarize_arguments({
+        "recipient_email": "ada@x.it",
+        "message_body": "secret one",
+        "markdown_text": "secret two",
+        "html_content": "secret three",
+        "text": "secret four",
+        "Message": "secret five",
+    })
+    assert "ada@x.it" in s
+    assert "secret" not in s
+    assert "message_body=(10 chars)" in s
+    assert "markdown_text=(10 chars)" in s
+
+
+def test_pending_summary_send_email_shows_recipient_subject_and_body():
+    s = pending_summary(
+        "GMAIL_SEND_EMAIL",
+        {"recipient_email": "ada@x.it", "subject": "Budget", "body": "Hi Ada, see you at 5."},
+    )
+    assert s == "Send email to ada@x.it: Budget\nHi Ada, see you at 5."
+
+
+def test_pending_summary_truncates_the_body_preview():
+    s = pending_summary("SLACK_SEND_MESSAGE", {"channel": "#team", "markdown_text": "x" * 500})
+    first, preview = s.split("\n")
+    assert first == "Send Slack message to #team"
+    assert preview == "x" * 200 + "…"
+
+
+def test_pending_summary_known_verbs_and_targets():
+    assert pending_summary(
+        "GMAIL_REPLY_TO_THREAD", {"thread_id": "t1", "message_body": "Thanks!"}
+    ) == "Reply to email\nThanks!"
+    assert pending_summary(
+        "TELEGRAM_SEND_MESSAGE", {"chat_id": 42, "text": "On my way"}
+    ) == "Send Telegram message to 42\nOn my way"
+    assert pending_summary(
+        "GOOGLECALENDAR_UPDATE_EVENT",
+        {"event_id": "e1", "summary": "Dentist", "start_datetime": "2026-10-14T10:00"},
+    ) == "Update event: Dentist (2026-10-14T10:00)"
+    assert pending_summary(
+        "GOOGLECALENDAR_CREATE_EVENT", {"summary": "Sync", "attendees": ["a@x.it", "b@x.it"]}
+    ) == "Create event with a@x.it, b@x.it: Sync"
+    assert pending_summary(
+        "TODOIST_CREATE_TASK", {"content": "Buy milk", "responsible_uid": "7"}
+    ) == "Create task: Buy milk"
+
+
+def test_pending_summary_fallback_uses_slug_words_and_arguments():
+    assert pending_summary("GMAIL_MOVE_TO_TRASH", {"message_id": "m1"}) == (
+        "Gmail Move To Trash (message_id=m1)"
+    )
+    assert pending_summary("GOOGLECALENDAR_DELETE_EVENT", {"event_id": "e1"}) == (
+        "Delete event (event_id=e1)"
+    )
+    assert pending_summary("SOMEAPP_DO_MAGIC", {}) == "Someapp Do Magic"

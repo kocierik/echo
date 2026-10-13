@@ -13,7 +13,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.actions.audit import log_action, summarize_arguments
+from app.actions.audit import log_action, pending_summary
 from app.actions.pending import create_pending_action
 from app.actions.policy import ToolTier, classify_call, toolkit_of
 from app.actions.provider import (
@@ -249,7 +249,7 @@ async def run_action_agent(
         )
         if confirm_call is not None:
             # Only the first confirm-tier call is kept; nothing else from this turn runs.
-            summary = f"{confirm_call.name}: {summarize_arguments(confirm_call.arguments)}"
+            summary = pending_summary(confirm_call.name, confirm_call.arguments)
             pending = await create_pending_action(
                 db, user_id, session_id, source,
                 confirm_call.name, confirm_call.arguments, summary,
