@@ -301,3 +301,17 @@ async def test_client_is_created_without_tracking(monkeypatch):
     monkeypatch.setattr(composio_provider.settings, "composio_api_key", "key-1")
     ComposioActionProvider().client  # noqa: B018
     assert created == {"api_key": "key-1", "allow_tracking": False}
+
+
+async def test_sdk_calls_run_with_tracking_disabled():
+    from composio.core.models.base import allow_tracking
+
+    seen = {}
+
+    def fn():
+        seen["inside"] = allow_tracking.get()
+        return "ok"
+
+    assert allow_tracking.get() is True
+    assert await composio_provider._call(fn) == "ok"
+    assert seen["inside"] is False
