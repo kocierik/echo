@@ -11,13 +11,19 @@ from datetime import date, datetime, timedelta, timezone
 
 @dataclass
 class DateRange:
-    """A date range filter extracted from a query."""
+    """A date range filter extracted from a query.
 
-    date_from: datetime
-    date_to: datetime
+    Extracted ranges always have both ends; explicit API filters may leave one
+    end open (None).
+    """
+
+    date_from: datetime | None
+    date_to: datetime | None
 
     def __repr__(self) -> str:
-        return f"DateRange({self.date_from.date()} → {self.date_to.date()})"
+        start = self.date_from.date() if self.date_from else "…"
+        end = self.date_to.date() if self.date_to else "…"
+        return f"DateRange({start} → {end})"
 
 
 # Italian day names → weekday index (Monday=0)

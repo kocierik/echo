@@ -1,7 +1,9 @@
 """OAuth2 callback router for third-party integrations (Google, etc.)."""
 
+import html
 import logging
 import uuid
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.oauth_state import STATE_TTL_S, InvalidOAuthStateError, create_state, verify_state
 from app.models.integration import Integration
 
 logger = logging.getLogger(__name__)
@@ -38,22 +41,24 @@ async def google_authorize(user_id: uuid.UUID = Depends(get_current_user_id)):
     if not redirect_uri:
         raise HTTPException(status_code=503, detail="Google redirect URI not configured")
 
-    # Use user_id as state param to link callback back to user
-    auth_url = (
-        f"{GOOGLE_AUTH_URL}?"
-        f"client_id={settings.google_client_id}"
-        f"&redirect_uri={redirect_uri}"
-        f"&response_type=code"
-        f"&scope={GOOGLE_SCOPES}"
-        f"&access_type=offline"
-        f"&prompt=consent"
-        f"&state={user_id}"
-    )
-    return {"authorize_url": auth_url}
+    # Signed, expiring, single-use state links the callback back to this user
+    # and prevents a third party from attaching their Google account (CSRF).
+    state = create_state(user_id, settings.effective_oauth_state_secret)
+    query = urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": GOOGLE_SCOPES,
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": state,
+    })
+    return {"authorize_url": f"{GOOGLE_AUTH_URL}?{query}"}
 
 
 @router.get("/google/callback")
 async def google_callback(
+    request: Request,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -61,14 +66,30 @@ async def google_callback(
 ):
     """Handle Google OAuth2 callback.
 
-    Google redirects here after user approves. We exchange the code
-    for tokens and save them as the integration config.
+    Google redirects here after user approves. We verify the signed state,
+    exchange the code for tokens and save them as the integration config.
     """
     if error:
-        return HTMLResponse(_result_page("Connection Failed", f"Google returned an error: {error}", success=False))
+        message = f"Google returned an error: {html.escape(error)}"
+        return HTMLResponse(_result_page("Connection Failed", message, success=False))
 
     if not code or not state:
         return HTMLResponse(_result_page("Connection Failed", "Missing authorization code.", success=False))
+
+    try:
+        user_id, nonce = verify_state(state, settings.effective_oauth_state_secret)
+        first_use = await request.app.state.redis.set(
+            f"oauth:state:{nonce}", "1", nx=True, ex=STATE_TTL_S
+        )
+    except InvalidOAuthStateError as exc:
+        logger.warning(f"[Google OAuth] Rejected state: {exc}")
+        first_use = False
+    if not first_use:
+        return HTMLResponse(_result_page(
+            "Connection Failed",
+            "This authorization link is invalid or expired. Start the connection again from Echo.",
+            success=False,
+        ))
 
     # Exchange code for tokens
     try:
@@ -92,7 +113,6 @@ async def google_callback(
         logger.error(f"[Google OAuth] Token exchange error: {e}")
         return HTMLResponse(_result_page("Connection Failed", "Network error during authorization.", success=False))
 
-    user_id = uuid.UUID(state)
     refresh_token = tokens.get("refresh_token")
     access_token = tokens.get("access_token")
 
