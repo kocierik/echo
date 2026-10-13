@@ -47,7 +47,6 @@ mobile/.flutter-plugins
 mobile/.flutter-plugins-dependencies
 mobile/.packages
 mobile/build/
-mobile/.metadata
 mobile/android/.gradle/
 mobile/android/app/build/
 mobile/android/build/
@@ -66,12 +65,12 @@ mobile/linux/flutter/
 mobile/macos/Flutter/
 mobile/windows/flutter/
 mobile/.fvm/
-mobile/pubspec.lock
 mobile/*.iml
 mobile/devtools_options.yaml
 *.g.dart
 *.freezed.dart
 
-linux/
-ios/
-android/
+# Native Flutter projects (mobile/ios, mobile/android) ARE versioned:
+# only their build/generated outputs are ignored above.
+
+.codestudio/
