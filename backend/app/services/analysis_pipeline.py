@@ -329,6 +329,9 @@ async def extract_entities(
     return entities
 
 
+UNTITLED_CONVERSATION = "Untitled conversation"
+
+
 async def generate_conversation_summary(llm_service, full_text: str) -> tuple[str, str]:
     """Generate a short title and summary for a conversation using LLM.
 
@@ -347,20 +350,20 @@ async def generate_conversation_summary(llm_service, full_text: str) -> tuple[st
         LLMMessage(
             role="system",
             content=(
-                "Sei un assistente che organizza conversazioni. "
-                "Dato il testo di una conversazione, genera:\n"
-                "1. Un titolo breve (max 60 caratteri) che descriva l'argomento principale\n"
-                "2. Un riassunto di 2-3 frasi con i punti chiave\n\n"
-                "Rispondi in JSON con il formato:\n"
-                '{"title": "...", "summary": "..."}\n\n'
-                "Rispondi in italiano."
+                "You organize the user's conversations. "
+                "Given the transcript of a conversation (often in Italian), write:\n"
+                "1. A short title (max 60 characters) naming the main topic\n"
+                "2. A 2-3 sentence summary of the key points\n\n"
+                "Write both in English. Keep names of people and places as spoken.\n"
+                "Answer in JSON with the format:\n"
+                '{"title": "...", "summary": "..."}'
             ),
         ),
-        LLMMessage(role="user", content=f"Conversazione:\n\n{text_for_summary}"),
+        LLMMessage(role="user", content=f"Conversation:\n\n{text_for_summary}"),
     ]
 
     result = await llm_service.complete_json(messages)
-    title = result.get("title", "Conversazione senza titolo")
+    title = result.get("title") or UNTITLED_CONVERSATION
     summary = result.get("summary", "")
 
     return title, summary

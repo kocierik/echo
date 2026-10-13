@@ -130,3 +130,15 @@ def clean_transcription(text: str) -> str:
         text = text[0].upper() + text[1:]
 
     return text
+
+
+_SPEAKER_PREFIXES = {"self": "[You] ", "other": "[Others] "}
+
+
+def speaker_prefix(speaker: str | None) -> str:
+    """Tag prepended to a new transcription's text ("" when the speaker is unknown).
+
+    Older transcriptions may still carry the Italian tags [Tu]/[Altri]; the
+    mobile app strips both forms.
+    """
+    return _SPEAKER_PREFIXES.get(speaker or "", "")

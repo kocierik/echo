@@ -20,8 +20,8 @@ def test_naive_bounds_become_utc_and_aware_bounds_are_kept():
 
 def test_period_description_handles_open_ends():
     assert query._describe_period(DateRange(START, END)) == "01/10/2026 - 13/10/2026"
-    assert query._describe_period(DateRange(START, None)) == "dal 01/10/2026 in poi"
-    assert query._describe_period(DateRange(None, END)) == "fino al 13/10/2026"
+    assert query._describe_period(DateRange(START, None)) == "from 01/10/2026 onwards"
+    assert query._describe_period(DateRange(None, END)) == "until 13/10/2026"
 
 
 def test_date_filter_response_handles_open_ends():

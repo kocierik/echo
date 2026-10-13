@@ -15,6 +15,7 @@ from app.services.calendar_service import (
     list_events,
     update_event,
 )
+from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
 
@@ -85,7 +86,96 @@ _CALENDAR_HINT = re.compile(
 # Replies produced by calendar actions: a follow-up to them may be a calendar
 # request even without hint words ("sì, quello di martedì").
 _ACTION_REPLY_PREFIXES = ("📅", "✅")
-_AMBIGUOUS_MARKER = "Quale intendi?"
+
+# Fixed replies, in the language of the user's message (app default: English)
+TEXT = {
+    "en": {
+        "not_connected": "Google Calendar is not connected. Connect it in Integrations.",
+        "which_event": (
+            "Which event do you want to {verb}? "
+            "Tell me its name and, if you know it, the day."
+        ),
+        "verb_update": "change",
+        "verb_delete": "delete",
+        "not_found_day": 'I couldn\'t find "{summary}" on {day}.',
+        "not_found": 'I couldn\'t find "{summary}" in the next 14 days.',
+        "several": "I found several events:",
+        "ambiguous": "Which one do you mean?",
+        "ambiguous_hint": "Tell me the day or the full name.",
+        "no_events": "You have no events {period}.",
+        "events": "📅 Your events {period}:\n",
+        "create_missing": (
+            "I didn't quite get that. Tell me the event name and the date "
+            "(e.g. 'create lunch with Marco on 2026-08-01 at 13:00')."
+        ),
+        "create_failed": "I couldn't create the event. Check that Google Calendar is connected.",
+        "created": "✅ Done! I created **{summary}** for {when}{time}{location}.",
+        "at_time": " at {time}",
+        "at_location": " ({location})",
+        "update_failed": "I couldn't update the event.",
+        "updated": "✅ Updated **{summary}**.",
+        "delete_failed": "I couldn't delete the event.",
+        "deleted": "✅ Deleted **{summary}**.",
+        "deleted_unnamed": "✅ Event deleted.",
+        "unknown_action": "I don't know how to do that yet.",
+        "untitled": "(untitled)",
+        "all_day": "all day",
+        "today": "today",
+        "tomorrow": "tomorrow",
+        "period_today": "for today",
+        "period_tomorrow": "for tomorrow",
+        "period_week": "for this week",
+        "period_next_days": "for the next few days",
+        "period_range": "from {start} to {end}",
+        "weekdays": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    },
+    "it": {
+        "not_connected": "Google Calendar non è connesso. Vai su Integrations per collegarlo.",
+        "which_event": "Quale evento vuoi {verb}? Dimmi il nome ed eventualmente il giorno.",
+        "verb_update": "modificare",
+        "verb_delete": "eliminare",
+        "not_found_day": 'Non ho trovato "{summary}" per {day}.',
+        "not_found": 'Non ho trovato "{summary}" nei prossimi 14 giorni.',
+        "several": "Ho trovato più eventi:",
+        "ambiguous": "Quale intendi?",
+        "ambiguous_hint": "Indicami il giorno o il nome completo.",
+        "no_events": "Non hai eventi {period}.",
+        "events": "📅 Ecco i tuoi eventi {period}:\n",
+        "create_missing": (
+            "Non ho capito bene. Dimmi il nome dell'evento e la data "
+            "(es: 'crea evento pranzo con Marco il 2026-08-01 alle 13:00')."
+        ),
+        "create_failed": (
+            "Non sono riuscito a creare l'evento. Verifica che Google Calendar sia connesso."
+        ),
+        "created": "✅ Fatto! Ho creato **{summary}** per {when}{time}{location}.",
+        "at_time": " alle {time}",
+        "at_location": " a {location}",
+        "update_failed": "Non sono riuscito a modificare l'evento.",
+        "updated": "✅ Evento **{summary}** aggiornato.",
+        "delete_failed": "Non sono riuscito a eliminare l'evento.",
+        "deleted": "✅ Evento **{summary}** eliminato.",
+        "deleted_unnamed": "✅ Evento eliminato.",
+        "unknown_action": "Azione non riconosciuta.",
+        "untitled": "(senza titolo)",
+        "all_day": "tutto il giorno",
+        "today": "oggi",
+        "tomorrow": "domani",
+        "period_today": "di oggi",
+        "period_tomorrow": "di domani",
+        "period_week": "di questa settimana",
+        "period_next_days": "dei prossimi giorni",
+        "period_range": "dal {start} al {end}",
+        "weekdays": ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"],
+    },
+}
+
+_AMBIGUOUS_MARKERS = tuple(texts["ambiguous"] for texts in TEXT.values())
+
+
+def _t(language: str, key: str, **values) -> str:
+    texts = TEXT.get(language, TEXT["en"])
+    return texts[key].format(**values) if values else texts[key]
 
 
 def might_be_calendar_action(question: str, history: list[dict]) -> bool:
@@ -95,8 +185,8 @@ def might_be_calendar_action(question: str, history: list[dict]) -> bool:
     last_assistant = next(
         (m["content"] for m in reversed(history) if m.get("role") == "assistant"), ""
     )
-    return last_assistant.startswith(_ACTION_REPLY_PREFIXES) or (
-        _AMBIGUOUS_MARKER in last_assistant
+    return last_assistant.startswith(_ACTION_REPLY_PREFIXES) or any(
+        marker in last_assistant for marker in _AMBIGUOUS_MARKERS
     )
 
 
@@ -109,7 +199,7 @@ async def detect_and_execute_action(
     """Detect if the user's message requires an action. Execute it and return result text.
 
     Returns None if no action is needed (normal RAG query should proceed).
-    Returns a string response if an action was executed.
+    Returns a string response, in the language of the question, if an action ran.
     """
     from datetime import datetime, timedelta, timezone
 
@@ -160,7 +250,9 @@ async def detect_and_execute_action(
             return None
 
         params = parsed.get("params", {})
-        return await _execute_action(db, user_id, action, params)
+        return await _execute_action(
+            db, user_id, action, params, language=detect_language(question)
+        )
 
     except (json.JSONDecodeError, Exception) as e:
         logger.warning(f"[ChatActions] Detection failed: {e}")
@@ -168,7 +260,7 @@ async def detect_and_execute_action(
 
 
 async def _resolve_event(
-    db: AsyncSession, user_id: uuid.UUID, params: dict, verb: str
+    db: AsyncSession, user_id: uuid.UUID, params: dict, action: str, language: str = "en"
 ) -> tuple[dict | None, str | None]:
     """Find the event an update/delete refers to.
 
@@ -182,24 +274,28 @@ async def _resolve_event(
     summary = (target.get("summary") or "").strip()
     day = target.get("date")
     if not summary:
-        return None, f"Quale evento vuoi {verb}? Dimmi il nome ed eventualmente il giorno."
+        verb = _t(language, "verb_update" if action == "update" else "verb_delete")
+        return None, _t(language, "which_event", verb=verb)
 
     matches = await find_events(db, user_id, summary, day=day)
     if matches is None:
-        return None, "Google Calendar non è connesso. Vai su Integrations per collegarlo."
+        return None, _t(language, "not_connected")
     if not matches:
-        period = f"per {_format_date_human(day)}" if day else "nei prossimi 14 giorni"
-        return None, f"Non ho trovato \"{summary}\" {period}."
+        if day:
+            return None, _t(
+                language, "not_found_day", summary=summary, day=_format_date_human(day, language)
+            )
+        return None, _t(language, "not_found", summary=summary)
     if len(matches) > 1:
-        lines = ["Ho trovato più eventi:"]
-        lines.extend(_format_event_with_day(event) for event in matches[:5])
-        lines.append(f"{_AMBIGUOUS_MARKER} Indicami il giorno o il nome completo.")
+        lines = [_t(language, "several")]
+        lines.extend(_format_event_with_day(event, language) for event in matches[:5])
+        lines.append(f"{_t(language, 'ambiguous')} {_t(language, 'ambiguous_hint')}")
         return None, "\n".join(lines)
     return matches[0], None
 
 
 async def _execute_action(
-    db: AsyncSession, user_id: uuid.UUID, action: str, params: dict
+    db: AsyncSession, user_id: uuid.UUID, action: str, params: dict, language: str = "en"
 ) -> str:
     """Execute a detected action and return a human-readable response."""
 
@@ -208,15 +304,14 @@ async def _execute_action(
         date_to = params.get("date_to")
         events = await list_events(db, user_id, date_from=date_from, date_to=date_to)
         if events is None:
-            return "Google Calendar non è connesso. Vai su Integrations per collegarlo."
+            return _t(language, "not_connected")
+        period = _format_period(date_from, date_to, language)
         if not events:
-            period = _format_period(date_from, date_to)
-            return f"Non hai eventi {period}."
+            return _t(language, "no_events", period=period)
 
-        period = _format_period(date_from, date_to)
-        lines = [f"📅 Ecco i tuoi eventi {period}:\n"]
+        lines = [_t(language, "events", period=period)]
         for ev in events:
-            lines.append(_format_event(ev))
+            lines.append(_format_event(ev, language))
         return "\n".join(lines)
 
     elif action == "calendar_create":
@@ -227,10 +322,7 @@ async def _execute_action(
         duration_minutes = _positive_int(params.get("duration_minutes"))
 
         if not summary or not date:
-            return (
-                "Non ho capito bene. Dimmi il nome dell'evento e la data "
-                "(es: 'crea evento pranzo con Marco il 2026-08-01 alle 13:00')."
-            )
+            return _t(language, "create_missing")
 
         result = await create_event(
             db,
@@ -242,14 +334,18 @@ async def _execute_action(
             duration_minutes=duration_minutes,
         )
         if result is None:
-            return "Non sono riuscito a creare l'evento. Verifica che Google Calendar sia connesso."
-        time_str = f" alle {time}" if time else ""
-        loc_str = f" a {location}" if location else ""
-        when = _format_date_human(date)
-        return f"✅ Fatto! Ho creato **{summary}** per {when}{time_str}{loc_str}."
+            return _t(language, "create_failed")
+        return _t(
+            language,
+            "created",
+            summary=summary,
+            when=_format_date_human(date, language),
+            time=_t(language, "at_time", time=time) if time else "",
+            location=_t(language, "at_location", location=location) if location else "",
+        )
 
     elif action == "calendar_update":
-        event, reply = await _resolve_event(db, user_id, params, "modificare")
+        event, reply = await _resolve_event(db, user_id, params, "update", language)
         if event is None:
             return reply
         result = await update_event(
@@ -262,20 +358,20 @@ async def _execute_action(
             duration_minutes=_positive_int(params.get("duration_minutes")),
         )
         if result is None:
-            return "Non sono riuscito a modificare l'evento."
-        return f"✅ Evento **{result.get('summary', '')}** aggiornato."
+            return _t(language, "update_failed")
+        return _t(language, "updated", summary=result.get("summary", ""))
 
     elif action == "calendar_delete":
-        event, reply = await _resolve_event(db, user_id, params, "eliminare")
+        event, reply = await _resolve_event(db, user_id, params, "delete", language)
         if event is None:
             return reply
         success = await delete_event(db, user_id, event["id"])
-        if success:
-            name = event.get("summary")
-            return f"✅ Evento **{name}** eliminato." if name else "✅ Evento eliminato."
-        return "Non sono riuscito a eliminare l'evento."
+        if not success:
+            return _t(language, "delete_failed")
+        name = event.get("summary")
+        return _t(language, "deleted", summary=name) if name else _t(language, "deleted_unnamed")
 
-    return "Azione non riconosciuta."
+    return _t(language, "unknown_action")
 
 
 def _positive_int(value) -> int | None:
@@ -287,9 +383,9 @@ def _positive_int(value) -> int | None:
     return number if number > 0 else None
 
 
-def _format_event(ev: dict) -> str:
+def _format_event(ev: dict, language: str = "en") -> str:
     """Format a single calendar event with light markdown."""
-    summary = ev.get("summary", "(senza titolo)")
+    summary = ev.get("summary") or _t(language, "untitled")
     start_raw = ev.get("start", "")
     location = ev.get("location")
 
@@ -303,7 +399,7 @@ def _format_event(ev: dict) -> str:
         except (ValueError, TypeError):
             time_str = ""
     else:
-        time_str = "tutto il giorno"
+        time_str = _t(language, "all_day")
 
     line = f"• **{summary}**"
     if time_str:
@@ -313,10 +409,11 @@ def _format_event(ev: dict) -> str:
     return line
 
 
-def _format_event_with_day(ev: dict) -> str:
+def _format_event_with_day(ev: dict, language: str = "en") -> str:
     """Event line including its day, used to disambiguate between matches."""
     day = (ev.get("start") or "")[:10]
-    return f"{_format_event(ev)} ({_format_date_human(day)})" if day else _format_event(ev)
+    line = _format_event(ev, language)
+    return f"{line} ({_format_date_human(day, language)})" if day else line
 
 
 def _user_today():
@@ -325,7 +422,7 @@ def _user_today():
     return to_user_local_date(datetime.now(timezone.utc))
 
 
-def _format_period(date_from: str | None, date_to: str | None) -> str:
+def _format_period(date_from: str | None, date_to: str | None, language: str = "en") -> str:
     """Format date range as natural period description."""
     from datetime import date, timedelta
 
@@ -333,26 +430,27 @@ def _format_period(date_from: str | None, date_to: str | None) -> str:
     tomorrow = today + timedelta(days=1)
 
     if not date_from:
-        return "dei prossimi giorni"
+        return _t(language, "period_next_days")
 
     try:
         d_from = date.fromisoformat(date_from)
         d_to = date.fromisoformat(date_to) if date_to else d_from
     except (ValueError, TypeError):
-        return "dei prossimi giorni"
+        return _t(language, "period_next_days")
 
     if d_from == today and d_to == today:
-        return "di oggi"
+        return _t(language, "period_today")
     elif d_from == tomorrow and d_to == tomorrow:
-        return "di domani"
+        return _t(language, "period_tomorrow")
     elif d_from == today and (d_to - today).days <= 7:
-        return "di questa settimana"
-    else:
-        return f"dal {d_from.strftime('%d/%m')} al {d_to.strftime('%d/%m')}"
+        return _t(language, "period_week")
+    return _t(
+        language, "period_range", start=d_from.strftime("%d/%m"), end=d_to.strftime("%d/%m")
+    )
 
 
-def _format_date_human(date_str: str) -> str:
-    """Format a date string as human-readable Italian."""
+def _format_date_human(date_str: str, language: str = "en") -> str:
+    """Format a date string as a human-readable day ("today", "Tuesday 20/10")."""
     from datetime import date, timedelta
 
     today = _user_today()
@@ -364,10 +462,8 @@ def _format_date_human(date_str: str) -> str:
         return date_str
 
     if d == today:
-        return "oggi"
+        return _t(language, "today")
     elif d == tomorrow:
-        return "domani"
-    else:
-        days_it = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
-        day_name = days_it[d.weekday()]
-        return f"{day_name} {d.strftime('%d/%m')}"
+        return _t(language, "tomorrow")
+    day_name = TEXT.get(language, TEXT["en"])["weekdays"][d.weekday()]
+    return f"{day_name} {d.strftime('%d/%m')}"

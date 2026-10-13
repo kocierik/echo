@@ -19,6 +19,7 @@ from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.services.embedding_openai import get_embedding_service
+from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
 from app.services.temporal import DateRange, conversation_overlaps, extract_date_range
@@ -220,17 +221,12 @@ async def query_memory(
             summary_lines = []
             for s in summaries_rows:
                 date_str = s.started_at.strftime("%d/%m/%Y %H:%M")
-                title = s.title or "Conversazione"
+                title = s.title or "Conversation"
                 summary_lines.append(f"- [{date_str}] {title}: {s.summary}")
             conversation_summaries = "\n".join(summary_lines)
 
     if not rows and not entities_context:
-        no_result_msg = "Non ho ancora informazioni nella memoria per rispondere a questa domanda."
-        if date_range:
-            no_result_msg = (
-                "Non ho trovato informazioni nella memoria per il periodo indicato. "
-                "Prova a riformulare la domanda o a estendere il periodo."
-            )
+        no_result_msg = no_results_message(body.question, date_range)
         # Save to history even for empty results
         await _record_turn(
             redis_client, db, user_id, session_id, history, body.question, no_result_msg
@@ -250,12 +246,12 @@ async def query_memory(
     # Add conversation summaries first (high-level understanding)
     if conversation_summaries:
         context_parts.append(
-            f"Riassunti delle conversazioni rilevanti:\n{conversation_summaries}"
+            f"Relevant conversation summaries:\n{conversation_summaries}"
         )
 
     # Add entity context (structured knowledge)
     if entities_context:
-        context_parts.append(f"Conoscenze strutturate:\n{entities_context}")
+        context_parts.append(f"Structured knowledge:\n{entities_context}")
 
     # Add chunk context (raw transcriptions for detail)
     for row in rows:
@@ -274,27 +270,7 @@ async def query_memory(
     # 7. Generate answer via LLM (with conversation history)
     llm_service = get_llm_query_service()
 
-    system_prompt = (
-        "Sei un assistente personale. L'utente ti fa domande sulla sua memoria — "
-        "conversazioni, idee, task, persone menzionate in passato. "
-        "Rispondi basandoti SOLO sul contesto fornito. "
-        "Il contesto include:\n"
-        "- 'Riassunti delle conversazioni' per una panoramica ad alto livello\n"
-        "- 'Conoscenze strutturate' (entità: persone, task, idee, eventi)\n"
-        "- Frammenti di trascrizioni reali per dettagli specifici\n\n"
-        "Usa i riassunti per rispondere a domande generali ('cosa è successo ieri?') "
-        "e i frammenti per domande specifiche ('cosa ha detto esattamente Marco?'). "
-        "Se il contesto non contiene informazioni sufficienti, dillo chiaramente. "
-        "Se l'utente fa una domanda di follow-up, usa la conversazione precedente "
-        "per capire a cosa si riferisce. "
-        "Rispondi in italiano."
-    )
-
-    if date_range:
-        system_prompt += (
-            f"\n\nNota: i risultati sono filtrati per il periodo "
-            f"{_describe_period(date_range)}."
-        )
+    system_prompt = rag_system_prompt(date_range)
 
     messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -303,7 +279,7 @@ async def query_memory(
         messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
 
     # Add current question with fresh RAG context
-    user_message = f"Contesto dalla memoria:\n\n{context}\n\n---\n\nDomanda: {body.question}"
+    user_message = f"Context from memory:\n\n{context}\n\n---\n\nQuestion: {body.question}"
     messages.append(LLMMessage(role="user", content=user_message))
 
     response = await llm_service.complete(messages, temperature=0.3)
@@ -413,15 +389,58 @@ def _as_utc(value: datetime | None) -> datetime | None:
 
 
 def _describe_period(date_range: DateRange) -> str:
-    """Human-readable period for the RAG prompt; open ends are described in words."""
+    """Period for the RAG prompt; open ends are described in words."""
     if date_range.date_from and date_range.date_to:
         return (
             f"{date_range.date_from.strftime('%d/%m/%Y')} - "
             f"{date_range.date_to.strftime('%d/%m/%Y')}"
         )
     if date_range.date_from:
-        return f"dal {date_range.date_from.strftime('%d/%m/%Y')} in poi"
-    return f"fino al {date_range.date_to.strftime('%d/%m/%Y')}"
+        return f"from {date_range.date_from.strftime('%d/%m/%Y')} onwards"
+    return f"until {date_range.date_to.strftime('%d/%m/%Y')}"
+
+
+def rag_system_prompt(date_range: DateRange | None) -> str:
+    """System prompt for memory answers, written in the question's language."""
+    prompt = (
+        "You are a personal assistant. The user asks about their own memory: "
+        "past conversations, ideas, tasks and people they mentioned. "
+        "Answer ONLY from the provided context. The context includes:\n"
+        "- 'Relevant conversation summaries' for a high-level overview\n"
+        "- 'Structured knowledge' (entities: people, tasks, ideas, events)\n"
+        "- Excerpts of real transcripts for specific details\n\n"
+        "Use the summaries for general questions ('what happened yesterday?') and the "
+        "excerpts for specific ones ('what exactly did Marco say?'). Transcripts may be "
+        "in another language than the question: quote them as they are when useful. "
+        "If the context is not enough, say so clearly. For follow-up questions, use the "
+        "previous conversation to understand what the user refers to. "
+        "Always answer in the same language as the user's question."
+    )
+    if date_range:
+        prompt += f"\n\nNote: results are filtered to the period {_describe_period(date_range)}."
+    return prompt
+
+
+_NO_RESULTS = {
+    "en": "I don't have anything in your memory to answer this yet.",
+    "it": "Non ho ancora informazioni nella memoria per rispondere a questa domanda.",
+}
+_NO_RESULTS_IN_PERIOD = {
+    "en": (
+        "I couldn't find anything in your memory for that period. "
+        "Try rephrasing the question or widening the period."
+    ),
+    "it": (
+        "Non ho trovato informazioni nella memoria per il periodo indicato. "
+        "Prova a riformulare la domanda o a estendere il periodo."
+    ),
+}
+
+
+def no_results_message(question: str, date_range: DateRange | None) -> str:
+    """Reply when memory has nothing relevant, in the question's language."""
+    messages = _NO_RESULTS_IN_PERIOD if date_range else _NO_RESULTS
+    return messages[detect_language(question)]
 
 
 async def find_relevant_entities(
