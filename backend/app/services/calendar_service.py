@@ -126,8 +126,14 @@ async def create_event(
     time: str | None = None,
     location: str | None = None,
     description: str | None = None,
+    duration_minutes: int = 60,
 ) -> dict | None:
-    """Create a calendar event. Returns the created event or None on failure."""
+    """Create a calendar event. Returns the created event or None on failure.
+
+    Args:
+        duration_minutes: Duration of timed events in minutes (default 60).
+                          Ignored for all-day events (no time specified).
+    """
     token = await get_calendar_token(db, user_id)
     if not token:
         return None
@@ -139,8 +145,10 @@ async def create_event(
         body["location"] = location
 
     if time:
-        body["start"] = {"dateTime": f"{date}T{time}:00", "timeZone": "Europe/Rome"}
-        body["end"] = {"dateTime": f"{date}T{time}:00", "timeZone": "Europe/Rome"}
+        start_dt = datetime.fromisoformat(f"{date}T{time}:00")
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
+        body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
     else:
         body["start"] = {"date": date}
         body["end"] = {"date": date}
@@ -166,8 +174,14 @@ async def update_event(
     date: str | None = None,
     time: str | None = None,
     location: str | None = None,
+    duration_minutes: int = 60,
 ) -> dict | None:
-    """Update an existing calendar event."""
+    """Update an existing calendar event.
+
+    Args:
+        duration_minutes: Duration of timed events in minutes (default 60).
+                          Ignored for all-day events (no time specified).
+    """
     token = await get_calendar_token(db, user_id)
     if not token:
         return None
@@ -178,8 +192,10 @@ async def update_event(
     if location:
         body["location"] = location
     if date and time:
-        body["start"] = {"dateTime": f"{date}T{time}:00", "timeZone": "Europe/Rome"}
-        body["end"] = {"dateTime": f"{date}T{time}:00", "timeZone": "Europe/Rome"}
+        start_dt = datetime.fromisoformat(f"{date}T{time}:00")
+        end_dt = start_dt + timedelta(minutes=duration_minutes)
+        body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
+        body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
     elif date:
         body["start"] = {"date": date}
         body["end"] = {"date": date}
