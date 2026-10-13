@@ -71,10 +71,10 @@ async def google_callback(
     """
     if error:
         message = f"Google returned an error: {html.escape(error)}"
-        return HTMLResponse(_result_page("Connection Failed", message, success=False))
+        return _failure_page(message)
 
     if not code or not state:
-        return HTMLResponse(_result_page("Connection Failed", "Missing authorization code.", success=False))
+        return _failure_page("Missing authorization code.")
 
     try:
         user_id, nonce = verify_state(state, settings.effective_oauth_state_secret)
@@ -85,11 +85,10 @@ async def google_callback(
         logger.warning(f"[Google OAuth] Rejected state: {exc}")
         first_use = False
     if not first_use:
-        return HTMLResponse(_result_page(
-            "Connection Failed",
-            "This authorization link is invalid or expired. Start the connection again from Echo.",
-            success=False,
-        ))
+        return _failure_page(
+            "This authorization link is invalid or expired. "
+            "Start the connection again from Echo."
+        )
 
     # Exchange code for tokens
     try:
@@ -106,18 +105,18 @@ async def google_callback(
             )
             if resp.status_code != 200:
                 logger.error(f"[Google OAuth] Token exchange failed: {resp.text}")
-                return HTMLResponse(_result_page("Connection Failed", "Could not get tokens from Google.", success=False))
+                return _failure_page("Could not get tokens from Google.")
 
             tokens = resp.json()
     except Exception as e:
         logger.error(f"[Google OAuth] Token exchange error: {e}")
-        return HTMLResponse(_result_page("Connection Failed", "Network error during authorization.", success=False))
+        return _failure_page("Network error during authorization.")
 
     refresh_token = tokens.get("refresh_token")
     access_token = tokens.get("access_token")
 
     if not refresh_token and not access_token:
-        return HTMLResponse(_result_page("Connection Failed", "No token received.", success=False))
+        return _failure_page("No token received.")
 
     # Save or update integration
     result = await db.execute(
@@ -129,7 +128,9 @@ async def google_callback(
 
     config = {
         "access_token": access_token,
-        "refresh_token": refresh_token or (integration.config.get("refresh_token") if integration else None),
+        # Google sends a refresh token only on first consent: keep the stored one
+        "refresh_token": refresh_token
+        or (integration.config.get("refresh_token") if integration else None),
         "token_type": tokens.get("token_type", "Bearer"),
     }
 
@@ -149,7 +150,15 @@ async def google_callback(
     await db.commit()
     logger.info(f"[Google OAuth] Connected for user {user_id}")
 
-    return HTMLResponse(_result_page("Connected!", "Google Calendar is now connected to Echo. You can close this page.", success=True))
+    return HTMLResponse(_result_page(
+        "Connected!",
+        "Google Calendar is now connected to Echo. You can close this page.",
+        success=True,
+    ))
+
+
+def _failure_page(message: str) -> HTMLResponse:
+    return HTMLResponse(_result_page("Connection Failed", message, success=False))
 
 
 def _result_page(title: str, message: str, success: bool) -> str:
@@ -157,13 +166,18 @@ def _result_page(title: str, message: str, success: bool) -> str:
     color = "#22c55e" if success else "#ef4444"
     icon = "✓" if success else "✗"
     return f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 <style>
-body {{ font-family: -apple-system, system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #0a0a0a; color: #fff; }}
-.card {{ text-align: center; padding: 48px; border-radius: 20px; background: #1a1a1a; max-width: 400px; }}
+body {{ font-family: -apple-system, system-ui, sans-serif; display: flex;
+  justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+  background: #0a0a0a; color: #fff; }}
+.card {{ text-align: center; padding: 48px; border-radius: 20px; background: #1a1a1a;
+  max-width: 400px; }}
 .icon {{ font-size: 64px; margin-bottom: 16px; color: {color}; }}
 h1 {{ font-size: 24px; margin-bottom: 8px; }}
 p {{ color: #888; font-size: 14px; }}
 </style></head>
-<body><div class="card"><div class="icon">{icon}</div><h1>{title}</h1><p>{message}</p></div></body></html>"""
+<body><div class="card"><div class="icon">{icon}</div>
+<h1>{title}</h1><p>{message}</p></div></body></html>"""

@@ -13,7 +13,6 @@ from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.segment import Segment
-from app.models.transcription import Transcription
 from app.services.chunking import chunk_text
 from app.services.deduplication import deduplicate_entities
 from app.services.embedding_base import EmbeddingService
