@@ -62,10 +62,13 @@ class _PipelineDatabase:
 class _PipelineEmbeddings:
     def __init__(self, events):
         self.events = events
+        self.chunk_texts = []
 
     async def embed_batch(self, texts):
         label = "entity_embeddings" if texts[0].startswith("Ada:") else "chunk_embeddings"
         self.events.append(label)
+        if label == "chunk_embeddings":
+            self.chunk_texts.extend(texts)
         return [[0.1] * 1536 for _ in texts]
 
 
@@ -154,7 +157,10 @@ async def test_stt_claim_fails_and_dead_letters_missing_audio(monkeypatch, audio
     assert json.loads(redis.pushes[0][1])["step"] == "stt"
 
 
-async def _run_pipeline(monkeypatch, allow_side_effects):
+_DEFAULT_TEXT = "Uno due tre quattro cinque sei sette otto nove dieci undici."
+
+
+async def _run_pipeline(monkeypatch, allow_side_effects, text=_DEFAULT_TEXT, captured=None):
     import app.integrations.engine as integrations_module
     import app.services.analysis_pipeline as pipeline_module
     import app.services.rules_engine as rules_module
@@ -164,9 +170,8 @@ async def _run_pipeline(monkeypatch, allow_side_effects):
     conversation = SimpleNamespace(
         id=uuid.uuid4(), title=None, summary=None, analysis_status="pending"
     )
-    transcription = SimpleNamespace(
-        id=uuid.uuid4(), text="Uno due tre quattro cinque sei sette otto nove dieci undici."
-    )
+    captured = captured if captured is not None else {}
+    transcription = SimpleNamespace(id=uuid.uuid4(), text=text)
     segment = SimpleNamespace(
         id=uuid.uuid4(),
         user_id=user_id,
@@ -188,6 +193,7 @@ async def _run_pipeline(monkeypatch, allow_side_effects):
         reference_date=None,
     ):
         events.append("extract")
+        captured["extract_text"] = _text
         # 22:30 UTC is already the next day in the user's timezone (Europe/Rome)
         assert reference_date == date(2026, 10, 14)
         assert extracted_user_id == user_id
@@ -242,10 +248,12 @@ async def _run_pipeline(monkeypatch, allow_side_effects):
     monkeypatch.setattr(integrations_module, "trigger_integrations", fake_integration)
     monkeypatch.setattr(rules_module, "evaluate_rules", fake_rules)
 
-    pipeline = AnalysisPipeline(MockLLMService(), _PipelineEmbeddings(events))
+    embeddings = _PipelineEmbeddings(events)
+    pipeline = AnalysisPipeline(MockLLMService(), embeddings)
     result = await pipeline.analyze_segment(
         _PipelineDatabase(events), segment, allow_side_effects=allow_side_effects
     )
+    captured["chunk_texts"] = embeddings.chunk_texts
     return events, result
 
 
@@ -283,6 +291,30 @@ async def test_analysis_pipeline_can_disable_external_side_effects(monkeypatch):
     assert "integration" not in events
     assert "rules" not in events
     assert events.index("deduplicate") < events.index("max_chunk")
+
+
+@pytest.mark.asyncio
+async def test_analysis_pipeline_extracts_only_the_text_before_a_voice_request(monkeypatch):
+    text = "[You] Ok. Echo, segnami il dentista martedì alle dieci di mattina"
+    captured = {}
+    events, _ = await _run_pipeline(monkeypatch, True, text=text, captured=captured)
+
+    assert captured["extract_text"] == "[You] Ok."
+    # Chunks keep the full spoken text
+    assert captured["chunk_texts"] == [text]
+    assert "extract" in events
+
+
+@pytest.mark.asyncio
+async def test_analysis_pipeline_skips_extraction_for_a_pure_voice_request(monkeypatch):
+    text = "[You] Echo, segnami il dentista martedì alle dieci di mattina"
+    captured = {}
+    events, result = await _run_pipeline(monkeypatch, True, text=text, captured=captured)
+
+    assert "extract" not in events
+    assert "extract_text" not in captured
+    assert result.extracted_entity_count == 0
+    assert captured["chunk_texts"] == [text]
 
 
 @pytest.mark.asyncio
