@@ -280,6 +280,12 @@ final class _FakeChatApi implements ChatApi {
     required String rating,
     List<String> chunkIds = const [],
   }) async {}
+
+  @override
+  Future<String> confirmPendingAction(String id) async => 'Done.';
+
+  @override
+  Future<void> cancelPendingAction(String id) async {}
 }
 
 final class _FakeVoiceInput implements VoiceInput {

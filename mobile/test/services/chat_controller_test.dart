@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_session.dart';
+import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:echo_app/services/chat_controller.dart';
 import 'package:echo_app/services/voice_input.dart';
@@ -22,6 +24,152 @@ void main() {
   });
 
   tearDown(() => controller.dispose());
+
+  group('pending actions', () {
+    const action = PendingAction(id: 'act-1', summary: 'Send email to Ann');
+
+    Future<void> withPending() async {
+      api.queryHandler = (_, __) async => QueryResponse(
+            answer: 'Shall I send it?',
+            sessionId: 'session-1',
+            sources: const [],
+            pendingAction: action,
+          );
+      await controller.send('Email Ann');
+    }
+
+    ApiException apiError(String code, int status) => ApiException(
+          statusCode: status,
+          code: code,
+          message: 'msg-$code',
+          retryable: false,
+        );
+
+    PendingAction card() => controller.state.messages
+        .firstWhere((m) => m.pendingAction != null)
+        .pendingAction!;
+
+    test('query response keeps the pending action on the assistant message',
+        () async {
+      await withPending();
+
+      expect(controller.state.messages.last.pendingAction?.id, 'act-1');
+    });
+
+    test('confirm marks executed and appends the server message', () async {
+      await withPending();
+      await controller.confirmAction('act-1');
+
+      expect(api.confirms, ['act-1']);
+      expect(card().status, 'executed');
+      expect(controller.state.messages.last.text, 'Done.');
+      expect(controller.state.messages.last.isUser, isFalse);
+      expect(controller.state.busyActionIds, isEmpty);
+    });
+
+    test('confirm with a failure message marks the card failed', () async {
+      await withPending();
+      api.confirmHandler = (_) async => "That didn't work: no network";
+      await controller.confirmAction('act-1');
+
+      expect(card().status, 'failed');
+      expect(
+        controller.state.messages.last.text,
+        "That didn't work: no network",
+      );
+    });
+
+    test('a second confirm while in flight is ignored', () async {
+      await withPending();
+      final pending = Completer<String>();
+      api.confirmHandler = (_) => pending.future;
+
+      final first = controller.confirmAction('act-1');
+      final second = controller.confirmAction('act-1');
+      await controller.cancelAction('act-1');
+
+      expect(controller.state.busyActionIds, {'act-1'});
+      pending.complete('Done.');
+      await Future.wait([first, second]);
+
+      expect(api.confirms, ['act-1']);
+      expect(api.cancels, isEmpty);
+      expect(controller.state.busyActionIds, isEmpty);
+    });
+
+    test('410 expires the card with a message', () async {
+      await withPending();
+      api.confirmHandler = (_) => Future.error(apiError('expired', 410));
+      await controller.confirmAction('act-1');
+
+      expect(card().status, 'expired');
+      expect(
+        controller.state.messages.last.text,
+        'This request expired. Ask again.',
+      );
+    });
+
+    test('409 shows the request as already handled', () async {
+      await withPending();
+      api.confirmHandler = (_) => Future.error(apiError('conflict', 409));
+      await controller.confirmAction('act-1');
+
+      expect(card().status, 'resolved');
+      expect(
+        controller.state.messages.last.text,
+        'This request was already handled.',
+      );
+    });
+
+    test('other errors keep the card pending and surface the error',
+        () async {
+      await withPending();
+      api.confirmHandler = (_) => Future.error(apiError('server', 500));
+      await controller.confirmAction('act-1');
+
+      expect(card().status, isNull);
+      expect(controller.state.error, 'msg-server');
+      expect(controller.state.busyActionIds, isEmpty);
+
+      api.confirmHandler = null;
+      await controller.confirmAction('act-1');
+      expect(api.confirms, ['act-1', 'act-1']);
+    });
+
+    test('cancel marks cancelled and mirrors "Cancelled."', () async {
+      await withPending();
+      await controller.cancelAction('act-1');
+
+      expect(api.cancels, ['act-1']);
+      expect(card().status, 'cancelled');
+      expect(controller.state.messages.last.text, 'Cancelled.');
+    });
+
+    test('resolved actions cannot be confirmed again', () async {
+      await withPending();
+      await controller.confirmAction('act-1');
+      await controller.confirmAction('act-1');
+
+      expect(api.confirms, ['act-1']);
+    });
+
+    test('loaded sessions keep pending actions', () async {
+      api.details['s'] = _detail(id: 's', title: 'Voice requests', messages: [
+        const ChatSessionMessage(
+          role: 'assistant',
+          content: 'Delete it?',
+          pendingAction: PendingAction(
+            id: 'act-2',
+            summary: 'Delete file',
+            status: 'pending',
+          ),
+        ),
+      ]);
+      await controller.loadSession('s');
+
+      expect(controller.state.messages.single.pendingAction?.id, 'act-2');
+    });
+  });
 
   test('empty submit is a no-op', () async {
     await controller.send('   ');
@@ -353,6 +501,23 @@ final class _FakeChatApi implements ChatApi {
   }) async {
     feedback.add(_FeedbackCall(sessionId, messageIndex, rating, chunkIds));
     await feedbackHandler?.call();
+  }
+
+  final confirms = <String>[];
+  final cancels = <String>[];
+  Future<String> Function(String id)? confirmHandler;
+  Future<void> Function(String id)? cancelHandler;
+
+  @override
+  Future<String> confirmPendingAction(String id) {
+    confirms.add(id);
+    return confirmHandler?.call(id) ?? Future.value('Done.');
+  }
+
+  @override
+  Future<void> cancelPendingAction(String id) {
+    cancels.add(id);
+    return cancelHandler?.call(id) ?? Future.value();
   }
 }
 

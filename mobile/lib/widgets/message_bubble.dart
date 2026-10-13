@@ -4,16 +4,23 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
+import 'action_card.dart';
 
 final class MessageBubble extends StatelessWidget {
   const MessageBubble({
     required this.message,
     this.onFeedback,
+    this.onConfirmAction,
+    this.onCancelAction,
+    this.actionBusy = false,
     super.key,
   });
 
   final ChatMessage message;
   final ValueChanged<String>? onFeedback;
+  final VoidCallback? onConfirmAction;
+  final VoidCallback? onCancelAction;
+  final bool actionBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +70,13 @@ final class MessageBubble extends StatelessWidget {
                     border: Border(left: BorderSide(color: palette.blue, width: 3)),
                   ),
                 ),
+              ),
+            if (!message.isUser && message.pendingAction != null)
+              ActionCard(
+                action: message.pendingAction!,
+                busy: actionBusy,
+                onConfirm: onConfirmAction ?? () {},
+                onCancel: onCancelAction ?? () {},
               ),
             if (message.failed)
               Padding(
