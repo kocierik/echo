@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,17 +151,45 @@ class AnalysisPipeline:
                     )
                     db.add(chunk)
 
-        # Summary generation is intentionally disabled so the app keeps the raw
-        # spoken transcript as the canonical text. The summary can still be added
-        # later as an explicit, separate feature in a dedicated screen.
+        # No per-segment summary: the raw spoken transcript stays the canonical
+        # text. Title and summary are written once the conversation is closed
+        # by app/workers/summaries.py.
         conversation.analysis_status = "completed"
 
         await db.commit()
         return AnalysisResult(len(entities), len(new_entities), len(new_chunks))
 
 
+def _segment_end(segment: Segment) -> datetime:
+    return segment.recorded_at + timedelta(milliseconds=segment.duration_ms or 0)
+
+
+def starts_new_conversation(latest: Conversation | None, segment: Segment) -> bool:
+    """Whether a segment opens a new conversation instead of extending the latest.
+
+    A new conversation starts when any of these holds:
+    - the device measured a long enough silence before the segment;
+    - the wall-clock gap since the latest conversation ended is long enough
+      (covers background noise keeping the VAD busy, reboots and lost silence);
+    - the latest conversation already spans the maximum duration.
+    """
+    if latest is None:
+        return True
+
+    timeout = timedelta(milliseconds=settings.silence_timeout_ms)
+    if (segment.silence_before_ms or 0) >= settings.silence_timeout_ms:
+        return True
+
+    latest_end = latest.ended_at or latest.started_at
+    if segment.recorded_at - latest_end >= timeout:
+        return True
+
+    max_duration = timedelta(milliseconds=settings.max_conversation_duration_ms)
+    return segment.recorded_at - latest.started_at >= max_duration
+
+
 async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversation:
-    """Assign a segment to an existing or new conversation based on silence timeout."""
+    """Assign a segment to the latest conversation or open a new one."""
     user_id = segment.user_id
 
     # Find the latest conversation for this user
@@ -174,23 +202,21 @@ async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversa
     result = await db.execute(query)
     latest_conversation = result.scalar_one_or_none()
 
-    # If silence before this segment exceeds timeout, create new conversation
-    silence_ms = segment.silence_before_ms or 0
-    should_create_new = (
-        latest_conversation is None or silence_ms >= settings.silence_timeout_ms
-    )
-
-    if should_create_new:
+    segment_end = _segment_end(segment)
+    if starts_new_conversation(latest_conversation, segment):
         conversation = Conversation(
             user_id=user_id,
             started_at=segment.recorded_at,
+            ended_at=segment_end,
             analysis_status="pending",
         )
         db.add(conversation)
         await db.flush()
     else:
         conversation = latest_conversation
-        conversation.ended_at = segment.recorded_at
+        # Segments can arrive out of order (buffered on the wearable): never shrink
+        if conversation.ended_at is None or segment_end > conversation.ended_at:
+            conversation.ended_at = segment_end
 
     # Link segment to conversation
     segment.conversation_id = conversation.id
