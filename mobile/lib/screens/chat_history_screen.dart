@@ -45,7 +45,7 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
       final sessions = await widget.api.getSessions();
       if (!mounted || generation != _generation) return;
       setState(() {
-        _sessions = List.unmodifiable(sessions);
+        _sessions = List.unmodifiable(_voiceFirst(sessions));
         _loading = false;
       });
     } catch (error) {
@@ -55,6 +55,16 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
         _error = _message(error, 'Could not load chat history.');
       });
     }
+  }
+
+  /// The voice-requests session is pinned first; the rest keep server order.
+  static List<ChatSessionSummary> _voiceFirst(
+    List<ChatSessionSummary> sessions,
+  ) {
+    return [
+      ...sessions.where((session) => session.kind == 'voice'),
+      ...sessions.where((session) => session.kind != 'voice'),
+    ];
   }
 
   void _select(ChatSessionSummary session) {
@@ -182,6 +192,13 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                     final busy = _deleting.contains(session.id);
                     return ListTile(
                       minTileHeight: 56,
+                      leading: session.kind == 'voice'
+                          ? Icon(
+                              Icons.push_pin,
+                              key: ValueKey('pinned-session-${session.id}'),
+                              size: 20,
+                            )
+                          : null,
                       title: Text(
                         session.title ?? 'Untitled chat',
                         maxLines: 1,

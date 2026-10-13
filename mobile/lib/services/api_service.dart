@@ -55,6 +55,8 @@ abstract interface class ChatApi {
     required String rating,
     List<String> chunkIds = const [],
   });
+  Future<String> confirmPendingAction(String id);
+  Future<void> cancelPendingAction(String id);
 }
 
 abstract interface class TranscriptMemoryApi {
@@ -798,6 +800,7 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
   }
 
   /// Confirms a pending action and returns the server's result message.
+  @override
   Future<String> confirmPendingAction(String id) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
@@ -818,6 +821,7 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
     });
   }
 
+  @override
   Future<void> cancelPendingAction(String id) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;

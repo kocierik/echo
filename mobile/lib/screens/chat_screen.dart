@@ -234,6 +234,18 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ? ValueKey('user-message-$index')
                 : ValueKey('assistant-message-${message.index}'),
             message: message,
+            actionBusy: message.pendingAction != null &&
+                state.busyActionIds.contains(message.pendingAction!.id),
+            onConfirmAction: message.pendingAction == null
+                ? null
+                : () => unawaited(
+                      _controller.confirmAction(message.pendingAction!.id),
+                    ),
+            onCancelAction: message.pendingAction == null
+                ? null
+                : () => unawaited(
+                      _controller.cancelAction(message.pendingAction!.id),
+                    ),
             onFeedback: message.index == null
                 ? null
                 : (rating) => unawaited(

@@ -21,7 +21,9 @@ final class ChatState {
     required this.error,
     required this.composerText,
     required this.listening,
-  }) : messages = List<ChatMessage>.unmodifiable(messages);
+    Set<String> busyActionIds = const {},
+  })  : busyActionIds = Set<String>.unmodifiable(busyActionIds),
+        messages = List<ChatMessage>.unmodifiable(messages);
 
   factory ChatState.initial() => ChatState(
         messages: const [],
@@ -42,6 +44,7 @@ final class ChatState {
   final String? error;
   final String composerText;
   final bool listening;
+  final Set<String> busyActionIds;
 
   bool get canRetry => messages.any(
         (message) => message.isUser && message.failed,
@@ -56,6 +59,7 @@ final class ChatState {
     Object? error = _unset,
     String? composerText,
     bool? listening,
+    Set<String>? busyActionIds,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -67,6 +71,7 @@ final class ChatState {
       error: identical(error, _unset) ? this.error : error as String?,
       composerText: composerText ?? this.composerText,
       listening: listening ?? this.listening,
+      busyActionIds: busyActionIds ?? this.busyActionIds,
     );
   }
 }
@@ -160,6 +165,7 @@ final class ChatController extends ChangeNotifier {
             index: assistantIndex,
             timestamp: _clock(),
             sources: _mapSources(response.sources),
+            pendingAction: response.pendingAction,
           ),
         ],
         sessionId: response.sessionId,
@@ -209,6 +215,7 @@ final class ChatController extends ChangeNotifier {
           index: isUser ? null : assistantIndex,
           timestamp: message.timestamp,
           sources: _mapSources(message.citations ?? const []),
+          pendingAction: message.pendingAction,
         );
       }).toList();
       _emit(_state.copyWith(
@@ -272,6 +279,97 @@ final class ChatController extends ChangeNotifier {
         error: _errorMessage(error, 'Could not save feedback.'),
       ));
     }
+  }
+
+  /// Confirms the pending action [id]; ignored while a request for it is in
+  /// flight or once it is no longer pending.
+  Future<void> confirmAction(String id) async {
+    if (!_beginAction(id)) return;
+    final generation = _generation;
+    try {
+      final message = await _api.confirmPendingAction(id);
+      if (!_isCurrent(generation)) return;
+      final failed = message.startsWith("That didn't work");
+      _finishAction(id, failed ? 'failed' : 'executed', message);
+    } on ApiException catch (error) {
+      if (!_isCurrent(generation)) return;
+      if (error.code == 'expired') {
+        _finishAction(id, 'expired', 'This request expired. Ask again.');
+      } else if (error.code == 'conflict') {
+        _finishAction(id, 'resolved', 'This request was already handled.');
+      } else {
+        _failAction(id, error.message);
+      }
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      _failAction(id, _errorMessage(error, 'Could not confirm this action.'));
+    }
+  }
+
+  Future<void> cancelAction(String id) async {
+    if (!_beginAction(id)) return;
+    final generation = _generation;
+    try {
+      await _api.cancelPendingAction(id);
+      if (!_isCurrent(generation)) return;
+      _finishAction(id, 'cancelled', 'Cancelled.');
+    } on ApiException catch (error) {
+      if (!_isCurrent(generation)) return;
+      if (error.code == 'expired') {
+        _finishAction(id, 'expired', 'This request expired. Ask again.');
+      } else if (error.code == 'conflict') {
+        _finishAction(id, 'resolved', 'This request was already handled.');
+      } else {
+        _failAction(id, error.message);
+      }
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      _failAction(id, _errorMessage(error, 'Could not cancel this action.'));
+    }
+  }
+
+  int _actionIndex(String id) => _state.messages.indexWhere(
+        (message) => message.pendingAction?.id == id,
+      );
+
+  bool _beginAction(String id) {
+    if (_disposed || _state.busyActionIds.contains(id)) return false;
+    final index = _actionIndex(id);
+    if (index < 0) return false;
+    final status = _state.messages[index].pendingAction!.status;
+    if (status != null && status != 'pending') return false;
+    _emit(_state.copyWith(
+      busyActionIds: {..._state.busyActionIds, id},
+      error: null,
+    ));
+    return true;
+  }
+
+  void _finishAction(String id, String status, String reply) {
+    final messages = [..._state.messages];
+    final index = _actionIndex(id);
+    if (index >= 0) {
+      final message = messages[index];
+      messages[index] = message.copyWith(
+        pendingAction: message.pendingAction!.copyWith(status: status),
+      );
+    }
+    messages.add(ChatMessage(
+      text: reply,
+      isUser: false,
+      timestamp: _clock(),
+    ));
+    _emit(_state.copyWith(
+      messages: messages,
+      busyActionIds: _state.busyActionIds.where((e) => e != id).toSet(),
+    ));
+  }
+
+  void _failAction(String id, String error) {
+    _emit(_state.copyWith(
+      busyActionIds: _state.busyActionIds.where((e) => e != id).toSet(),
+      error: error,
+    ));
   }
 
   Future<void> startVoice() async {

@@ -1,4 +1,9 @@
+import 'dart:async';
+
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_message.dart';
+import 'package:echo_app/screens/chat_history_screen.dart';
+import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/models/chat_session.dart';
 import 'package:echo_app/screens/chat_screen.dart';
 import 'package:echo_app/services/api_service.dart';
@@ -49,19 +54,195 @@ void main() {
     expect(find.text('Answer'), findsOneWidget);
     expect(find.text('Sources (1)'), findsOneWidget);
   });
+
+  Future<_FakeChatApi> pumpWithAction(WidgetTester tester) async {
+    final api = _FakeChatApi();
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: ChatScreen(controller: controller),
+    ));
+    await controller.loadSession('s1');
+    await tester.pump();
+    return api;
+  }
+
+  testWidgets('pending action shows summary with Confirm and Cancel',
+      (tester) async {
+    await pumpWithAction(tester);
+
+    expect(find.text('Send email to Ann'), findsOneWidget);
+    expect(find.byKey(const Key('action-confirm-act-1')), findsOneWidget);
+    expect(find.byKey(const Key('action-cancel-act-1')), findsOneWidget);
+  });
+
+  testWidgets('Confirm calls the API once, disables buttons, shows Done',
+      (tester) async {
+    final api = await pumpWithAction(tester);
+    final pending = Completer<String>();
+    api.confirmHandler = (_) => pending.future;
+
+    await tester.tap(find.byKey(const Key('action-confirm-act-1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('action-confirm-act-1')),
+        warnIfMissed: false);
+    await tester.pump();
+
+    expect(api.confirms, ['act-1']);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('action-confirm-act-1')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.byKey(const Key('action-cancel-act-1')))
+          .onPressed,
+      isNull,
+    );
+
+    pending.complete('Done.');
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('action-confirm-act-1')), findsNothing);
+    expect(find.text('Done'), findsOneWidget);
+    expect(find.text('Done.'), findsOneWidget);
+  });
+
+  testWidgets('expired confirm shows the expiry message and no buttons',
+      (tester) async {
+    final api = await pumpWithAction(tester);
+    api.confirmHandler = (_) => Future.error(const ApiException(
+          statusCode: 410,
+          code: 'expired',
+          message: 'gone',
+          retryable: false,
+        ));
+
+    await tester.tap(find.byKey(const Key('action-confirm-act-1')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('This request expired. Ask again.'), findsOneWidget);
+    expect(find.text('Expired'), findsOneWidget);
+    expect(find.byKey(const Key('action-confirm-act-1')), findsNothing);
+  });
+
+  testWidgets('Cancel marks the card cancelled', (tester) async {
+    final api = await pumpWithAction(tester);
+
+    await tester.tap(find.byKey(const Key('action-cancel-act-1')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.cancels, ['act-1']);
+    expect(find.text('Cancelled'), findsOneWidget);
+    expect(find.text('Cancelled.'), findsOneWidget);
+  });
+
+  testWidgets('a non-pending action shows a status line and no buttons',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: MessageBubble(
+          message: ChatMessage(
+            text: 'Sent.',
+            isUser: false,
+            pendingAction: const PendingAction(
+              id: 'act-9',
+              summary: 'Send email',
+              status: 'failed',
+            ),
+          ),
+        ),
+      ),
+    ));
+
+    expect(find.text('Send email'), findsOneWidget);
+    expect(find.text('Failed'), findsOneWidget);
+    expect(find.byKey(const Key('action-confirm-act-9')), findsNothing);
+    expect(find.byKey(const Key('action-cancel-act-9')), findsNothing);
+  });
+
+  testWidgets('history lists Voice requests first with a pin icon',
+      (tester) async {
+    final api = _FakeChatApi()
+      ..sessions = [
+        ChatSessionSummary(
+          id: 'c1',
+          title: 'Planning',
+          messageCount: 2,
+          createdAt: DateTime.parse('2026-10-01T09:30:00Z'),
+          updatedAt: DateTime.parse('2026-10-02T09:30:00Z'),
+        ),
+        ChatSessionSummary(
+          id: 'v1',
+          title: 'Voice requests',
+          messageCount: 1,
+          createdAt: DateTime.parse('2026-09-01T09:30:00Z'),
+          updatedAt: DateTime.parse('2026-09-02T09:30:00Z'),
+          kind: 'voice',
+        ),
+      ];
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: ChatHistoryScreen(controller: controller, api: api),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.push_pin), findsOneWidget);
+    final voiceY = tester.getTopLeft(find.text('Voice requests')).dy;
+    final chatY = tester.getTopLeft(find.text('Planning')).dy;
+    expect(voiceY, lessThan(chatY));
+  });
 }
 
 final class _FakeChatApi implements ChatApi {
+  final confirms = <String>[];
+  final cancels = <String>[];
+  List<ChatSessionSummary> sessions = const [];
+  Future<String> Function(String id)? confirmHandler;
+
+  @override
+  Future<String> confirmPendingAction(String id) {
+    confirms.add(id);
+    return confirmHandler?.call(id) ?? Future.value('Done.');
+  }
+
+  @override
+  Future<void> cancelPendingAction(String id) async {
+    cancels.add(id);
+  }
+
   @override
   Future<QueryResponse> query(String question, {String? sessionId}) =>
       throw UnimplementedError();
 
   @override
-  Future<List<ChatSessionSummary>> getSessions() async => const [];
+  Future<List<ChatSessionSummary>> getSessions() async => sessions;
 
   @override
-  Future<ChatSessionDetail> getSessionDetail(String id) =>
-      throw UnimplementedError();
+  Future<ChatSessionDetail> getSessionDetail(String id) async =>
+      ChatSessionDetail(
+        id: id,
+        title: 'Voice requests',
+        messages: const [
+          ChatSessionMessage(
+            role: 'assistant',
+            content: 'Shall I send it?',
+            pendingAction:
+                PendingAction(id: 'act-1', summary: 'Send email to Ann'),
+          ),
+        ],
+        createdAt: DateTime.parse('2026-10-01T09:30:00Z'),
+        updatedAt: DateTime.parse('2026-10-01T09:31:00Z'),
+      );
 
   @override
   Future<void> deleteSession(String id) async {}
