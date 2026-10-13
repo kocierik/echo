@@ -13,6 +13,7 @@ import '../models/segment.dart';
 import '../models/today_insights.dart';
 import 'api_exception.dart';
 import 'transcript_controller.dart';
+import 'voice_updates_service.dart';
 
 class QueryResponse {
   final String answer;
@@ -171,7 +172,8 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
   }
 }
 
-class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
+class ApiService
+    implements ChatApi, TranscriptApi, TranscriptMemoryApi, VoiceUpdatesApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,

@@ -16,6 +16,7 @@ abstract interface class NotificationPort {
     required int id,
     required String title,
     required String body,
+    String? payload,
   });
 }
 
@@ -25,6 +26,9 @@ final class NotificationService {
   static const int disconnectId = 100;
   static const int lossId = 101;
   static const int uploadFailureId = 102;
+  static const int voiceAnswerBaseId = 200;
+  static const int voiceAnswerIdCount = 50;
+  static const String voicePayloadPrefix = 'voice:';
 
   final NotificationPort _port;
   bool _disconnectScheduled = false;
@@ -67,12 +71,29 @@ final class NotificationService {
         body: 'Echo could not upload recent audio after several attempts.',
       );
 
+  Future<void> showVoiceAnswer(
+    String preview, {
+    String? sessionId,
+    int id = voiceAnswerBaseId,
+  }) =>
+      _port.show(
+        id: id,
+        title: 'Echo',
+        body: preview,
+        payload: '$voicePayloadPrefix${sessionId ?? ''}',
+      );
+
   Future<void> segmentCompleted() async {}
 }
 
 final class FlutterLocalNotificationPort implements NotificationPort {
-  FlutterLocalNotificationPort({FlutterLocalNotificationsPlugin? plugin})
-      : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationPort({
+    FlutterLocalNotificationsPlugin? plugin,
+    this.onSelect,
+  }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
+  /// Called with the notification payload when the user taps a notification.
+  void Function(String payload)? onSelect;
 
   static const _notificationDetails = NotificationDetails(
     android: AndroidNotificationDetails(
@@ -98,7 +119,13 @@ final class FlutterLocalNotificationPort implements NotificationPort {
         requestSoundPermission: false,
       ),
     );
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload != null) onSelect?.call(payload);
+      },
+    );
   }
 
   @override
@@ -141,7 +168,9 @@ final class FlutterLocalNotificationPort implements NotificationPort {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) {
-    return _plugin.show(id, title, body, _notificationDetails);
+    return _plugin.show(id, title, body, _notificationDetails,
+        payload: payload);
   }
 }

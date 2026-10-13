@@ -141,6 +141,7 @@ final class _FakeNotificationPort implements NotificationPort {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     shown.add(_NotificationCall(id: id, title: title, body: body));
   }
