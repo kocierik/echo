@@ -215,6 +215,7 @@ async def query_memory(
             select(Conversation.title, Conversation.summary, Conversation.started_at)
             .where(Conversation.id.in_(matched_conv_ids))
             .where(Conversation.summary.isnot(None))
+            .where(Conversation.summary != "")  # "" = too short to summarize
             .order_by(Conversation.started_at.desc())
         )
         summaries_result = await db.execute(summaries_query)

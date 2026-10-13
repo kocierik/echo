@@ -49,6 +49,12 @@ class Settings(BaseSettings):
 
     # Conversation segmentation
     silence_timeout_ms: int = 120000  # 2 minutes of silence = new conversation
+    max_conversation_duration_ms: int = 2 * 60 * 60 * 1000  # split conversations after 2 hours
+
+    # Conversation titles/summaries, generated once a conversation is closed
+    summary_check_interval_s: int = 300
+    summary_batch_size: int = 10
+    summary_min_words: int = 10
 
     # API
     api_prefix: str = "/api"

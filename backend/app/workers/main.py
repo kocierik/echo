@@ -48,6 +48,7 @@ from app.services.transcription_enhancer import (
 from app.workers.digest import run_digest_loop
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
+from app.workers.summaries import run_summary_loop
 
 # Configure structured logging
 setup_logging()
@@ -642,6 +643,7 @@ async def main():
         asyncio.create_task(process_analysis(redis_client), name="analysis_worker"),
         asyncio.create_task(process_reanalysis(redis_client), name="reanalysis_worker"),
         asyncio.create_task(run_retention_loop(), name="retention_worker"),
+        asyncio.create_task(run_summary_loop(), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
     ]
 

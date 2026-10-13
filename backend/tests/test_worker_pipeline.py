@@ -264,10 +264,10 @@ async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
         "max_chunk",
         "chunk_embeddings",
         "add_chunk",
-        "full_text",
-        "summary",
         "commit",
     ]
+    # Titles/summaries are written later, once the conversation is closed
+    # (app/workers/summaries.py), never per segment.
     assert result.extracted_entity_count == 1
     assert result.new_entity_count == 1
     assert result.chunk_count == 1
