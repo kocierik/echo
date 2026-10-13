@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -138,9 +138,10 @@ async def query_memory(
     # 1. Determine date filter: explicit params take priority, then NLP extraction
     date_range = None
     if body.date_from or body.date_to:
+        # Either end may be open; naive values are treated as UTC
         date_range = DateRange(
-            date_from=body.date_from,
-            date_to=body.date_to or datetime.max,
+            date_from=_as_utc(body.date_from),
+            date_to=_as_utc(body.date_to),
         )
     else:
         date_range = extract_date_range(body.question)
@@ -295,8 +296,7 @@ async def query_memory(
     if date_range:
         system_prompt += (
             f"\n\nNota: i risultati sono filtrati per il periodo "
-            f"{date_range.date_from.strftime('%d/%m/%Y')} - "
-            f"{date_range.date_to.strftime('%d/%m/%Y')}."
+            f"{_describe_period(date_range)}."
         )
 
     messages = [LLMMessage(role="system", content=system_prompt)]
@@ -368,8 +368,6 @@ async def _persist_chat_session(
     The Redis history is trimmed and expires, so it must never overwrite the
     persisted messages: only the new turn is appended here.
     """
-    from datetime import timezone
-
     session_uuid = uuid.UUID(session_id)
 
     # Try to find existing session
@@ -405,9 +403,28 @@ def _format_date_filter(date_range: DateRange | None) -> dict | None:
     if date_range is None:
         return None
     return {
-        "from": date_range.date_from.isoformat(),
-        "to": date_range.date_to.isoformat(),
+        "from": date_range.date_from.isoformat() if date_range.date_from else None,
+        "to": date_range.date_to.isoformat() if date_range.date_to else None,
     }
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    """Make an explicit filter bound timezone-aware (naive values are UTC)."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
+
+
+def _describe_period(date_range: DateRange) -> str:
+    """Human-readable period for the RAG prompt; open ends are described in words."""
+    if date_range.date_from and date_range.date_to:
+        return (
+            f"{date_range.date_from.strftime('%d/%m/%Y')} - "
+            f"{date_range.date_to.strftime('%d/%m/%Y')}"
+        )
+    if date_range.date_from:
+        return f"dal {date_range.date_from.strftime('%d/%m/%Y')} in poi"
+    return f"fino al {date_range.date_to.strftime('%d/%m/%Y')}"
 
 
 async def find_relevant_entities(

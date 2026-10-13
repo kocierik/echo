@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""  # e.g. https://yourdomain.com/api/integrations/google/callback
 
+    # Secret used to sign OAuth `state` values; falls back to google_client_secret
+    oauth_state_secret: str = ""
+
+    @property
+    def effective_oauth_state_secret(self) -> str:
+        return self.oauth_state_secret or self.google_client_secret
+
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",
