@@ -6,6 +6,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import to_user_local_date
 from app.services.calendar_service import create_event, delete_event, list_events, update_event
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
@@ -16,8 +17,10 @@ logger = logging.getLogger(__name__)
 AVAILABLE_ACTIONS = """
 Available actions you can take:
 1. calendar_list — List events for a specific period (params: date_from YYYY-MM-DD, date_to YYYY-MM-DD)
-2. calendar_create — Create an event (params: summary, date YYYY-MM-DD, time HH:MM optional, location optional)
-3. calendar_update — Update an event (params: event_id, summary, date, time, location — all optional except event_id)
+2. calendar_create — Create an event (params: summary, date YYYY-MM-DD,
+   time HH:MM optional, duration_minutes optional, location optional)
+3. calendar_update — Update an event (params: event_id, summary, date, time,
+   duration_minutes, location — all optional except event_id)
 4. calendar_delete — Delete an event (params: event_id)
 5. none — No action needed, just answer the question
 """
@@ -35,8 +38,13 @@ Respond with ONLY a JSON object:
   - "domani" = tomorrow's date for both date_from and date_to
   - "questa settimana" = today to end of week
   - "prossima settimana" = next monday to next sunday
-- If it's a calendar create request: {{"action": "calendar_create", "params": {{"summary": "...", "date": "YYYY-MM-DD", "time": "HH:MM", "location": "..."}}}}
+- If it's a calendar create request: {{"action": "calendar_create", "params": {{"summary": "...", "date": "YYYY-MM-DD", "time": "HH:MM", "duration_minutes": 60, "location": "..."}}}}
+  - "dalle 15 alle 17" = time "15:00", duration_minutes 120; "mezz'ora" = 30
+  - omit time if no time is said
+  - omit duration_minutes if no duration or end time is said
 - If it's a calendar update: {{"action": "calendar_update", "params": {{"event_id": "...", "summary": "..."}}}}
+  - include only the fields that change
+  - a new time alone keeps the date, a new date alone keeps the time
 - If it's a calendar delete: {{"action": "calendar_delete", "params": {{"event_id": "..."}}}}
 
 Today's date: {today}
@@ -56,7 +64,7 @@ async def detect_and_execute_action(
     Returns None if no action is needed (normal RAG query should proceed).
     Returns a string response if an action was executed.
     """
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta, timezone
 
     llm = get_llm_query_service()
 
@@ -69,7 +77,7 @@ async def detect_and_execute_action(
             role = "User" if msg["role"] == "user" else "Assistant"
             history_text += f"{role}: {msg['content'][:200]}\n"
 
-    today = date.today()
+    today = to_user_local_date(datetime.now(timezone.utc))
     tomorrow = today + timedelta(days=1)
 
     messages = [
@@ -135,12 +143,19 @@ async def _execute_action(
         date = params.get("date")
         time = params.get("time")
         location = params.get("location")
+        duration_minutes = _positive_int(params.get("duration_minutes"))
 
         if not summary or not date:
             return "Non ho capito bene. Dimmi il nome dell'evento e la data (es: 'crea evento pranzo con Marco il 2026-08-01 alle 13:00')."
 
         result = await create_event(
-            db, user_id, summary=summary, date=date, time=time, location=location
+            db,
+            user_id,
+            summary=summary,
+            date=date,
+            time=time,
+            location=location,
+            duration_minutes=duration_minutes,
         )
         if result is None:
             return "Non sono riuscito a creare l'evento. Verifica che Google Calendar sia connesso."
@@ -159,6 +174,7 @@ async def _execute_action(
             date=params.get("date"),
             time=params.get("time"),
             location=params.get("location"),
+            duration_minutes=_positive_int(params.get("duration_minutes")),
         )
         if result is None:
             return "Non sono riuscito a modificare l'evento."
@@ -174,6 +190,15 @@ async def _execute_action(
         return "Non sono riuscito a eliminare l'evento."
 
     return "Azione non riconosciuta."
+
+
+def _positive_int(value) -> int | None:
+    """Duration from LLM params: a positive integer, or None (use the default)."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _format_event(ev: dict) -> str:

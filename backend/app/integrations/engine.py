@@ -6,14 +6,19 @@ and triggers the appropriate action via HTTP webhook or MCP call.
 
 import logging
 import uuid
-from datetime import date, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.entity import Entity
 from app.models.integration import Integration
+from app.services.calendar_service import (
+    all_day_range,
+    event_schedule_from_metadata,
+    timed_range,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +109,12 @@ async def _google_calendar_create_event(config: dict, entity: Entity):
         return
 
     # Build event payload
-    event_date = entity.metadata_.get("event_date")
-    event_time = entity.metadata_.get("event_time")
+    schedule = event_schedule_from_metadata(entity.metadata_)
+    if schedule is None:
+        # No usable ISO date — can't create an event
+        logger.info(f"[Calendar] Skipping event '{entity.name}' — no valid date extracted")
+        return
+    event_date, event_time, duration_minutes = schedule
     location = entity.metadata_.get("location")
 
     event_body: dict = {
@@ -116,25 +125,15 @@ async def _google_calendar_create_event(config: dict, entity: Entity):
     if location:
         event_body["location"] = location
 
-    # Date handling: full day or timed event (default duration: 1 hour)
-    if event_date and event_time:
-        start_dt = datetime.fromisoformat(f"{event_date}T{event_time}:00")
-        end_dt = start_dt + timedelta(hours=1)
-        event_body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
-        event_body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
-    elif event_date:
-        # Google Calendar all-day events use an exclusive end date (next day)
-        try:
-            end_date = date.fromisoformat(event_date) + timedelta(days=1)
-        except ValueError:
-            logger.info(f"[Calendar] Skipping event '{entity.name}' — invalid date {event_date!r}")
-            return
-        event_body["start"] = {"date": event_date}
-        event_body["end"] = {"date": end_date.isoformat()}
+    # Timed event (default duration from settings) or all-day event
+    if event_time:
+        event_body["start"], event_body["end"] = timed_range(
+            event_date,
+            event_time,
+            duration_minutes or settings.default_event_duration_minutes,
+        )
     else:
-        # No date — skip, can't create event without date
-        logger.info(f"[Calendar] Skipping event '{entity.name}' — no date extracted")
-        return
+        event_body["start"], event_body["end"] = all_day_range(event_date)
 
     # Try with current access_token, refresh if 401
     async with httpx.AsyncClient() as client:

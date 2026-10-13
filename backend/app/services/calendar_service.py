@@ -2,7 +2,9 @@
 
 import logging
 import uuid
+from datetime import date as date_cls
 from datetime import datetime, timedelta
+from datetime import time as time_cls
 
 import httpx
 from sqlalchemy import select
@@ -16,10 +18,99 @@ logger = logging.getLogger(__name__)
 CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 
 
-def _all_day_range(day: str) -> tuple[dict, dict]:
+def all_day_range(day: str) -> tuple[dict, dict]:
     """Start/end for an all-day event: Google expects an exclusive end date (next day)."""
     end_day = datetime.fromisoformat(day).date() + timedelta(days=1)
     return {"date": day}, {"date": end_day.isoformat()}
+
+
+def timed_range(day: str, time: str, duration_minutes: int) -> tuple[dict, dict]:
+    """Start/end for a timed event in the user's timezone.
+
+    Args:
+        day: ISO date (YYYY-MM-DD).
+        time: Local start time (HH:MM or HH:MM:SS).
+        duration_minutes: Event length in minutes.
+    """
+    start_dt = datetime.fromisoformat(f"{day}T{time}")
+    end_dt = start_dt + timedelta(minutes=duration_minutes)
+    timezone = settings.user_timezone
+    return (
+        {"dateTime": start_dt.isoformat(), "timeZone": timezone},
+        {"dateTime": end_dt.isoformat(), "timeZone": timezone},
+    )
+
+
+def event_schedule_from_metadata(
+    metadata: dict | None,
+) -> tuple[str, str | None, int | None] | None:
+    """Validated (date, start time, duration) from extracted entity metadata.
+
+    Returns None when there is no usable ISO date. An invalid time is dropped
+    (the event becomes all-day) and an invalid duration falls back to the default.
+    """
+    metadata = metadata or {}
+    raw_day = metadata.get("event_date") or metadata.get("due_date")
+    try:
+        day = date_cls.fromisoformat(str(raw_day)).isoformat() if raw_day else None
+    except ValueError:
+        day = None
+    if day is None:
+        return None
+
+    start_time = None
+    raw_time = metadata.get("event_time")
+    if raw_time:
+        try:
+            start_time = time_cls.fromisoformat(str(raw_time)).strftime("%H:%M")
+        except ValueError:
+            start_time = None
+
+    duration = metadata.get("duration_minutes")
+    if isinstance(duration, bool) or not isinstance(duration, int) or duration <= 0:
+        duration = None
+    return day, start_time, duration
+
+
+def rescheduled_range(
+    existing: dict,
+    date: str | None = None,
+    time: str | None = None,
+    duration_minutes: int | None = None,
+) -> tuple[dict, dict]:
+    """New start/end for an existing Google event, filling gaps from the event itself.
+
+    - only the time changes → same day, same duration;
+    - only the date changes → same time and duration (all-day stays all-day);
+    - only the duration changes → same start.
+    """
+    start = existing.get("start", {})
+    end = existing.get("end", {})
+
+    if "dateTime" in start:
+        current_start = datetime.fromisoformat(start["dateTime"])
+        current_end = datetime.fromisoformat(end.get("dateTime", start["dateTime"]))
+        current_minutes = int((current_end - current_start).total_seconds() // 60)
+        current_day = current_start.date().isoformat()
+        current_time = current_start.strftime("%H:%M")
+    else:
+        current_minutes = None
+        current_day = start.get("date")
+        current_time = None
+
+    new_day = date or current_day
+    new_time = time or current_time
+    if new_day is None:
+        raise ValueError("Cannot reschedule an event without a date")
+    if new_time is None:
+        return all_day_range(new_day)
+
+    minutes = (
+        duration_minutes
+        or current_minutes
+        or settings.default_event_duration_minutes
+    )
+    return timed_range(new_day, new_time, minutes)
 
 
 async def get_calendar_token(db: AsyncSession, user_id: uuid.UUID) -> str | None:
@@ -53,7 +144,9 @@ async def get_calendar_token(db: AsyncSession, user_id: uuid.UUID) -> str | None
         new_token = await _refresh_token(refresh_token)
         if new_token:
             integration.config = {**config, "access_token": new_token}
-            await db.commit()
+            # Flush only: callers (request handlers, the analysis pipeline) own the
+            # transaction, and committing here would persist their partial work.
+            await db.flush()
             return new_token
 
     return None
@@ -132,12 +225,13 @@ async def create_event(
     time: str | None = None,
     location: str | None = None,
     description: str | None = None,
-    duration_minutes: int = 60,
+    duration_minutes: int | None = None,
 ) -> dict | None:
     """Create a calendar event. Returns the created event or None on failure.
 
     Args:
-        duration_minutes: Duration of timed events in minutes (default 60).
+        duration_minutes: Duration of timed events in minutes (default
+                          settings.default_event_duration_minutes).
                           Ignored for all-day events (no time specified).
     """
     token = await get_calendar_token(db, user_id)
@@ -151,12 +245,11 @@ async def create_event(
         body["location"] = location
 
     if time:
-        start_dt = datetime.fromisoformat(f"{date}T{time}:00")
-        end_dt = start_dt + timedelta(minutes=duration_minutes)
-        body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
-        body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
+        body["start"], body["end"] = timed_range(
+            date, time, duration_minutes or settings.default_event_duration_minutes
+        )
     else:
-        body["start"], body["end"] = _all_day_range(date)
+        body["start"], body["end"] = all_day_range(date)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -179,13 +272,13 @@ async def update_event(
     date: str | None = None,
     time: str | None = None,
     location: str | None = None,
-    duration_minutes: int = 60,
+    duration_minutes: int | None = None,
 ) -> dict | None:
     """Update an existing calendar event.
 
-    Args:
-        duration_minutes: Duration of timed events in minutes (default 60).
-                          Ignored for all-day events (no time specified).
+    Only the given fields change. When rescheduling, a missing date or time is
+    taken from the existing event and its duration is kept unless
+    duration_minutes is given.
     """
     token = await get_calendar_token(db, user_id)
     if not token:
@@ -196,18 +289,23 @@ async def update_event(
         body["summary"] = summary
     if location:
         body["location"] = location
-    if date and time:
-        start_dt = datetime.fromisoformat(f"{date}T{time}:00")
-        end_dt = start_dt + timedelta(minutes=duration_minutes)
-        body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
-        body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
-    elif date:
-        body["start"], body["end"] = _all_day_range(date)
-
-    if not body:
-        return None
 
     async with httpx.AsyncClient() as client:
+        if date or time or duration_minutes:
+            existing = await client.get(
+                f"{CALENDAR_API}/calendars/primary/events/{event_id}",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            if existing.status_code != 200:
+                logger.error(f"[Calendar] Update lookup failed ({existing.status_code})")
+                return None
+            body["start"], body["end"] = rescheduled_range(
+                existing.json(), date=date, time=time, duration_minutes=duration_minutes
+            )
+
+        if not body:
+            return None
+
         resp = await client.patch(
             f"{CALENDAR_API}/calendars/primary/events/{event_id}",
             headers={"Authorization": f"Bearer {token}"},

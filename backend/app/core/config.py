@@ -63,6 +63,12 @@ class Settings(BaseSettings):
     # Speaker detection
     speaker_energy_threshold: int = 0  # manual override (0 = auto-calibrate)
 
+    # User's local timezone (IANA name): calendar events, relative dates in extraction
+    user_timezone: str = "Europe/Rome"
+
+    # Default duration of timed calendar events when none is specified
+    default_event_duration_minutes: int = 60
+
     # Google OAuth2 (for Calendar integration)
     google_client_id: str = ""
     google_client_secret: str = ""

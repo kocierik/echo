@@ -6,6 +6,7 @@ using mock LLM services, without requiring Redis or a real database.
 
 import json
 import uuid
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -164,7 +165,10 @@ async def _run_pipeline(monkeypatch, allow_side_effects):
         id=uuid.uuid4(), text="Uno due tre quattro cinque sei sette otto nove dieci undici."
     )
     segment = SimpleNamespace(
-        id=uuid.uuid4(), user_id=user_id, transcription=transcription
+        id=uuid.uuid4(),
+        user_id=user_id,
+        transcription=transcription,
+        recorded_at=datetime(2026, 10, 13, 22, 30, tzinfo=timezone.utc),
     )
 
     async def fake_assign(_db, _segment):
@@ -172,9 +176,17 @@ async def _run_pipeline(monkeypatch, allow_side_effects):
         return conversation
 
     async def fake_extract(
-        _llm, _text, extracted_user_id, transcription_id, conversation_id, known_people=None
+        _llm,
+        _text,
+        extracted_user_id,
+        transcription_id,
+        conversation_id,
+        known_people=None,
+        reference_date=None,
     ):
         events.append("extract")
+        # 22:30 UTC is already the next day in the user's timezone (Europe/Rome)
+        assert reference_date == date(2026, 10, 14)
         assert extracted_user_id == user_id
         assert transcription_id == transcription.id
         assert conversation_id == conversation.id
