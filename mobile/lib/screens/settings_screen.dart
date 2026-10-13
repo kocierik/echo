@@ -28,7 +28,7 @@ class SettingsScreen extends StatefulWidget {
     this.onOpenTranscripts,
     this.apiServiceFactory,
     this.diagnosticsBuilder,
-    this.rulesBuilder,
+    this.activityBuilder,
     this.integrationsBuilder,
     super.key,
   });
@@ -42,7 +42,7 @@ class SettingsScreen extends StatefulWidget {
   final VoidCallback? onOpenTranscripts;
   final ApiService Function()? apiServiceFactory;
   final WidgetBuilder? diagnosticsBuilder;
-  final WidgetBuilder? rulesBuilder;
+  final WidgetBuilder? activityBuilder;
   final WidgetBuilder? integrationsBuilder;
 
   @override
@@ -133,9 +133,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SettingsRow(
             icon: Icons.auto_awesome_outlined,
             title: 'Automations',
-            subtitle: 'Rules and connected services.',
+            subtitle: 'Connected apps and what Echo did with them.',
             onTap: () => _push(AutomationsSettingsScreen(
-              rulesBuilder: widget.rulesBuilder,
+              activityBuilder: widget.activityBuilder,
               integrationsBuilder: widget.integrationsBuilder,
             )),
           ),

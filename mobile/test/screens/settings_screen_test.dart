@@ -72,7 +72,7 @@ void main() {
         diagnosticsBuilder: (_) => const Scaffold(
           body: Text('Diagnostics route'),
         ),
-        rulesBuilder: (_) => const Scaffold(body: Text('Rules route')),
+        activityBuilder: (_) => const Scaffold(body: Text('Activity route')),
         integrationsBuilder: (_) =>
             const Scaffold(body: Text('Integrations route')),
       ),
@@ -129,9 +129,9 @@ void main() {
 
     await tester.tap(find.text('Automations'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Rules'));
+    await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
-    expect(find.text('Rules route'), findsOneWidget);
+    expect(find.text('Activity route'), findsOneWidget);
   });
 
   testWidgets('automations exposes both real destinations', (tester) async {
@@ -139,7 +139,8 @@ void main() {
     await tester.tap(find.text('Automations'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Rules'), findsOneWidget);
+    expect(find.text('Rules'), findsNothing);
+    expect(find.text('Activity'), findsOneWidget);
     expect(find.text('Integrations'), findsOneWidget);
     await tester.tap(find.text('Integrations'));
     await tester.pumpAndSettle();
