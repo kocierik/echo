@@ -26,12 +26,21 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.clients import (
+    create_notion_page,
+    create_todoist_task,
+    send_slack_message,
+    send_telegram_message,
+)
+from app.integrations.engine import create_calendar_event_for_entity
 from app.models.entity import Entity
 from app.models.rule import Rule
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 
 logger = logging.getLogger(__name__)
+
+RULE_HEADING = "Rule triggered"
 
 
 async def evaluate_rules(db: AsyncSession, user_id: uuid.UUID, entity: Entity) -> int:
@@ -151,30 +160,15 @@ async def _execute_actions(actions: list, entity: Entity, db: AsyncSession, user
             if action_type == "webhook":
                 await _action_webhook(action, entity)
             elif action_type == "todoist":
-                await _action_todoist(action, entity)
+                await create_todoist_task(action, entity)
             elif action_type == "notion":
-                await _action_notion(action, entity)
+                await create_notion_page(action, entity)
             elif action_type == "telegram":
-                await _action_telegram(action, entity)
+                await send_telegram_message(action, entity, heading=RULE_HEADING)
             elif action_type == "slack":
-                await _action_slack(action, entity)
+                await send_slack_message(action, entity, heading=RULE_HEADING)
             elif action_type == "google_calendar":
-                from app.services.calendar_service import (
-                    create_event,
-                    event_schedule_from_metadata,
-                )
-                schedule = event_schedule_from_metadata(entity.metadata_)
-                if schedule:
-                    day, start_time, duration_minutes = schedule
-                    await create_event(
-                        db,
-                        user_id,
-                        summary=entity.name,
-                        date=day,
-                        time=start_time,
-                        location=entity.metadata_.get("location"),
-                        duration_minutes=duration_minutes,
-                    )
+                await create_calendar_event_for_entity(db, user_id, entity)
             elif action_type == "tag":
                 # Add tag to entity metadata
                 tag = action.get("tag", "flagged")
@@ -217,90 +211,3 @@ async def _action_webhook(action: dict, entity: Entity):
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(url, json=payload, headers=headers)
         logger.info(f"[Rules/Webhook] POST {url} → {resp.status_code}")
-
-
-async def _action_todoist(action: dict, entity: Entity):
-    """Create Todoist task from rule action."""
-    token = action.get("api_token")
-    if not token:
-        return
-
-    body = {
-        "content": entity.name,
-        "description": entity.content or "",
-    }
-    if action.get("project_id"):
-        body["project_id"] = action["project_id"]
-    if entity.metadata_.get("due_date"):
-        body["due_string"] = entity.metadata_["due_date"]
-    if entity.metadata_.get("priority"):
-        priority_map = {"high": 4, "medium": 3, "low": 2}
-        body["priority"] = priority_map.get(entity.metadata_["priority"], 1)
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.todoist.com/rest/v2/tasks",
-            headers={"Authorization": f"Bearer {token}"},
-            json=body,
-        )
-        logger.info(f"[Rules/Todoist] Created task → {resp.status_code}")
-
-
-async def _action_notion(action: dict, entity: Entity):
-    """Create Notion page from rule action."""
-    token = action.get("api_key")
-    database_id = action.get("database_id")
-    if not token or not database_id:
-        return
-
-    body = {
-        "parent": {"database_id": database_id},
-        "properties": {
-            "Name": {"title": [{"text": {"content": entity.name}}]},
-        },
-    }
-    if entity.content:
-        body["children"] = [
-            {"object": "block", "type": "paragraph",
-             "paragraph": {"rich_text": [{"text": {"content": entity.content}}]}}
-        ]
-
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            "https://api.notion.com/v1/pages",
-            headers={"Authorization": f"Bearer {token}", "Notion-Version": "2022-06-28"},
-            json=body,
-        )
-        logger.info(f"[Rules/Notion] Created page: {entity.name}")
-
-
-async def _action_telegram(action: dict, entity: Entity):
-    """Send Telegram message from rule action."""
-    bot_token = action.get("bot_token")
-    chat_id = action.get("chat_id")
-    if not bot_token or not chat_id:
-        return
-
-    text = f"🤖 Rule triggered\n\n[{entity.entity_type.upper()}] {entity.name}"
-    if entity.content:
-        text += f"\n{entity.content}"
-
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-        )
-
-
-async def _action_slack(action: dict, entity: Entity):
-    """Post to Slack webhook from rule action."""
-    webhook_url = action.get("webhook_url")
-    if not webhook_url:
-        return
-
-    text = f"🤖 *Rule triggered*\n[{entity.entity_type.upper()}] *{entity.name}*"
-    if entity.content:
-        text += f"\n> {entity.content}"
-
-    async with httpx.AsyncClient() as client:
-        await client.post(webhook_url, json={"text": text})
