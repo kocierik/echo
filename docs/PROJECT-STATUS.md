@@ -1,7 +1,7 @@
 # Echo — Stato del progetto (13/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
-Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni sul branch `fix/core-beta-review`.
+Prima analisi su `main` @ `5b235d0`; aggiornato dopo tre giri di correzioni, tutte committate su `main`.
 
 ---
 
@@ -81,7 +81,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 
 ## 3. Problemi
 
-### Risolti il 13/10/2026 (branch `fix/core-beta-review`)
+### Risolti il 13/10/2026 (su `main`)
 
 | # | Problema | Commit |
 |---|---|---|
@@ -104,19 +104,24 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 | 16 | Due chiamate a GPT-4o per ogni domanda sulla memoria | `fd36b64` |
 | 17 | `/api/stats` e `/metrics` senza autenticazione, conteggi globali | `fb1d8eb` |
 | — | CI rossa: 60 errori ruff; `speaker_detector.py` e il suo test incollati due volte (la copia peggiore vinceva) | `0d09920` |
+| 11 | Soglia speaker fissa al 70° percentile: ora `SPEAKER_THRESHOLD_PERCENTILE` (la calibrazione resta da fare) | `0fb07c8` |
+| 12b | RAG e digest filtravano le conversazioni per inizio: ora per sovrapposizione col periodo | `0a4c248` |
+| 18 | Allo shutdown il worker cancellava subito il lavoro in corso | `6c3b603` |
+| 19 | Lingua mista: testi fissi in inglese, chat nella lingua della domanda, riassunti/digest in inglese, prefissi `[You]`/`[Others]` | `5633513` |
+| 20 | Todoist REST v2 dismessa (410): passata all'API v1; client unificati per integrazioni e regole | `4cb25d7` |
+| — | `POST /api/query/feedback` rispondeva sempre 500 (il 👍/👎 non funzionava) | `5633513` |
+| — | Installazioni nuove senza la migrazione 006 (`schema.sql` + `stamp head`); `deploy.sh` nascondeva le migrazioni fallite | `3fbb621` |
 
 ### Ancora aperti
 
-**Medi**
-
-11. **Classificazione speaker probabilmente invertita.** Soglia al 70° percentile ([speaker_detector.py:34](../backend/app/services/speaker_detector.py#L34)):
-    solo ~30% dei segmenti diventa "self", mentre il commento dice che la voce dell'utente domina. Da verificare con dati reali.
-12b. **Filtri temporali per `started_at`.** RAG e digest filtrano le conversazioni per inizio: con il limite di 2 h il problema
-    è ridotto, ma una conversazione a cavallo della mezzanotte finisce tutta nel giorno d'inizio.
-18. **Shutdown del worker non "graceful":** i task vengono cancellati subito ([workers/main.py:652](../backend/app/workers/main.py#L652)); il lavoro interrotto viene rimesso in coda.
-19. **Lingua mista:** UI mobile in inglese, risposte backend, prompt, prefissi speaker e messaggi d'errore in italiano.
-20. **Todoist REST v2** ([engine.py:92](../backend/app/integrations/engine.py#L92), [rules_engine.py:242](../backend/app/services/rules_engine.py#L242)):
-    l'API v2 è stata deprecata in favore della v1 unificata; verificare che risponda ancora.
+- **Speaker (#11):** la soglia ora è configurabile ma va calibrata su registrazioni reali.
+- **Entità nella lingua parlata:** nomi e contenuti di task/eventi estratti restano nella lingua della trascrizione
+  (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
+  (tradurre perderebbe fedeltà e confonderebbe la deduplicazione): dimmi se preferisci tradurli.
+- **Todoist v1 non verificata dal vivo:** l'endpoint `POST https://api.todoist.com/api/v1/tasks` e i campi usati vengono da
+  note di migrazione di terze parti; la documentazione ufficiale è bloccata dal proxy aziendale. Da provare con un token reale.
+- **Rilevamento lingua euristico:** per le risposte fisse (conferme calendario, "nessun risultato") si contano parole comuni
+  italiane/inglesi; frasi molto brevi o miste cadono sull'inglese.
 
 ### Ambiente di sviluppo e CI
 - `ruff check app/ tests/` è pulito. La CI ora ha anche il job `mobile` (`flutter analyze` + `flutter test`) e i test nativi
@@ -125,8 +130,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   non sono attivi.
 - **Test backend su Windows:** `asyncpg==0.29` non ha wheel per Python 3.13 e richiede MSVC. Usare Python 3.11 (come la CI) o Docker.
   Per i test unitari basta un venv 3.13 con `asyncpg>=0.30` e `pytest --noconftest`.
-- **`uv.lock` non aggiornato** per la nuova dipendenza `tzdata` (Docker e CI installano da `pyproject.toml` con pip, quindi non si rompono):
-  rigenerarlo con `uv lock` quando conviene (la versione di uv installata qui riscrive il formato del file).
+- `uv.lock` rigenerato (era già disallineato da `pyproject.toml`; formato aggiornato da uv 0.9.5).
 - I test Flutter scritti il 13/10 **non sono stati eseguiti** in locale (SDK non disponibile): li lancerà il nuovo job CI.
 
 ---
@@ -158,23 +162,26 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 
 ## 5. Debito tecnico
 
-- **Integrazioni duplicate:** `integrations/engine.py` e `rules_engine.py` reimplementano gli stessi client (Todoist, Notion,
-  Telegram, Slack); il refresh del token in `engine.py` non salva il nuovo token. Sarà sostituito dall'adapter Composio.
-- **Schema DB doppio:** `docs/schema.sql` + `alembic stamp head` al primo avvio invece di `alembic upgrade head` da zero.
+- **Schema DB doppio:** `docs/schema.sql` copre solo fino alla migrazione 005; le istruzioni ora fanno `stamp 001` +
+  `upgrade head`, ma sarebbe più semplice creare il DB solo con Alembic (baseline 001 che crea davvero le tabelle).
 - **Rate limiting per IP** dietro Cloudflare Tunnel: tutte le richieste arrivano dallo stesso IP.
-- Script sparsi in root (`fix_dns_test.sh`, `setup_and_test.sh`, `start_api.sh`, `test_api.sh`, `run_backend.sh`) legati al workaround del PC aziendale.
-- `mobile/ios/Flutter/flutter_export_environment.sh` è versionato ma è generato e contiene percorsi locali.
-- Fatto il 13/10: rimosso il codice morto (firmware Wi-Fi/NTP, 7 file mobile) e aggiornati README, ROADMAP,
-  ADR (nuovo [0006](adr/0006-ble-relay-through-phone.md), 0001 superato) e note di stato dei piani.
+- Fatto il 13/10: codice morto rimosso (firmware Wi-Fi/NTP, 7 file mobile, MessageBubble commentato), client delle
+  integrazioni unificati, script del workaround aziendale rimossi, file generati da Flutter non più versionati,
+  `uv.lock` rigenerato, README/ROADMAP/ADR/piani aggiornati.
 
 ---
 
 ## 6. Prossimi passi consigliati
 
-1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`) e lanciare `flutter test`
-   (o pushare e guardare il nuovo job CI `mobile`).
-2. **Eseguire il test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md): è il blocco per chiudere la fase.
-3. **Calibrare VAD e soglia speaker** (#11) con le prime registrazioni reali: soglia VAD fissa a 500, percentile speaker al 70°.
-4. **Filtri temporali per sovrapposizione** (#12b): filtrare conversazioni per intervallo `[started_at, ended_at]` invece che per inizio.
-5. **Shutdown graceful del worker** (#18): attendere fino a 30 s il lavoro in corso prima di cancellare i task.
-6. Uniformare la lingua (#19) e verificare l'API Todoist (#20).
+**Per te** (servono hardware, SDK o account):
+
+1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`), poi
+   `flutter test` o push per vedere i job CI `mobile` e firmware (mai girati).
+2. **Controllare i test di integrazione con Postgres** in CI.
+3. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
+4. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
+5. **Provare Todoist** con un token reale (creazione di un task da una regola o un'integrazione).
+6. Test batteria 12 h quando arriva l'hardware.
+
+**Per me**, se vuoi: baseline Alembic che crea lo schema da zero (al posto di `schema.sql`), rate limiting per API key
+invece che per IP, ed eventualmente traduzione delle entità estratte.

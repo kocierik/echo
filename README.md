@@ -224,6 +224,7 @@ All `/api` endpoints require the `X-API-Key` header.
 | `DEFAULT_EVENT_DURATION_MINUTES` | `60` | Duration of calendar events when none is said |
 | `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
+| `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | — | Google Calendar OAuth |
 | `OAUTH_STATE_SECRET` | Google client secret | Secret that signs the OAuth `state` |
 
