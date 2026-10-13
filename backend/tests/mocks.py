@@ -47,6 +47,8 @@ class MockLLMService(LLMService):
     def __init__(self, default_response: str = "Risposta di test dal mock LLM."):
         self.default_response = default_response
         self.call_log: list[list[LLMMessage]] = []
+        # Scripted responses for complete_with_tools, returned in order.
+        self.tool_responses: list[LLMResponse] = []
 
     async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:
         self.call_log.append(messages)
@@ -63,6 +65,14 @@ class MockLLMService(LLMService):
             model="mock-gpt-4o",
             usage_tokens=20,
         )
+
+    async def complete_with_tools(
+        self, messages: list[LLMMessage], tools: list[dict], temperature: float = 0.2
+    ) -> LLMResponse:
+        self.call_log.append(messages)
+        if not self.tool_responses:
+            raise AssertionError("MockLLMService.tool_responses is empty")
+        return self.tool_responses.pop(0)
 
     async def complete_json(self, messages: list[LLMMessage], temperature: float = 0.1) -> dict:
         self.call_log.append(messages)
