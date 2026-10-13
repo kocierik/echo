@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -105,8 +105,18 @@ async def query_memory(
     redis_client = request.app.state.redis
 
     # Resolve or create session
-    session_id = body.session_id or str(uuid.uuid4())
+    if body.session_id:
+        try:
+            session_uuid = uuid.UUID(body.session_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="session_id must be a UUID")
+    else:
+        session_uuid = uuid.uuid4()
+    session_id = str(session_uuid)
     history = await _get_session_history(redis_client, session_id)
+    if not history and body.session_id:
+        # Redis context expired: resume follow-up context from the persisted session
+        history = await _load_persisted_history(db, user_id, session_uuid)
 
     # --- Action Detection: check if user wants to DO something (not just ask) ---
     from app.services.chat_actions import detect_and_execute_action
@@ -114,10 +124,9 @@ async def query_memory(
     action_result = await detect_and_execute_action(db, user_id, body.question, history)
     if action_result is not None:
         # Action was executed — return result directly (skip RAG)
-        history.append({"role": "user", "content": body.question})
-        history.append({"role": "assistant", "content": action_result})
-        await _save_session_history(redis_client, session_id, history)
-        await _persist_chat_session(db, user_id, session_id, history)
+        await _record_turn(
+            redis_client, db, user_id, session_id, history, body.question, action_result
+        )
 
         return QueryResponse(
             answer=action_result,
@@ -225,10 +234,9 @@ async def query_memory(
                 "Prova a riformulare la domanda o a estendere il periodo."
             )
         # Save to history even for empty results
-        history.append({"role": "user", "content": body.question})
-        history.append({"role": "assistant", "content": no_result_msg})
-        await _save_session_history(redis_client, session_id, history)
-        await _persist_chat_session(db, user_id, session_id, history)
+        await _record_turn(
+            redis_client, db, user_id, session_id, history, body.question, no_result_msg
+        )
 
         return QueryResponse(
             answer=no_result_msg,
@@ -304,12 +312,10 @@ async def query_memory(
     response = await llm_service.complete(messages, temperature=0.3)
 
     # Save to session history (store clean question, not the RAG-augmented one)
-    history.append({"role": "user", "content": body.question})
-    history.append({"role": "assistant", "content": response.content})
-    await _save_session_history(redis_client, session_id, history)
-
-    # Persist session to Postgres for permanent chat history
-    await _persist_chat_session(db, user_id, session_id, history)
+    # and persist to Postgres for permanent chat history
+    await _record_turn(
+        redis_client, db, user_id, session_id, history, body.question, response.content
+    )
 
     return QueryResponse(
         answer=response.content,
@@ -319,10 +325,49 @@ async def query_memory(
     )
 
 
-async def _persist_chat_session(
-    db: AsyncSession, user_id: uuid.UUID, session_id: str, history: list[dict]
+async def _load_persisted_history(
+    db: AsyncSession, user_id: uuid.UUID, session_uuid: uuid.UUID
+) -> list[dict]:
+    """Load the most recent messages of a persisted session as LLM history."""
+    result = await db.execute(
+        select(ChatSession.messages)
+        .where(ChatSession.id == session_uuid)
+        .where(ChatSession.user_id == user_id)
+    )
+    messages = result.scalar_one_or_none() or []
+    return [
+        {"role": m["role"], "content": m["content"]}
+        for m in messages[-MAX_HISTORY_MESSAGES:]
+    ]
+
+
+async def _record_turn(
+    redis_client: aioredis.Redis,
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_id: str,
+    history: list[dict],
+    question: str,
+    answer: str,
 ):
-    """Persist or update chat session in Postgres for permanent history."""
+    """Append one question/answer turn to the Redis context and the Postgres session."""
+    turn = [
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": answer},
+    ]
+    history.extend(turn)
+    await _save_session_history(redis_client, session_id, history)
+    await _persist_chat_session(db, user_id, session_id, turn)
+
+
+async def _persist_chat_session(
+    db: AsyncSession, user_id: uuid.UUID, session_id: str, new_messages: list[dict]
+):
+    """Append new messages to the chat session in Postgres (complete history).
+
+    The Redis history is trimmed and expires, so it must never overwrite the
+    persisted messages: only the new turn is appended here.
+    """
     from datetime import timezone
 
     session_uuid = uuid.UUID(session_id)
@@ -336,7 +381,7 @@ async def _persist_chat_session(
     if chat_session is None:
         # Create new session — generate title from first user message
         first_question = next(
-            (m["content"] for m in history if m["role"] == "user"), "Nuova chat"
+            (m["content"] for m in new_messages if m["role"] == "user"), "Nuova chat"
         )
         title = first_question[:80]
 
@@ -344,12 +389,14 @@ async def _persist_chat_session(
             id=session_uuid,
             user_id=user_id,
             title=title,
-            messages=history,
+            messages=list(new_messages),
         )
         db.add(chat_session)
+    elif chat_session.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Chat session not found")
     else:
-        # Update existing session
-        chat_session.messages = history
+        # Reassign (not mutate) so SQLAlchemy detects the JSONB change
+        chat_session.messages = [*chat_session.messages, *new_messages]
         chat_session.updated_at = datetime.now(timezone.utc)
 
 
