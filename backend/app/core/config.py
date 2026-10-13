@@ -71,6 +71,8 @@ class Settings(BaseSettings):
 
     # Speaker detection
     speaker_energy_threshold: int = 0  # manual override (0 = auto-calibrate)
+    # Auto-calibration: energy percentile above which a segment is "self" (0..1)
+    speaker_threshold_percentile: float = 0.7
 
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"

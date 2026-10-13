@@ -40,3 +40,27 @@ class TestClassifyEnergy:
 
     def test_no_energy_is_unknown(self):
         assert classify_energy(None, 2000) == "unknown"
+
+
+class TestConfigurablePercentile:
+    VALUES = list(range(100, 200, 10))  # [100, 110, ..., 190]
+
+    def test_default_percentile_is_seventy(self):
+        from app.core.config import settings
+
+        assert settings.speaker_threshold_percentile == 0.7
+        assert compute_threshold(self.VALUES) == 170
+
+    def test_explicit_percentile(self):
+        assert compute_threshold(self.VALUES, percentile=0.3) == 130
+
+    def test_configured_percentile_is_used(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "speaker_threshold_percentile", 0.3)
+
+        assert compute_threshold(self.VALUES) == 130
+
+    def test_percentile_is_clamped_to_the_data(self):
+        assert compute_threshold(self.VALUES, percentile=1.0) == 190
+        assert compute_threshold(self.VALUES, percentile=0.0) == 100
