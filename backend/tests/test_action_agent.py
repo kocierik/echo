@@ -279,6 +279,53 @@ async def test_success_claim_after_a_failed_tool_is_replaced():
     assert "couldn't reach Gmail" in outcome.answer
 
 
+async def test_failed_create_after_successful_read_in_same_toolkit_is_not_claimed():
+    db = FakeSession()
+    provider = _provider(
+        ["GMAIL_FETCH_EMAILS", "GMAIL_CREATE_EMAIL_DRAFT"],
+        results={
+            "GMAIL_FETCH_EMAILS": ToolResult(ok=True, data={"messages": []}),
+            "GMAIL_CREATE_EMAIL_DRAFT": ToolResult(ok=False, error="quota exceeded"),
+        },
+    )
+    llm = RecordingLLM([
+        _calls(("GMAIL_FETCH_EMAILS", {})),
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it", "body": "hi"})),
+        _text("Draft created."),
+    ])
+
+    outcome = await _run(db, "Read Ada's last email and draft a reply", provider, llm)
+
+    assert "Draft created." not in outcome.answer
+    assert "couldn't reach Gmail" in outcome.answer
+    assert [log.outcome for log in db.of(ActionLog)] == ["ok", "error"]
+
+
+async def test_retried_tool_that_succeeds_is_not_reported_as_failed():
+    class FlakyProvider(FakeActionProvider):
+        async def execute(self, user_id, tool, arguments):
+            self.executed.append((tool, arguments))
+            if len(self.executed) == 1:
+                raise ActionProviderError("timeout")
+            return ToolResult(ok=True, data={"id": "d1"})
+
+    db = FakeSession()
+    provider = FlakyProvider(
+        connected={"gmail"},
+        tools={"GMAIL_CREATE_EMAIL_DRAFT": _schema("GMAIL_CREATE_EMAIL_DRAFT")},
+    )
+    llm = RecordingLLM([
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it"})),
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it"})),
+        _text("Draft created."),
+    ])
+
+    outcome = await _run(db, "Draft an email to Ada", provider, llm)
+
+    assert outcome.answer == "Draft created."
+    assert [log.outcome for log in db.of(ActionLog)] == ["error", "ok"]
+
+
 async def test_model_explanation_naming_the_toolkit_is_kept():
     db = FakeSession()
     provider = _provider(
