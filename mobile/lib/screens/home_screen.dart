@@ -5,13 +5,18 @@ import 'package:flutter/services.dart';
 
 import '../models/device_status.dart';
 import '../models/segment.dart';
+import '../models/today_insights.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/privacy_control.dart';
+import '../widgets/today_insights.dart';
 import '../widgets/today_memory_preview.dart';
 import 'transcript_detail_screen.dart';
 
 typedef LatestMemoryLoader = Future<List<RecentSegment>> Function();
+typedef OpenTasksLoader = Future<List<OpenTask>> Function();
+typedef DailySummaryLoader = Future<DailySummary?> Function();
+typedef TaskCompleter = Future<void> Function(OpenTask task);
 
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -21,6 +26,9 @@ final class HomeScreen extends StatefulWidget {
     required this.onTranscripts,
     this.onReconnect,
     this.latestMemoryLoader,
+    this.openTasksLoader,
+    this.dailySummaryLoader,
+    this.taskCompleter,
     this.api,
     this.segmentUploadedStream,
     this.onMuteAcknowledged,
@@ -33,6 +41,9 @@ final class HomeScreen extends StatefulWidget {
   final VoidCallback onAsk;
   final VoidCallback onTranscripts;
   final LatestMemoryLoader? latestMemoryLoader;
+  final OpenTasksLoader? openTasksLoader;
+  final DailySummaryLoader? dailySummaryLoader;
+  final TaskCompleter? taskCompleter;
   final ApiService? api;
   final Stream<Object?>? segmentUploadedStream;
   final Future<void> Function()? onMuteAcknowledged;
@@ -56,6 +67,14 @@ final class _HomeScreenState extends State<HomeScreen> {
   bool _privacyBusy = false;
   bool? _requestedMuted;
   int _loadGeneration = 0;
+  List<OpenTask> _tasks = const [];
+  final Set<String> _completingTaskIds = {};
+  String? _tasksError;
+  bool _tasksLoading = true;
+  int _tasksGeneration = 0;
+  DailySummary? _summary;
+  String? _summaryError;
+  bool _summaryLoading = true;
 
   @override
   void initState() {
@@ -65,6 +84,8 @@ final class _HomeScreenState extends State<HomeScreen> {
     _api = injectedApi ?? ApiService();
     _subscribeToUploads();
     unawaited(_loadLatestMemory(showLoading: true));
+    unawaited(_loadTasks(showLoading: true));
+    unawaited(_loadSummary());
   }
 
   @override
@@ -98,6 +119,7 @@ final class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _loadGeneration++;
+    _tasksGeneration++;
     _muteTimeout?.cancel();
     unawaited(_segmentUploadSubscription?.cancel());
     if (_ownsApi) _api.dispose();
@@ -107,6 +129,7 @@ final class _HomeScreenState extends State<HomeScreen> {
   void _subscribeToUploads() {
     _segmentUploadSubscription = widget.segmentUploadedStream?.listen((_) {
       unawaited(_loadLatestMemory());
+      unawaited(_loadTasks());
     });
   }
 
@@ -140,6 +163,80 @@ final class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _memoryLoading = false;
         _memoryError = 'Could not load the latest memory.';
+      });
+    }
+  }
+
+  Future<void> _loadTasks({bool showLoading = false}) async {
+    final generation = ++_tasksGeneration;
+    if (showLoading && mounted) {
+      setState(() {
+        _tasksLoading = true;
+        _tasksError = null;
+      });
+    }
+
+    try {
+      final loader = widget.openTasksLoader ?? _api.getOpenTasks;
+      final tasks = await loader();
+      if (!mounted || generation != _tasksGeneration) return;
+      setState(() {
+        // Keep tasks being completed hidden until the backend confirms
+        _tasks = tasks
+            .where((task) => !_completingTaskIds.contains(task.id))
+            .toList();
+        _tasksLoading = false;
+        _tasksError = null;
+      });
+    } catch (_) {
+      if (!mounted || generation != _tasksGeneration) return;
+      setState(() {
+        _tasksLoading = false;
+        _tasksError = 'Could not load open tasks.';
+      });
+    }
+  }
+
+  Future<void> _completeTask(OpenTask task) async {
+    if (_completingTaskIds.contains(task.id)) return;
+    setState(() => _completingTaskIds.add(task.id));
+    try {
+      final completer = widget.taskCompleter ?? _api.completeTask;
+      await completer(task);
+      if (!mounted) return;
+      setState(() {
+        _completingTaskIds.remove(task.id);
+        _tasks = _tasks.where((item) => item.id != task.id).toList();
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _completingTaskIds.remove(task.id));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Echo could not update the task.')),
+      );
+    }
+  }
+
+  Future<void> _loadSummary() async {
+    if (mounted) {
+      setState(() {
+        _summaryLoading = true;
+        _summaryError = null;
+      });
+    }
+    try {
+      final loader = widget.dailySummaryLoader ?? _api.getLatestDigest;
+      final summary = await loader();
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _summaryLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _summaryLoading = false;
+        _summaryError = 'Could not load the daily summary.';
       });
     }
   }
@@ -256,6 +353,24 @@ final class _HomeScreenState extends State<HomeScreen> {
                               ? null
                               : () => unawaited(_openLatestMemory()),
                           onViewAll: widget.onTranscripts,
+                        ),
+                        const SizedBox(height: 12),
+                        TodayTasksSection(
+                          loading: _tasksLoading,
+                          tasks: _tasks,
+                          error: _tasksError,
+                          completingIds: _completingTaskIds,
+                          onRetry: () => unawaited(
+                            _loadTasks(showLoading: true),
+                          ),
+                          onComplete: (task) => unawaited(_completeTask(task)),
+                        ),
+                        const SizedBox(height: 12),
+                        TodaySummarySection(
+                          loading: _summaryLoading,
+                          summary: _summary,
+                          error: _summaryError,
+                          onRetry: () => unawaited(_loadSummary()),
                         ),
                         const SizedBox(height: 8),
                         Align(

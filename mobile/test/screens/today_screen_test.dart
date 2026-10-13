@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/segment.dart';
+import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -224,6 +225,169 @@ void main() {
     await tester.pump();
     expect(loads, 2);
   });
+
+  testWidgets('open tasks show loading then empty state', (tester) async {
+    final pending = Completer<List<OpenTask>>();
+    await _pumpToday(tester, openTasksLoader: () => pending.future);
+    expect(find.byKey(const Key('tasks-loading')), findsOneWidget);
+
+    pending.complete(const []);
+    await tester.pump();
+    expect(find.text('No open tasks.'), findsOneWidget);
+  });
+
+  testWidgets('open tasks error offers a retry', (tester) async {
+    var attempts = 0;
+    await _pumpToday(
+      tester,
+      openTasksLoader: () async {
+        attempts++;
+        if (attempts == 1) throw StateError('offline');
+        return const [OpenTask(id: 't1', name: 'Call Ada')];
+      },
+    );
+    await tester.pump();
+    expect(find.text('Could not load open tasks.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('tasks-retry')));
+    await tester.pump();
+    expect(attempts, 2);
+    expect(find.text('Call Ada'), findsOneWidget);
+  });
+
+  testWidgets('shows at most three open tasks with a count of the rest', (
+    tester,
+  ) async {
+    await _pumpToday(
+      tester,
+      openTasksLoader: () async => [
+        for (var i = 1; i <= 5; i++) OpenTask(id: 't$i', name: 'Task $i'),
+      ],
+    );
+    await tester.pump();
+
+    expect(find.text('Task 1'), findsOneWidget);
+    expect(find.text('Task 3'), findsOneWidget);
+    expect(find.text('Task 4'), findsNothing);
+    expect(find.text('+2 more'), findsOneWidget);
+  });
+
+  testWidgets('completing a task removes it only after the backend confirms', (
+    tester,
+  ) async {
+    final completion = Completer<void>();
+    final completed = <String>[];
+    await _pumpToday(
+      tester,
+      openTasksLoader: () async => const [
+        OpenTask(id: 't1', name: 'Call Ada'),
+        OpenTask(id: 't2', name: 'Book flights'),
+      ],
+      taskCompleter: (task) {
+        completed.add(task.id);
+        return completion.future;
+      },
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('task-complete-t1')));
+    await tester.pump();
+    expect(completed, ['t1']);
+    expect(find.text('Call Ada'), findsOneWidget);
+    expect(find.byKey(const Key('task-complete-t1')), findsNothing);
+
+    completion.complete();
+    await tester.pump();
+    expect(find.text('Call Ada'), findsNothing);
+    expect(find.text('Book flights'), findsOneWidget);
+  });
+
+  testWidgets('a failed task completion keeps the task and reports it', (
+    tester,
+  ) async {
+    await _pumpToday(
+      tester,
+      openTasksLoader: () async => const [OpenTask(id: 't1', name: 'Call Ada')],
+      taskCompleter: (_) async => throw StateError('offline'),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('task-complete-t1')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Call Ada'), findsOneWidget);
+    expect(find.byKey(const Key('task-complete-t1')), findsOneWidget);
+    expect(find.text('Echo could not update the task.'), findsOneWidget);
+  });
+
+  testWidgets('daily summary shows the latest digest', (tester) async {
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    await _pumpToday(
+      tester,
+      dailySummaryLoader: () async => DailySummary(
+        date: DateTime(yesterday.year, yesterday.month, yesterday.day),
+        summary: 'Reviewed Project Atlas with Ada.',
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Reviewed Project Atlas with Ada.'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+  });
+
+  testWidgets('daily summary empty state', (tester) async {
+    await _pumpToday(tester, dailySummaryLoader: () async => null);
+    await tester.pump();
+    expect(
+      find.text('No summary yet. Echo writes one every evening.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('daily summary error offers a retry', (tester) async {
+    var attempts = 0;
+    await _pumpToday(
+      tester,
+      dailySummaryLoader: () async {
+        attempts++;
+        if (attempts == 1) throw StateError('offline');
+        return null;
+      },
+    );
+    await tester.pump();
+    expect(find.text('Could not load the daily summary.'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('summary-retry')));
+    await tester.pump();
+    expect(attempts, 2);
+  });
+
+  testWidgets('Today with tasks and summary fits small viewports', (
+    tester,
+  ) async {
+    for (final theme in [AppTheme.light, AppTheme.dark]) {
+      await _pumpToday(
+        tester,
+        theme: theme,
+        size: const Size(320, 812),
+        textScale: 1.3,
+        openTasksLoader: () async => [
+          for (var i = 1; i <= 4; i++)
+            OpenTask(
+              id: 't$i',
+              name: 'A fairly long task name number $i to wrap',
+              dueDate: DateTime(2026, 10, 14),
+            ),
+        ],
+        dailySummaryLoader: () async => DailySummary(
+          date: DateTime(2026, 10, 12),
+          summary: 'A long summary sentence. ' * 12,
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    }
+  });
 }
 
 Future<void> _pumpToday(
@@ -234,6 +398,9 @@ Future<void> _pumpToday(
   Future<void> Function(bool)? setMuted,
   Future<void> Function()? onReconnect,
   Future<List<RecentSegment>> Function()? latestMemoryLoader,
+  Future<List<OpenTask>> Function()? openTasksLoader,
+  Future<DailySummary?> Function()? dailySummaryLoader,
+  Future<void> Function(OpenTask task)? taskCompleter,
   Stream<Object?>? segmentUploadedStream,
   ThemeData? theme,
   Size size = const Size(375, 812),
@@ -259,6 +426,9 @@ Future<void> _pumpToday(
           onAsk: () {},
           onTranscripts: () {},
           latestMemoryLoader: latestMemoryLoader ?? () async => const [],
+          openTasksLoader: openTasksLoader ?? () async => const [],
+          dailySummaryLoader: dailySummaryLoader ?? () async => null,
+          taskCompleter: taskCompleter ?? (_) async {},
           segmentUploadedStream: segmentUploadedStream,
           onMuteAcknowledged: () async {},
         ),

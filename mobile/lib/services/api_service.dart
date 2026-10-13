@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_session.dart';
 import '../models/segment.dart';
+import '../models/today_insights.dart';
 import 'api_exception.dart';
 import 'transcript_controller.dart';
 
@@ -473,6 +474,42 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
         final created = DateTime.tryParse(createdAt as String? ?? '');
         return created == null || created.isAfter(cutoff);
       }).toList();
+    });
+  }
+
+  /// Open (not done) recent tasks for Today.
+  Future<List<OpenTask>> getOpenTasks() async {
+    final tasks = await getTasks();
+    return tasks
+        .map(OpenTask.fromJson)
+        .where((task) => task.name.isNotEmpty)
+        .toList();
+  }
+
+  /// Mark a task done, keeping the rest of its metadata.
+  Future<void> completeTask(OpenTask task) {
+    return updateEntity(task.id, metadata: task.completedMetadata);
+  }
+
+  /// The most recent daily digest of the last two days, or null if none exists.
+  Future<DailySummary?> getLatestDigest() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/digest?days=2'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
+      final summaries = items
+          .map((item) => DailySummary.fromJson(item as Map<String, dynamic>))
+          .where((digest) => digest.summary.isNotEmpty)
+          .toList();
+      return summaries.isEmpty ? null : summaries.first;
     });
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:echo_app/models/segment.dart';
+import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -396,6 +397,86 @@ void main() {
         statusCode: 500,
         code: 'server',
       );
+    });
+  });
+
+  group('Today insights', () {
+    test('latest digest is the newest non-empty summary of the last two days',
+        () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _jsonResponse(request, 200, {
+          'items': [
+            {'digest_date': '2026-10-12', 'summary': '  '},
+            {'digest_date': '2026-10-11', 'summary': 'Met Ada about Atlas.'},
+          ],
+          'count': 2,
+        });
+      });
+
+      final digest = await service.getLatestDigest();
+
+      expect(captured.url.toString(), 'https://echo.test/api/digest?days=2');
+      expect(digest?.summary, 'Met Ada about Atlas.');
+      expect(digest?.date, DateTime(2026, 10, 11));
+    });
+
+    test('latest digest is null when no digest exists', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'items': <Object?>[],
+            'count': 0,
+          }));
+
+      expect(await service.getLatestDigest(), isNull);
+    });
+
+    test('open tasks skip done and nameless tasks and parse due dates',
+        () async {
+      final now = DateTime.now().toUtc().toIso8601String();
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'entities': [
+              {
+                'id': 'open',
+                'name': 'Call Ada',
+                'metadata_': {'done': false, 'due_date': '2026-10-14'},
+                'created_at': now,
+              },
+              {
+                'id': 'done',
+                'name': 'Send report',
+                'metadata_': {'done': true},
+                'created_at': now,
+              },
+              {'id': 'blank', 'name': ' ', 'metadata_': {}, 'created_at': now},
+            ],
+            'total': 3,
+          }));
+
+      final tasks = await service.getOpenTasks();
+
+      expect(tasks.map((task) => task.id), ['open']);
+      expect(tasks.single.dueDate, DateTime(2026, 10, 14));
+    });
+
+    test('completing a task sends the full metadata with done true', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'id': 'task-1'});
+      });
+
+      await service.completeTask(const OpenTask(
+        id: 'task-1',
+        name: 'Call Ada',
+        metadata: {'done': false, 'priority': 'high'},
+      ));
+
+      expect(captured.method, 'PATCH');
+      expect(captured.url.toString(), 'https://echo.test/api/entities/task-1');
+      expect(jsonDecode(captured.body), {
+        'metadata_': {'done': true, 'priority': 'high'},
+      });
     });
   });
 
