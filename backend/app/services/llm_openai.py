@@ -3,7 +3,34 @@ import json
 from openai import AsyncOpenAI
 
 from app.core.config import settings
-from app.services.llm_base import LLMMessage, LLMResponse, LLMService
+from app.services.llm_base import LLMMessage, LLMResponse, LLMService, LLMToolCall
+
+
+def _to_openai_message(m: LLMMessage) -> dict:
+    if m.role == "tool":
+        return {"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content}
+    if m.tool_calls:
+        return {
+            "role": m.role,
+            "content": m.content or None,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+                }
+                for tc in m.tool_calls
+            ],
+        }
+    return {"role": m.role, "content": m.content}
+
+
+def _parse_arguments(raw: str | None) -> dict:
+    try:
+        parsed = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 class OpenAILLMService(LLMService):
@@ -37,6 +64,31 @@ class OpenAILLMService(LLMService):
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
+
+    async def complete_with_tools(
+        self, messages: list[LLMMessage], tools: list[dict], temperature: float = 0.2
+    ) -> LLMResponse:
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[_to_openai_message(m) for m in messages],
+            tools=tools,
+            tool_choice="auto",
+            temperature=temperature,
+        )
+        message = response.choices[0].message
+        return LLMResponse(
+            content=message.content or "",
+            model=response.model,
+            usage_tokens=response.usage.total_tokens if response.usage else None,
+            tool_calls=[
+                LLMToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=_parse_arguments(tc.function.arguments),
+                )
+                for tc in (message.tool_calls or [])
+            ],
+        )
 
 
 def get_llm_analysis_service() -> LLMService:
