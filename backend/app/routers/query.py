@@ -21,7 +21,7 @@ from app.models.entity import Entity
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
-from app.services.temporal import DateRange, extract_date_range
+from app.services.temporal import DateRange, conversation_overlaps, extract_date_range
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -164,15 +164,11 @@ async def query_memory(
     )
 
     # Apply temporal filter
+    # Conversations that overlap the period (not only those starting in it)
     if date_range:
-        if date_range.date_from:
-            similarity_query = similarity_query.where(
-                Conversation.started_at >= date_range.date_from
-            )
-        if date_range.date_to:
-            similarity_query = similarity_query.where(
-                Conversation.started_at <= date_range.date_to
-            )
+        similarity_query = similarity_query.where(
+            *conversation_overlaps(date_range.date_from, date_range.date_to)
+        )
 
     similarity_query = (
         similarity_query
