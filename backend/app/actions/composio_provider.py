@@ -33,6 +33,7 @@ from app.actions.policy import CREATE_TOOLS, toolkit_of
 from app.actions.provider import (
     INITIAL_TOOLKITS,
     AccountNotConnectedError,
+    ActionOutcomeUnknown,
     ActionProviderError,
     Toolkit,
     ToolResult,
@@ -73,8 +74,12 @@ REQUIRED_TOOLS = (
 )
 
 
-async def _call(fn, *args, **kwargs):
-    """Run a sync SDK call in a thread with a timeout; never leak details or secrets."""
+async def _call(fn, *args, _executes: bool = False, **kwargs):
+    """Run a sync SDK call in a thread with a timeout; never leak details or secrets.
+
+    With `_executes`, a timeout (ours or the SDK's) raises ActionOutcomeUnknown: the
+    request was sent and the action may still have happened.
+    """
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(functools.partial(fn, *args, **kwargs)),
@@ -83,9 +88,13 @@ async def _call(fn, *args, **kwargs):
     except ActionProviderError:
         raise
     except TimeoutError as e:
+        if _executes:
+            raise ActionOutcomeUnknown("Composio request timed out") from e
         raise ActionProviderError("Composio request timed out") from e
     except Exception as e:
         logger.warning("Composio call failed: %s", type(e).__name__)
+        if _executes and "timeout" in type(e).__name__.lower():
+            raise ActionOutcomeUnknown(f"Composio request timed out ({type(e).__name__})") from e
         raise ActionProviderError(f"Composio request failed ({type(e).__name__})") from e
 
 
@@ -271,6 +280,7 @@ class ComposioActionProvider:
             arguments,
             user_id=user_id,
             dangerously_skip_version_check=True,
+            _executes=True,
         )
         if result.get("successful"):
             return ToolResult(ok=True, data=result.get("data"))

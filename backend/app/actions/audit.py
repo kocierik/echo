@@ -162,7 +162,7 @@ async def log_action(
         toolkit=toolkit_of(tool),
         tool=tool,
         arguments_summary=summarize_arguments(arguments),
-        outcome="ok" if result.ok else "error",
+        outcome="ok" if result.ok else ("unknown" if result.unknown else "error"),
         error=None if result.ok else result.error,
     )
     db.add(row)

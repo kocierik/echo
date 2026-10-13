@@ -109,3 +109,18 @@ async def test_failed_execution_is_logged_as_error_and_marked_failed():
     logs = [r for r in db.rows if isinstance(r, ActionLog)]
     assert len(logs) == 1 and logs[0].outcome == "error" and logs[0].error
     assert isinstance(AccountNotConnectedError("gmail"), Exception)
+
+
+async def test_timeout_during_execution_is_unknown_not_failed():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    db = FakeSession()
+    provider = FakeActionProvider(
+        connected={"gmail"}, results={TOOL: ActionOutcomeUnknown("Composio request timed out")}
+    )
+    action = await _make(db)
+    result = await confirm_pending_action(db, USER, action.id, provider)
+    assert not result.ok and result.unknown
+    assert action.status == "unknown" and action.resolved_at is not None
+    (log,) = [r for r in db.rows if isinstance(r, ActionLog)]
+    assert log.outcome == "unknown"

@@ -12,7 +12,7 @@ class ActionLog(UUIDPrimaryKey, Base):
     """Audit trail of executed actions.
 
     source: chat | voice
-    outcome: ok | error
+    outcome: ok | error | unknown
     """
 
     __tablename__ = "action_log"

@@ -240,3 +240,29 @@ async def test_voice_updates_filters_by_timestamp():
 
     db.rows = []
     assert (await r.voice_updates(since=None, user_id=USER, db=db))["messages"] == []
+
+
+async def test_confirm_with_unknown_outcome_tells_the_user_to_check():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    db = FakeDb()
+    s = _session([{"role": "user", "content": "manda una mail a Ada"}])
+    a = await _pending(db, s)
+    s.messages = [
+        *s.messages,
+        {"role": "assistant", "content": "ok", "pending_action": {"id": str(a.id)}},
+    ]
+    p = FakeActionProvider(
+        connected={"gmail"}, results={TOOL: ActionOutcomeUnknown("Composio request timed out")}
+    )
+    out = await r.confirm_action(a.id, user_id=USER, db=db, provider=p)
+    assert out == {
+        "status": "unknown",
+        "message": (
+            "Non sono riuscito a verificare se è andata a buon fine: "
+            "controlla Gmail prima di riprovare."
+        ),
+    }
+    assert a.status == "unknown"
+    assert s.messages[1]["pending_action"]["status"] == "unknown"
+    assert s.messages[-1]["content"] == out["message"]

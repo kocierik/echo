@@ -85,6 +85,23 @@ void main() {
       );
     });
 
+    test('an unknown result marks the card unknown with the server message',
+        () async {
+      await withPending();
+      api.confirmHandler = (_) async => const ConfirmResult(
+            status: 'unknown',
+            message: 'Check Gmail before trying again.',
+          );
+      await controller.confirmAction('act-1');
+
+      expect(card().status, 'unknown');
+      expect(
+        controller.state.messages.last.text,
+        'Check Gmail before trying again.',
+      );
+      expect(controller.state.busyActionIds, isEmpty);
+    });
+
     test('an executed result with an unusual message is still executed',
         () async {
       await withPending();
