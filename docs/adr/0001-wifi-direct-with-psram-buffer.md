@@ -1,5 +1,8 @@
 # Wi-Fi direct with PSRAM buffer for device-to-backend communication
 
+> **Status: superseded** by [ADR 0006 — BLE relay through the phone](0006-ble-relay-through-phone.md).
+> The Wi-Fi/HTTP sender and NTP sync were removed from the firmware in October 2026.
+
 The Wearable communicates with the backend exclusively over Wi-Fi using HTTP POST with chunked audio every 5-10 seconds. When Wi-Fi is unavailable, Segments are buffered in PSRAM (~240KB capacity, ~30 seconds of ADPCM audio) and flushed when connectivity resumes. BLE and a smartphone companion app are deferred to a later phase.
 
 ## Considered Options

@@ -1,5 +1,8 @@
 # Echo — Roadmap
 
+> Aggiornata al 13/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> La fase attuale è la core beta ([spec](superpowers/specs/2026-10-01-core-beta-design.md)).
+
 ## Fase 1: MVP ✅ (completata)
 
 Il vertical slice end-to-end è implementato:
@@ -15,7 +18,7 @@ Il vertical slice end-to-end è implementato:
 - [x] Documentazione (CONTEXT.md, 5 ADR, README, schema.sql)
 - [x] Docker Compose (full stack + infra-only per dev locale)
 
-## Fase 2: Stabilizzazione e test (prossima)
+## Fase 2: Stabilizzazione e test (in corso: core beta)
 
 Obiettivo: il sistema funziona in modo affidabile per un utente reale.
 
@@ -32,39 +35,39 @@ Obiettivo: il sistema funziona in modo affidabile per un utente reale.
 - [ ] Verificare qualità RAG con domande sulla memoria
 
 ### 2.3 — Bug fix e robustezza
-- [ ] Gestione errori nel worker (retry, dead letter queue)
-- [ ] Logging strutturato (JSON logs)
-- [ ] Graceful shutdown del worker
-- [ ] Timeout e circuit breaker per chiamate OpenAI
+- [x] Gestione errori nel worker (retry, dead letter queue)
+- [x] Logging strutturato (JSON logs)
+- [ ] Graceful shutdown del worker (parziale: i task vengono cancellati e il lavoro in corso rimesso in coda, senza attesa)
+- [x] Timeout e circuit breaker per chiamate OpenAI
 - [ ] Validazione input più rigorosa sugli endpoint
 
 ### 2.4 — Test automatizzati
-- [ ] Integration test con DB reale (testcontainers)
-- [ ] Mock OpenAI per test senza API key
-- [ ] CI/CD pipeline (GitHub Actions)
+- [x] Integration test con DB reale (service container Postgres/Redis in CI)
+- [x] Mock OpenAI per test senza API key
+- [x] CI pipeline (GitHub Actions; niente CD, l'app Flutter non è in CI)
 
 ## Fase 3: Miglioramenti core
 
 Obiettivo: il "secondo cervello" diventa realmente utile.
 
 ### 3.1 — Qualità della memoria
-- [ ] Contesto persone note nel prompt di entity extraction
-- [ ] Speaker diarization (distinguere chi parla)
-- [ ] Riassunti giornalieri/settimanali automatici
-- [ ] Deduplicazione migliorata con merge semantico
-- [ ] Linking temporale ("ieri", "la settimana scorsa")
+- [x] Contesto persone note nel prompt di entity extraction
+- [ ] Speaker diarization (oggi solo stima per energia: self/other/unknown, correggibile a mano)
+- [x] Riassunti giornalieri automatici (digest) e per conversazione — settimanali da fare
+- [x] Deduplicazione migliorata con merge semantico
+- [x] Linking temporale ("ieri", "la settimana scorsa")
 
 ### 3.2 — Query avanzate
-- [ ] Filtri per data nella query ("questa settimana", "ieri")
+- [x] Filtri per data nella query ("questa settimana", "ieri")
 - [ ] Filtri per persona ("cosa ha detto Marco?")
 - [ ] Filtri per tipo entità ("mostrami tutti i task aperti")
-- [ ] Follow-up conversazionali (contesto multi-turn)
+- [x] Follow-up conversazionali (contesto multi-turn)
 
 ### 3.3 — UX
 - [ ] Notifiche task estratti (push notification)
-- [ ] Feedback utente sulla qualità delle risposte
-- [ ] Cronologia query nella web UI
-- [ ] Dark/light mode toggle
+- [x] Feedback utente sulla qualità delle risposte
+- [x] Cronologia query nella web UI
+- [x] Dark/light mode toggle
 - [ ] Export conversazioni (markdown, PDF)
 
 ## Fase 4: Mobile e multi-device
@@ -72,15 +75,15 @@ Obiettivo: il "secondo cervello" diventa realmente utile.
 Obiettivo: usabilità fuori casa/ufficio.
 
 ### 4.1 — App mobile companion
-- [ ] React Native o Flutter app
-- [ ] BLE connection al wearable
-- [ ] Forward audio al backend via internet
-- [ ] UI per query, conversazioni, entità
+- [x] App Flutter (iOS-first)
+- [x] BLE connection al wearable
+- [x] Forward audio al backend via internet
+- [x] UI per query, conversazioni, entità
 - [ ] Push notifications per task/promemoria
 
 ### 4.2 — Firmware avanzato
 - [ ] OTA firmware updates
-- [ ] BLE come trasporto alternativo
+- [x] BLE come trasporto alternativo
 - [ ] Wake word opzionale
 - [ ] Power optimization (light sleep tra frames VAD)
 - [ ] Feedback aptico/sonoro
@@ -90,16 +93,16 @@ Obiettivo: usabilità fuori casa/ufficio.
 Obiettivo: il secondo cervello agisce nel mondo.
 
 ### 5.1 — Integrazioni (MCP / Function Calling)
-- [ ] Google Calendar (crea/leggi eventi)
+- [x] Google Calendar (crea/leggi eventi)
 - [ ] Gmail (bozze, riassunti)
-- [ ] Slack/Teams (messaggi, riassunti canali)
-- [ ] Notion/Obsidian (crea note)
+- [ ] Slack/Teams (oggi solo invio su webhook Slack)
+- [x] Notion (crea pagine) — Obsidian da fare
 - [ ] GitHub/Jira (crea issue da task estratti)
 - [ ] Home Assistant (controllo smart home)
-- [ ] Todoist/TickTick (sync task)
+- [ ] Todoist/TickTick (oggi solo creazione task Todoist, niente sync)
 
 ### 5.2 — Automazioni
-- [ ] Regole utente: "quando sento un task, crealo su Todoist"
+- [x] Regole utente: "quando sento un task, crealo su Todoist"
 - [ ] Promemoria automatici basati su contesto
 - [ ] Riassunto giornaliero via email
 - [ ] Action suggestions ("Vuoi che crei un evento per la conferenza?")
@@ -135,10 +138,8 @@ Obiettivo: altri possono usare il sistema.
 
 ---
 
-## Priorità immediata (prossimi 7 giorni)
+## Priorità immediata
 
-1. **Flash e test hardware** — verificare che il firmware funzioni sul device reale
-2. **Deploy su macchina personale** — Docker Compose funzionante senza firewall
-3. **Prima conversazione reale** — parlare, trascrivere, queryare
-
-Tutto il resto può aspettare finché il flusso end-to-end non è verificato su hardware reale.
+1. **Test di 2 ore della core beta** su iPhone con build release: [BETA-GATE-CHECKLIST.md](BETA-GATE-CHECKLIST.md).
+2. **Calibrazione VAD e misura consumi** sul device reale (soglia oggi fissa a 500).
+3. **Prima settimana d'uso reale**: qualità di trascrizioni, entità e risposte RAG su conversazioni italiane.

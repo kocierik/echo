@@ -2,30 +2,32 @@
 
 An open-source wearable device that continuously listens for speech, transcribes it, extracts structured knowledge, and builds a persistent personal memory queryable in natural language.
 
+Current phase: **core beta** — one user, one iPhone, one wearable, one self-hosted backend
+([spec](docs/superpowers/specs/2026-10-01-core-beta-design.md), [project status](docs/PROJECT-STATUS.md)).
+
 ## Architecture
 
 ```
-┌─────────────┐     HTTP POST      ┌─────────────────────────────┐
-│   Wearable  │ ──── (ADPCM) ────▶ │         FastAPI (api)       │
-│  ESP32-S3   │                     │   POST /api/segments        │
-└─────────────┘                     │   POST /api/query           │
-                                    └──────────┬──────────────────┘
-                                               │ Redis queue
-                                    ┌──────────▼──────────────────┐
-                                    │     Background Worker        │
-                                    │  STT → Analysis → Embeddings │
-                                    │  + Retry + Dead Letter Queue │
-                                    │  + Daily Digest generation   │
-                                    └──────────┬──────────────────┘
-                                               │
-                                    ┌──────────▼──────────────────┐
-                                    │   PostgreSQL + pgvector      │
-                                    │   (segments, transcriptions, │
-                                    │    conversations, chunks,    │
-                                    │    entities, digests,        │
-                                    │    chat_sessions)            │
-                                    └─────────────────────────────┘
+┌──────────────┐  BLE (ADPCM frames,  ┌──────────────┐  HTTP POST   ┌─────────────────────────────┐
+│   Wearable   │  ACK windows, CRC)   │  Mobile app  │ ───────────▶ │       FastAPI (api)         │
+│  ESP32-S3    │ ───────────────────▶ │  (Flutter)   │              │  /api/segments, /api/query  │
+│ VAD + PSRAM  │ ◀── UPLOAD_OK, mute, │  relay + UI  │ ◀─────────── │  conversations, entities…   │
+│ ring buffer  │     time sync ────── └──────────────┘              └──────────┬──────────────────┘
+└──────────────┘                                                               │ Redis queues
+                                                                    ┌──────────▼──────────────────┐
+                                                                    │      Background worker      │
+                                                                    │ STT → speaker → entities →  │
+                                                                    │ chunks/embeddings → rules   │
+                                                                    │ + reanalysis, summaries,    │
+                                                                    │   digest, retention, DLQ    │
+                                                                    └──────────┬──────────────────┘
+                                                                    ┌──────────▼──────────────────┐
+                                                                    │    PostgreSQL + pgvector    │
+                                                                    └─────────────────────────────┘
 ```
+
+The wearable keeps every Segment in PSRAM until the phone confirms the upload
+(`UPLOAD_OK`); see [ADR 0006](docs/adr/0006-ble-relay-through-phone.md).
 
 ## Quick Start
 
@@ -33,6 +35,8 @@ An open-source wearable device that continuously listens for speech, transcribes
 
 - Docker & Docker Compose
 - OpenAI API key
+- For the app: Flutter 3.x (+ Xcode for iOS) — see [mobile/README.md](mobile/README.md)
+- For the wearable: PlatformIO and a Seeed Studio XIAO ESP32-S3 Sense
 
 ### 1. Clone and configure
 
@@ -51,7 +55,7 @@ docker compose up --build
 
 This starts:
 - **API** on http://localhost:8000 (FastAPI + Web UI)
-- **Worker** (background STT + analysis + daily digest)
+- **Worker** (STT, analysis, reanalysis, conversation summaries, daily digest, audio retention)
 - **PostgreSQL** with pgvector on port 5432
 - **Redis** on port 6379
 
@@ -91,26 +95,19 @@ INSERT INTO api_keys (user_id, key_hash, name) VALUES (
 );"
 ```
 
-Your API key is `my-secret-key`. Use it in the web UI or in the `X-API-Key` header.
+Your API key is `my-secret-key`. Use a long random key outside local testing.
 
-### 5. Use the Web UI
+### 5. Flash the wearable and install the app
 
-Open http://localhost:8000 and enter your API key. Features:
-- **Chat tab**: Ask questions about your memory with follow-up support
-- **Audio tab**: Browse transcribed conversations from the device
-- **Session history**: All chats are saved and can be resumed
-- **Temporal filters**: Ask "cosa è successo ieri?" and it auto-filters by date
+```bash
+cd firmware && pio run -t upload        # XIAO ESP32-S3 Sense
+cd ../mobile && flutter run             # see mobile/README.md
+```
 
-### 6. Admin Dashboard
+The app onboarding asks for the server URL and API key, requests permissions and
+pairs the wearable. To expose a home server, see [docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md).
 
-Open http://localhost:8000/admin.html for system monitoring:
-- Live stats (segments, transcriptions, entities, storage)
-- Health check (PostgreSQL + Redis)
-- Dead letter queue viewer with retry
-
-### 7. Send audio from the device
-
-The wearable sends audio segments via HTTP POST:
+Without hardware, the [simulator](simulator/README.md) or plain HTTP can send audio:
 
 ```bash
 curl -X POST http://localhost:8000/api/segments \
@@ -120,87 +117,55 @@ curl -X POST http://localhost:8000/api/segments \
   -F "audio=@segment.adpcm"
 ```
 
+### 6. Web UI and admin
+
+- http://localhost:8000 — chat with your memory and browse conversations.
+- http://localhost:8000/admin.html — stats, health, dead letter queue with retry.
+
 ## Project Structure
 
 ```
 echo/
-├── CONTEXT.md                    # Domain glossary
-├── docker-compose.yml
-├── .env.example
+├── CONTEXT.md            # Domain glossary
+├── docker-compose.yml    # Full stack (docker-compose-infra.yml: only Postgres + Redis)
 ├── docs/
-│   ├── schema.sql               # Database schema
-│   ├── ROADMAP.md               # Feature roadmap
-│   ├── DEVELOPMENT.md           # Dev setup guide
-│   └── adr/                     # Architectural Decision Records
+│   ├── PROJECT-STATUS.md # What works, known issues, next steps
+│   ├── ROADMAP.md
+│   ├── BETA-GATE-CHECKLIST.md
+│   ├── adr/              # Architectural Decision Records
+│   ├── superpowers/      # Design specs and implementation plans
+│   └── schema.sql
+├── firmware/             # ESP32-S3 (Arduino + NimBLE), native unit tests in test/
+├── mobile/               # Flutter app (iOS-first)
 ├── backend/
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── static/
-│   │   ├── index.html           # Web UI (chat + sessions)
-│   │   └── admin.html           # Admin dashboard
-│   ├── tests/
-│   │   ├── test_adpcm_decoder.py
-│   │   ├── test_temporal.py     # Temporal filter tests
-│   │   └── test_chunking.py     # Sentence chunking tests
-│   └── app/
-│       ├── main.py              # FastAPI app + lifespan
-│       ├── core/
-│       │   ├── config.py        # Settings (env vars)
-│       │   ├── database.py      # Async SQLAlchemy
-│       │   └── auth.py          # API key auth
-│       ├── models/
-│       │   ├── segment.py
-│       │   ├── transcription.py
-│       │   ├── conversation.py
-│       │   ├── chunk.py
-│       │   ├── entity.py        # + vector embedding
-│       │   ├── digest.py        # Daily summaries
-│       │   ├── chat_session.py  # Persistent chat history
-│       │   └── api_key.py
-│       ├── routers/
-│       │   ├── segments.py      # POST /api/segments
-│       │   ├── query.py         # POST /api/query (RAG + sessions)
-│       │   ├── conversations.py # Audio conversations
-│       │   ├── entities.py      # Knowledge entities
-│       │   ├── digest.py        # Daily digest
-│       │   ├── chat_sessions.py # Chat history CRUD
-│       │   └── admin.py         # Dead letter queue
-│       ├── services/
-│       │   ├── temporal.py      # NLP date extraction
-│       │   ├── chunking.py      # Sentence-aware chunking
-│       │   ├── deduplication.py # Entity dedup
-│       │   ├── adpcm_decoder.py
-│       │   ├── stt_base.py / stt_openai.py
-│       │   ├── llm_base.py / llm_openai.py
-│       │   └── embedding_base.py / embedding_openai.py
-│       └── workers/
-│           ├── main.py          # Worker entry (STT + analysis)
-│           ├── retry.py         # Exponential backoff utility
-│           ├── digest.py        # Daily digest generation
-│           └── retention.py     # Audio file cleanup
-├── firmware/                    # ESP32-S3 Arduino code
-└── simulator/                   # Device simulator (Python)
+│   ├── app/
+│   │   ├── core/         # config, auth, database, logging, circuit breaker, timezone, OAuth state
+│   │   ├── models/       # SQLAlchemy models
+│   │   ├── routers/      # HTTP API
+│   │   ├── services/     # STT/LLM/embeddings, analysis, RAG helpers, calendar, rules
+│   │   ├── integrations/ # Integration engine (Todoist, Calendar, Notion, Telegram, Slack)
+│   │   └── workers/      # Worker entry, retry, reanalysis, summaries, digest, retention
+│   ├── alembic/          # Migrations
+│   ├── static/           # Web UI + admin dashboard
+│   └── tests/
+└── simulator/            # Device simulator (Python)
 ```
 
 ## API Reference
 
-### POST /api/segments
+All `/api` endpoints require the `X-API-Key` header.
 
-Receive an audio segment from the device.
+### Segments
+- `POST /api/segments` — ingest an ADPCM Segment (multipart `audio`, max 5 MB). Headers:
+  `X-Recorded-At` (ISO 8601), `X-Duration-Ms`, optional `X-Silence-Before-Ms`, `X-Audio-Energy`.
+  Idempotent on audio content + `recorded_at`.
+- `GET /api/segments/recent?limit=50` — latest Segments, including pending transcriptions.
+- `PATCH /api/segments/{id}/transcription` — correct text and speaker (`self`/`other`/`unknown`);
+  audited, then the Conversation is reanalysed without triggering integrations or rules.
 
-**Headers:**
-- `X-API-Key`: API key (required)
-- `X-Recorded-At`: ISO 8601 timestamp
-- `X-Duration-Ms`: Duration in milliseconds
-- `X-Silence-Before-Ms`: Silence before segment (optional)
+### Query and chat
+- `POST /api/query` — RAG over memory with follow-ups and temporal filtering:
 
-**Body:** Multipart form with `audio` file (ADPCM, max 5MB)
-
-### POST /api/query
-
-Query personal memory with natural language. Supports multi-turn follow-up and automatic temporal filtering.
-
-**Body:**
 ```json
 {
   "question": "Cosa mi ha detto Marco ieri?",
@@ -211,65 +176,27 @@ Query personal memory with natural language. Supports multi-turn follow-up and a
 }
 ```
 
-**Response:**
-```json
-{
-  "answer": "Marco ti ha consigliato di...",
-  "sources": [{"conversation_id": "uuid", "text": "...", "similarity": 0.89}],
-  "session_id": "uuid-to-use-for-follow-up",
-  "date_filter": {"from": "2026-07-20T00:00:00+00:00", "to": "2026-07-20T23:59:59+00:00"}
-}
-```
+  Either date bound may be omitted. It can also run Google Calendar actions
+  ("crea un evento domani alle 15 per un'ora").
+- `GET /api/chat-sessions`, `GET /api/chat-sessions/{id}`, `DELETE /api/chat-sessions/{id}` — complete chat history.
+- `POST /api/query/feedback` — rate an answer (re-ranks future sources).
 
-### GET /api/chat-sessions
+### Memory
+- `GET /api/conversations`, `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`
+  (deletes audio, Segments, transcriptions, chunks and conversation entities).
+- `GET /api/entities`, `/api/entities/stats`, `/api/entities/people`, `/api/entities/tasks`,
+  `PATCH|DELETE /api/entities/{id}`, `POST /api/entities/{id}/merge`, `POST /api/entities/deduplicate`.
+- `GET /api/digest?days=7`, `GET /api/digest/{date}`, `POST /api/digest/{date}` — daily digests.
 
-List saved chat sessions (most recent first).
+### Automations
+- `GET|POST /api/rules`, `GET|PATCH|DELETE /api/rules/{id}`, `GET /api/rules/templates/examples`.
+- `GET /api/integrations/available`, `GET|POST /api/integrations`, `PATCH|DELETE /api/integrations/{id}`.
+- `GET /api/integrations/oauth/google/authorize` → Google consent URL (signed, single-use `state`);
+  `GET /api/integrations/oauth/google/callback`.
 
-### GET /api/chat-sessions/{id}
-
-Get full message history for a session.
-
-### DELETE /api/chat-sessions/{id}
-
-Delete a chat session.
-
-### GET /api/digest?days=7
-
-List recent daily digests.
-
-### GET /api/digest/{date}
-
-Get a specific day's digest (people, tasks, ideas, events, summary).
-
-### POST /api/digest/{date}
-
-Manually trigger digest generation for a date.
-
-### GET /api/admin/dead-letter
-
-List failed segments in the dead letter queue.
-
-### POST /api/admin/dead-letter/retry
-
-Retry all failed segments.
-
-### GET /health
-
-Health check (PostgreSQL + Redis connectivity).
-
-### GET /api/stats
-
-System statistics (counts + storage usage).
-
-## Key Features
-
-- **Temporal filtering**: Ask "ieri", "questa settimana", "3 giorni fa" — auto-detected
-- **Multi-turn follow-up**: Continue conversations with session context
-- **Daily digest**: Automatic daily summary at 21:00 UTC
-- **Entity embeddings**: Semantic search on extracted knowledge
-- **Sentence-aware chunking**: Never cuts concepts mid-sentence
-- **Retry + dead letter**: Resilient worker with exponential backoff
-- **Graceful shutdown**: No data loss on Docker restart
+### Operations
+- `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
+- `GET /health`, `GET /api/stats`, `GET /metrics` (Prometheus).
 
 ## Configuration
 
@@ -281,22 +208,28 @@ System statistics (counts + storage usage).
 | `AUDIO_STORAGE_PATH` | `/data/audio` | Audio file storage |
 | `COMPLETED_AUDIO_RETENTION_HOURS` | `24` | Hours to keep audio after transcription completes |
 | `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio |
+| `STT_PROVIDER` / `STT_MODEL` | `openai` / `gpt-4o-transcribe` | STT provider (`openai` or `deepgram`) and model |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
-| `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Model for entity extraction |
-| `LLM_QUERY_MODEL` | `gpt-4o` | Model for RAG answers |
-| `CHUNK_SIZE_TOKENS` | `500` | Chunk size for embedding |
-| `CHUNK_OVERLAP_TOKENS` | `50` | Overlap between chunks |
-| `SILENCE_TIMEOUT_MS` | `120000` | Silence before new conversation |
+| `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Model for entity extraction and summaries |
+| `LLM_QUERY_MODEL` | `gpt-4o` | Model for RAG answers and chat actions |
+| `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
+| `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
+| `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
+| `USER_TIMEZONE` | `Europe/Rome` | Timezone for calendar events and relative dates |
+| `DEFAULT_EVENT_DURATION_MINUTES` | `60` | Duration of calendar events when none is said |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | — | Google Calendar OAuth |
+| `OAUTH_STATE_SECRET` | Google client secret | Secret that signs the OAuth `state` |
 
 ## Design Decisions
 
 See [docs/adr/](docs/adr/) for architectural decision records:
 
-- [0001 — Wi-Fi direct with PSRAM buffer](docs/adr/0001-wifi-direct-with-psram-buffer.md)
+- [0001 — Wi-Fi direct with PSRAM buffer](docs/adr/0001-wifi-direct-with-psram-buffer.md) (superseded by 0006)
 - [0002 — ADPCM audio encoding](docs/adr/0002-adpcm-audio-encoding.md)
 - [0003 — Store-then-analyze pipeline](docs/adr/0003-store-then-analyze-pipeline.md)
 - [0004 — Provider abstraction layer](docs/adr/0004-provider-abstraction-layer.md)
 - [0005 — Structured entities + vector search](docs/adr/0005-structured-entities-plus-vector-search.md)
+- [0006 — BLE relay through the phone](docs/adr/0006-ble-relay-through-phone.md)
 
 ## License
 
