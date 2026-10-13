@@ -1,8 +1,9 @@
 """Integration tests for entity CRUD endpoints."""
 import uuid
+
 import pytest
-from httpx import AsyncClient
 from sqlalchemy import text
+
 from tests.conftest import TEST_USER_ID
 
 

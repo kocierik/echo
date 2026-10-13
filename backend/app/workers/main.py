@@ -31,9 +31,6 @@ from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
 from app.services.analysis_pipeline import (
     AnalysisPipeline,
-    assign_to_conversation,
-    extract_entities,
-    generate_conversation_summary,
 )
 from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.embedding_openai import get_embedding_service

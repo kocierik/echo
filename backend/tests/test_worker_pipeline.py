@@ -13,9 +13,12 @@ import pytest
 from sqlalchemy.dialects import postgresql
 
 from app.models.entity import Entity
-from app.services.analysis_pipeline import AnalysisPipeline
+from app.services.analysis_pipeline import (
+    AnalysisPipeline,
+    extract_entities,
+    generate_conversation_summary,
+)
 from app.workers import main as worker_main
-from app.workers.main import extract_entities, generate_conversation_summary
 from tests.mocks import MockLLMService
 
 

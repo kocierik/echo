@@ -7,7 +7,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, UUIDPrimaryKey
 
-
 """Query feedback model: stores user ratings on RAG responses."""
 
 
