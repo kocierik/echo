@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.actions.policy import toolkit_of
+from app.actions.policy import is_people_key, toolkit_of
 from app.actions.provider import ToolResult
 from app.models.action_log import ActionLog
 
@@ -76,8 +76,12 @@ _BODY_KEYS = (
     "body", "message_body", "text", "markdown_text", "message", "markdown", "html",
     "content", "description",
 )
+# Identifies what an update/delete/close touches when the call carries no readable title.
+_ID_KEYS = ("event_id", "message_id", "task_id", "page_id", "draft_id", "id", "ts")
+_CHANGING_WORDS = ("UPDATE", "PATCH", "EDIT", "DELETE", "REMOVE", "CLOSE", "ARCHIVE", "TRASH")
 _PREVIEW_MAX = 200
 _FIELD_MAX = 80
+_PERSON_MAX = 100
 
 
 def _display(value) -> str:
@@ -93,6 +97,22 @@ def _display(value) -> str:
         text = "" if value is None else str(value)
     text = " ".join(text.split())
     return text if len(text) <= _FIELD_MAX else text[:_FIELD_MAX] + "…"
+
+
+def _people(value) -> list[str]:
+    """Every person/address in a recipient argument, each capped, never dropped."""
+    if isinstance(value, list | tuple | set):
+        raw = [v.get("email") or v.get("name") or v if isinstance(v, dict) else v for v in value]
+    elif isinstance(value, dict):
+        raw = [value.get("email") or value.get("name") or ""]
+    else:
+        raw = [value]
+    out = []
+    for item in raw:
+        text = " ".join(str("" if item is None or item is False else item).split())
+        if text:
+            out.append(text if len(text) <= _PERSON_MAX else text[:_PERSON_MAX] + "…")
+    return out
 
 
 def _first(arguments: dict, keys: tuple[str, ...]) -> tuple[str | None, str]:
@@ -122,9 +142,35 @@ def pending_summary(tool: str, arguments: dict) -> str:
     title_keys = ("content", *_TITLE_KEYS) if is_task else _TITLE_KEYS
     body_keys = tuple(k for k in _BODY_KEYS if not (is_task and k == "content"))
 
-    target_key, target = _first(arguments, _TARGET_KEYS)
+    # Everyone the action reaches: the main target keys, then every other people key (cc, bcc,
+    # extra_recipients, guests...) with its own label. Confirm sends the stored arguments as
+    # they are, so nothing here may be hidden or truncated beyond a per-address cap.
+    main: list[str] = []
+    extras: list[str] = []
+    target_key = None
+    for key, value in arguments.items():
+        key = str(key)
+        if key in _TARGET_KEYS:
+            shown = _people(value)
+            if shown:
+                target_key = target_key or key
+                main += [p for p in shown if p not in main]
+        elif is_people_key(key) and key.lower() != "send_updates":
+            shown = _people(value)
+            if shown:
+                label = " ".join(w for w in key.replace("-", "_").split("_") if w).capitalize()
+                extras.append(f"{label}: {', '.join(shown)}")
+    target = ", ".join(main)
     _, title = _first(arguments, title_keys)
     _, when = _first(arguments, _WHEN_KEYS)
+
+    ident = ""
+    if not title and any(w in tool.upper() for w in _CHANGING_WORDS):
+        for key in _ID_KEYS:
+            shown = _people(arguments.get(key))
+            if shown:
+                ident = f"{key}={shown[0]}"
+                break
 
     preview = ""
     for key in body_keys:
@@ -138,11 +184,15 @@ def pending_summary(tool: str, arguments: dict) -> str:
     line = _verb(tool)
     if target:
         line += f" {'with' if target_key == 'attendees' else 'to'} {target}"
+    for extra in extras:
+        line += f" · {extra}"
     if title:
         line += f": {title}"
     if when:
         line += f" ({when})"
-    if not (target or title or when or preview) and arguments:
+    if ident:
+        line += f" ({ident})"
+    elif not (target or extras or title or when or preview) and arguments:
         line += f" ({summarize_arguments(arguments)})"
     return f"{line}\n{preview}" if preview else line
 
