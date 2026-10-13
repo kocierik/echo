@@ -738,6 +738,7 @@ async def test_queue_loop_requeues_waits_and_survives_errors(worker, monkeypatch
     waiting = _seg("Echo, segnami", 100.0)
     good = _seg("Echo, cosa ho in agenda", 200.0)
     stuck_stt = _seg(None, 105.0, status="pending")
+    worker.provider = FakeActionProvider(connected={"gmail", "googlecalendar"})
     worker.db.segments.extend([broken, waiting, stuck_stt, good])
     worker.now = good.received_at + timedelta(seconds=60)
     stuck_stt.recorded_at = waiting.recorded_at + timedelta(seconds=5)
@@ -885,3 +886,56 @@ def test_worker_main_starts_the_voice_loop():
     source = inspect.getsource(worker_main.main)
     assert "process_voice_queue(redis_client, shutdown_event)" in source
     assert 'name="voice_worker"' in source
+
+
+# --- I6: connected apps unreachable / app not connected ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_worker_says_when_connected_apps_are_unreachable(worker):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("Composio request timed out")
+
+    worker.provider = Down()
+    wake = _seg("Echo, cosa ho in agenda domani?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    answer = _voice_session(worker).messages[-1]
+    assert answer["content"] == (
+        "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
+    )
+    assert answer["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_worker_says_when_the_named_app_is_not_connected(worker):
+    worker.provider = FakeActionProvider(connected={"gmail"})
+    wake = _seg("Hey Echo, send a Slack message to the team")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    answer = _voice_session(worker).messages[-1]
+    assert answer["content"] == (
+        "Slack isn't connected. Connect it in Settings → Automations → Integrations."
+    )
+    assert answer["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_worker_named_app_with_nothing_connected(worker):
+    worker.provider = FakeActionProvider(connected=set())
+    wake = _seg("Echo, segnami il dentista in calendario martedì")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.rag_calls == []
+    assert _voice_session(worker).messages[-1]["content"] == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )

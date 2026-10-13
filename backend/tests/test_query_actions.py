@@ -178,7 +178,7 @@ async def test_pending_action_returned_and_stored(env):
 @pytest.mark.asyncio
 async def test_no_connected_toolkit_runs_rag(env):
     env.provider.connected.clear()
-    await _ask(env, "riassumimi le ultime mail")
+    await _ask(env, "crea una lista di cose da fare per il trasloco")
     assert env.agent_calls == [] and len(env.rag_calls) == 1
 
 
@@ -303,3 +303,54 @@ async def test_request_id_is_per_user_and_cleared_on_failure(env, monkeypatch):
 async def test_without_request_id_nothing_is_stored(env):
     await _ask(env, "riassumimi le ultime mail")
     assert not [k for k in env.redis.store if k.startswith("query:req:")]
+
+
+# --- I6: connected apps unreachable / app not connected ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_unreachable_connected_apps_get_an_explicit_answer(env):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("Composio request timed out")
+
+    env.provider = Down()
+    res = await _ask(env, "riassumimi le ultime mail di oggi")
+    assert res.answer == (
+        "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+    stored = env.db.added[0].messages[1]
+    assert stored["content"] == res.answer and stored["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_unreachable_answer_in_english(env):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("boom")
+
+    env.provider = Down()
+    res = await _ask(env, "Send a Slack message to the team")
+    assert res.answer == "I couldn't reach your connected apps right now. Try again in a moment."
+
+
+@pytest.mark.asyncio
+async def test_named_app_not_connected_is_said_not_answered_from_memory(env):
+    env.provider = FakeActionProvider(connected={"slack"})
+    res = await _ask(env, "riassumimi le ultime mail di oggi")
+    assert res.answer == (
+        "Gmail non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+    assert env.db.added[0].messages[1]["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_named_app_with_nothing_connected(env):
+    env.provider.connected.clear()
+    res = await _ask(env, "What's on my calendar tomorrow?")
+    assert res.answer == (
+        "Google Calendar isn't connected. Connect it in Settings → Automations → Integrations."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
