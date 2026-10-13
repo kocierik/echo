@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/action_models.dart';
 import '../models/chat_session.dart';
 import '../models/segment.dart';
 import '../models/today_insights.dart';
@@ -18,12 +19,14 @@ class QueryResponse {
   final String sessionId;
   final List<Map<String, dynamic>> sources;
   final Map<String, dynamic>? dateFilter;
+  final PendingAction? pendingAction;
 
   QueryResponse({
     required this.answer,
     required this.sessionId,
     required this.sources,
     this.dateFilter,
+    this.pendingAction,
   });
 
   factory QueryResponse.fromJson(Map<String, dynamic> json) {
@@ -32,6 +35,11 @@ class QueryResponse {
       sessionId: json['session_id'] ?? '',
       sources: List<Map<String, dynamic>>.from(json['sources'] ?? []),
       dateFilter: json['date_filter'],
+      pendingAction: json['pending_action'] == null
+          ? null
+          : PendingAction.fromJson(
+              json['pending_action'] as Map<String, dynamic>,
+            ),
     );
   }
 }
@@ -735,6 +743,131 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
     if (_ownsClient) _client.close();
   }
 
+  // --- Composio actions ---
+
+  Future<List<Toolkit>> getToolkits({String? query}) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final uri = Uri.parse('$server/api/actions/toolkits').replace(
+      queryParameters:
+          (query == null || query.isEmpty) ? null : {'query': query},
+    );
+    final response = await _send(
+      () => _client.get(uri, headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
+    );
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) => Toolkit.fromJson(item as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  Future<String> connectToolkit(String slug) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.post(
+        Uri.parse('$server/api/actions/toolkits/$slug/connect'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final url = (data as Map<String, dynamic>)['url'];
+      if (url is! String || url.isEmpty) {
+        throw const FormatException('url is missing');
+      }
+      return url;
+    });
+  }
+
+  Future<void> disconnectToolkit(String slug) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(
+        Uri.parse('$server/api/actions/toolkits/$slug'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
+  }
+
+  /// Confirms a pending action and returns the server's result message.
+  Future<String> confirmPendingAction(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.post(
+        Uri.parse('$server/api/actions/pending/$id/confirm'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final message = (data as Map<String, dynamic>)['message'];
+      if (message is! String) {
+        throw const FormatException('message must be a string');
+      }
+      return message;
+    });
+  }
+
+  Future<void> cancelPendingAction(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.post(
+        Uri.parse('$server/api/actions/pending/$id/cancel'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+  }
+
+  Future<List<ActionLogEntry>> getActionLog({int limit = 50}) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/actions/log?limit=$limit'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
+    );
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) =>
+              ActionLogEntry.fromJson(item as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  Future<VoiceUpdates> getVoiceUpdates(DateTime? since) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final uri = Uri.parse('$server/api/actions/voice-updates').replace(
+      queryParameters:
+          since == null ? null : {'since': since.toUtc().toIso8601String()},
+    );
+    final response = await _send(
+      () => _client.get(uri, headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(
+      response.data,
+      (data) => VoiceUpdates.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _getMapList(String path) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
@@ -834,6 +967,18 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
           code: 'conflict',
           message: message,
           retryable: false,
+        ),
+      410 => ApiException(
+          statusCode: statusCode,
+          code: 'expired',
+          message: message,
+          retryable: false,
+        ),
+      503 => ApiException(
+          statusCode: statusCode,
+          code: 'unavailable',
+          message: message,
+          retryable: true,
         ),
       422 => ApiException(
           statusCode: statusCode,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/services/api_exception.dart';
@@ -149,6 +150,8 @@ void main() {
       (status: 401, code: 'unauthorized', retryable: false),
       (status: 404, code: 'not_found', retryable: false),
       (status: 409, code: 'conflict', retryable: false),
+      (status: 410, code: 'expired', retryable: false),
+      (status: 503, code: 'unavailable', retryable: true),
       (status: 422, code: 'validation', retryable: false),
       (status: 500, code: 'server', retryable: true),
     ];
@@ -477,6 +480,295 @@ void main() {
       expect(jsonDecode(captured.body), {
         'metadata_': {'done': true, 'priority': 'high'},
       });
+    });
+  });
+
+  group('ApiService Composio actions', () {
+    test('getToolkits sends the query and parses toolkits', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, [
+          {
+            'slug': 'gmail',
+            'name': 'Gmail',
+            'description': 'Email',
+            'connected': true,
+          },
+        ]);
+      });
+
+      final toolkits = await service.getToolkits(query: 'mail');
+
+      expect(captured.method, 'GET');
+      expect(captured.url.path, '/api/actions/toolkits');
+      expect(captured.url.queryParameters, {'query': 'mail'});
+      expect(captured.headers['X-API-Key'], 'test-key');
+      expect(toolkits.single.slug, 'gmail');
+      expect(toolkits.single.connected, isTrue);
+    });
+
+    test('getToolkits omits an empty query', () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _jsonResponse(request, 200, <Object?>[]);
+      });
+
+      await service.getToolkits();
+
+      expect(captured.url.toString(), 'https://echo.test/api/actions/toolkits');
+    });
+
+    test('getToolkits maps malformed items to invalid_response', () async {
+      final service = _service(
+        (request) => _jsonResponse(request, 200, [
+          {'slug': 'gmail'},
+        ]),
+      );
+
+      await _expectApiException(
+        service.getToolkits(),
+        code: 'invalid_response',
+      );
+    });
+
+    test('connectToolkit posts and returns the url', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'url': 'https://auth.test/x'});
+      });
+
+      final url = await service.connectToolkit('gmail');
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/actions/toolkits/gmail/connect');
+      expect(url, 'https://auth.test/x');
+    });
+
+    test('disconnectToolkit deletes and accepts 204', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _response(request, 204);
+      });
+
+      await service.disconnectToolkit('gmail');
+
+      expect(captured.method, 'DELETE');
+      expect(captured.url.path, '/api/actions/toolkits/gmail');
+    });
+
+    test('confirmPendingAction posts and returns the message', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(
+          request,
+          200,
+          {'status': 'executed', 'message': 'Sent'},
+        );
+      });
+
+      final message = await service.confirmPendingAction('p1');
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/actions/pending/p1/confirm');
+      expect(message, 'Sent');
+    });
+
+    test('confirmPendingAction maps 409 and 410', () async {
+      final conflict = _service(
+        (request) => _jsonResponse(request, 409, {'detail': 'Already done'}),
+      );
+      final error = await _expectApiException(
+        conflict.confirmPendingAction('p1'),
+        statusCode: 409,
+        code: 'conflict',
+      );
+      expect(error.message, 'Already done');
+
+      final expired = _service(
+        (request) => _jsonResponse(request, 410, {'detail': 'Expired'}),
+      );
+      await _expectApiException(
+        expired.confirmPendingAction('p1'),
+        statusCode: 410,
+        code: 'expired',
+      );
+    });
+
+    test('503 maps to unavailable with the server detail', () async {
+      final service = _service(
+        (request) => _jsonResponse(
+          request,
+          503,
+          {'detail': 'Composio is not configured'},
+        ),
+      );
+
+      final error = await _expectApiException(
+        service.getToolkits(),
+        statusCode: 503,
+        code: 'unavailable',
+      );
+      expect(error.retryable, isTrue);
+      expect(error.message, 'Composio is not configured');
+    });
+
+    test('cancelPendingAction posts to cancel', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'status': 'cancelled'});
+      });
+
+      await service.cancelPendingAction('p1');
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/actions/pending/p1/cancel');
+    });
+
+    test('getActionLog requests the limit and parses entries', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, [
+          {
+            'tool': 'GMAIL_SEND_EMAIL',
+            'toolkit': 'gmail',
+            'arguments_summary': 'to: ada',
+            'outcome': 'failed',
+            'error': 'boom',
+            'source': 'chat',
+            'created_at': '2026-10-13T10:00:00Z',
+          },
+        ]);
+      });
+
+      final log = await service.getActionLog();
+
+      expect(captured.url.path, '/api/actions/log');
+      expect(captured.url.queryParameters, {'limit': '50'});
+      expect(log.single.tool, 'GMAIL_SEND_EMAIL');
+      expect(log.single.error, 'boom');
+      expect(log.single.createdAt, DateTime.parse('2026-10-13T10:00:00Z'));
+    });
+
+    test('getVoiceUpdates sends since and parses messages', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {
+          'messages': [
+            {
+              'session_id': 's1',
+              'role': 'assistant',
+              'content': 'Done',
+              'timestamp': '2026-10-13T10:00:00Z',
+              'pending_action': {
+                'id': 'p1',
+                'summary': 'Send email',
+                'status': 'pending',
+                'expires_at': '2026-10-13T10:10:00Z',
+              },
+            },
+          ],
+          'now': '2026-10-13T10:01:00Z',
+        });
+      });
+
+      final updates = await service.getVoiceUpdates(
+        DateTime.utc(2026, 10, 13, 9),
+      );
+
+      expect(captured.url.path, '/api/actions/voice-updates');
+      expect(
+        captured.url.queryParameters['since'],
+        DateTime.utc(2026, 10, 13, 9).toIso8601String(),
+      );
+      expect(updates.now, DateTime.parse('2026-10-13T10:01:00Z'));
+      expect(updates.messages.single.sessionId, 's1');
+      expect(updates.messages.single.pendingAction?.id, 'p1');
+      expect(updates.messages.single.pendingAction?.status, 'pending');
+    });
+
+    test('getVoiceUpdates omits since when null', () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _jsonResponse(request, 200, {
+          'messages': <Object?>[],
+          'now': '2026-10-13T10:01:00Z',
+        });
+      });
+
+      await service.getVoiceUpdates(null);
+
+      expect(captured.url.query, isEmpty);
+    });
+
+    test('query parses pending_action', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'answer': 'Confirm?',
+            'session_id': 's1',
+            'sources': <Object?>[],
+            'pending_action': {
+              'id': 'p1',
+              'summary': 'Send email',
+              'status': 'pending',
+              'expires_at': '2026-10-13T10:10:00Z',
+            },
+          }));
+
+      final response = await service.query('send it');
+
+      final PendingAction? pending = response.pendingAction;
+      expect(pending?.id, 'p1');
+      expect(pending?.summary, 'Send email');
+      expect(pending?.expiresAt, DateTime.parse('2026-10-13T10:10:00Z'));
+    });
+
+    test('query without pending_action leaves it null', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'answer': 'Hi',
+            'session_id': 's1',
+            'sources': <Object?>[],
+            'pending_action': null,
+          }));
+
+      final response = await service.query('hello');
+
+      expect(response.pendingAction, isNull);
+    });
+
+    test('session detail parses pending_action without expires_at', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+            'id': 'session-1',
+            'title': null,
+            'messages': [
+              {
+                'role': 'assistant',
+                'content': 'Confirm?',
+                'timestamp': null,
+                'actions': true,
+                'pending_action': {
+                  'id': 'p1',
+                  'summary': 'Send email',
+                  'status': 'pending',
+                },
+              },
+            ],
+            'created_at': '2026-10-13T09:30:00Z',
+            'updated_at': '2026-10-13T09:31:00Z',
+          }));
+
+      final detail = await service.getSessionDetail('session-1');
+
+      final pending = detail.messages.single.pendingAction;
+      expect(pending?.id, 'p1');
+      expect(pending?.expiresAt, isNull);
     });
   });
 

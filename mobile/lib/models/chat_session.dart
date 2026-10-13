@@ -1,3 +1,5 @@
+import 'action_models.dart';
+
 final class ChatSessionSummary {
   const ChatSessionSummary({
     required this.id,
@@ -5,6 +7,7 @@ final class ChatSessionSummary {
     required this.messageCount,
     required this.createdAt,
     required this.updatedAt,
+    this.kind = 'chat',
   });
 
   final String id;
@@ -12,6 +15,7 @@ final class ChatSessionSummary {
   final int messageCount;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final String kind;
 
   factory ChatSessionSummary.fromJson(Map<String, dynamic> json) {
     return ChatSessionSummary(
@@ -20,6 +24,7 @@ final class ChatSessionSummary {
       messageCount: _requiredInt(json, 'message_count'),
       createdAt: _requiredDateTime(json, 'created_at'),
       updatedAt: _requiredDateTime(json, 'updated_at'),
+      kind: json['kind'] == 'voice' ? 'voice' : 'chat',
     );
   }
 }
@@ -30,12 +35,16 @@ final class ChatSessionMessage {
     required this.content,
     this.timestamp,
     this.citations,
+    this.sessionId,
+    this.pendingAction,
   });
 
   final String role;
   final String content;
   final DateTime? timestamp;
   final List<Map<String, dynamic>>? citations;
+  final String? sessionId;
+  final PendingAction? pendingAction;
 
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
@@ -48,6 +57,9 @@ final class ChatSessionMessage {
       content: _requiredString(json, 'content', allowEmpty: true),
       timestamp: _nullableDateTime(json, 'timestamp'),
       citations: _optionalCitations(json),
+      sessionId:
+          json['session_id'] is String ? json['session_id'] as String : null,
+      pendingAction: _optionalPendingAction(json),
     );
   }
 }
@@ -163,4 +175,13 @@ List<Map<String, dynamic>>? _optionalCitations(
     }
     return Map<String, dynamic>.unmodifiable(citation);
   }));
+}
+
+PendingAction? _optionalPendingAction(Map<String, dynamic> json) {
+  final value = json['pending_action'];
+  if (value == null) return null;
+  if (value is! Map<String, dynamic>) {
+    throw const FormatException('pending_action must be an object or null');
+  }
+  return PendingAction.fromJson(value);
 }

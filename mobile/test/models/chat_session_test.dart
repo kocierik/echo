@@ -121,4 +121,23 @@ void main() {
       throwsFormatException,
     );
   });
+
+  group('ChatSessionSummary.fromJson', () {
+    Map<String, dynamic> json({Object? kind = 'absent'}) => {
+          'id': 'session-1',
+          'title': null,
+          'message_count': 2,
+          'created_at': '2026-10-01T09:30:00Z',
+          'updated_at': '2026-10-01T09:31:00Z',
+          if (kind != 'absent') 'kind': kind,
+        };
+
+    test('defaults kind to chat', () {
+      expect(ChatSessionSummary.fromJson(json()).kind, 'chat');
+    });
+
+    test('parses voice kind', () {
+      expect(ChatSessionSummary.fromJson(json(kind: 'voice')).kind, 'voice');
+    });
+  });
 }

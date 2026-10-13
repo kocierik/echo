@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'action_models.dart';
+
 @immutable
 final class ChatSource {
   const ChatSource({
@@ -26,6 +28,7 @@ final class ChatMessage {
     List<ChatSource> sources = const [],
     this.failed = false,
     this.isError = false,
+    this.pendingAction,
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -36,6 +39,7 @@ final class ChatMessage {
   final List<ChatSource> sources;
   final bool failed;
   final bool isError;
+  final PendingAction? pendingAction;
 
   ChatMessage copyWith({
     String? text,
@@ -46,6 +50,7 @@ final class ChatMessage {
     List<ChatSource>? sources,
     bool? failed,
     bool? isError,
+    Object? pendingAction = _unset,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -58,6 +63,9 @@ final class ChatMessage {
       sources: sources ?? this.sources,
       failed: failed ?? this.failed,
       isError: isError ?? this.isError,
+      pendingAction: identical(pendingAction, _unset)
+          ? this.pendingAction
+          : pendingAction as PendingAction?,
     );
   }
 }
