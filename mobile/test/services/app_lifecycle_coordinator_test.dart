@@ -155,6 +155,35 @@ void main() {
     await resumeBinding.dispose();
   });
 
+  test('segment uploads and resume trigger the wake callback', () async {
+    var wakeCalls = 0;
+    final wakeBinding = await AppLifecycleCoordinator.startBinding(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.offline,
+      ),
+      statusStream: states.stream,
+      uploadFailureStream: uploadFailures.stream,
+      segmentUploadedStream: uploads.stream,
+      notifications: notifications,
+      networkAccess: network,
+      startController: () async {},
+      onWake: () async {
+        wakeCalls++;
+        throw StateError('wake failures must be swallowed');
+      },
+      addObserver: observers.add,
+      removeObserver: observers.remove,
+    );
+
+    uploads.add(1);
+    wakeBinding.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(wakeCalls, 2);
+
+    await wakeBinding.dispose();
+  });
+
   test('dispose cancels subscriptions and unregisters observer', () async {
     await binding.dispose();
     states.add(const DeviceStatus(
@@ -230,6 +259,7 @@ final class _FakeNotificationPort implements NotificationPort {
     required int id,
     required String title,
     required String body,
+    String? payload,
   }) async {
     shownIds.add(id);
     if (id == NotificationService.lossId) {

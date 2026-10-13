@@ -14,6 +14,7 @@ import 'device_identity_store.dart';
 import 'network_policy.dart';
 import 'notification_service.dart';
 import 'session_controller.dart';
+import 'voice_updates_service.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
 
@@ -56,8 +57,18 @@ final class AppLifecycleCoordinator {
     final preferences = await SharedPreferences.getInstance();
     final networkAccess = ConnectivityNetworkAccess();
     final networkPolicy = networkPolicyFrom(preferences);
+    AppController? tapTarget;
     final notificationService = NotificationService(
-      FlutterLocalNotificationPort(),
+      FlutterLocalNotificationPort(
+        onSelect: (payload) {
+          // Opening the specific Voice requests session would need a hook
+          // into ChatScreen's controller; select the Ask tab instead.
+          if (payload.startsWith(NotificationService.voicePayloadPrefix)) {
+            final target = tapTarget;
+            if (target != null) unawaited(target.setSelectedTab(2));
+          }
+        },
+      ),
     );
     await notificationService.initialize();
     final bleService = BleService(
@@ -87,7 +98,13 @@ final class AppLifecycleCoordinator {
       sessionStates: sessionController.stream,
       preferences: SharedPreferencesAppPreferences(preferences),
     );
+    tapTarget = appController;
     await appController.initialize();
+    final voiceUpdates = VoiceUpdatesService(
+      credentialApiService,
+      notificationService,
+      preferences,
+    );
     final binding = await startBinding(
       initialStatus: deviceController.state,
       statusStream: deviceController.stateStream,
@@ -97,6 +114,7 @@ final class AppLifecycleCoordinator {
       networkAccess: networkAccess,
       startController: deviceController.start,
       reconnectOnResume: deviceController.reconnect,
+      onWake: voiceUpdates.check,
     );
     return AppLifecycleCoordinator._(
       bleService: bleService,
@@ -120,6 +138,7 @@ final class AppLifecycleCoordinator {
     required NetworkAccess networkAccess,
     required Future<void> Function() startController,
     Future<void> Function()? reconnectOnResume,
+    Future<void> Function()? onWake,
     LifecycleObserverCallback? addObserver,
     LifecycleObserverCallback? removeObserver,
   }) async {
@@ -131,6 +150,7 @@ final class AppLifecycleCoordinator {
       notifications: notifications,
       networkAccess: networkAccess,
       reconnectOnResume: reconnectOnResume,
+      onWake: onWake,
       addObserver: addObserver ?? WidgetsBinding.instance.addObserver,
       removeObserver: removeObserver ?? WidgetsBinding.instance.removeObserver,
     );
@@ -158,17 +178,20 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
     required NotificationService notifications,
     required NetworkAccess networkAccess,
     Future<void> Function()? reconnectOnResume,
+    Future<void> Function()? onWake,
     required LifecycleObserverCallback addObserver,
     required LifecycleObserverCallback removeObserver,
   })  : _notifications = notifications,
         _networkAccess = networkAccess,
         _reconnectOnResume = reconnectOnResume,
+        _onWake = onWake,
         _removeObserver = removeObserver,
         _droppedSegments = initialStatus.droppedSegments {
     _statusSubscription = statusStream.listen(_onStatus);
     _uploadFailureSubscription = uploadFailureStream.listen(_onUploadFailure);
     _segmentUploadedSubscription = segmentUploadedStream.listen((_) {
       _uploadFailureNotificationShown = false;
+      _wake();
     });
     addObserver(this);
   }
@@ -176,6 +199,7 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
   final NotificationService _notifications;
   final NetworkAccess _networkAccess;
   final Future<void> Function()? _reconnectOnResume;
+  final Future<void> Function()? _onWake;
   final LifecycleObserverCallback _removeObserver;
   late final StreamSubscription<DeviceStatus> _statusSubscription;
   late final StreamSubscription<int> _uploadFailureSubscription;
@@ -229,7 +253,18 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
       if (reconnect != null) {
         unawaited(reconnect());
       }
+      _wake();
     }
+  }
+
+  void _wake() {
+    final wake = _onWake;
+    if (_disposed || wake == null) return;
+    unawaited(() async {
+      try {
+        await wake();
+      } catch (_) {}
+    }());
   }
 
   Future<void> _refreshNetworkTypes() async {
