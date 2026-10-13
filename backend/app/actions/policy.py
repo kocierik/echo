@@ -46,7 +46,7 @@ _PEOPLE_KEY_PARTS = ("attendee", "recipient", "assignee", "responsible", "invite
 _PEOPLE_KEY_TOKENS = frozenset({"cc", "bcc"})
 
 
-def _involves_people(key: str) -> bool:
+def is_people_key(key: str) -> bool:
     lowered = key.lower()
     if lowered == "send_updates" or lowered == "to" or lowered.startswith("to_"):
         return True
@@ -70,6 +70,6 @@ def classify_call(slug: str, arguments: dict) -> ToolTier:
     if tier != ToolTier.CREATE or not isinstance(arguments, dict):
         return tier
     for key, value in arguments.items():
-        if _involves_people(str(key)) and _non_empty(value):
+        if is_people_key(str(key)) and _non_empty(value):
             return ToolTier.CONFIRM
     return tier
