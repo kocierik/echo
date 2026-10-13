@@ -55,7 +55,7 @@ abstract interface class ChatApi {
     required String rating,
     List<String> chunkIds = const [],
   });
-  Future<String> confirmPendingAction(String id);
+  Future<ConfirmResult> confirmPendingAction(String id);
   Future<void> cancelPendingAction(String id);
 }
 
@@ -799,9 +799,9 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
     );
   }
 
-  /// Confirms a pending action and returns the server's result message.
+  /// Confirms a pending action and returns the server's status and message.
   @override
-  Future<String> confirmPendingAction(String id) async {
+  Future<ConfirmResult> confirmPendingAction(String id) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
     final response = await _send(
@@ -813,11 +813,7 @@ class ApiService implements ChatApi, TranscriptApi, TranscriptMemoryApi {
       expectedShape: _JsonShape.map,
     );
     return _parseDecoded(response.data, (data) {
-      final message = (data as Map<String, dynamic>)['message'];
-      if (message is! String) {
-        throw const FormatException('message must be a string');
-      }
-      return message;
+      return ConfirmResult.fromJson(data as Map<String, dynamic>);
     });
   }
 

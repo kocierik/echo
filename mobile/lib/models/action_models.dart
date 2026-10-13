@@ -75,6 +75,28 @@ final class PendingAction {
       );
 }
 
+/// Result of confirming a pending action: [status] is `executed` or `failed`;
+/// [message] is the (possibly localized) text to show the user.
+final class ConfirmResult {
+  const ConfirmResult({required this.status, required this.message});
+
+  final String status;
+  final String message;
+
+  bool get failed => status == 'failed';
+
+  factory ConfirmResult.fromJson(Map<String, dynamic> json) {
+    final status = json['status'];
+    if (status != 'executed' && status != 'failed') {
+      throw const FormatException('status must be executed or failed');
+    }
+    return ConfirmResult(
+      status: status as String,
+      message: _string(json, 'message', allowEmpty: true),
+    );
+  }
+}
+
 final class ActionLogEntry {
   const ActionLogEntry({
     required this.tool,

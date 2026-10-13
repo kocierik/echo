@@ -571,11 +571,12 @@ void main() {
         );
       });
 
-      final message = await service.confirmPendingAction('p1');
+      final result = await service.confirmPendingAction('p1');
 
       expect(captured.method, 'POST');
       expect(captured.url.path, '/api/actions/pending/p1/confirm');
-      expect(message, 'Sent');
+      expect(result.status, 'executed');
+      expect(result.message, 'Sent');
     });
 
     test('confirmPendingAction maps 409 and 410', () async {
