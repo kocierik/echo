@@ -134,7 +134,7 @@ async def test_tools_for_returns_openai_schemas():
     assert await p.tools_for("u1", []) == []
     tools = await p.tools_for("u1", ["gmail"])
     assert tools[0]["function"]["name"] == "GMAIL_FETCH_EMAILS"
-    assert client.calls["tools_get"] == ("u1", {"toolkits": ["gmail"]})
+    assert client.calls["tools_get"][0] == "u1"
 
 
 async def test_missing_api_key_is_a_clear_error(monkeypatch):
@@ -167,3 +167,73 @@ async def test_list_toolkits_includes_connected_toolkits_found_by_search():
     assert await ComposioActionProvider(client=client).connected_toolkits("u1") == [
         "slack", "asana",
     ]
+
+
+def _fn(slug):
+    return {"type": "function", "function": {"name": slug}}
+
+
+class BigToolkitsClient(StubClient):
+    """tools.get by slug / by toolkit (honouring limit) and the raw `important` listing."""
+
+    def __init__(self, active):
+        super().__init__(active=active)
+        self.catalog = {
+            tk: [f"{tk.upper()}_TOOL_{i:03d}" for i in range(150)]
+            for tk in ("gmail", "slack", "asana")
+        }
+        self.catalog["gmail"] += ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"]
+        self.important = {"gmail": ["GMAIL_TOOL_149"], "slack": ["SLACK_TOOL_120"]}
+        self.get_calls = []
+        self.list_calls = []
+        self.client = _ns(tools=_ns(list=self._raw_list))
+
+    def _tools_get(self, user_id, **kw):
+        self.get_calls.append(kw)
+        if kw.get("tools") is not None:
+            known = {s for slugs in self.catalog.values() for s in slugs}
+            return [_fn(s) for s in kw["tools"] if s in known]
+        slugs = [s for tk in kw["toolkits"] for s in self.catalog.get(tk, [])]
+        return [_fn(s) for s in slugs[: kw.get("limit") or len(slugs)]]
+
+    def _raw_list(self, **kw):
+        self.list_calls.append(kw)
+        tks = kw["toolkit_slug"].split(",")
+        return _ns(items=[_ns(slug=s) for tk in tks for s in self.important.get(tk, [])])
+
+
+async def test_tools_for_caps_offered_tools_and_keeps_required_ones():
+    client = BigToolkitsClient(active=["gmail", "slack", "asana"])
+    tools = await ComposioActionProvider(client=client).tools_for(
+        "u1", ["asana", "gmail", "slack"]
+    )
+    names = [t["function"]["name"] for t in tools]
+    assert len(names) == len(set(names)) == composio_provider.MAX_OFFERED_TOOLS == 100
+    # Required write tools and the important ones are always there
+    for slug in ("GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL_TOOL_149",
+                 "SLACK_TOOL_120"):
+        assert slug in names
+    # Every connected toolkit gets some tools; initial toolkits come first
+    assert any(n.startswith("ASANA_") for n in names)
+    toolkit_order = [n.split("_")[0] for n in names]
+    assert toolkit_order.index("ASANA") > max(
+        i for i, tk in enumerate(toolkit_order) if tk in ("GMAIL", "SLACK")
+    )
+    # The required slugs were fetched explicitly, the important ones only for initial toolkits
+    by_slug = [c["tools"] for c in client.get_calls if c.get("tools") is not None]
+    assert any("GMAIL_SEND_EMAIL" in slugs for slugs in by_slug)
+    assert all("SLACK_SEND_MESSAGE" in slugs for slugs in by_slug[:1])
+    assert [c["toolkit_slug"] for c in client.list_calls] == ["gmail,slack"]
+    assert client.list_calls[0]["important"] == "true"
+
+
+async def test_tools_for_survives_a_failing_important_listing():
+    client = BigToolkitsClient(active=["gmail"])
+
+    def broken(**kw):
+        raise RuntimeError("no such filter")
+
+    client.client = _ns(tools=_ns(list=broken))
+    tools = await ComposioActionProvider(client=client).tools_for("u1", ["gmail"])
+    names = [t["function"]["name"] for t in tools]
+    assert "GMAIL_SEND_EMAIL" in names and len(names) == 100
