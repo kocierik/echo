@@ -56,7 +56,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Transcript raggruppati per giorno con ricerca, correzione testo/speaker, eliminazione conversazione.
 - Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown.
-- Rules e Integrations (Google Calendar via OAuth), tema chiaro/scuro, errori API tipizzati, logout.
+- Integrations (Composio), tema chiaro/scuro, errori API tipizzati, logout.
 
 ### Backend
 - `POST /api/segments`: ingest idempotente (hash audio + `recorded_at`), limite 5 MB, rate limit 60/min.
@@ -68,13 +68,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Titoli e riassunti per conversazione** generati in modo asincrono a conversazione chiusa (`workers/summaries.py`).
 - RAG `POST /api/query`: filtro temporale da linguaggio naturale (IT/EN) o esplicito (anche aperto), ricerca vettoriale
   chunk + entità, re-ranking da feedback, follow-up multi-turn; storico completo in Postgres, contesto ricaricato se Redis è scaduto.
-- Azioni da chat su Google Calendar: elenco, creazione (durata detta o 1 h di default), modifica e cancellazione
-  indicando l'evento per nome (e giorno), con domanda di chiarimento se più eventi corrispondono; la modifica conserva
-  giorno/ora/durata non cambiati. Il classificatore dell'intento parte solo per richieste che sembrano di calendario.
-- Correzione trascrizione con audit + rianalisi in coda con lock distribuito, **senza side effect** su integrazioni e regole.
+- Azioni su app collegate (Gmail, Calendar...) via Composio: da chat e da richieste vocali "Echo, ...", con conferma in-app e audit.
+  Sostituiscono le vecchie integrazioni automatiche, le regole e il client Google Calendar scritto a mano (rimossi).
+- Correzione trascrizione con audit + rianalisi in coda con lock distribuito, senza chiamate esterne.
 - Eliminazione conversazione a cascata; retention audio (completati 24 h, incompleti 7 giorni).
-- Digest giornaliero automatico (alle 4:00 locali, per il giorno appena finito), CRUD entità/task, merge entità, regole utente, integrazioni
-  (Todoist, Google Calendar, Notion, Telegram, Slack, webhook), OAuth Google con `state` firmato e monouso,
+- Digest giornaliero automatico (alle 4:00 locali, per il giorno appena finito), CRUD entità/task, merge entità,
   `/health`, `/metrics` Prometheus, admin DLQ (anche per le rianalisi).
 
 ---
@@ -154,7 +152,8 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Query:** filtri per persona ("cosa ha detto Marco?") e per tipo di entità nel RAG.
 - **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), lettura batteria (sempre 255), storage offline su microSD.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
-- **Fase Composio** (adapter integrazioni, conferma in-app delle azioni, audit): non iniziata.
+- **Fase Composio:** le integrazioni automatiche e le regole sono state sostituite dalle azioni Composio (conferma in-app,
+  audit, richieste vocali "Echo, ..."); tabelle `rules`/`integrations` rimosse dalla migrazione 008.
 - **Multi-utente / OAuth login:** fuori scope beta; l'API key si crea ancora a mano via SQL.
 - **Android in background:** non è un gate della beta.
 
@@ -180,7 +179,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 2. **Controllare i test di integrazione con Postgres** in CI.
 3. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
 4. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
-5. **Provare Todoist** con un token reale (creazione di un task da una regola o un'integrazione).
+5. **Provare le azioni Composio** con una `COMPOSIO_API_KEY` reale e un account collegato.
 6. Test batteria 12 h quando arriva l'hardware.
 
 **Per me**, se vuoi: baseline Alembic che crea lo schema da zero (al posto di `schema.sql`), rate limiting per API key

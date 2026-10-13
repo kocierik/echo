@@ -109,17 +109,6 @@ docker compose exec -T postgres psql -U echo -d echo -c "
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS idx_feedback_user ON query_feedback (user_id, created_at);
-    CREATE TABLE IF NOT EXISTS integrations (
-        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-        user_id UUID NOT NULL,
-        provider VARCHAR(50) NOT NULL,
-        enabled BOOLEAN NOT NULL DEFAULT false,
-        config JSONB NOT NULL DEFAULT '{}',
-        entity_types TEXT[] NOT NULL DEFAULT '{}',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-    CREATE INDEX IF NOT EXISTS idx_integrations_user ON integrations (user_id);
 " > /dev/null 2>&1 || warn "Schema compatibility checks encountered non-fatal issues"
 
 # Check current Alembic version

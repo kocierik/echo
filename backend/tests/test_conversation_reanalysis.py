@@ -153,20 +153,11 @@ async def _seed_reanalysis_data(db: AsyncSession, *, blank_text: bool = False):
 async def test_reanalysis_replaces_only_target_derivatives_and_is_idempotent(
     db_session: AsyncSession, monkeypatch
 ) -> None:
-    import app.integrations.engine as integrations_module
-    import app.services.rules_engine as rules_module
-
     conversation, stale_entity, null_entity, other_entity = await _seed_reanalysis_data(
         db_session
     )
     llm = RecordingLLM()
     embeddings = RecordingEmbeddings()
-
-    async def fail_side_effect(*_args, **_kwargs):
-        raise AssertionError("reanalysis must not execute external side effects")
-
-    monkeypatch.setattr(integrations_module, "trigger_integrations", fail_side_effect)
-    monkeypatch.setattr(rules_module, "evaluate_rules", fail_side_effect)
 
     first_result = await reanalyse_conversation(
         db_session, conversation.id, llm, embeddings

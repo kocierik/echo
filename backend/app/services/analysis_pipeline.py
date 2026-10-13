@@ -37,7 +37,6 @@ class AnalysisPipeline:
         self,
         db: AsyncSession,
         segment: Segment,
-        allow_side_effects: bool = True,
     ) -> AnalysisResult:
         transcription = segment.transcription
         if transcription is None:
@@ -99,18 +98,6 @@ class AnalysisPipeline:
 
         # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
         await deduplicate_entities(db, user_id, self.llm_service)
-
-        if allow_side_effects:
-            from app.integrations.engine import trigger_integrations
-            from app.services.rules_engine import evaluate_rules
-
-            # --- Trigger integrations for new entities ---
-            for entity in new_entities:
-                await trigger_integrations(db, user_id, entity)
-
-            # --- Evaluate user rules for new entities ---
-            for entity in new_entities:
-                await evaluate_rules(db, user_id, entity)
 
         # --- Incremental chunking & embedding ---
         # Only embed the NEW segment's text as an additional chunk,

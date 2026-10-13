@@ -6,10 +6,8 @@ from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.digest import Digest
 from app.models.entity import Entity
-from app.models.integration import Integration
 from app.models.pending_action import PendingAction
 from app.models.query_feedback import QueryFeedback
-from app.models.rule import Rule
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
@@ -23,10 +21,8 @@ __all__ = [
     "Conversation",
     "Digest",
     "Entity",
-    "Integration",
     "PendingAction",
     "QueryFeedback",
-    "Rule",
     "Segment",
     "TimestampMixin",
     "Transcription",
