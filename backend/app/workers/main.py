@@ -23,6 +23,7 @@ from pathlib import Path
 import redis.asyncio as redis
 from sqlalchemy import select
 
+from app.actions.voice import find_wake
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.logging import setup_logging
@@ -48,6 +49,7 @@ from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 from app.workers.summaries import run_summary_loop
+from app.workers.voice_requests import VOICE_QUEUE, process_voice_queue
 
 # Configure structured logging
 setup_logging()
@@ -432,6 +434,20 @@ async def process_reanalysis(redis_client: redis.Redis):
         )
 
 
+async def _enqueue_voice_request(redis_client: redis.Redis, segment_id: uuid.UUID, text: str):
+    """Queue a segment that addresses Echo by name for the voice worker.
+
+    Never fails the STT step: the transcription is already committed.
+    """
+    if find_wake(text) is None:
+        return
+    try:
+        await redis_client.lpush(VOICE_QUEUE, str(segment_id))
+        logger.info(f"Voice request detected in segment {segment_id}")
+    except Exception:
+        logger.exception(f"Could not queue voice request for segment {segment_id}")
+
+
 async def _claim_stt_audio(db, redis_client: redis.Redis, segment_id: uuid.UUID):
     result = await db.execute(
         select(Segment).where(Segment.id == segment_id).with_for_update()
@@ -542,6 +558,7 @@ async def process_stt(redis_client: redis.Redis):
                     logger.info(
                         f"STT completed for segment {segment_id}: '{cleaned_text[:80]}...'"
                     )
+                    await _enqueue_voice_request(redis_client, segment_id, cleaned_text)
                 else:
                     logger.info(
                         f"STT completed but skipping analysis (trivial): "
@@ -640,6 +657,9 @@ async def main():
         asyncio.create_task(run_retention_loop(shutdown_event), name="retention_worker"),
         asyncio.create_task(run_summary_loop(shutdown_event), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
+        asyncio.create_task(
+            process_voice_queue(redis_client, shutdown_event), name="voice_worker"
+        ),
     ]
 
     # Wait for shutdown signal
