@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 
 
+def _all_day_range(day: str) -> tuple[dict, dict]:
+    """Start/end for an all-day event: Google expects an exclusive end date (next day)."""
+    end_day = datetime.fromisoformat(day).date() + timedelta(days=1)
+    return {"date": day}, {"date": end_day.isoformat()}
+
+
 async def get_calendar_token(db: AsyncSession, user_id: uuid.UUID) -> str | None:
     """Get a valid access token for the user's Google Calendar, refreshing if needed."""
     result = await db.execute(
@@ -150,8 +156,7 @@ async def create_event(
         body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
         body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
     else:
-        body["start"] = {"date": date}
-        body["end"] = {"date": date}
+        body["start"], body["end"] = _all_day_range(date)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -197,8 +202,7 @@ async def update_event(
         body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
         body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
     elif date:
-        body["start"] = {"date": date}
-        body["end"] = {"date": date}
+        body["start"], body["end"] = _all_day_range(date)
 
     if not body:
         return None

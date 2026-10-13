@@ -6,6 +6,7 @@ and triggers the appropriate action via HTTP webhook or MCP call.
 
 import logging
 import uuid
+from datetime import date, datetime, timedelta
 
 import httpx
 from sqlalchemy import select
@@ -115,13 +116,21 @@ async def _google_calendar_create_event(config: dict, entity: Entity):
     if location:
         event_body["location"] = location
 
-    # Date handling: full day or timed event
+    # Date handling: full day or timed event (default duration: 1 hour)
     if event_date and event_time:
-        event_body["start"] = {"dateTime": f"{event_date}T{event_time}:00", "timeZone": "Europe/Rome"}
-        event_body["end"] = {"dateTime": f"{event_date}T{event_time}:00", "timeZone": "Europe/Rome"}
+        start_dt = datetime.fromisoformat(f"{event_date}T{event_time}:00")
+        end_dt = start_dt + timedelta(hours=1)
+        event_body["start"] = {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Rome"}
+        event_body["end"] = {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Rome"}
     elif event_date:
+        # Google Calendar all-day events use an exclusive end date (next day)
+        try:
+            end_date = date.fromisoformat(event_date) + timedelta(days=1)
+        except ValueError:
+            logger.info(f"[Calendar] Skipping event '{entity.name}' — invalid date {event_date!r}")
+            return
         event_body["start"] = {"date": event_date}
-        event_body["end"] = {"date": event_date}
+        event_body["end"] = {"date": end_date.isoformat()}
     else:
         # No date — skip, can't create event without date
         logger.info(f"[Calendar] Skipping event '{entity.name}' — no date extracted")

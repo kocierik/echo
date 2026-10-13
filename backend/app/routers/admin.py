@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -10,12 +11,17 @@ from app.core.auth import get_current_user_id
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
+DEAD_LETTER_QUEUE = "queue:dead-letter"
+
 
 class DeadLetterItem(BaseModel):
-    segment_id: str
+    # Segment entries (stt/analysis) carry segment_id; reanalysis entries carry
+    # conversation_id (None when the original payload was malformed).
+    segment_id: str | None = None
+    conversation_id: str | None = None
     step: str
     error: str
-    attempts: int
+    attempts: int = 0
     failed_at: str
 
 
@@ -26,6 +32,32 @@ class DeadLetterResponse(BaseModel):
 
 class RetryResponse(BaseModel):
     requeued: int
+    kept: int
+
+
+def _retry_target(raw: bytes | str) -> tuple[str, str] | None:
+    """Return (queue, payload) to requeue a dead letter entry, or None if not retryable."""
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    step = data.get("step")
+    segment_id = data.get("segment_id")
+    conversation_id = data.get("conversation_id")
+
+    if step in ("stt", "analysis") and segment_id:
+        return f"queue:{step}", segment_id
+    if step == "reanalysis" and conversation_id:
+        payload = {
+            "conversation_id": conversation_id,
+            "requested_at": datetime.now(timezone.utc).isoformat(),
+            "attempts": 0,
+        }
+        return "queue:reanalysis", json.dumps(payload)
+    return None
 
 
 @router.get("/dead-letter", response_model=DeadLetterResponse)
@@ -35,11 +67,13 @@ async def list_dead_letter(
 ):
     """List all items in the dead letter queue."""
     redis_client = request.app.state.redis
-    raw_items = await redis_client.lrange("queue:dead-letter", 0, -1)
+    raw_items = await redis_client.lrange(DEAD_LETTER_QUEUE, 0, -1)
     items = []
     for raw in raw_items:
-        data = json.loads(raw)
-        items.append(DeadLetterItem(**data))
+        try:
+            items.append(DeadLetterItem.model_validate_json(raw))
+        except ValueError:
+            continue  # Unreadable entry: leave it in Redis, skip it in the listing
     return DeadLetterResponse(items=items, count=len(items))
 
 
@@ -48,22 +82,31 @@ async def retry_dead_letter(
     request: Request,
     _user_id: uuid.UUID = Depends(get_current_user_id),
 ):
-    """Re-queue all dead letter items back to their appropriate processing queue."""
+    """Re-queue dead letter items to their processing queue.
+
+    Entries that cannot be retried (malformed or missing their target ID) are
+    put back in the dead letter queue instead of being dropped.
+    """
     redis_client = request.app.state.redis
     requeued = 0
-    while True:
-        raw = await redis_client.rpop("queue:dead-letter")
+    kept: list[bytes | str] = []
+
+    # Bound the loop to the current length so entries pushed meanwhile are left alone
+    pending = await redis_client.llen(DEAD_LETTER_QUEUE)
+    for _ in range(pending):
+        raw = await redis_client.rpop(DEAD_LETTER_QUEUE)
         if raw is None:
             break
-        data = json.loads(raw)
-        segment_id = data["segment_id"]
-        step = data["step"]
-
-        # Push back to the appropriate queue
-        if step == "stt":
-            await redis_client.lpush("queue:stt", segment_id)
-        elif step == "analysis":
-            await redis_client.lpush("queue:analysis", segment_id)
+        target = _retry_target(raw)
+        if target is None:
+            kept.append(raw)
+            continue
+        queue, payload = target
+        await redis_client.lpush(queue, payload)
         requeued += 1
 
-    return RetryResponse(requeued=requeued)
+    # Restore kept entries at the oldest end, preserving their original order
+    for raw in reversed(kept):
+        await redis_client.rpush(DEAD_LETTER_QUEUE, raw)
+
+    return RetryResponse(requeued=requeued, kept=len(kept))

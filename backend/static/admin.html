@@ -248,7 +248,7 @@
                 list.innerHTML = data.items.map(item => `
                     <li>
                         <span class="step">${item.step.toUpperCase()}</span>
-                        <code>${item.segment_id.slice(0, 8)}…</code>
+                        <code>${(item.segment_id || item.conversation_id || 'unknown').slice(0, 8)}…</code>
                         <span class="error-msg">${item.error.slice(0, 100)}</span><br>
                         <span class="time">${item.failed_at} · ${item.attempts} attempts</span>
                     </li>
