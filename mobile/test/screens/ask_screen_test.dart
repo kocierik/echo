@@ -255,7 +255,11 @@ final class _FakeChatApi implements ChatApi {
   final List<String> deletes = [];
 
   @override
-  Future<QueryResponse> query(String question, {String? sessionId}) {
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  }) {
     queries.add(question);
     return queryHandler?.call(question, sessionId) ?? Future.value(_response());
   }

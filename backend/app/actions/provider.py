@@ -34,6 +34,10 @@ class AccountNotConnectedError(ActionProviderError):
 class ActionProvider(Protocol):
     async def list_toolkits(self, user_id: str, query: str | None = None) -> list[Toolkit]: ...
 
+    async def connected_toolkits(self, user_id: str) -> list[str]:
+        """Slugs of every toolkit with an active account (one provider call)."""
+        ...
+
     async def connect_link(
         self, user_id: str, toolkit: str, callback_url: str | None
     ) -> str: ...

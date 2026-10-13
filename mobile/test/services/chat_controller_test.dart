@@ -16,10 +16,12 @@ void main() {
   setUp(() {
     api = _FakeChatApi();
     voice = _FakeVoiceInput();
+    var requestIds = 0;
     controller = ChatController(
       api: api,
       voiceInput: voice,
       clock: () => DateTime.parse('2026-10-02T12:00:00Z'),
+      requestIdFactory: () => 'req-${++requestIds}',
     );
   });
 
@@ -271,6 +273,43 @@ void main() {
     expect(controller.state.messages.last.text, 'Recovered');
   });
 
+  test('each message gets its own request id and retry reuses it', () async {
+    var attempts = 0;
+    api.queryHandler = (_, __) async {
+      attempts++;
+      if (attempts == 2) throw Exception('offline');
+      return _response(answer: 'Answer $attempts');
+    };
+
+    await controller.send('First');
+    await controller.send('Second');
+    await controller.retryLastFailed();
+
+    expect(api.queries, ['First', 'Second', 'Second']);
+    expect(api.queryRequestIds, ['req-1', 'req-2', 'req-2']);
+    expect(controller.state.messages.last.text, 'Answer 3');
+  });
+
+  test('409 "Still working on it" shows a friendly message and no retry runs',
+      () async {
+    api.queryHandler = (_, __) => Future.error(const ApiException(
+          statusCode: 409,
+          code: 'conflict',
+          message: 'Still working on it',
+          retryable: false,
+        ));
+
+    await controller.send('Email Ann');
+
+    expect(api.queries, ['Email Ann']);
+    expect(
+      controller.state.error,
+      'Echo is still working on your last request.',
+    );
+    expect(controller.state.messages.single.failed, isTrue);
+    expect(controller.state.sending, isFalse);
+  });
+
   test('session switch discards a stale send response', () async {
     final query = Completer<QueryResponse>();
     api.queryHandler = (_, __) => query.future;
@@ -476,6 +515,7 @@ ChatSessionDetail _detail({
 final class _FakeChatApi implements ChatApi {
   final queries = <String>[];
   final querySessionIds = <String?>[];
+  final queryRequestIds = <String?>[];
   final deletes = <String>[];
   final details = <String, ChatSessionDetail>{};
   final feedback = <_FeedbackCall>[];
@@ -486,9 +526,14 @@ final class _FakeChatApi implements ChatApi {
   Future<void> Function()? feedbackHandler;
 
   @override
-  Future<QueryResponse> query(String question, {String? sessionId}) {
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  }) {
     queries.add(question);
     querySessionIds.add(sessionId);
+    queryRequestIds.add(clientRequestId);
     return queryHandler?.call(question, sessionId) ??
         Future.value(_response(answer: 'Answer'));
   }

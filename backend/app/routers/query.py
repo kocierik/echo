@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import select
@@ -37,6 +37,9 @@ limiter = Limiter(key_func=get_remote_address)
 SESSION_TTL_SECONDS = 30 * 60
 # Max history messages to keep (to avoid token explosion)
 MAX_HISTORY_MESSAGES = 20
+# A client_request_id is answered once: the marker holds "processing", then the response.
+REQUEST_MARKER_TTL_SECONDS = 10 * 60
+_PROCESSING = "processing"
 
 
 class QueryRequest(BaseModel):
@@ -45,6 +48,8 @@ class QueryRequest(BaseModel):
     date_from: datetime | None = None
     date_to: datetime | None = None
     session_id: str | None = None
+    # Same id for a retry of the same user message: the answer is not computed twice.
+    client_request_id: str | None = Field(default=None, max_length=100)
 
 
 class SourceChunk(BaseModel):
@@ -165,9 +170,41 @@ async def query_memory(
     3. Find similar chunks via pgvector (filtered by date if applicable)
     4. Find relevant entities
     5. Assemble context + history and generate answer with LLM
+
+    With `client_request_id`, a repeated request returns the stored response (409 while
+    the first one is still running) so a client retry never runs an action twice.
     """
     redis_client = request.app.state.redis
+    if not body.client_request_id:
+        return await _answer_query(redis_client, body, user_id, db)
 
+    key = f"query:req:{user_id}:{body.client_request_id}"
+    if not await redis_client.set(
+        key, _PROCESSING, nx=True, ex=REQUEST_MARKER_TTL_SECONDS
+    ):
+        stored = await redis_client.get(key)
+        if isinstance(stored, bytes):
+            stored = stored.decode()
+        if stored and stored != _PROCESSING:
+            return QueryResponse.model_validate_json(stored)
+        raise HTTPException(status_code=409, detail="Still working on it")
+
+    try:
+        response = await _answer_query(redis_client, body, user_id, db)
+    except BaseException:
+        # Nothing was answered: let the client retry instead of a 10-minute 409.
+        await redis_client.delete(key)
+        raise
+    await redis_client.set(key, response.model_dump_json(), ex=REQUEST_MARKER_TTL_SECONDS)
+    return response
+
+
+async def _answer_query(
+    redis_client: aioredis.Redis,
+    body: QueryRequest,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+) -> QueryResponse:
     # Resolve or create session
     if body.session_id:
         try:
@@ -189,8 +226,7 @@ async def query_memory(
         connected: list[str] = []
         try:
             provider = get_action_provider()
-            toolkits = await provider.list_toolkits(str(user_id))
-            connected = [t.slug for t in toolkits if t.connected]
+            connected = await provider.connected_toolkits(str(user_id))
         except ActionProviderError:
             logger.info("Action provider unavailable; using the memory path")
         if connected and await needs_tools(llm_service, body.question, history, connected):
@@ -203,6 +239,7 @@ async def query_memory(
                 source="chat",
                 provider=provider,
                 llm=llm_service,
+                connected_toolkits=connected,
             )
             pending = outcome.pending_action
             extra: dict = {"actions": True}

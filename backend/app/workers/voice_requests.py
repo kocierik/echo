@@ -171,11 +171,10 @@ async def _answer(
 ) -> tuple[str, dict]:
     """The answer and the extra keys of the assistant message."""
     provider = None
-    connected = False
+    connected: list[str] = []
     try:
         provider = get_action_provider()
-        toolkits = await provider.list_toolkits(str(user_id))
-        connected = any(t.connected for t in toolkits)
+        connected = await provider.connected_toolkits(str(user_id))
     except ActionProviderError:
         logger.info("[Voice] Action provider unavailable; answering from memory")
     llm = get_llm_query_service()
@@ -192,6 +191,7 @@ async def _answer(
         source="voice",
         provider=provider,
         llm=llm,
+        connected_toolkits=connected,
     )
     extra: dict = {"actions": True}
     if outcome.pending_action is not None:

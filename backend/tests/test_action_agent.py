@@ -344,7 +344,7 @@ async def test_model_explanation_naming_the_toolkit_is_kept():
 
 async def test_unreachable_provider_when_listing_toolkits():
     class DownProvider(FakeActionProvider):
-        async def list_toolkits(self, user_id, query=None):
+        async def connected_toolkits(self, user_id):
             raise ActionProviderError("Composio request timed out")
 
     db = FakeSession()
@@ -425,3 +425,40 @@ async def test_step_limit_stops_the_loop():
     assert len(provider.executed) == 3
     assert outcome.answer == agent_module.TEXTS["en"]["step_limit"]
     assert outcome.pending_action is None
+
+
+async def test_given_connected_toolkits_are_not_listed_again():
+    class NoListing(FakeActionProvider):
+        async def list_toolkits(self, user_id, query=None):
+            raise AssertionError("must not list toolkits")
+
+        async def connected_toolkits(self, user_id):
+            raise AssertionError("must not list connected accounts")
+
+    db = FakeSession()
+    provider = NoListing(connected={"gmail"}, tools={"GMAIL_FETCH_EMAILS": _schema(
+        "GMAIL_FETCH_EMAILS"
+    )})
+    llm = RecordingLLM([_text("Nothing new.")])
+
+    outcome = await _run(db, "Any new email?", provider, llm, connected_toolkits=["gmail"])
+
+    assert outcome.answer == "Nothing new."
+    names = [t["function"]["name"] for t in llm.tools_log[0]]
+    assert "GMAIL_FETCH_EMAILS" in names
+
+
+async def test_connected_toolkits_are_asked_once_when_not_given():
+    class Counting(FakeActionProvider):
+        calls = 0
+
+        async def connected_toolkits(self, user_id):
+            Counting.calls += 1
+            return await super().connected_toolkits(user_id)
+
+    provider = Counting(connected={"gmail"}, tools={"GMAIL_FETCH_EMAILS": _schema(
+        "GMAIL_FETCH_EMAILS"
+    )})
+    llm = RecordingLLM([_text("ok")])
+    await _run(FakeSession(), "Any new email?", provider, llm)
+    assert Counting.calls == 1

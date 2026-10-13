@@ -26,6 +26,9 @@ class FakeActionProvider:
             out = [t for t in out if query.lower() in (t.slug + t.name + t.description).lower()]
         return out
 
+    async def connected_toolkits(self, user_id: str) -> list[str]:
+        return sorted(self.connected)
+
     async def connect_link(self, user_id: str, toolkit: str, callback_url: str | None) -> str:
         return f"https://connect.test/{toolkit}"
 

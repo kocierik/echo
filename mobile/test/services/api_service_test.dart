@@ -704,6 +704,61 @@ void main() {
       expect(pending?.expiresAt, DateTime.parse('2026-10-13T10:10:00Z'));
     });
 
+    test('query sends client_request_id and uses the long query timeout',
+        () async {
+      late http.Request captured;
+      final service = _service(
+        (request) async {
+          captured = request as http.Request;
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          return _jsonResponse(request, 200, {
+            'answer': 'Done',
+            'session_id': 's1',
+            'sources': <Object?>[],
+          });
+        },
+        requestTimeout: const Duration(milliseconds: 1),
+        queryTimeout: const Duration(seconds: 5),
+      );
+
+      final response = await service.query(
+        'send it',
+        sessionId: 's1',
+        clientRequestId: 'req-1',
+      );
+
+      expect(response.answer, 'Done');
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['client_request_id'], 'req-1');
+      expect(body['session_id'], 's1');
+    });
+
+    test('query without a client request id omits the field', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {
+          'answer': 'Hi',
+          'session_id': 's1',
+          'sources': <Object?>[],
+        });
+      });
+
+      await service.query('hello');
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body.containsKey('client_request_id'), isFalse);
+    });
+
+    test('query times out after the query timeout', () async {
+      final service = _service(
+        (request) => Completer<http.StreamedResponse>().future,
+        queryTimeout: const Duration(milliseconds: 1),
+      );
+
+      await _expectApiException(service.query('slow'), code: 'timeout');
+    });
+
     test('query without pending_action leaves it null', () async {
       final service = _service((request) => _jsonResponse(request, 200, {
             'answer': 'Hi',
@@ -765,12 +820,14 @@ ApiService _service(
   Future<http.StreamedResponse> Function(http.BaseRequest) handler, {
   Duration requestTimeout = const Duration(seconds: 10),
   Duration uploadTimeout = const Duration(seconds: 20),
+  Duration queryTimeout = const Duration(seconds: 90),
 }) {
   return ApiService(
     client: _StubClient(handler),
     credentialStore: _FakeCredentialStore(),
     requestTimeout: requestTimeout,
     uploadTimeout: uploadTimeout,
+    queryTimeout: queryTimeout,
   );
 }
 
