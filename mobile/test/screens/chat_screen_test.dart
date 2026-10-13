@@ -32,6 +32,37 @@ void main() {
     expect(controller.state.composerText, 'still alive');
   });
 
+  testWidgets('an open-session request loads that session and is cleared',
+      (tester) async {
+    final api = _FakeChatApi();
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+    // Requested before the screen exists, like a cold start from a tap
+    final request = ValueNotifier<String?>('voice-session');
+    addTearDown(request.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: ChatScreen(controller: controller, openSessionRequest: request),
+    ));
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.detailIds, ['voice-session']);
+    expect(request.value, isNull);
+    expect(controller.state.sessionId, 'voice-session');
+    expect(find.text('Shall I send it?'), findsOneWidget);
+
+    // A later tap while the screen is open
+    request.value = 'voice-session-2';
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.detailIds, ['voice-session', 'voice-session-2']);
+    expect(request.value, isNull);
+    expect(controller.state.sessionId, 'voice-session-2');
+  });
+
   testWidgets('MessageBubble accepts immutable feedback and source messages',
       (tester) async {
     final message = ChatMessage(
@@ -248,6 +279,7 @@ final class _FakeChatApi implements ChatApi {
   final confirms = <String>[];
   final cancels = <String>[];
   List<ChatSessionSummary> sessions = const [];
+  final detailIds = <String>[];
   Future<ConfirmResult> Function(String id)? confirmHandler;
 
   @override
@@ -274,8 +306,12 @@ final class _FakeChatApi implements ChatApi {
   Future<List<ChatSessionSummary>> getSessions() async => sessions;
 
   @override
-  Future<ChatSessionDetail> getSessionDetail(String id) async =>
-      ChatSessionDetail(
+  Future<ChatSessionDetail> getSessionDetail(String id) async {
+    detailIds.add(id);
+    return _voiceDetail(id);
+  }
+
+  ChatSessionDetail _voiceDetail(String id) => ChatSessionDetail(
         id: id,
         title: 'Voice requests',
         messages: const [

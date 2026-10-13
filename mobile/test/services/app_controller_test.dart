@@ -122,6 +122,52 @@ void main() {
     expect(notifications, 2);
   });
 
+  group('opening a chat session from a notification', () {
+    test('a voice payload selects Ask and requests that session', () async {
+      controller = await createController();
+
+      controller.handleNotificationPayload('voice:session-7');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.pendingChatSessionId.value, 'session-7');
+      expect(controller.value.selectedTab, AppController.askTab);
+      expect(preferences.values[AppController.selectedTabKey], 2);
+    });
+
+    test('a voice payload without a session only selects Ask', () async {
+      controller = await createController();
+
+      controller.handleNotificationPayload('voice:');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.pendingChatSessionId.value, isNull);
+      expect(controller.value.selectedTab, 2);
+    });
+
+    test('other payloads are ignored', () async {
+      controller = await createController();
+
+      controller.handleNotificationPayload('upload:1');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(controller.pendingChatSessionId.value, isNull);
+      expect(controller.value.selectedTab, 0);
+    });
+
+    test('requestOpenSession notifies listeners of the pending id', () async {
+      controller = await createController();
+      final seen = <String?>[];
+      controller.pendingChatSessionId
+          .addListener(() => seen.add(controller.pendingChatSessionId.value));
+
+      controller.requestOpenSession('s-1');
+      controller.pendingChatSessionId.value = null; // consumed by the screen
+      controller.requestOpenSession('');
+
+      expect(seen, ['s-1', null]);
+    });
+  });
+
   test('dispose ignores later stream events', () async {
     controller = await createController();
     final stateBeforeDispose = controller.value;

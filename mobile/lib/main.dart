@@ -373,7 +373,9 @@ class MainShell extends StatelessWidget {
               TranscriptsScreen(
                 segmentUploadedStream: segmentUploadedStream,
               ),
-              const ChatScreen(),
+              ChatScreen(
+                openSessionRequest: appController.pendingChatSessionId,
+              ),
             ],
           ),
         );
