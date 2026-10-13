@@ -121,6 +121,10 @@ class ComposioActionProvider:
 
         return await _call(fetch)
 
+    async def connected_toolkits(self, user_id: str) -> list[str]:
+        accounts = await _call(self._active_slugs, user_id)
+        return list(dict.fromkeys(a.toolkit.slug for a in accounts))
+
     async def connect_link(self, user_id: str, toolkit: str, callback_url: str | None) -> str:
         def link() -> str:
             kwargs = {"callback_url": callback_url} if callback_url else {}

@@ -239,7 +239,11 @@ final class _FakeChatApi implements ChatApi {
   }
 
   @override
-  Future<QueryResponse> query(String question, {String? sessionId}) =>
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  }) =>
       throw UnimplementedError();
 
   @override
@@ -590,7 +594,11 @@ final class _FakeChatApi implements ChatApi {
   }
 
   @override
-  Future<QueryResponse> query(String question, {String? sessionId}) {
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  }) {
     throw UnimplementedError();
   }
 

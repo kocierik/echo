@@ -185,12 +185,14 @@ def _final_answer(
     return answer or texts["no_answer"]
 
 
-async def _offered_tools(provider: ActionProvider, user_id: uuid.UUID) -> list[dict]:
-    toolkits = await provider.list_toolkits(str(user_id))
-    connected = [t.slug for t in toolkits if t.connected]
+async def _offered_tools(
+    provider: ActionProvider, user_id: uuid.UUID, connected: list[str] | None
+) -> list[dict]:
+    if connected is None:
+        connected = await provider.connected_toolkits(str(user_id))
     if not connected:
         return []
-    return await provider.tools_for(str(user_id), connected)
+    return await provider.tools_for(str(user_id), list(connected))
 
 
 async def run_action_agent(
@@ -204,12 +206,17 @@ async def run_action_agent(
     provider: ActionProvider,
     llm: LLMService,
     max_steps: int = 6,
+    connected_toolkits: list[str] | None = None,
 ) -> AgentOutcome:
-    """Run the tool-calling loop for one request. The caller commits the session."""
+    """Run the tool-calling loop for one request. The caller commits the session.
+
+    `connected_toolkits`, when the caller already fetched them, avoids asking the provider
+    again.
+    """
     texts = TEXTS[detect_language(request)]
 
     try:
-        external_tools = await _offered_tools(provider, user_id)
+        external_tools = await _offered_tools(provider, user_id, connected_toolkits)
     except ActionProviderError:
         logger.warning("Action provider unreachable while listing tools", exc_info=True)
         return AgentOutcome(answer=texts["unreachable"])

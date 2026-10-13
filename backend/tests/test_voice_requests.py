@@ -491,6 +491,7 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
     assert call.kw["source"] == "voice"
     assert call.kw["provider"] is worker.provider
     assert call.kw["llm"] is worker.llm
+    assert call.kw["connected_toolkits"] == ["gmail"]
     session = _voice_session(worker)
     assert call.kw["session_id"] == session.id
     assert session.title == "Voice requests"

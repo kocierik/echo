@@ -46,7 +46,11 @@ class QueryResponse {
 }
 
 abstract interface class ChatApi {
-  Future<QueryResponse> query(String question, {String? sessionId});
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  });
   Future<List<ChatSessionSummary>> getSessions();
   Future<ChatSessionDetail> getSessionDetail(String id);
   Future<void> deleteSession(String id);
@@ -179,17 +183,22 @@ class ApiService
     ApiCredentialStore? credentialStore,
     Duration requestTimeout = const Duration(seconds: 10),
     Duration uploadTimeout = const Duration(seconds: 20),
+    Duration queryTimeout = const Duration(seconds: 90),
   })  : _client = client ?? http.Client(),
         _credentialStore =
             credentialStore ?? SharedPreferencesApiCredentialStore(),
         _requestTimeout = requestTimeout,
         _uploadTimeout = uploadTimeout,
+        _queryTimeout = queryTimeout,
         _ownsClient = client == null;
 
   final http.Client _client;
   final ApiCredentialStore _credentialStore;
   final Duration _requestTimeout;
   final Duration _uploadTimeout;
+
+  /// Chat queries may run several tool calls on connected apps.
+  final Duration _queryTimeout;
   final bool _ownsClient;
 
   Future<bool> isConfigured() => _credentialStore.configured;
@@ -216,11 +225,16 @@ class ApiService
   }
 
   @override
-  Future<QueryResponse> query(String question, {String? sessionId}) async {
+  Future<QueryResponse> query(
+    String question, {
+    String? sessionId,
+    String? clientRequestId,
+  }) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
     final body = <String, dynamic>{'question': question, 'top_k': 5};
     if (sessionId != null) body['session_id'] = sessionId;
+    if (clientRequestId != null) body['client_request_id'] = clientRequestId;
 
     final response = await _send(
       () => _client.post(
@@ -230,6 +244,7 @@ class ApiService
       ),
       expectedStatuses: const {200},
       expectedShape: _JsonShape.map,
+      timeout: _queryTimeout,
     );
     return _parseDecoded(
       response.data,
@@ -739,10 +754,11 @@ class ApiService
     required Set<int> expectedStatuses,
     bool decodeJson = true,
     _JsonShape expectedShape = _JsonShape.any,
+    Duration? timeout,
   }) async {
     late final http.Response response;
     try {
-      response = await request().timeout(_requestTimeout);
+      response = await request().timeout(timeout ?? _requestTimeout);
     } on TimeoutException {
       throw _timeoutException();
     } on http.ClientException catch (error) {

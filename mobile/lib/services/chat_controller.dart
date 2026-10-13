@@ -6,9 +6,14 @@ import '../models/chat_message.dart';
 import '../models/chat_session.dart';
 import 'api_exception.dart';
 import 'api_service.dart';
+import 'request_id.dart';
 import 'voice_input.dart';
 
 typedef ChatClock = DateTime Function();
+
+/// Server detail of a 409 while the same client_request_id is still running.
+const stillWorkingDetail = 'Still working on it';
+const stillWorkingMessage = 'Echo is still working on your last request.';
 
 @immutable
 final class ChatState {
@@ -81,13 +86,16 @@ final class ChatController extends ChangeNotifier {
     required ChatApi api,
     required VoiceInput voiceInput,
     ChatClock? clock,
+    String Function()? requestIdFactory,
   })  : _api = api,
         _voiceInput = voiceInput,
-        _clock = clock ?? DateTime.now;
+        _clock = clock ?? DateTime.now,
+        _newRequestId = requestIdFactory ?? newRequestId;
 
   final ChatApi _api;
   final VoiceInput _voiceInput;
   final ChatClock _clock;
+  final String Function() _newRequestId;
 
   ChatApi get api => _api;
 
@@ -113,6 +121,7 @@ final class ChatController extends ChangeNotifier {
         text: question,
         isUser: true,
         timestamp: _clock(),
+        clientRequestId: _newRequestId(),
       ),
     ];
     final userIndex = messages.length - 1;
@@ -135,6 +144,8 @@ final class ChatController extends ChangeNotifier {
 
     final messages = [..._state.messages];
     final question = messages[userIndex].text;
+    // The message keeps its clientRequestId: the server returns the first
+    // attempt's answer instead of running the request (and its actions) again.
     messages[userIndex] = messages[userIndex].copyWith(failed: false);
     _emit(_state.copyWith(
       messages: messages,
@@ -150,6 +161,7 @@ final class ChatController extends ChangeNotifier {
       final response = await _api.query(
         question,
         sessionId: _state.sessionId,
+        clientRequestId: _state.messages[userIndex].clientRequestId,
       );
       if (!_isCurrent(generation)) return;
       final assistantIndex = _state.messages
@@ -178,10 +190,15 @@ final class ChatController extends ChangeNotifier {
       if (userIndex < messages.length) {
         messages[userIndex] = messages[userIndex].copyWith(failed: true);
       }
+      final stillWorking = error is ApiException &&
+          error.code == 'conflict' &&
+          error.message == stillWorkingDetail;
       _emit(_state.copyWith(
         messages: messages,
         sending: false,
-        error: _errorMessage(error, 'Could not send your question.'),
+        error: stillWorking
+            ? stillWorkingMessage
+            : _errorMessage(error, 'Could not send your question.'),
       ));
     }
   }

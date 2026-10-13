@@ -29,6 +29,7 @@ final class ChatMessage {
     this.failed = false,
     this.isError = false,
     this.pendingAction,
+    this.clientRequestId,
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -40,6 +41,9 @@ final class ChatMessage {
   final bool failed;
   final bool isError;
   final PendingAction? pendingAction;
+
+  /// For a user message: the id sent as `client_request_id`, reused on retry.
+  final String? clientRequestId;
 
   ChatMessage copyWith({
     String? text,
@@ -66,6 +70,7 @@ final class ChatMessage {
       pendingAction: identical(pendingAction, _unset)
           ? this.pendingAction
           : pendingAction as PendingAction?,
+      clientRequestId: clientRequestId,
     );
   }
 }

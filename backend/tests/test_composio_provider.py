@@ -149,3 +149,10 @@ async def test_get_action_provider_is_a_singleton(monkeypatch):
     get_action_provider.cache_clear()
     assert get_action_provider() is get_action_provider()
     get_action_provider.cache_clear()
+
+
+async def test_connected_toolkits_is_one_accounts_call():
+    client = StubClient(active=["gmail", "asana", "gmail"])
+    toolkits = await ComposioActionProvider(client=client).connected_toolkits("u1")
+    assert toolkits == ["gmail", "asana"]
+    assert client.calls["list"] == {"user_ids": ["u1"], "statuses": ["ACTIVE"]}

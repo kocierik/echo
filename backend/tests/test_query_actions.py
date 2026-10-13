@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 
 from app.actions.agent import AgentOutcome
 from app.actions.provider import ActionProviderError
@@ -37,12 +38,21 @@ class _Db:
 class _Redis:
     def __init__(self):
         self.store = {}
+        self.ttl = {}
 
     async def get(self, key):
         return self.store.get(key)
 
-    async def set(self, key, value, ex=None):
+    async def set(self, key, value, ex=None, nx=False):
+        if nx and key in self.store:
+            return None
         self.store[key] = value
+        self.ttl[key] = ex
+        return True
+
+    async def delete(self, *keys):
+        for key in keys:
+            self.store.pop(key, None)
 
 
 class _LLM(MockLLMService):
@@ -90,8 +100,10 @@ def env(monkeypatch):
     return e
 
 
-async def _ask(e, question, session_id=None):
-    body = q.QueryRequest(question=question, session_id=session_id)
+async def _ask(e, question, session_id=None, request_id=None):
+    body = q.QueryRequest(
+        question=question, session_id=session_id, client_request_id=request_id
+    )
     return await q.query_memory.__wrapped__(_request(e.redis), body, USER_ID, e.db)
 
 
@@ -232,3 +244,62 @@ def test_chat_session_summary_has_kind_and_voice_sorts_first():
 )
 def test_might_need_tools_matches_email_spellings(text):
     assert q.might_need_tools(text, [])
+
+
+# --- C1: client_request_id replay / in-flight guard -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agent_gets_the_connected_toolkits_without_listing_again(env):
+    class CountingProvider(FakeActionProvider):
+        listed = 0
+
+        async def list_toolkits(self, user_id, query=None):
+            CountingProvider.listed += 1
+            return await super().list_toolkits(user_id, query)
+
+    env.provider = CountingProvider(connected={"gmail", "asana"})
+    await _ask(env, "riassumimi le ultime mail")
+    assert CountingProvider.listed == 0
+    assert sorted(env.agent_calls[0][1]["connected_toolkits"]) == ["asana", "gmail"]
+
+
+@pytest.mark.asyncio
+async def test_request_id_replays_the_stored_response(env):
+    first = await _ask(env, "riassumimi le ultime mail", request_id="r-1")
+    key = f"query:req:{USER_ID}:r-1"
+    assert env.redis.ttl[key] == 600
+    env.outcome = AgentOutcome(answer="different", pending_action=None, executed_tools=[])
+    again = await _ask(env, "riassumimi le ultime mail", request_id="r-1")
+    assert again == first
+    assert len(env.agent_calls) == 1  # the action did not run twice
+    assert len(env.db.added) == 1  # nor was the turn recorded twice
+
+
+@pytest.mark.asyncio
+async def test_request_id_still_processing_is_409(env):
+    env.redis.store[f"query:req:{USER_ID}:r-2"] = "processing"
+    with pytest.raises(HTTPException) as exc:
+        await _ask(env, "riassumimi le ultime mail", request_id="r-2")
+    assert exc.value.status_code == 409
+    assert exc.value.detail == "Still working on it"
+    assert env.agent_calls == []
+
+
+@pytest.mark.asyncio
+async def test_request_id_is_per_user_and_cleared_on_failure(env, monkeypatch):
+    env.redis.store[f"query:req:{uuid.uuid4()}:r-3"] = "processing"
+
+    async def broken_agent(*a, **kw):
+        raise RuntimeError("llm down")
+
+    monkeypatch.setattr(q, "run_action_agent", broken_agent)
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail", request_id="r-3")
+    assert f"query:req:{USER_ID}:r-3" not in env.redis.store
+
+
+@pytest.mark.asyncio
+async def test_without_request_id_nothing_is_stored(env):
+    await _ask(env, "riassumimi le ultime mail")
+    assert not [k for k in env.redis.store if k.startswith("query:req:")]
