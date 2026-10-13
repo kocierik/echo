@@ -204,3 +204,39 @@ CREATE TABLE rules (
 
 CREATE INDEX idx_rules_user ON rules (user_id);
 CREATE INDEX idx_rules_enabled ON rules (user_id, enabled) WHERE enabled = true;
+
+
+-- ============================================================
+-- ACTIONS: pending confirmations, audit log, chat session kind (Migration 007)
+-- ============================================================
+ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'chat';
+
+CREATE TABLE IF NOT EXISTS pending_actions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    session_id UUID,
+    source VARCHAR(10) NOT NULL,            -- chat | voice
+    tool VARCHAR(200) NOT NULL,
+    arguments JSONB NOT NULL DEFAULT '{}',
+    summary TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending|executed|failed|cancelled|expired
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    resolved_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_pending_actions_user_status ON pending_actions (user_id, status);
+
+CREATE TABLE IF NOT EXISTS action_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL,
+    source VARCHAR(10) NOT NULL,            -- chat | voice
+    toolkit VARCHAR(100) NOT NULL,
+    tool VARCHAR(200) NOT NULL,
+    arguments_summary TEXT NOT NULL DEFAULT '',
+    outcome VARCHAR(10) NOT NULL,           -- ok | error
+    error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ix_action_log_user_created ON action_log (user_id, created_at);

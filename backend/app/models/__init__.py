@@ -1,3 +1,4 @@
+from app.models.action_log import ActionLog
 from app.models.api_key import ApiKey
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 from app.models.chat_session import ChatSession
@@ -6,6 +7,7 @@ from app.models.conversation import Conversation
 from app.models.digest import Digest
 from app.models.entity import Entity
 from app.models.integration import Integration
+from app.models.pending_action import PendingAction
 from app.models.query_feedback import QueryFeedback
 from app.models.rule import Rule
 from app.models.segment import Segment
@@ -13,6 +15,7 @@ from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
 
 __all__ = [
+    "ActionLog",
     "ApiKey",
     "Base",
     "ChatSession",
@@ -21,6 +24,7 @@ __all__ = [
     "Digest",
     "Entity",
     "Integration",
+    "PendingAction",
     "QueryFeedback",
     "Rule",
     "Segment",
