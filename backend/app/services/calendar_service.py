@@ -3,19 +3,31 @@
 import logging
 import uuid
 from datetime import date as date_cls
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from datetime import time as time_cls
+from difflib import SequenceMatcher
 
 import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.timezone import local_day_bounds, to_user_local_date
 from app.models.integration import Integration
 
 logger = logging.getLogger(__name__)
 
 CALENDAR_API = "https://www.googleapis.com/calendar/v3"
+
+
+def rfc3339_day_range(first_day: str, last_day: str) -> tuple[str, str]:
+    """RFC 3339 [start, end) covering whole days in the user's timezone.
+
+    Google's timeMax is exclusive, so the end is midnight after last_day.
+    """
+    start, _ = local_day_bounds(date_cls.fromisoformat(first_day))
+    _, end = local_day_bounds(date_cls.fromisoformat(last_day))
+    return start.isoformat(), end.isoformat()
 
 
 def all_day_range(day: str) -> tuple[dict, dict]:
@@ -171,7 +183,12 @@ async def _refresh_token(refresh_token: str) -> str | None:
 
 
 async def list_events(
-    db: AsyncSession, user_id: uuid.UUID, date_from: str | None = None, date_to: str | None = None, days: int = 7
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    days: int = 7,
+    max_results: int = 20,
 ) -> list[dict] | None:
     """List events for a specific date range, or next N days if no range given."""
     token = await get_calendar_token(db, user_id)
@@ -179,14 +196,11 @@ async def list_events(
         return None
 
     if date_from:
-        time_min = f"{date_from}T00:00:00Z"
-        # date_to is end of that day
-        end_date = date_to or date_from
-        time_max = f"{end_date}T23:59:59Z"
+        time_min, time_max = rfc3339_day_range(date_from, date_to or date_from)
     else:
-        now = datetime.utcnow().isoformat() + "Z"
-        time_min = now
-        time_max = (datetime.utcnow() + timedelta(days=days)).isoformat() + "Z"
+        now = datetime.now(timezone.utc)
+        time_min = now.isoformat()
+        time_max = (now + timedelta(days=days)).isoformat()
 
     async with httpx.AsyncClient() as client:
         resp = await client.get(
@@ -197,7 +211,7 @@ async def list_events(
                 "timeMax": time_max,
                 "singleEvents": "true",
                 "orderBy": "startTime",
-                "maxResults": "20",
+                "maxResults": str(max_results),
             },
         )
         if resp.status_code != 200:
@@ -215,6 +229,60 @@ async def list_events(
                 "location": item.get("location"),
             })
         return events
+
+
+EVENT_SEARCH_DAYS = 14
+EVENT_MATCH_THRESHOLD = 0.6
+
+
+def _normalize_title(value: str) -> str:
+    return " ".join(value.lower().split())
+
+
+def match_events(events: list[dict], summary: str) -> list[dict]:
+    """Events whose title matches the requested one, best match first."""
+    wanted = _normalize_title(summary)
+    if not wanted:
+        return []
+    scored = []
+    for event in events:
+        title = _normalize_title(event.get("summary") or "")
+        if not title:
+            continue
+        if wanted == title:
+            score = 2.0
+        elif wanted in title or title in wanted:
+            score = 1.0
+        else:
+            score = SequenceMatcher(None, wanted, title).ratio()
+        if score >= EVENT_MATCH_THRESHOLD:
+            scored.append((score, event))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [event for _, event in scored]
+
+
+async def find_events(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    summary: str,
+    day: str | None = None,
+) -> list[dict] | None:
+    """Find events by title on a day, or in the next EVENT_SEARCH_DAYS days.
+
+    Returns None when Calendar is not connected, else the matches (best first).
+    """
+    if day:
+        first_day = last_day = day
+    else:
+        today = to_user_local_date(datetime.now(timezone.utc))
+        first_day = today.isoformat()
+        last_day = (today + timedelta(days=EVENT_SEARCH_DAYS)).isoformat()
+    events = await list_events(
+        db, user_id, date_from=first_day, date_to=last_day, max_results=100
+    )
+    if events is None:
+        return None
+    return match_events(events, summary)
 
 
 async def create_event(
