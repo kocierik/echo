@@ -125,21 +125,22 @@ docker compose exec -T postgres psql -U echo -d echo -c "
 # Check current Alembic version
 CURRENT_VERSION=$(docker compose exec -T postgres psql -U echo -d echo -tAc "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | tr -d '[:space:]')
 
-# If the database was created from schema.sql, it already reflects the current schema.
-# In that case we should stamp HEAD instead of an old baseline revision.
+# docs/schema.sql is the 001 baseline plus later tables, not the full head schema
+# (it lacks e.g. transcription_edits from 006). Stamp the baseline and let the
+# idempotent migrations 002+ add only what is missing.
 if [ -z "$CURRENT_VERSION" ]; then
-    warn "No migration version found — stamping current DB state at head..."
-    docker compose exec -T api python -m alembic stamp head
-    log "Stamped at head"
+    warn "No migration version found — stamping the schema.sql baseline (001)..."
+    docker compose exec -T api python -m alembic stamp 001
+    log "Stamped at 001"
 fi
 
-# Now run upgrade head — all migrations are idempotent.
-# If the DB matches the current schema, Alembic will simply no-op.
-docker compose exec -T api python -m alembic upgrade head && log "Migrations complete" || {
-    warn "Migration upgrade reported an issue — falling back to stamp head for a schema-compatible DB"
-    docker compose exec -T api python -m alembic stamp head
-    log "Stamped at head after fallback"
-}
+# Never stamp over a failed migration: that would silently skip schema changes.
+if docker compose exec -T api python -m alembic upgrade head; then
+    log "Migrations complete"
+else
+    error "Migration failed — fix it and run the deploy again (nothing was stamped)"
+    exit 1
+fi
 
 # --- 7. Ensure the default API key exists for local development ---
 log "Ensuring default API key exists..."

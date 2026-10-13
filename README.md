@@ -65,10 +65,13 @@ On first run, apply the schema:
 
 ```bash
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp head
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 ```
 
-The `alembic stamp head` tells Alembic that your database already has the current schema, so future migrations will apply incrementally.
+`docs/schema.sql` is the baseline (revision 001) plus some later tables; the migrations
+are idempotent, so `upgrade head` adds only what is still missing (for example the
+`transcription_edits` audit table). `make deploy` does all of this for you.
 
 To apply new migrations after a `git pull`:
 
@@ -81,7 +84,8 @@ To reset the database (drops all data):
 ```bash
 docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp head
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 ```
 
 ### 4. Create an API key

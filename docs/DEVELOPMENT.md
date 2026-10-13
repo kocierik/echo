@@ -17,7 +17,8 @@ cp .env.example .env
 
 docker compose up --build -d
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp head
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 docker compose exec postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'a0000000-0000-0000-0000-000000000001',
@@ -39,9 +40,10 @@ docker compose -f docker-compose-infra.yml up -d
 # Apply schema
 docker compose -f docker-compose-infra.yml exec -T postgres psql -U echo -d echo < docs/schema.sql
 
-# Stamp Alembic (mark DB as up-to-date)
+# Stamp the schema.sql baseline (001), then apply the missing migrations
 cd backend
-python -m alembic stamp head
+python -m alembic stamp 001
+python -m alembic upgrade head
 
 docker compose -f docker-compose-infra.yml exec postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
@@ -109,8 +111,9 @@ docker compose up --build -d
 # 3. Crea lo schema del database
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
 
-# 4. Marca Alembic come aggiornato (il DB ha già lo schema corrente)
-docker compose exec api python -m alembic stamp head
+# 4. Baseline Alembic (001) e migrazioni mancanti (schema.sql non è aggiornato a head)
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 
 # 5. Crea una API key
 docker compose exec -T postgres psql -U echo -d echo -c "
@@ -145,7 +148,8 @@ curl http://localhost:8000/health
 ```bash
 docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp head
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 
 # Ricrea API key
 docker compose exec -T postgres psql -U echo -d echo -c "
@@ -210,8 +214,9 @@ docker compose exec api python -m alembic current
 # Apply SQL schema (creates tables)
 docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
 
-# Tell Alembic the DB is at the current version
-docker compose exec api python -m alembic stamp head
+# Stamp the schema.sql baseline (001), then apply the missing migrations
+docker compose exec api python -m alembic stamp 001
+docker compose exec api python -m alembic upgrade head
 ```
 
 ## Firmware development
