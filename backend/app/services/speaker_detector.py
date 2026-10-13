@@ -5,7 +5,7 @@ higher energy (closer to mic) than other speakers (further away).
 
 Strategy:
 - Collect energy values from recent segments
-- Compute percentile 70 as threshold (user's voice dominates)
+- Compute a percentile of them as threshold (SPEAKER_THRESHOLD_PERCENTILE, default 0.7)
 - Classify: energy >= threshold → "self", else → "other"
 """
 
@@ -21,18 +21,23 @@ logger = logging.getLogger(__name__)
 CALIBRATION_SEGMENTS = 20
 
 
-def compute_threshold(energies: list[int]) -> int | None:
+def compute_threshold(energies: list[int], percentile: float | None = None) -> int | None:
     """Compute the speaker energy threshold from historical data.
 
-    Uses percentile 70: the user's voice appears most often and loudest,
-    so the 70th percentile separates "self" from "other".
+    Segments at or above the threshold are "self". The percentile defaults to
+    settings.speaker_threshold_percentile (0.7): about 30% of recent segments
+    become "self". Lower it if your own voice is misclassified as "other".
     """
     if not energies:
         return None
+    if percentile is None:
+        from app.core.config import settings
+
+        percentile = settings.speaker_threshold_percentile
 
     sorted_e = sorted(energies)
-    idx = int(len(sorted_e) * 0.7)
-    idx = min(idx, len(sorted_e) - 1)
+    idx = int(len(sorted_e) * percentile)
+    idx = max(0, min(idx, len(sorted_e) - 1))
     return sorted_e[idx]
 
 
