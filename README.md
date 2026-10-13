@@ -177,7 +177,7 @@ All `/api` endpoints require the `X-API-Key` header.
 ```
 
   Either date bound may be omitted. It can also run Google Calendar actions
-  ("crea un evento domani alle 15 per un'ora").
+  ("crea un evento domani alle 15 per un'ora", "sposta il dentista alle 18").
 - `GET /api/chat-sessions`, `GET /api/chat-sessions/{id}`, `DELETE /api/chat-sessions/{id}` — complete chat history.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
 
@@ -196,7 +196,8 @@ All `/api` endpoints require the `X-API-Key` header.
 
 ### Operations
 - `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
-- `GET /health`, `GET /api/stats`, `GET /metrics` (Prometheus).
+- `GET /health` (no auth), `GET /api/stats` (the caller's counts),
+  `GET /metrics` (Prometheus; `Authorization: Bearer $METRICS_TOKEN` or an API key).
 
 ## Configuration
 
@@ -217,6 +218,8 @@ All `/api` endpoints require the `X-API-Key` header.
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
 | `USER_TIMEZONE` | `Europe/Rome` | Timezone for calendar events and relative dates |
 | `DEFAULT_EVENT_DURATION_MINUTES` | `60` | Duration of calendar events when none is said |
+| `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
+| `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | — | Google Calendar OAuth |
 | `OAUTH_STATE_SECRET` | Google client secret | Secret that signs the OAuth `state` |
 

@@ -68,10 +68,12 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Titoli e riassunti per conversazione** generati in modo asincrono a conversazione chiusa (`workers/summaries.py`).
 - RAG `POST /api/query`: filtro temporale da linguaggio naturale (IT/EN) o esplicito (anche aperto), ricerca vettoriale
   chunk + entità, re-ranking da feedback, follow-up multi-turn; storico completo in Postgres, contesto ricaricato se Redis è scaduto.
-- Azioni da chat su Google Calendar: elenco, creazione (durata detta o 1 h di default), modifica che conserva giorno/ora/durata non cambiati, cancellazione.
+- Azioni da chat su Google Calendar: elenco, creazione (durata detta o 1 h di default), modifica e cancellazione
+  indicando l'evento per nome (e giorno), con domanda di chiarimento se più eventi corrispondono; la modifica conserva
+  giorno/ora/durata non cambiati. Il classificatore dell'intento parte solo per richieste che sembrano di calendario.
 - Correzione trascrizione con audit + rianalisi in coda con lock distribuito, **senza side effect** su integrazioni e regole.
 - Eliminazione conversazione a cascata; retention audio (completati 24 h, incompleti 7 giorni).
-- Digest giornaliero automatico (21:00 UTC), CRUD entità/task, merge entità, regole utente, integrazioni
+- Digest giornaliero automatico (alle 4:00 locali, per il giorno appena finito), CRUD entità/task, merge entità, regole utente, integrazioni
   (Todoist, Google Calendar, Notion, Telegram, Slack, webhook), OAuth Google con `state` firmato e monouso,
   `/health`, `/metrics` Prometheus, admin DLQ (anche per le rianalisi).
 
@@ -96,38 +98,36 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 | 13 | Titoli/riassunti delle conversazioni mai generati | `2f7e4d5` |
 | — | Spostare un evento da chat ne azzerava la durata; cambiare solo l'orario non aveva effetto | `e231d95` |
 | — | Test `test_analysis_pipeline_preserves_normal_call_order` rotto su `main` | `2f7e4d5` |
+| 10 | La condizione `speaker` delle regole non matchava mai | `fb1d8eb` |
+| 14 | Calendario e digest con confini del giorno in UTC; digest con un giorno di ritardo | `fd36b64`, `fb1d8eb` |
+| 15 | Modifica/cancellazione eventi da chat richiedevano un `event_id` mai visto dal modello | `fd36b64` |
+| 16 | Due chiamate a GPT-4o per ogni domanda sulla memoria | `fd36b64` |
+| 17 | `/api/stats` e `/metrics` senza autenticazione, conteggi globali | `fb1d8eb` |
+| — | CI rossa: 60 errori ruff; `speaker_detector.py` e il suo test incollati due volte (la copia peggiore vinceva) | `0d09920` |
 
 ### Ancora aperti
 
 **Medi**
 
-10. **La condizione `speaker` delle regole non matcha mai.** Legge il prefisso `[Tu]`/`[Altri]` da `entity.content`
-    ([rules_engine.py:98](../backend/app/services/rules_engine.py#L98)), ma il prefisso è nel testo della trascrizione.
-    Serve risalire allo speaker del Segment tramite `source_transcription_id`.
 11. **Classificazione speaker probabilmente invertita.** Soglia al 70° percentile ([speaker_detector.py:34](../backend/app/services/speaker_detector.py#L34)):
     solo ~30% dei segmenti diventa "self", mentre il commento dice che la voce dell'utente domina. Da verificare con dati reali.
 12b. **Filtri temporali per `started_at`.** RAG e digest filtrano le conversazioni per inizio: con il limite di 2 h il problema
     è ridotto, ma una conversazione a cavallo della mezzanotte finisce tutta nel giorno d'inizio.
-14. **Fusi orari rimasti in UTC:** `list_events` usa i confini del giorno in UTC ([calendar_service.py:182](../backend/app/services/calendar_service.py#L182)),
-    il digest usa giorni UTC alle 21:00 UTC ([digest.py:34](../backend/app/workers/digest.py#L34)), e la "data" del digest
-    viene generata il giorno dopo. Chat ed estrazione usano già `USER_TIMEZONE`.
-15. **Update/delete eventi da chat quasi inutilizzabili:** l'LLM deve fornire un `event_id` che non vede mai
-    (la lista eventi non mostra gli ID, [chat_actions.py:204](../backend/app/services/chat_actions.py#L204)). Servirebbe cercare l'evento per nome + data.
-16. **Ogni domanda costa due chiamate a GPT-4o:** classificazione dell'intento ([chat_actions.py:99](../backend/app/services/chat_actions.py#L99)) e poi RAG.
-17. **Endpoint non autenticati:** `/api/stats` e `/metrics` ([main.py:161](../backend/app/main.py#L161), [:187](../backend/app/main.py#L187)) espongono conteggi globali.
-18. **Shutdown del worker non "graceful":** i task vengono cancellati subito ([workers/main.py:655](../backend/app/workers/main.py#L655)); il lavoro interrotto viene rimesso in coda.
+18. **Shutdown del worker non "graceful":** i task vengono cancellati subito ([workers/main.py:652](../backend/app/workers/main.py#L652)); il lavoro interrotto viene rimesso in coda.
 19. **Lingua mista:** UI mobile in inglese, risposte backend, prompt, prefissi speaker e messaggi d'errore in italiano.
-20. **Todoist REST v2** ([engine.py:92](../backend/app/integrations/engine.py#L92), [rules_engine.py:205](../backend/app/services/rules_engine.py#L205)):
+20. **Todoist REST v2** ([engine.py:92](../backend/app/integrations/engine.py#L92), [rules_engine.py:242](../backend/app/services/rules_engine.py#L242)):
     l'API v2 è stata deprecata in favore della v1 unificata; verificare che risponda ancora.
 
 ### Ambiente di sviluppo e CI
-- **La CI è già rossa su `main`:** `ruff check app/ tests/` trova 60 errori preesistenti (righe lunghe, import inutilizzati).
-  Il codice nuovo è pulito; serve un passaggio `ruff check --fix` + correzioni manuali.
+- `ruff check app/ tests/` è pulito. La CI ora ha anche il job `mobile` (`flutter analyze` + `flutter test`) e i test nativi
+  del firmware (`pio test -e native`): **nessuno dei due è ancora girato** e potrebbero far emergere problemi preesistenti.
+- I test di integrazione con Postgres (step "Integration tests" della CI) non sono stati eseguiti in locale: qui Docker/Podman
+  non sono attivi.
 - **Test backend su Windows:** `asyncpg==0.29` non ha wheel per Python 3.13 e richiede MSVC. Usare Python 3.11 (come la CI) o Docker.
   Per i test unitari basta un venv 3.13 con `asyncpg>=0.30` e `pytest --noconftest`.
 - **`uv.lock` non aggiornato** per la nuova dipendenza `tzdata` (Docker e CI installano da `pyproject.toml` con pip, quindi non si rompono):
   rigenerarlo con `uv lock` quando conviene (la versione di uv installata qui riscrive il formato del file).
-- La CI non builda né testa l'app Flutter; i test Flutter scritti il 13/10 **non sono stati eseguiti** (SDK non disponibile): lanciare `flutter test`.
+- I test Flutter scritti il 13/10 **non sono stati eseguiti** in locale (SDK non disponibile): li lancerà il nuovo job CI.
 
 ---
 
@@ -171,10 +171,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 
 ## 6. Prossimi passi consigliati
 
-1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`) e lanciare `flutter test`.
+1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`) e lanciare `flutter test`
+   (o pushare e guardare il nuovo job CI `mobile`).
 2. **Eseguire il test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md): è il blocco per chiudere la fase.
-3. **Rimettere verde la CI:** sistemare i 60 errori di ruff preesistenti e aggiungere un job `flutter test`.
-4. **Sistemare i problemi medi più utili nell'uso quotidiano:** fusi orari di digest e calendario (#14),
-   modifica/cancellazione eventi per nome + data (#15), condizione `speaker` delle regole (#10).
-5. **Calibrare VAD e soglia speaker** (#11) con le prime registrazioni reali.
-6. Valutare se unire classificazione dell'intento e RAG in una sola chiamata (#16) e proteggere `/api/stats` e `/metrics` (#17).
+3. **Calibrare VAD e soglia speaker** (#11) con le prime registrazioni reali: soglia VAD fissa a 500, percentile speaker al 70°.
+4. **Filtri temporali per sovrapposizione** (#12b): filtrare conversazioni per intervallo `[started_at, ended_at]` invece che per inizio.
+5. **Shutdown graceful del worker** (#18): attendere fino a 30 s il lavoro in corso prima di cancellare i task.
+6. Uniformare la lingua (#19) e verificare l'API Todoist (#20).
