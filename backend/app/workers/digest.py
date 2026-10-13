@@ -28,6 +28,7 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
+from app.services.temporal import conversation_overlaps
 from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,7 @@ async def generate_digest_for_date(
     conversations_query = (
         select(Conversation)
         .where(Conversation.user_id == user_id)
-        .where(Conversation.started_at >= day_start)
-        .where(Conversation.started_at < day_end)
+        .where(*conversation_overlaps(day_start, day_end))
         .order_by(Conversation.started_at)
     )
     result = await db.execute(conversations_query)
@@ -94,6 +94,9 @@ async def generate_digest_for_date(
         select(Transcription.text)
         .join(Segment, Segment.id == Transcription.segment_id)
         .where(Segment.conversation_id.in_(conv_ids))
+        # Only what was said that day: a conversation may cross midnight
+        .where(Segment.recorded_at >= day_start)
+        .where(Segment.recorded_at < day_end)
         .order_by(Segment.recorded_at)
     )
     result = await db.execute(transcriptions_query)
@@ -239,8 +242,7 @@ async def generate_digests_for_all_users(target_date: date):
 
         users_query = (
             select(Conversation.user_id)
-            .where(Conversation.started_at >= day_start)
-            .where(Conversation.started_at < day_end)
+            .where(*conversation_overlaps(day_start, day_end))
             .distinct()
         )
         result = await db.execute(users_query)

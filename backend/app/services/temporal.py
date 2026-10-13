@@ -9,6 +9,26 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
 
+def conversation_overlaps(date_from: datetime | None, date_to: datetime | None) -> list:
+    """SQL conditions selecting conversations that overlap [date_from, date_to).
+
+    A conversation spans started_at → ended_at (ended_at is NULL while it has a
+    single segment), so filtering by started_at alone would hide a conversation
+    that began before the period, e.g. across midnight. Either bound may be open.
+    """
+    from sqlalchemy import func
+
+    from app.models.conversation import Conversation
+
+    conditions = []
+    if date_to is not None:
+        conditions.append(Conversation.started_at < date_to)
+    if date_from is not None:
+        conversation_end = func.coalesce(Conversation.ended_at, Conversation.started_at)
+        conditions.append(conversation_end >= date_from)
+    return conditions
+
+
 @dataclass
 class DateRange:
     """A date range filter extracted from a query.
