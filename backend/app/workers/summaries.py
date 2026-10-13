@@ -24,6 +24,7 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import generate_conversation_summary
 from app.services.llm_openai import get_llm_analysis_service
+from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -99,14 +100,14 @@ async def summarize_closed_conversations(
     return summarized
 
 
-async def run_summary_loop():
+async def run_summary_loop(shutdown_event: asyncio.Event | None = None):
     """Periodically summarize conversations that have been closed."""
     logger.info(
         "[Summaries] Started: summarizing conversations quiet for %ss (checking every %ss)",
         settings.silence_timeout_ms // 1000,
         settings.summary_check_interval_s,
     )
-    while True:
+    while not (shutdown_event and shutdown_event.is_set()):
         try:
             count = await summarize_closed_conversations()
             if count:
@@ -116,4 +117,5 @@ async def run_summary_loop():
         except Exception:
             logger.exception("[Summaries] Error during summary generation")
 
-        await asyncio.sleep(settings.summary_check_interval_s)
+        if await sleep_or_shutdown(settings.summary_check_interval_s, shutdown_event):
+            return
