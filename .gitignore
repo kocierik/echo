@@ -61,6 +61,10 @@ mobile/ios/Flutter/Generated.xcconfig
 mobile/ios/Flutter/ephemeral/
 mobile/ios/Runner.xcworkspace/xcshareddata/
 mobile/ios/Flutter/App.framework
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Runner/GeneratedPluginRegistrant.*
+mobile/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+mobile/android/*.iml
 mobile/linux/flutter/
 mobile/macos/Flutter/
 mobile/windows/flutter/
