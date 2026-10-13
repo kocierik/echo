@@ -1,6 +1,6 @@
 # Echo Actions via Composio — Design
 
-Date: 2026-10-13. Status: draft for approval.
+Date: 2026-10-13. Status: approved by the user on 2026-10-13.
 
 ## Intent
 
