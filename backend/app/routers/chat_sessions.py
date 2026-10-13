@@ -19,12 +19,14 @@ class ChatMessage(BaseModel):
     role: str  # "user" | "assistant"
     content: str
     timestamp: str | None = None
+    pending_action: dict | None = None
 
 
 class ChatSessionSummary(BaseModel):
     id: uuid.UUID
     title: str | None
     message_count: int
+    kind: str
     created_at: datetime
     updated_at: datetime
 
@@ -46,26 +48,33 @@ class ChatSessionListResponse(BaseModel):
     count: int
 
 
+def order_sessions(sessions: list[ChatSession]) -> list[ChatSession]:
+    """Voice sessions first, then the most recently updated."""
+    by_recency = sorted(sessions, key=lambda s: s.updated_at, reverse=True)
+    return sorted(by_recency, key=lambda s: s.kind != "voice")
+
+
 @router.get("", response_model=ChatSessionListResponse)
 async def list_chat_sessions(
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all chat sessions for the user, most recent first."""
+    """List chat sessions for the user: voice first, then most recent first."""
     query = (
         select(ChatSession)
         .where(ChatSession.user_id == user_id)
-        .order_by(ChatSession.updated_at.desc())
+        .order_by((ChatSession.kind == "voice").desc(), ChatSession.updated_at.desc())
         .limit(50)
     )
     result = await db.execute(query)
-    sessions = result.scalars().all()
+    sessions = order_sessions(list(result.scalars().all()))
 
     items = [
         ChatSessionSummary(
             id=s.id,
             title=s.title,
             message_count=len(s.messages),
+            kind=s.kind,
             created_at=s.created_at,
             updated_at=s.updated_at,
         )
