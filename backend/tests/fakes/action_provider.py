@@ -20,8 +20,9 @@ class FakeActionProvider:
         self.executed: list[tuple[str, dict]] = []
 
     async def list_toolkits(self, user_id: str, query: str | None = None) -> list[Toolkit]:
+        extra = sorted(s for s in self.connected if s not in INITIAL_TOOLKITS)
         out = [Toolkit(s, s.title(), f"{s} toolkit", s in self.connected)
-               for s in INITIAL_TOOLKITS]
+               for s in (*INITIAL_TOOLKITS, *extra)]
         if query:
             out = [t for t in out if query.lower() in (t.slug + t.name + t.description).lower()]
         return out

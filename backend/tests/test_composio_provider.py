@@ -156,3 +156,14 @@ async def test_connected_toolkits_is_one_accounts_call():
     toolkits = await ComposioActionProvider(client=client).connected_toolkits("u1")
     assert toolkits == ["gmail", "asana"]
     assert client.calls["list"] == {"user_ids": ["u1"], "statuses": ["ACTIVE"]}
+
+
+async def test_list_toolkits_includes_connected_toolkits_found_by_search():
+    client = StubClient(active=["slack", "asana"])
+    toolkits = await ComposioActionProvider(client=client).list_toolkits("u1")
+    assert [t.slug for t in toolkits] == [*INITIAL_TOOLKITS, "asana"]
+    asana = toolkits[-1]
+    assert (asana.name, asana.description, asana.connected) == ("Asana", "asana desc", True)
+    assert await ComposioActionProvider(client=client).connected_toolkits("u1") == [
+        "slack", "asana",
+    ]

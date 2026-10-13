@@ -99,8 +99,10 @@ class ComposioActionProvider:
         return config_id
 
     async def list_toolkits(self, user_id: str, query: str | None = None) -> list[Toolkit]:
+        """Search results, or the initial toolkits plus any other connected toolkit."""
         accounts = await _call(self._active_slugs, user_id)
-        connected = {a.toolkit.slug for a in accounts}
+        connected_order = list(dict.fromkeys(a.toolkit.slug for a in accounts))
+        connected = set(connected_order)
 
         def fetch() -> list[Toolkit]:
             if query:
@@ -110,7 +112,9 @@ class ComposioActionProvider:
                     for t in found
                 ]
             result = []
-            for slug in INITIAL_TOOLKITS:
+            # Toolkits connected through search are listed too, so they can be disconnected
+            extra = [s for s in connected_order if s not in INITIAL_TOOLKITS]
+            for slug in (*INITIAL_TOOLKITS, *extra):
                 try:
                     t = self.client.toolkits.get(slug)
                     result.append(Toolkit(slug, t.name, t.meta.description, slug in connected))
