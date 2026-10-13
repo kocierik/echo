@@ -162,55 +162,57 @@ def _event(metadata):
     )
 
 
-@pytest.mark.asyncio
-async def test_integration_all_day_event_has_exclusive_end(monkeypatch):
+@pytest.fixture
+def calendar_posts(monkeypatch):
     calls = []
-    monkeypatch.setattr(engine.httpx, "AsyncClient", lambda: _FakeClient(calls))
 
-    await engine._google_calendar_create_event(
-        {"access_token": "token"}, _event({"event_date": "2026-10-13"})
+    async def fake_token(_db, _user_id):
+        return "token"
+
+    monkeypatch.setattr(calendar_service, "get_calendar_token", fake_token)
+    monkeypatch.setattr(calendar_service.httpx, "AsyncClient", lambda: _FakeClient(calls))
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_integration_all_day_event_has_exclusive_end(calendar_posts):
+    await engine.create_calendar_event_for_entity(
+        None, uuid.uuid4(), _event({"event_date": "2026-10-13"})
     )
 
-    body = calls[0][1]
+    body = calendar_posts[0][1]
     assert body["start"] == {"date": "2026-10-13"}
     assert body["end"] == {"date": "2026-10-14"}
 
 
 @pytest.mark.asyncio
-async def test_integration_timed_event_defaults_to_one_hour(monkeypatch):
-    calls = []
-    monkeypatch.setattr(engine.httpx, "AsyncClient", lambda: _FakeClient(calls))
-
-    await engine._google_calendar_create_event(
-        {"access_token": "token"}, _event({"event_date": "2026-10-13", "event_time": "15:00"})
+async def test_integration_timed_event_defaults_to_one_hour(calendar_posts):
+    await engine.create_calendar_event_for_entity(
+        None, uuid.uuid4(), _event({"event_date": "2026-10-13", "event_time": "15:00"})
     )
 
-    body = calls[0][1]
+    body = calendar_posts[0][1]
     assert body["start"] == {"dateTime": "2026-10-13T15:00:00", "timeZone": TZ}
     assert body["end"] == {"dateTime": "2026-10-13T16:00:00", "timeZone": TZ}
 
 
 @pytest.mark.asyncio
-async def test_integration_timed_event_uses_extracted_duration(monkeypatch):
-    calls = []
-    monkeypatch.setattr(engine.httpx, "AsyncClient", lambda: _FakeClient(calls))
+async def test_integration_timed_event_uses_extracted_duration(calendar_posts):
     metadata = {"event_date": "2026-10-13", "event_time": "15:00", "duration_minutes": 120}
 
-    await engine._google_calendar_create_event({"access_token": "token"}, _event(metadata))
+    await engine.create_calendar_event_for_entity(None, uuid.uuid4(), _event(metadata))
 
-    assert calls[0][1]["end"]["dateTime"] == "2026-10-13T17:00:00"
+    assert calendar_posts[0][1]["end"]["dateTime"] == "2026-10-13T17:00:00"
 
 
 @pytest.mark.asyncio
-async def test_integration_skips_non_iso_event_date(monkeypatch):
-    calls = []
-    monkeypatch.setattr(engine.httpx, "AsyncClient", lambda: _FakeClient(calls))
-
-    await engine._google_calendar_create_event(
-        {"access_token": "token"}, _event({"event_date": "venerdì"})
+async def test_integration_skips_non_iso_event_date(calendar_posts):
+    result = await engine.create_calendar_event_for_entity(
+        None, uuid.uuid4(), _event({"event_date": "venerdì"})
     )
 
-    assert calls == []
+    assert result is None
+    assert calendar_posts == []
 
 
 @pytest.mark.asyncio
