@@ -1,287 +1,354 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../models/action_models.dart';
+import '../services/api_exception.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
+typedef UrlLauncher = Future<bool> Function(Uri uri);
+
+Future<bool> _defaultLauncher(Uri uri) =>
+    launchUrl(uri, mode: LaunchMode.externalApplication);
+
 class IntegrationsScreen extends StatefulWidget {
-  const IntegrationsScreen({super.key});
+  const IntegrationsScreen({this.api, this.launcher, super.key});
+
+  /// Injected API (not disposed by the screen); a private one is created when
+  /// omitted.
+  final ApiService? api;
+  final UrlLauncher? launcher;
 
   @override
   State<IntegrationsScreen> createState() => _IntegrationsScreenState();
 }
 
-class _IntegrationsScreenState extends State<IntegrationsScreen> {
-  final _api = ApiService();
-  List<Map<String, dynamic>> _providers = [];
-  List<Map<String, dynamic>> _userIntegrations = [];
+class _IntegrationsScreenState extends State<IntegrationsScreen>
+    with WidgetsBindingObserver {
+  late final ApiService _api = widget.api ?? ApiService();
+  final _searchController = TextEditingController();
+  Timer? _debounce;
+  int _requestId = 0;
+
+  List<Toolkit> _toolkits = const [];
   bool _loading = true;
-  String? _pendingProviderId;
+  bool _unavailable = false;
+  String? _error;
+  String? _pendingSlug;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
   }
 
   @override
   void dispose() {
-    _api.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _debounce?.cancel();
+    _searchController.dispose();
+    if (widget.api == null) _api.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final providers = await _api.getAvailableProviders();
-      final integrations = await _api.getUserIntegrations();
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load(silent: true);
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    final id = ++_requestId;
+    if (!silent) {
       setState(() {
-        _providers = providers;
-        _userIntegrations = integrations;
+        _loading = true;
+        _error = null;
+        _unavailable = false;
+      });
+    }
+    try {
+      final query = _searchController.text.trim();
+      final toolkits = await _api.getToolkits(query: query);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _toolkits = toolkits;
         _loading = false;
+        _error = null;
+        _unavailable = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _loading = false;
+        _unavailable = error.code == 'unavailable';
+        _error = _unavailable ? null : error.message;
       });
     } catch (_) {
-      setState(() => _loading = false);
+      if (!mounted || id != _requestId) return;
+      setState(() {
+        _loading = false;
+        _unavailable = false;
+        _error = 'Could not load integrations.';
+      });
     }
   }
 
-  bool _isEnabled(String providerId) {
-    return _userIntegrations.any((i) => i['provider'] == providerId && i['enabled'] == true);
+  void _onQueryChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _load);
   }
 
-  String? _getIntegrationId(String providerId) {
-    final match = _userIntegrations.where((i) => i['provider'] == providerId).toList();
-    return match.isNotEmpty ? match.first['id'] : null;
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
-  Future<void> _toggle(Map<String, dynamic> provider) async {
-    final providerId = provider['id'] as String;
-    if (_pendingProviderId != null) return;
+  String _messageOf(Object error) =>
+      error is ApiException ? error.message : 'Something went wrong.';
 
+  Future<void> _connect(Toolkit toolkit) async {
+    if (_pendingSlug != null) return;
     HapticFeedback.mediumImpact();
-    final authType = provider['auth_type'] ?? 'manual';
-    final integrationId = _getIntegrationId(providerId);
-
-    setState(() => _pendingProviderId = providerId);
+    setState(() => _pendingSlug = toolkit.slug);
     try {
-      if (integrationId != null) {
-        // Toggle existing
-        final current = _isEnabled(providerId);
-        await _api.updateIntegration(integrationId, enabled: !current);
-      } else if (authType == 'oauth2') {
-        // OAuth flow: open browser for authorization
-        final url = await _api.getOAuthUrl(providerId);
-        await _launchUrl(url);
-        // Poll for connection (user completes in browser)
-        await _pollForConnection(providerId);
-      } else {
-        // Manual config: show dialog
-        final config = await _showConfigDialog(provider);
-        if (config != null) {
-          await _api.createIntegration(providerId, config);
-        }
+      final url = await _api.connectToolkit(toolkit.slug);
+      final launcher = widget.launcher ?? _defaultLauncher;
+      var launched = false;
+      try {
+        launched = await launcher(Uri.parse(url));
+      } catch (_) {
+        launched = false;
+      }
+      if (!launched) {
+        await Clipboard.setData(ClipboardData(text: url));
+        _showMessage('Link copied. Open it in your browser to connect.');
       }
     } catch (error) {
-      if (mounted) {
-        final message = error.toString().replaceFirst('Exception: ', '');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
+      _showMessage(_messageOf(error));
     } finally {
-      await _load();
-      if (mounted) setState(() => _pendingProviderId = null);
+      if (mounted) setState(() => _pendingSlug = null);
+      await _load(silent: true);
     }
   }
 
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched) {
-        // Fallback: try with platformDefault
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      }
-    } catch (e) {
-      // Fallback: show copyable URL
-      if (mounted) {
-        Clipboard.setData(ClipboardData(text: url));
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link copied — open it in your browser to connect')),
-        );
-      }
-    }
-  }
-
-  Future<void> _pollForConnection(String providerId) async {
-    // Check every 2s for up to 60s if the integration was created via OAuth callback
-    int attempts = 0;
-    await Future.doWhile(() async {
-      await Future.delayed(const Duration(seconds: 2));
-      attempts++;
-      await _load();
-      if (_isEnabled(providerId) || attempts >= 30) return false;
-      return true;
-    });
-  }
-
-  Future<Map<String, dynamic>?> _showConfigDialog(Map<String, dynamic> provider) async {
-    final fields = List<Map<String, dynamic>>.from(provider['config_fields'] ?? []);
-    final controllers = <String, TextEditingController>{};
-    for (final f in fields) {
-      controllers[f['key']] = TextEditingController();
-    }
-
-    return showDialog<Map<String, dynamic>>(
+  Future<void> _confirmDisconnect(Toolkit toolkit) async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.bgElevated,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Connect ${provider['name']}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: fields.map((f) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: TextField(
-              controller: controllers[f['key']],
-              obscureText: f['type'] == 'password',
-              decoration: InputDecoration(
-                labelText: f['label'],
-                labelStyle: const TextStyle(fontSize: 13, color: AppColors.foregroundMuted),
-              ),
-              style: const TextStyle(fontSize: 14),
-            ),
-          )).toList(),
+        content: Text(
+          'Disconnect ${toolkit.name}? Echo will no longer be able to use it.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.foregroundMuted)),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
           ),
-          TextButton(
-            onPressed: () {
-              final config = <String, dynamic>{};
-              for (final f in fields) {
-                config[f['key']] = controllers[f['key']]!.text.trim();
-              }
-              Navigator.pop(ctx, config);
-            },
-            child: const Text('Connect', style: TextStyle(color: AppColors.accent)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect'),
           ),
         ],
       ),
     );
-  }
-
-  IconData _getIcon(String icon) {
-    switch (icon) {
-      case 'check_circle': return Icons.check_circle_outline_rounded;
-      case 'calendar_today': return Icons.calendar_today_rounded;
-      case 'note': return Icons.note_alt_outlined;
-      case 'send': return Icons.send_rounded;
-      case 'chat': return Icons.chat_outlined;
-      default: return Icons.extension_rounded;
+    if (confirmed != true || !mounted || _pendingSlug != null) return;
+    setState(() => _pendingSlug = toolkit.slug);
+    try {
+      await _api.disconnectToolkit(toolkit.slug);
+    } catch (error) {
+      _showMessage(_messageOf(error));
+    } finally {
+      if (mounted) setState(() => _pendingSlug = null);
+      await _load(silent: true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Integrations'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [AppColors.bgBase, AppColors.bgDeep],
+      backgroundColor: palette.background,
+      appBar: AppBar(title: const Text('Integrations')),
+      body: _body(palette),
+    );
+  }
+
+  Widget _body(EchoPalette palette) {
+    if (_unavailable) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(
+            "Integrations aren't set up on the server yet. Add "
+            'COMPOSIO_API_KEY to the backend .env and restart it.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: palette.text2),
           ),
         ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: _providers.length,
-                itemBuilder: (_, i) => _ProviderCard(
-                  provider: _providers[i],
-                  enabled: _isEnabled(_providers[i]['id']),
-                  pending: _pendingProviderId == _providers[i]['id'],
-                  icon: _getIcon(_providers[i]['icon'] ?? ''),
-                  onTap: () => _toggle(_providers[i]),
-                ),
+      );
+    }
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onQueryChanged,
+            onSubmitted: (_) {
+              _debounce?.cancel();
+              _load();
+            },
+            textInputAction: TextInputAction.search,
+            decoration: InputDecoration(
+              hintText: 'Search other apps',
+              prefixIcon: const Icon(Icons.search_rounded),
+              filled: true,
+              fillColor: palette.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
               ),
-      ),
+            ),
+          ),
+        ),
+        Expanded(child: _list(palette)),
+      ],
+    );
+  }
+
+  Widget _list(EchoPalette palette) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: palette.text2),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton(
+                onPressed: _load,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      itemCount: _toolkits.length,
+      itemBuilder: (_, i) {
+        final toolkit = _toolkits[i];
+        return _ToolkitRow(
+          key: ValueKey(toolkit.slug),
+          toolkit: toolkit,
+          pending: _pendingSlug == toolkit.slug,
+          onConnect: () => _connect(toolkit),
+          onDisconnect: () => _confirmDisconnect(toolkit),
+        );
+      },
     );
   }
 }
 
-class _ProviderCard extends StatelessWidget {
-  final Map<String, dynamic> provider;
-  final bool enabled;
-  final bool pending;
-  final IconData icon;
-  final VoidCallback onTap;
+class _ToolkitRow extends StatelessWidget {
+  const _ToolkitRow({
+    required this.toolkit,
+    required this.pending,
+    required this.onConnect,
+    required this.onDisconnect,
+    super.key,
+  });
 
-  const _ProviderCard({required this.provider, required this.enabled, required this.pending, required this.icon, required this.onTap});
+  final Toolkit toolkit;
+  final bool pending;
+  final VoidCallback onConnect;
+  final VoidCallback onDisconnect;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.bgElevated,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: enabled ? AppColors.success.withValues(alpha: 0.3) : AppColors.border),
+    final palette = EchoPalette.of(context);
+    final Widget trailing;
+    if (pending) {
+      trailing = const Padding(
+        padding: EdgeInsets.only(right: 8),
+        child: SizedBox.square(
+          dimension: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 40, height: 40,
-              decoration: BoxDecoration(
-                color: enabled ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 20, color: enabled ? AppColors.success : AppColors.foregroundMuted),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(provider['name'] ?? '', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.foreground)),
+      );
+    } else if (toolkit.connected) {
+      trailing = Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_rounded, size: 18, color: palette.green),
+          const SizedBox(width: 4),
+          Text('Connected', style: TextStyle(color: palette.green)),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (_) => onDisconnect(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'disconnect', child: Text('Disconnect')),
+            ],
+          ),
+        ],
+      );
+    } else {
+      trailing = Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: FilledButton(
+          onPressed: onConnect,
+          child: const Text('Connect'),
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  toolkit.name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: palette.text,
+                  ),
+                ),
+                if (toolkit.description.isNotEmpty) ...[
                   const SizedBox(height: 2),
-                  Text(provider['description'] ?? '', style: const TextStyle(fontSize: 12, color: AppColors.foregroundMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(
+                    toolkit.description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: palette.text2),
+                  ),
                 ],
-              ),
+              ],
             ),
-            Container(
-              constraints: const BoxConstraints(minWidth: 42, minHeight: 24),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: enabled ? AppColors.success.withValues(alpha: 0.1) : AppColors.surface,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: pending
-                  ? const SizedBox.square(
-                      dimension: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      enabled ? 'ON' : 'OFF',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: enabled ? AppColors.success : AppColors.foregroundMuted),
-                    ),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          trailing,
+        ],
       ),
     );
   }

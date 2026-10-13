@@ -25,31 +25,6 @@ void main() {
       expect(response.sessionId, 'session-1');
     });
 
-    test('decodes a 201 response', () async {
-      final service = _service((request) => _jsonResponse(request, 201, {
-            'id': 'rule-1',
-            'name': 'Notify me',
-          }));
-
-      final rule = await service.createRule({
-        'name': 'Notify me',
-        'conditions': {'entity_type': 'task'},
-        'actions': [
-          {'type': 'tag'}
-        ],
-      });
-
-      expect(rule?['id'], 'rule-1');
-    });
-
-    test('accepts a 204 response without decoding JSON', () async {
-      final service = _service(
-        (request) => _response(request, 204),
-      );
-
-      await expectLater(service.deleteRule('rule-1'), completes);
-    });
-
     test('loads strict chat session detail from the detail endpoint', () async {
       late http.BaseRequest captured;
       final service = _service((request) {
@@ -99,7 +74,7 @@ void main() {
       );
 
       await _expectApiException(
-        service.getRules(),
+        service.getToolkits(),
         statusCode: 202,
         code: 'http',
       );
@@ -181,10 +156,8 @@ void main() {
         (service) => service.getSessions(),
         (service) => service.getConversations(),
         (service) => service.getTasks(),
-        (service) => service.getAvailableProviders(),
-        (service) => service.getUserIntegrations(),
-        (service) => service.getRules(),
-        (service) => service.getRuleTemplates(),
+        (service) => service.getToolkits(),
+        (service) => service.getActionLog(),
       ];
 
       for (final operation in operations) {
@@ -207,7 +180,7 @@ void main() {
       );
 
       await _expectApiException(
-        service.getRules(),
+        service.getToolkits(),
         code: 'invalid_response',
       );
     });
@@ -218,7 +191,7 @@ void main() {
       );
 
       await _expectApiException(
-        service.getRules(),
+        service.getToolkits(),
         code: 'invalid_response',
       );
     });
@@ -292,7 +265,7 @@ void main() {
       );
 
       final error = await _expectApiException(
-        service.getRules(),
+        service.getToolkits(),
         code: 'timeout',
       );
       expect(error.retryable, isTrue);
@@ -304,7 +277,7 @@ void main() {
       });
 
       final error = await _expectApiException(
-        service.getRules(),
+        service.getToolkits(),
         code: 'offline',
       );
       expect(error.retryable, isTrue);
