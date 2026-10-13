@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
+from app.actions.availability import not_connected_answer, unreachable_answer
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.voice import (
@@ -174,9 +175,18 @@ async def _answer(
     connected: list[str] = []
     try:
         provider = get_action_provider()
-        connected = await provider.connected_toolkits(str(user_id))
     except ActionProviderError:
-        logger.info("[Voice] Action provider unavailable; answering from memory")
+        logger.info("[Voice] Action provider not configured; answering from memory")
+    if provider is not None:
+        # Every confirmed voice request counts as a possible tool request
+        try:
+            connected = await provider.connected_toolkits(str(user_id))
+        except ActionProviderError:
+            logger.warning("[Voice] Action provider unreachable", exc_info=True)
+            return unreachable_answer(command), {"actions": True}
+        notice = not_connected_answer(command, connected)
+        if notice is not None:
+            return notice, {"actions": True}
     llm = get_llm_query_service()
 
     if not connected:
