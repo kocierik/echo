@@ -1,5 +1,7 @@
 # Core Beta Memory Controls Implementation Plan
 
+> **Stato (13/10/2026): implementato** — commit 52ad9e6. Le checkbox qui sotto non sono state aggiornate durante l'implementazione; lo stato attuale è in [PROJECT-STATUS.md](../../PROJECT-STATUS.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give the personal beta truthful, reversible control over stored memories: complete chat history, auditable transcript/speaker corrections with semantic reanalysis, 24-hour audio deletion, 7-day incomplete-audio retention, and complete conversation deletion.

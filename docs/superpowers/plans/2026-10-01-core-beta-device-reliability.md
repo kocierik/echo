@@ -1,5 +1,7 @@
 # Core Beta Device Reliability Implementation Plan
 
+> **Stato (13/10/2026): implementato** — commit 265f971. Le checkbox qui sotto non sono state aggiornate durante l'implementazione; lo stato attuale è in [PROJECT-STATUS.md](../../PROJECT-STATUS.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make one bonded Echo wearable relay audio reliably to one iPhone while foregrounded, backgrounded, or locked, with automatic reconnect, persistent mute, observable status, and oldest-first overflow.

@@ -1,5 +1,7 @@
 % BLE audio relay — Piano (2026-07-28)
 
+> **Stato (13/10/2026): implementato** — commit f8d226b, c54db67, 6b0f25d. Le checkbox qui sotto non sono state aggiornate durante l'implementazione; lo stato attuale è in [PROJECT-STATUS.md](../../PROJECT-STATUS.md).
+
 Obiettivo
 -------
 Progettare e implementare un "BLE audio relay" che permetta a un dispositivo con risorse limitate (p.es. microcontroller con PSRAM) di inviare flussi audio via BLE a un gateway/relay che li inoltra a un backend o a un altro endpoint locale. Il relay minimizza latenza, preserva qualità sufficiente per riconoscimento vocale e analisi, e gestisce connessioni intermittenti.

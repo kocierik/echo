@@ -1,5 +1,7 @@
 # BLE Latency and Reliability Implementation Plan
 
+> **Stato (13/10/2026): implementato** — commit dcf7f2a … caff227 (2026-08-02). Le checkbox qui sotto non sono state aggiornate durante l'implementazione; lo stato attuale è in [PROJECT-STATUS.md](../../PROJECT-STATUS.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver validated six-second audio Segments to the backend within about five seconds after speech ends under normal Android BLE conditions, without dequeueing on malformed data or failed uploads.
