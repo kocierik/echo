@@ -7,7 +7,6 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.actions.voice import text_before_wake
 from app.core.config import settings
 from app.core.timezone import to_user_local_date
 from app.models.chunk import Chunk
@@ -61,22 +60,18 @@ class AnalysisPipeline:
         known_people = [row[0] for row in people_result.all()]
 
         # --- Entity extraction (with retry + known people context) ---
-        # A request to Echo ("Echo, segnami ...") is answered by the voice worker, so
-        # only what was said before the name is extracted; chunks keep the full text.
-        extraction_text = text_before_wake(transcription.text)
-        entities: list[Entity] = []
-        if extraction_text.strip():
-            entities = await retry_with_backoff(
-                extract_entities,
-                self.llm_service,
-                extraction_text,
-                user_id,
-                transcription.id,
-                conversation.id,
-                known_people=known_people,
-                reference_date=to_user_local_date(segment.recorded_at),
-                operation_name=f"Entity extraction segment {segment.id}",
-            )
+        # Requests to Echo inside the text are skipped by the extraction prompt itself.
+        entities = await retry_with_backoff(
+            extract_entities,
+            self.llm_service,
+            transcription.text,
+            user_id,
+            transcription.id,
+            conversation.id,
+            known_people=known_people,
+            reference_date=to_user_local_date(segment.recorded_at),
+            operation_name=f"Entity extraction segment {segment.id}",
+        )
 
         # --- Consolidate with existing entities ---
         # Update existing entities if new info refers to something already known,
@@ -300,6 +295,11 @@ async def extract_entities(
                 "- Per i task, formula il nome come azione (verbo all'infinito)\n"
                 "- Per le persone, usa il nome completo se disponibile\n"
                 "- Ignora filler e parole senza contenuto informativo\n"
+                "- Le richieste rivolte all'assistente \"Echo\" (es. \"Echo, segnami il "
+                "dentista giovedì\", \"Ehi Echo, riassumimi le mail\") sono comandi per "
+                "l'assistente, non fatti da ricordare: non estrarre entità da queste "
+                "richieste. Le menzioni di un prodotto o della parola \"Echo\" sono "
+                "testo normale\n"
                 "- Date sempre in formato YYYY-MM-DD, orari in formato HH:MM (24h)\n"
                 "- Se l'orario o la durata non sono detti, ometti event_time o "
                 "duration_minutes: non inventarli\n"

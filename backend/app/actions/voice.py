@@ -91,23 +91,6 @@ def find_wake(text: str) -> int | None:
     return None if match is None else match[1]
 
 
-def text_before_wake(text: str) -> str:
-    """What was said before addressing Echo (the text used for entity extraction).
-
-    The speaker tag is kept when something was said before the name; "" when the
-    utterance starts with the name. Text without a wake is returned unchanged.
-    """
-    match = _match_wake(text)
-    if match is None:
-        return text
-    name_start = match[0]
-    tag = _SPEAKER_TAG.match(text)
-    body = text[tag.end() if tag else 0:name_start]
-    if not any(c.isalnum() for c in body):
-        return ""
-    return text[:name_start].rstrip().rstrip(",;:-–—").rstrip()
-
-
 async def is_assistant_request(llm: LLMService, text: str) -> bool:
     """Ask the cheap LLM whether `text` addresses Echo with a request. Any error -> False."""
     try:

@@ -9,7 +9,9 @@ import pytest
 
 from app.actions import voice
 from app.actions.agent import AgentOutcome
-from app.actions.provider import ActionProviderError
+from app.actions.audit import log_action
+from app.actions.provider import ActionProviderError, ToolResult
+from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.segment import Segment
 from app.workers import main as worker_main
@@ -74,23 +76,6 @@ def test_find_wake_bare_name_waits_for_following_segments():
     assert _command("Ok Echo,") == ""
     # ...but a trailing noun is not an address
     assert voice.find_wake("ho comprato un Echo") is None
-
-
-# --- text_before_wake -----------------------------------------------------------------
-
-
-def test_text_before_wake_drops_the_command():
-    assert voice.text_before_wake("Ok. Echo, segnami X") == "Ok."
-    assert voice.text_before_wake("[You] Ok. Echo, segnami X") == "[You] Ok."
-    assert voice.text_before_wake("Allora, ehi eco riassumimi le mail") == "Allora"
-    assert voice.text_before_wake("Echo, segnami il dentista") == ""
-    assert voice.text_before_wake("[You] Echo, segnami il dentista") == ""
-
-
-def test_text_before_wake_keeps_text_without_a_wake():
-    assert voice.text_before_wake("ho comprato un Echo") == "ho comprato un Echo"
-    assert voice.text_before_wake("[You] l'eco della stanza") == "[You] l'eco della stanza"
-    assert voice.text_before_wake("") == ""
 
 
 # --- is_assistant_request -------------------------------------------------------------
@@ -182,6 +167,8 @@ class _Db:
         self.segments = list(segments)
         self.sessions = list(sessions)
         self.added = []
+        self.uncommitted = []
+        self.committed = []
         self.commits = 0
         self.rollbacks = 0
         self.queries = []
@@ -202,6 +189,7 @@ class _Db:
 
     def add(self, obj):
         self.added.append(obj)
+        self.uncommitted.append(obj)
         if isinstance(obj, ChatSession):
             self.sessions.append(obj)
 
@@ -210,9 +198,16 @@ class _Db:
 
     async def commit(self):
         self.commits += 1
+        self.committed.extend(self.uncommitted)
+        self.uncommitted = []
 
     async def rollback(self):
+        """Like a real rollback: objects added since the last commit are gone."""
         self.rollbacks += 1
+        for obj in self.uncommitted:
+            if obj in self.sessions:
+                self.sessions.remove(obj)
+        self.uncommitted = []
 
 
 def _after(seg, seconds):
@@ -615,6 +610,92 @@ async def test_worker_ignores_a_mention_rejected_by_the_llm_check(worker):
     assert worker.db.commits == 0
 
 
+def _committed_logs(env):
+    return [o for o in env.db.committed if isinstance(o, ActionLog)]
+
+
+@pytest.mark.asyncio
+async def test_worker_failure_keeps_executed_audit_rows_and_tells_the_user(worker, monkeypatch):
+    """A tool ran, then the agent failed: the audit row survives and the user is told."""
+
+    async def create_then_fail(db, user_id, request, history, **kw):
+        await log_action(
+            db, user_id, "voice", "TODOIST_CREATE_TASK", {"content": "comprare il latte"},
+            ToolResult(ok=True, data={"id": "1"}),
+        )
+        raise RuntimeError("LLM down in step 2")
+
+    monkeypatch.setattr(vr, "run_action_agent", create_then_fail)
+    wake = _seg("[You] Echo, crea un task per comprare il latte")
+    _ready(worker, wake)
+    redis = _Redis()
+
+    assert await vr.handle_voice_item(redis, str(wake.id)) is True
+
+    assert worker.db.rollbacks == 1
+    logs = _committed_logs(worker)
+    assert len(logs) == 1
+    assert (logs[0].tool, logs[0].source, logs[0].outcome) == (
+        "TODOIST_CREATE_TASK", "voice", "ok",
+    )
+    assert logs[0].user_id == USER_ID
+    assert logs[0].arguments_summary == "content=(17 chars)"
+
+    session = _voice_session(worker)
+    assert session in worker.db.committed  # recreated after the rollback
+    user_msg, reply = session.messages
+    assert user_msg["content"] == "crea un task per comprare il latte"
+    assert reply["role"] == "assistant"
+    assert reply["content"] == vr.FAILURE_TEXTS["it"]["failed_partial"]
+    assert _iso(user_msg["timestamp"]) <= _iso(reply["timestamp"])
+    # Not retried: the tool already ran
+    assert f"voice:done:{wake.id}" in redis.keys
+
+
+@pytest.mark.asyncio
+async def test_worker_failure_without_executed_tools_replies_in_english(worker):
+    worker.agent_error = RuntimeError("provider exploded")
+    wake = _seg("Hey Echo, summarize my latest emails please")
+    _ready(worker, wake)
+
+    assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
+
+    assert _committed_logs(worker) == []
+    reply = _voice_session(worker).messages[-1]
+    assert reply["content"] == vr.FAILURE_TEXTS["en"]["failed"]
+    assert "timestamp" in reply
+    assert "couldn't complete" in reply["content"]
+
+
+@pytest.mark.asyncio
+async def test_worker_failure_before_the_request_is_confirmed_writes_nothing(
+    worker, monkeypatch
+):
+    async def broken_collect(db, segment, now):
+        raise RuntimeError("db hiccup")
+
+    monkeypatch.setattr(vr, "collect_command", broken_collect)
+    wake = _seg("Echo, riassumimi le mail")
+    _ready(worker, wake)
+
+    assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
+    assert worker.db.sessions == [] and worker.db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_worker_error_reply_failure_is_only_logged(worker):
+    worker.agent_error = RuntimeError("boom")
+    wake = _seg("Echo, riassumimi le mail")
+    _ready(worker, wake)
+
+    async def failing_commit():
+        raise RuntimeError("db down")
+
+    worker.db.commit = failing_commit
+    assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
+    assert worker.db.rollbacks == 2
+
+
 @pytest.mark.asyncio
 async def test_worker_reports_not_ready_while_the_command_is_open(worker):
     wake = _seg("Echo, segnami")
@@ -697,6 +778,7 @@ async def test_queue_loop_requeues_waits_and_survives_errors(worker, monkeypatch
     assert redis.lists[vr.VOICE_QUEUE] == [str(waiting.id).encode()]
     session = _voice_session(worker)
     assert [m["content"] for m in session.messages] == [
+        "riassumimi le mail", vr.FAILURE_TEXTS["it"]["failed"],
         "cosa ho in agenda", "Domani hai il dentista.",
     ]
     assert worker.db.rollbacks >= 1
