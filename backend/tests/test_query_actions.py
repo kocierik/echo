@@ -225,3 +225,10 @@ def test_chat_session_summary_has_kind_and_voice_sorts_first():
     assert [s.kind for s in ordered] == ["voice", "chat", "chat"]
     assert ordered[1].updated_at > ordered[2].updated_at
     assert "kind" in chat_sessions.ChatSessionSummary.model_fields
+
+
+@pytest.mark.parametrize(
+    "text", ["send an email to Bob", "read my emails", "controlla le email", "check my e-mail"]
+)
+def test_might_need_tools_matches_email_spellings(text):
+    assert q.might_need_tools(text, [])
