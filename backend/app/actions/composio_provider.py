@@ -74,6 +74,24 @@ REQUIRED_TOOLS = (
 )
 
 
+def _without_tracking(fn):
+    """Wrap an SDK callable so it runs with SDK telemetry off.
+
+    composio 0.15 reads `allow_tracking` from a ContextVar (default True) that
+    `Composio(allow_tracking=False)` sets only in the context that built the client; a worker
+    thread has its own context, so each call sets it itself.
+    """
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        from composio.core.models.base import allow_tracking
+
+        allow_tracking.set(False)
+        return fn(*args, **kwargs)
+
+    return run
+
+
 async def _call(fn, *args, _executes: bool = False, **kwargs):
     """Run a sync SDK call in a thread with a timeout; never leak details or secrets.
 
@@ -82,7 +100,7 @@ async def _call(fn, *args, _executes: bool = False, **kwargs):
     """
     try:
         return await asyncio.wait_for(
-            asyncio.to_thread(functools.partial(fn, *args, **kwargs)),
+            asyncio.to_thread(_without_tracking(functools.partial(fn, *args, **kwargs))),
             timeout=SDK_TIMEOUT_SECONDS,
         )
     except ActionProviderError:
