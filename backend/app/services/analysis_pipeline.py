@@ -2,11 +2,13 @@
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.timezone import to_user_local_date
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -67,6 +69,7 @@ class AnalysisPipeline:
             transcription.id,
             conversation.id,
             known_people=known_people,
+            reference_date=to_user_local_date(segment.recorded_at),
             operation_name=f"Entity extraction segment {segment.id}",
         )
 
@@ -194,6 +197,11 @@ async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversa
     return conversation
 
 
+GIORNI_SETTIMANA = [
+    "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica",
+]
+
+
 async def extract_entities(
     llm_service,
     text: str,
@@ -201,6 +209,7 @@ async def extract_entities(
     transcription_id: uuid.UUID,
     conversation_id: uuid.UUID,
     known_people: list[str] | None = None,
+    reference_date: date | None = None,
 ) -> list[Entity]:
     """Use LLM to extract structured entities from transcription text.
 
@@ -212,6 +221,8 @@ async def extract_entities(
         conversation_id: Parent conversation.
         known_people: Optional list of known person names to help LLM
                       recognize and normalize references.
+        reference_date: Day the speech was recorded (user's timezone), used to
+                        resolve relative dates ("domani", "venerdì") to ISO dates.
     """
     # Build system prompt with known people context
     people_context = ""
@@ -221,6 +232,16 @@ async def extract_entities(
             f"\n\nPersone già note all'utente: {names_list}. "
             "Se riconosci riferimenti a queste persone (anche con varianti del nome, "
             "soprannomi, o pronomi), usa il nome canonico dalla lista."
+        )
+
+    date_context = ""
+    if reference_date:
+        weekday = GIORNI_SETTIMANA[reference_date.weekday()]
+        date_context = (
+            f"\n\nData di riferimento (giorno della registrazione): "
+            f"{weekday} {reference_date.isoformat()}. "
+            "Converti le date relative ('domani', 'venerdì', 'tra due settimane') "
+            "in date assolute YYYY-MM-DD rispetto a questa data."
         )
 
     messages = [
@@ -238,17 +259,22 @@ async def extract_entities(
                 "NON estrarre come task: intenzioni vaghe, desideri generici, "
                 "o abitudini. Esempio task valido: 'Chiamare Marco domani'. "
                 "Esempio NON task: 'Devo mangiare meglio' "
-                "(metadata: {done: false, due_date, priority})\n"
+                "(metadata: {done: false, due_date: YYYY-MM-DD, priority})\n"
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
-                "- event: eventi, appuntamenti, date (metadata: {event_date, location})\n"
+                "- event: eventi, appuntamenti, date (metadata: {event_date: YYYY-MM-DD, "
+                "event_time: HH:MM, duration_minutes: intero, location})\n"
                 "- note: qualsiasi altra informazione rilevante (metadata: {tags})\n\n"
                 "Regole importanti:\n"
                 "- Estrai SOLO informazioni esplicitamente presenti nel testo\n"
                 "- Per i task, formula il nome come azione (verbo all'infinito)\n"
                 "- Per le persone, usa il nome completo se disponibile\n"
                 "- Ignora filler e parole senza contenuto informativo\n"
+                "- Date sempre in formato YYYY-MM-DD, orari in formato HH:MM (24h)\n"
+                "- Se l'orario o la durata non sono detti, ometti event_time o "
+                "duration_minutes: non inventarli\n"
                 '- Se non ci sono entità da estrarre, rispondi con {"entities": []}.'
                 f"{people_context}"
+                f"{date_context}"
             ),
         ),
         LLMMessage(role="user", content=f"Testo:\n\n{text}"),

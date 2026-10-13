@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.timezone import to_user_local_date
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -48,16 +49,21 @@ async def reanalyse_conversation(
             return ConversationReanalysisResult(found=False)
 
         transcription_result = await db.execute(
-            select(Transcription.id, Transcription.text)
+            select(Transcription.id, Transcription.text, Segment.recorded_at)
             .join(Segment, Segment.id == Transcription.segment_id)
             .where(Segment.conversation_id == conversation_id)
             .order_by(Segment.recorded_at)
         )
-        transcriptions = [
-            (transcription_id, text.strip())
-            for transcription_id, text in transcription_result.all()
+        rows = [
+            (transcription_id, text.strip(), recorded_at)
+            for transcription_id, text, recorded_at in transcription_result.all()
             if text.strip()
         ]
+        transcriptions = [(transcription_id, text) for transcription_id, text, _ in rows]
+        recorded_dates = {
+            transcription_id: to_user_local_date(recorded_at)
+            for transcription_id, _, recorded_at in rows
+        }
 
         await db.execute(delete(Chunk).where(Chunk.conversation_id == conversation_id))
         await db.execute(delete(Entity).where(Entity.conversation_id == conversation_id))
@@ -90,6 +96,7 @@ async def reanalyse_conversation(
                 transcription_id,
                 conversation.id,
                 known_people=known_people,
+                reference_date=recorded_dates[transcription_id],
                 operation_name=(
                     f"Reanalysis entity extraction conversation {conversation_id}"
                 ),

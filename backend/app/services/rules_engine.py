@@ -122,11 +122,22 @@ async def _execute_actions(actions: list, entity: Entity, db: AsyncSession, user
             elif action_type == "slack":
                 await _action_slack(action, entity)
             elif action_type == "google_calendar":
-                from app.services.calendar_service import create_event
-                date = entity.metadata_.get("event_date") or entity.metadata_.get("due_date")
-                time = entity.metadata_.get("event_time")
-                if date:
-                    await create_event(db, user_id, summary=entity.name, date=date, time=time)
+                from app.services.calendar_service import (
+                    create_event,
+                    event_schedule_from_metadata,
+                )
+                schedule = event_schedule_from_metadata(entity.metadata_)
+                if schedule:
+                    day, start_time, duration_minutes = schedule
+                    await create_event(
+                        db,
+                        user_id,
+                        summary=entity.name,
+                        date=day,
+                        time=start_time,
+                        location=entity.metadata_.get("location"),
+                        duration_minutes=duration_minutes,
+                    )
             elif action_type == "tag":
                 # Add tag to entity metadata
                 tag = action.get("tag", "flagged")
