@@ -124,6 +124,7 @@ class AgentOutcome:
 
 @dataclass
 class _Failure:
+    tool: str
     toolkit: str
     not_connected: bool
 
@@ -166,18 +167,21 @@ def _mentions(answer: str, toolkit: str) -> bool:
 def _final_answer(
     content: str, failures: list[_Failure], succeeded: set[str], texts: dict
 ) -> str:
-    """The model's answer, made explicit about toolkits whose calls only failed."""
+    """The model's answer, made explicit about tools that failed.
+
+    A failure is cleared only by a later success of the same tool slug (a retry), never by
+    another tool of the same toolkit. If the answer does not name the toolkit of an uncleared
+    failure, it is replaced by the fixed notice so it cannot claim the failed step happened.
+    """
     answer = (content or "").strip()
-    unresolved = []
+    unresolved: list[_Failure] = []
     for failure in failures:
-        if failure.toolkit in succeeded or any(f.toolkit == failure.toolkit for f in unresolved):
+        if failure.tool in succeeded or any(f.toolkit == failure.toolkit for f in unresolved):
             continue
         if not _mentions(answer, failure.toolkit):
             unresolved.append(failure)
     if unresolved:
-        notices = "\n".join(_failure_text(f, texts) for f in unresolved)
-        # Nothing external worked: drop the model's text so it cannot claim success.
-        answer = notices if not succeeded else f"{answer}\n{notices}".strip()
+        answer = "\n".join(_failure_text(f, texts) for f in unresolved)
     return answer or texts["no_answer"]
 
 
@@ -298,7 +302,7 @@ async def _run_tool(
     await log_action(db, user_id, source, call.name, call.arguments, result)
 
     if result.ok:
-        succeeded.add(toolkit)
+        succeeded.add(call.name)
         return serialize_tool_result(result.data)
-    failures.append(_Failure(toolkit=toolkit, not_connected=not_connected))
+    failures.append(_Failure(tool=call.name, toolkit=toolkit, not_connected=not_connected))
     return serialize_tool_result({"error": result.error or "Tool failed"})
