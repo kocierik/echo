@@ -7,6 +7,7 @@ import '../models/app_view_state.dart';
 import '../models/device_status.dart';
 import '../models/session_state.dart';
 import 'app_preferences.dart';
+import 'notification_service.dart';
 
 export 'app_preferences.dart';
 
@@ -27,6 +28,11 @@ final class AppController extends ValueNotifier<AppViewState> {
 
   static const themePreferenceKey = 'echo_theme_mode';
   static const selectedTabKey = 'echo_selected_tab';
+  static const askTab = 2;
+
+  /// A chat session the Ask tab should open (e.g. from a notification tap).
+  /// The chat screen loads it and sets it back to null.
+  final ValueNotifier<String?> pendingChatSessionId = ValueNotifier(null);
 
   final Stream<DeviceStatus> _deviceStates;
   final Stream<SessionState> _sessionStates;
@@ -86,6 +92,27 @@ final class AppController extends ValueNotifier<AppViewState> {
     await _preferences.setInt(selectedTabKey, selectedTab);
   }
 
+  /// Selects the Ask tab and asks the chat screen to open session [id].
+  void requestOpenSession(String id) {
+    if (_disposed || id.isEmpty) return;
+    pendingChatSessionId.value = id;
+    unawaited(setSelectedTab(askTab));
+  }
+
+  /// Routes a tapped notification: "voice:<sessionId>" opens that session in
+  /// Ask ("voice:" alone only selects Ask); other payloads are ignored.
+  void handleNotificationPayload(String payload) {
+    if (_disposed) return;
+    const prefix = NotificationService.voicePayloadPrefix;
+    if (!payload.startsWith(prefix)) return;
+    final id = payload.substring(prefix.length).trim();
+    if (id.isEmpty) {
+      unawaited(setSelectedTab(askTab));
+    } else {
+      requestOpenSession(id);
+    }
+  }
+
   void _onDeviceState(DeviceStatus device) {
     if (_disposed || value.device == device) return;
     value = value.copyWith(device: device);
@@ -118,6 +145,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     _disposed = true;
     unawaited(_deviceSubscription?.cancel());
     unawaited(_sessionSubscription?.cancel());
+    pendingChatSessionId.dispose();
     super.dispose();
   }
 }

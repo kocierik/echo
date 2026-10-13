@@ -128,6 +128,14 @@ final class FlutterLocalNotificationPort implements NotificationPort {
     );
   }
 
+  /// The payload of the notification that launched the app (cold start), if
+  /// any.
+  Future<String?> launchPayload() async {
+    final details = await _plugin.getNotificationAppLaunchDetails();
+    if (details == null || !details.didNotificationLaunchApp) return null;
+    return details.notificationResponse?.payload;
+  }
+
   @override
   Future<bool> requestPermission() async {
     final iosGranted = await _plugin

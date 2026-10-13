@@ -16,12 +16,17 @@ final class ChatScreen extends StatefulWidget {
     this.controller,
     this.api,
     this.voiceInput,
+    this.openSessionRequest,
     super.key,
   });
 
   final ChatController? controller;
   final ChatApi? api;
   final VoiceInput? voiceInput;
+
+  /// A session id to open (set e.g. by a notification tap); the screen loads
+  /// it and sets the notifier back to null.
+  final ValueNotifier<String?>? openSessionRequest;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -63,6 +68,28 @@ final class _ChatScreenState extends State<ChatScreen> {
     _textController.text = _controller.state.composerText;
     _messageCount = _controller.state.messages.length;
     _controller.addListener(_onControllerChanged);
+    widget.openSessionRequest?.addListener(_onOpenSessionRequest);
+    // A request made before this screen existed (cold start from a tap)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onOpenSessionRequest());
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.openSessionRequest != widget.openSessionRequest) {
+      oldWidget.openSessionRequest?.removeListener(_onOpenSessionRequest);
+      widget.openSessionRequest?.addListener(_onOpenSessionRequest);
+      _onOpenSessionRequest();
+    }
+  }
+
+  void _onOpenSessionRequest() {
+    final request = widget.openSessionRequest;
+    if (!mounted || request == null) return;
+    final id = request.value;
+    if (id == null) return;
+    request.value = null;
+    unawaited(_controller.loadSession(id));
   }
 
   void _onControllerChanged() {
@@ -124,6 +151,7 @@ final class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
+    widget.openSessionRequest?.removeListener(_onOpenSessionRequest);
     _textController.dispose();
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();

@@ -58,18 +58,19 @@ final class AppLifecycleCoordinator {
     final networkAccess = ConnectivityNetworkAccess();
     final networkPolicy = networkPolicyFrom(preferences);
     AppController? tapTarget;
-    final notificationService = NotificationService(
-      FlutterLocalNotificationPort(
-        onSelect: (payload) {
-          // Opening the specific Voice requests session would need a hook
-          // into ChatScreen's controller; select the Ask tab instead.
-          if (payload.startsWith(NotificationService.voicePayloadPrefix)) {
-            final target = tapTarget;
-            if (target != null) unawaited(target.setSelectedTab(2));
-          }
-        },
-      ),
+    String? earlyTap;
+    final notificationPort = FlutterLocalNotificationPort(
+      onSelect: (payload) {
+        // "voice:<sessionId>" opens that session in the Ask tab
+        final target = tapTarget;
+        if (target != null) {
+          target.handleNotificationPayload(payload);
+        } else {
+          earlyTap = payload;
+        }
+      },
     );
+    final notificationService = NotificationService(notificationPort);
     await notificationService.initialize();
     final bleService = BleService(
       networkAccess: networkAccess,
@@ -98,8 +99,16 @@ final class AppLifecycleCoordinator {
       sessionStates: sessionController.stream,
       preferences: SharedPreferencesAppPreferences(preferences),
     );
-    tapTarget = appController;
     await appController.initialize();
+    tapTarget = appController;
+    // Cold start from a notification tap: route it like a tap while running.
+    String? launchPayload;
+    try {
+      launchPayload = await notificationPort.launchPayload();
+    } catch (_) {}
+    for (final payload in [launchPayload, earlyTap]) {
+      if (payload != null) appController.handleNotificationPayload(payload);
+    }
     final voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
