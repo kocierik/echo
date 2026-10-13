@@ -1,5 +1,6 @@
 """Tool tier classification used by the confirmation flow."""
 
+import re
 from enum import StrEnum
 
 
@@ -37,3 +38,38 @@ def classify_tool(slug: str) -> ToolTier:
 
 def toolkit_of(slug: str) -> str:
     return slug.split("_", 1)[0].lower()
+
+
+# Argument keys that mean a create also notifies or involves other people (an invite,
+# a recipient, an assignee): the call then needs the user's confirmation.
+_PEOPLE_KEY_PARTS = ("attendee", "recipient", "assignee", "responsible", "invite", "guest")
+_PEOPLE_KEY_TOKENS = frozenset({"cc", "bcc"})
+
+
+def _involves_people(key: str) -> bool:
+    lowered = key.lower()
+    if lowered == "send_updates" or lowered == "to" or lowered.startswith("to_"):
+        return True
+    if any(part in lowered for part in _PEOPLE_KEY_PARTS):
+        return True
+    # "cc"/"bcc" as whole words ("cc", "extra_cc", "bcc_list"), not inside "account"
+    return bool(_PEOPLE_KEY_TOKENS & set(re.split(r"[^a-z0-9]+", lowered)))
+
+
+def _non_empty(value) -> bool:
+    if value is None or value is False:
+        return False
+    if isinstance(value, str | list | tuple | dict | set):
+        return len(value) > 0
+    return True
+
+
+def classify_call(slug: str, arguments: dict) -> ToolTier:
+    """The tier of one call: a CREATE that invites or notifies people needs CONFIRM."""
+    tier = classify_tool(slug)
+    if tier != ToolTier.CREATE or not isinstance(arguments, dict):
+        return tier
+    for key, value in arguments.items():
+        if _involves_people(str(key)) and _non_empty(value):
+            return ToolTier.CONFIRM
+    return tier

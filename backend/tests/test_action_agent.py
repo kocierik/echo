@@ -290,7 +290,7 @@ async def test_failed_create_after_successful_read_in_same_toolkit_is_not_claime
     )
     llm = RecordingLLM([
         _calls(("GMAIL_FETCH_EMAILS", {})),
-        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it", "body": "hi"})),
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"subject": "Re: budget", "body": "hi"})),
         _text("Draft created."),
     ])
 
@@ -315,8 +315,8 @@ async def test_retried_tool_that_succeeds_is_not_reported_as_failed():
         tools={"GMAIL_CREATE_EMAIL_DRAFT": _schema("GMAIL_CREATE_EMAIL_DRAFT")},
     )
     llm = RecordingLLM([
-        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it"})),
-        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"to": "ada@x.it"})),
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"subject": "Hi Ada"})),
+        _calls(("GMAIL_CREATE_EMAIL_DRAFT", {"subject": "Hi Ada"})),
         _text("Draft created."),
     ])
 
@@ -462,3 +462,30 @@ async def test_connected_toolkits_are_asked_once_when_not_given():
     llm = RecordingLLM([_text("ok")])
     await _run(FakeSession(), "Any new email?", provider, llm)
     assert Counting.calls == 1
+
+
+async def test_create_event_with_attendees_needs_confirmation():
+    db = FakeSession()
+    provider = _provider(["GOOGLECALENDAR_CREATE_EVENT"], connected={"googlecalendar"})
+    args = {"summary": "Sync", "attendees": ["ada@x.it"]}
+    llm = RecordingLLM([_calls(("GOOGLECALENDAR_CREATE_EVENT", args))])
+
+    outcome = await _run(db, "Set up a sync with Ada tomorrow", provider, llm)
+
+    assert provider.executed == []
+    assert outcome.pending_action is not None
+    assert outcome.pending_action.tool == "GOOGLECALENDAR_CREATE_EVENT"
+
+
+async def test_create_event_without_attendees_runs_immediately():
+    db = FakeSession()
+    provider = _provider(["GOOGLECALENDAR_CREATE_EVENT"], connected={"googlecalendar"})
+    llm = RecordingLLM([
+        _calls(("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})),
+        _text("Added."),
+    ])
+
+    outcome = await _run(db, "Add the dentist tomorrow at 10", provider, llm)
+
+    assert provider.executed == [("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})]
+    assert outcome.pending_action is None and outcome.answer == "Added."
