@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
+    # Composio (third-party actions)
+    composio_api_key: str = ""
+
     # STT
     stt_provider: str = "openai"
     stt_model: str = "gpt-4o-transcribe"
