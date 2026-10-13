@@ -44,6 +44,8 @@ async def submit_feedback(
         raise HTTPException(status_code=400, detail="Rating must be 'positive' or 'negative'")
 
     feedback = QueryFeedback(
+        # Assigned here: the column default only runs at flush, after the response
+        id=uuid.uuid4(),
         user_id=user_id,
         session_id=uuid.UUID(request.session_id),
         message_index=request.message_index,
@@ -56,7 +58,7 @@ async def submit_feedback(
     return FeedbackResponse(
         id=feedback.id,
         rating=feedback.rating,
-        message="Feedback registrato. Grazie!",
+        message="Feedback saved. Thanks!",
     )
 
 

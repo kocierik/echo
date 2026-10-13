@@ -106,7 +106,7 @@ async def test_single_match_is_resolved(monkeypatch):
     _patch_find(monkeypatch, [EVENTS[0]], calls)
 
     event, reply = await chat_actions._resolve_event(
-        None, USER_ID, {"target": {"summary": "Dentista", "date": "2026-10-14"}}, "modificare"
+        None, USER_ID, {"target": {"summary": "Dentista", "date": "2026-10-14"}}, "update"
     )
 
     assert event == EVENTS[0]
@@ -119,42 +119,45 @@ async def test_several_matches_ask_which_one(monkeypatch):
     _patch_find(monkeypatch, [EVENTS[1], EVENTS[2]])
 
     event, reply = await chat_actions._resolve_event(
-        None, USER_ID, {"target": {"summary": "pranzo"}}, "eliminare"
+        None, USER_ID, {"target": {"summary": "pranzo"}}, "delete", "it"
     )
 
     assert event is None
     assert "Pranzo con Ada" in reply and "Pranzo con Marco" in reply
-    assert chat_actions._AMBIGUOUS_MARKER in reply
+    assert "Quale intendi?" in reply
 
 
 @pytest.mark.asyncio
 async def test_no_match_and_disconnected_calendar_are_explained(monkeypatch):
     _patch_find(monkeypatch, [])
     _, reply = await chat_actions._resolve_event(
-        None, USER_ID, {"target": {"summary": "Yoga"}}, "eliminare"
+        None, USER_ID, {"target": {"summary": "Yoga"}}, "delete", "it"
     )
     assert "Non ho trovato \"Yoga\"" in reply
 
     _patch_find(monkeypatch, None)
     _, reply = await chat_actions._resolve_event(
-        None, USER_ID, {"target": {"summary": "Yoga"}}, "eliminare"
+        None, USER_ID, {"target": {"summary": "Yoga"}}, "delete", "it"
     )
     assert "non è connesso" in reply
 
 
 @pytest.mark.asyncio
 async def test_missing_target_asks_for_the_event():
-    event, reply = await chat_actions._resolve_event(None, USER_ID, {}, "modificare")
+    event, reply = await chat_actions._resolve_event(None, USER_ID, {}, "update", "it")
 
     assert event is None
     assert reply.startswith("Quale evento vuoi modificare?")
+
+    _, reply = await chat_actions._resolve_event(None, USER_ID, {}, "delete", "en")
+    assert reply.startswith("Which event do you want to delete?")
 
 
 @pytest.mark.asyncio
 async def test_explicit_event_id_is_used_directly(monkeypatch):
     _patch_find(monkeypatch, AssertionError("must not search"))
 
-    event, _ = await chat_actions._resolve_event(None, USER_ID, {"event_id": "abc"}, "eliminare")
+    event, _ = await chat_actions._resolve_event(None, USER_ID, {"event_id": "abc"}, "delete")
 
     assert event == {"id": "abc"}
 
@@ -171,7 +174,7 @@ async def test_delete_by_name_deletes_the_matched_event(monkeypatch):
     monkeypatch.setattr(chat_actions, "delete_event", fake_delete)
 
     reply = await chat_actions._execute_action(
-        None, USER_ID, "calendar_delete", {"target": {"summary": "dentista"}}
+        None, USER_ID, "calendar_delete", {"target": {"summary": "dentista"}}, language="it"
     )
 
     assert deleted == ["e1"]

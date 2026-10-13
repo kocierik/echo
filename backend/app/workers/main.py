@@ -41,6 +41,7 @@ from app.services.transcription_enhancer import (
     build_stt_prompt,
     clean_transcription,
     is_meaningful_transcription,
+    speaker_prefix,
 )
 from app.workers.digest import run_digest_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
@@ -518,10 +519,7 @@ async def process_stt(redis_client: redis.Redis):
                 segment.speaker = speaker
 
                 # Prefix transcription with speaker tag
-                if speaker == "self":
-                    cleaned_text = f"[Tu] {cleaned_text}"
-                elif speaker == "other":
-                    cleaned_text = f"[Altri] {cleaned_text}"
+                cleaned_text = f"{speaker_prefix(speaker)}{cleaned_text}"
 
                 # Save transcription
                 transcription = Transcription(

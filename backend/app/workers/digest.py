@@ -34,6 +34,19 @@ from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
+DIGEST_SYSTEM_PROMPT = (
+    "You are a personal assistant. Write a summary of the user's day based on the "
+    "transcripts of their conversations (often in Italian).\n\n"
+    "The summary must be:\n"
+    "- Concise (3-5 sentences)\n"
+    "- Written in the first person, as the user\n"
+    "- Focused on decisions, key information and actions\n"
+    "- Written in English, keeping names of people and places as spoken\n\n"
+    "Answer in JSON:\n"
+    '{"summary": "narrative summary of the day"}'
+)
+NO_SUMMARY = "No summary available."
+
 
 def next_digest_run(now: datetime) -> tuple[datetime, date]:
     """Next run time and the local day it summarizes.
@@ -110,7 +123,7 @@ async def generate_digest_for_date(
 
     # Gather conversation summaries (more compact than raw text)
     conv_summaries = [
-        f"- {c.title or 'Conversazione'}: {c.summary}"
+        f"- {c.title or 'Conversation'}: {c.summary}"
         for c in conversations
         if c.summary
     ]
@@ -145,8 +158,8 @@ async def generate_digest_for_date(
     # Use conversation summaries if available (more concise), fall back to raw text
     if conv_summaries:
         input_text = (
-            "Riassunti delle conversazioni:\n" + "\n".join(conv_summaries) +
-            f"\n\nTrascrizioni (per dettagli):\n\n{full_text[:3000]}"
+            "Conversation summaries:\n" + "\n".join(conv_summaries) +
+            f"\n\nTranscripts (for details):\n\n{full_text[:3000]}"
         )
     else:
         # Truncate if too long
@@ -156,24 +169,14 @@ async def generate_digest_for_date(
     messages = [
         LLMMessage(
             role="system",
-            content=(
-                "Sei un assistente personale. Genera un riassunto della giornata dell'utente "
-                "basandoti sulle trascrizioni delle sue conversazioni.\n\n"
-                "Il riassunto deve essere:\n"
-                "- Conciso (3-5 frasi)\n"
-                "- In prima persona\n"
-                "- Focalizzato su decisioni, informazioni chiave, e azioni\n"
-                "- In italiano\n\n"
-                "Rispondi in JSON:\n"
-                '{"summary": "riassunto narrativo della giornata"}'
-            ),
+            content=DIGEST_SYSTEM_PROMPT,
         ),
         LLMMessage(
             role="user",
             content=(
-                f"Data: {target_date.strftime('%d/%m/%Y')}\n"
-                f"Conversazioni: {len(conversations)}\n"
-                f"Persone menzionate: {', '.join(set(people)) or 'nessuna'}\n\n"
+                f"Date: {target_date.strftime('%d/%m/%Y')}\n"
+                f"Conversations: {len(conversations)}\n"
+                f"People mentioned: {', '.join(set(people)) or 'none'}\n\n"
                 f"{input_text}"
             ),
         ),
@@ -184,7 +187,7 @@ async def generate_digest_for_date(
         messages,
         operation_name=f"Digest {target_date}",
     )
-    summary = result.get("summary", "Nessun riassunto disponibile.")
+    summary = result.get("summary") or NO_SUMMARY
 
     # Create and save digest
     digest = Digest(
