@@ -43,6 +43,7 @@ from app.services.transcription_enhancer import (
     is_meaningful_transcription,
 )
 from app.workers.digest import run_digest_loop
+from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 from app.workers.summaries import run_summary_loop
@@ -52,7 +53,6 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 # Shutdown coordination
-SHUTDOWN_TIMEOUT_S = 30
 shutdown_event = asyncio.Event()
 
 REANALYSIS_LOCK_TTL_S = 300
@@ -639,8 +639,8 @@ async def main():
         asyncio.create_task(process_stt(redis_client), name="stt_worker"),
         asyncio.create_task(process_analysis(redis_client), name="analysis_worker"),
         asyncio.create_task(process_reanalysis(redis_client), name="reanalysis_worker"),
-        asyncio.create_task(run_retention_loop(), name="retention_worker"),
-        asyncio.create_task(run_summary_loop(), name="summary_worker"),
+        asyncio.create_task(run_retention_loop(shutdown_event), name="retention_worker"),
+        asyncio.create_task(run_summary_loop(shutdown_event), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
     ]
 
@@ -648,11 +648,8 @@ async def main():
     await shutdown_event.wait()
     logger.info(f"[Shutdown] Waiting up to {SHUTDOWN_TIMEOUT_S}s for tasks to finish...")
 
-    # Cancel all tasks and wait with timeout
-    for task in tasks:
-        task.cancel()
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Let in-progress items finish (loops exit between items); cancel after the timeout
+    results = await stop_tasks(tasks, timeout=SHUTDOWN_TIMEOUT_S)
 
     for task, result in zip(tasks, results):
         if isinstance(result, Exception) and not isinstance(result, asyncio.CancelledError):

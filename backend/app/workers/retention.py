@@ -11,6 +11,7 @@ from sqlalchemy import and_, or_, select
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.segment import Segment
+from app.workers.lifecycle import sleep_or_shutdown
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def _build_retention_query(now: datetime):
     )
 
 
-async def run_retention_loop():
+async def run_retention_loop(shutdown_event: asyncio.Event | None = None):
     """Periodically clear audio using the completed and incomplete policies."""
     logger.info(
         "[Retention] Started: completed audio expires after %sh; "
@@ -64,7 +65,7 @@ async def run_retention_loop():
         RETENTION_CHECK_INTERVAL_S // 3600,
     )
 
-    while True:
+    while not (shutdown_event and shutdown_event.is_set()):
         try:
             cleared = await cleanup_old_audio()
             if cleared > 0:
@@ -74,7 +75,8 @@ async def run_retention_loop():
         except Exception:
             logger.exception("[Retention] Error during cleanup")
 
-        await asyncio.sleep(RETENTION_CHECK_INTERVAL_S)
+        if await sleep_or_shutdown(RETENTION_CHECK_INTERVAL_S, shutdown_event):
+            return
 
 
 async def cleanup_old_audio(

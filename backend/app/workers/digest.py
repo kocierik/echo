@@ -29,6 +29,7 @@ from app.models.transcription import Transcription
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.temporal import conversation_overlaps
+from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -223,13 +224,8 @@ async def run_digest_loop(shutdown_event: asyncio.Event | None = None):
         wait_seconds = (next_run - now).total_seconds()
         logger.info(f"[Digest] Next run in {wait_seconds / 3600:.1f}h ({next_run.isoformat()})")
 
-        # Wait (check shutdown every 60s)
-        while wait_seconds > 0:
-            if shutdown_event and shutdown_event.is_set():
-                return
-            sleep_time = min(wait_seconds, 60)
-            await asyncio.sleep(sleep_time)
-            wait_seconds -= sleep_time
+        if await sleep_or_shutdown(wait_seconds, shutdown_event):
+            return
 
         await generate_digests_for_all_users(target_day)
 
