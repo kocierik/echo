@@ -27,12 +27,21 @@ class _Result:
 class _Db:
     def __init__(self):
         self.added = []
+        self.commits = 0
+        self.commit_error = None
+        self.events = []  # shared with _Redis: the order of commits and stored responses
 
     async def execute(self, _q):
         return _Result()
 
     def add(self, obj):
         self.added.append(obj)
+
+    async def commit(self):
+        if self.commit_error is not None:
+            raise self.commit_error
+        self.commits += 1
+        self.events.append("commit")
 
 
 class _Redis:
@@ -296,15 +305,16 @@ async def test_request_id_still_processing_is_409(env):
 
 
 @pytest.mark.asyncio
-async def test_request_id_is_per_user_and_cleared_on_failure(env, monkeypatch):
+async def test_request_id_is_per_user_and_cleared_on_a_memory_path_failure(env, monkeypatch):
     env.redis.store[f"query:req:{uuid.uuid4()}:r-3"] = "processing"
 
-    async def broken_agent(*a, **kw):
-        raise RuntimeError("llm down")
+    async def broken_rag(*a, **kw):
+        raise RuntimeError("embeddings down")
 
-    monkeypatch.setattr(q, "run_action_agent", broken_agent)
+    monkeypatch.setattr(q, "retrieve_memory_context", broken_rag)
     with pytest.raises(RuntimeError):
-        await _ask(env, "riassumimi le ultime mail", request_id="r-3")
+        await _ask(env, "Cosa mi ha detto Marco ieri?", request_id="r-3")
+    # Nothing ran on the memory path: the client may simply retry
     assert f"query:req:{USER_ID}:r-3" not in env.redis.store
 
 
@@ -438,3 +448,94 @@ async def test_unreachable_apps_check_without_a_named_app_lists_the_apps(env):
     res = await _ask(env, "crea una lista per il trasloco")
     assert res.answer.startswith("Non riesco a raggiungere")
     assert "Gmail" in env.llm.app_checks[-1][0].content
+
+
+# --- G3: retry safety of client_request_id -----------------------------------------------
+
+_UNFINISHED_IT = (
+    "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere stati "
+    "eseguiti: controlla Impostazioni → Automazioni → Attività prima di riprovare."
+)
+_UNFINISHED_EN = (
+    "I couldn't finish this request. Some steps may have run — check Settings → "
+    "Automations → Activity before asking again."
+)
+
+
+def _record_response_writes(env):
+    original = env.redis.set
+
+    async def set_(key, value, ex=None, nx=False):
+        if key.startswith("query:req:") and value != "processing":
+            env.db.events.append("cache")
+        return await original(key, value, ex=ex, nx=nx)
+
+    env.redis.set = set_
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question", ["riassumimi le ultime mail", "Cosa mi ha detto Marco ieri?"])
+async def test_request_id_commits_before_caching_the_response(env, question):
+    _record_response_writes(env)
+    await _ask(env, question, request_id="r-10")
+    assert env.db.events == ["commit", "cache"]
+
+
+@pytest.mark.asyncio
+async def test_without_request_id_the_commit_is_left_to_get_db(env):
+    await _ask(env, "riassumimi le ultime mail")
+    assert env.db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_commit_failure_deletes_the_marker_on_the_memory_path(env):
+    env.db.commit_error = RuntimeError("db down")
+    with pytest.raises(RuntimeError):
+        await _ask(env, "Cosa mi ha detto Marco ieri?", request_id="r-11")
+    assert f"query:req:{USER_ID}:r-11" not in env.redis.store
+
+
+@pytest.mark.asyncio
+async def test_commit_failure_after_the_agent_keeps_the_marker(env):
+    env.db.commit_error = RuntimeError("db down")
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail", request_id="r-12")
+    env.db.commit_error = None
+    again = await _ask(env, "riassumimi le ultime mail", request_id="r-12")
+    assert again.answer == _UNFINISHED_IT
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_stores_couldnt_finish_and_never_reruns_the_agent(env, monkeypatch):
+    calls = []
+
+    async def broken_agent(*a, **kw):
+        calls.append(a)
+        raise RuntimeError("llm down after a tool ran")
+
+    monkeypatch.setattr(q, "run_action_agent", broken_agent)
+    sid = str(uuid.uuid4())
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail", session_id=sid, request_id="r-13")
+    key = f"query:req:{USER_ID}:r-13"
+    assert key in env.redis.store and env.redis.ttl[key] == 600
+
+    again = await _ask(env, "riassumimi le ultime mail", session_id=sid, request_id="r-13")
+    assert again.answer == _UNFINISHED_IT
+    assert again.sources == [] and again.pending_action is None
+    assert again.session_id == sid
+    assert len(calls) == 1  # the agent did not run a second time
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_answer_is_in_the_question_language(env, monkeypatch):
+    async def broken_agent(*a, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(q, "run_action_agent", broken_agent)
+    env.provider = FakeActionProvider(connected={"slack"})
+    with pytest.raises(RuntimeError):
+        await _ask(env, "Send a Slack message to the team", request_id="r-14")
+    again = await _ask(env, "Send a Slack message to the team", request_id="r-14")
+    assert again.answer == _UNFINISHED_EN
