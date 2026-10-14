@@ -48,14 +48,17 @@ Settings → Device → **Pair Echo**.
   minutes, people); tasks due today or created today; the latest daily summary, by its day.
 - **Memories:** conversations by day with emoji, title, summary, people and tasks (Live while
   Echo is still listening); search across titles, summaries, transcripts and extracted entities.
-  The detail has a Summary (tasks with the sentence they came from, events, ideas) and the
-  Transcript, each line correctable; delete a conversation from its menu.
+  The detail has a Summary (tasks with the sentence they came from, events with **Add to
+  calendar**, ideas) and the Transcript, each line correctable; delete a conversation from its
+  menu.
 - **People:** everyone Echo heard about (Memories → People), by last seen; a person's page has
   their role and what Echo knows, open tasks and events naming them, the conversations they came
   up in, and **Ask about** them (a new chat with the question already sent).
 - **Tasks:** open tasks by due day (Overdue, Today, Tomorrow, This week, Later, No date), complete
   with Undo, **Not a task** to drop a wrong one, open the conversation it came from; Done below.
-- **Ask:** chat with your memory (text or voice), follow-ups, resumable history, feedback;
+- **Ask:** chat with your memory (text or voice) in any language; the answer appears while Echo
+  writes it; sources say which conversation they come from and open it; suggestions come from
+  your latest conversations and people; follow-ups, resumable history, feedback;
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
 - **Settings:** device, connection policy (Wi-Fi only), privacy, Automations (Integrations
