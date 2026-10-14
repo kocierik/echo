@@ -43,8 +43,7 @@ class Settings(BaseSettings):
 
     # Embeddings
     embedding_provider: str = "openai"
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    embedding_model: str = "text-embedding-3-small"  # 1536 dimensions, fixed by the schema
 
     # Chunking
     chunk_size_tokens: int = 500

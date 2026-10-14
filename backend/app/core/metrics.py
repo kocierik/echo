@@ -1,6 +1,6 @@
 """Lightweight Prometheus-compatible metrics for Echo.
 
-Provides basic counters and gauges without requiring the full
+Provides basic counters and histograms without requiring the full
 prometheus_client library. Outputs in text exposition format.
 """
 
@@ -14,7 +14,6 @@ class Metrics:
 
     def __init__(self):
         self._counters: dict[str, int] = defaultdict(int)
-        self._gauges: dict[str, float] = defaultdict(float)
         self._histograms: dict[str, list[float]] = defaultdict(list)
         self._lock = Lock()
         self._start_time = time.time()
@@ -23,11 +22,6 @@ class Metrics:
         """Increment a counter."""
         with self._lock:
             self._counters[name] += value
-
-    def set_gauge(self, name: str, value: float) -> None:
-        """Set a gauge value."""
-        with self._lock:
-            self._gauges[name] = value
 
     def observe(self, name: str, value: float) -> None:
         """Record a histogram observation (last 1000 values kept)."""
@@ -45,10 +39,6 @@ class Metrics:
         with self._lock:
             for name, value in sorted(self._counters.items()):
                 lines.append(f"# TYPE {name} counter")
-                lines.append(f"{name} {value}")
-
-            for name, value in sorted(self._gauges.items()):
-                lines.append(f"# TYPE {name} gauge")
                 lines.append(f"{name} {value}")
 
             for name, values in sorted(self._histograms.items()):

@@ -101,11 +101,6 @@ app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
 
 
-def get_redis(request: Request) -> aioredis.Redis:
-    """Get the shared Redis client from app state."""
-    return request.app.state.redis
-
-
 @app.get("/health")
 async def health(request: Request):
     """Health check: verifies PostgreSQL, Redis, queue depth, and circuit breaker."""

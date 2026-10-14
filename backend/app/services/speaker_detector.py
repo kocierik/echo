@@ -74,7 +74,7 @@ async def classify_segment(
     from app.models.segment import Segment
 
     # Check for manual override
-    manual_threshold = getattr(settings, "speaker_energy_threshold", None)
+    manual_threshold = settings.speaker_energy_threshold
     if manual_threshold and manual_threshold > 0:
         return classify_energy(audio_energy, manual_threshold)
 
