@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
-from app.actions.availability import not_connected_answer, unreachable_answer
+from app.actions.availability import availability_notice
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.voice import (
@@ -173,21 +173,22 @@ async def _answer(
     """The answer and the extra keys of the assistant message."""
     provider = None
     connected: list[str] = []
+    llm = get_llm_query_service()
     try:
         provider = get_action_provider()
     except ActionProviderError:
         logger.info("[Voice] Action provider not configured; answering from memory")
     if provider is not None:
         # Every confirmed voice request counts as a possible tool request
+        reachable: list[str] | None = None
         try:
             connected = await provider.connected_toolkits(str(user_id))
+            reachable = connected
         except ActionProviderError:
             logger.warning("[Voice] Action provider unreachable", exc_info=True)
-            return unreachable_answer(command), {"actions": True}
-        notice = not_connected_answer(command, connected)
+        notice = await availability_notice(llm, command, history, reachable)
         if notice is not None:
             return notice, {"actions": True}
-    llm = get_llm_query_service()
 
     if not connected:
         return await _memory_answer(db, user_id, command, history, llm), {}
