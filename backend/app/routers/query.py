@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
@@ -41,6 +42,26 @@ MAX_HISTORY_MESSAGES = 20
 # A client_request_id is answered once: the marker holds "processing", then the response.
 REQUEST_MARKER_TTL_SECONDS = 10 * 60
 _PROCESSING = "processing"
+# Stored for a request whose action agent failed: tools may have run, so a retry of the
+# same client_request_id gets this answer instead of running them again.
+_UNFINISHED = {
+    "en": (
+        "I couldn't finish this request. Some steps may have run — check Settings → "
+        "Automations → Activity before asking again."
+    ),
+    "it": (
+        "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere "
+        "stati eseguiti: controlla Impostazioni → Automazioni → Attività prima di riprovare."
+    ),
+}
+
+
+@dataclass
+class _Progress:
+    """How far one request got, for the retry marker when it fails."""
+
+    session_id: str | None = None
+    agent_started: bool = False
 
 
 class QueryRequest(BaseModel):
@@ -173,7 +194,9 @@ async def query_memory(
     5. Assemble context + history and generate answer with LLM
 
     With `client_request_id`, a repeated request returns the stored response (409 while
-    the first one is still running) so a client retry never runs an action twice.
+    the first one is still running) so a client retry never runs an action twice. The
+    session is committed before the response is stored; if the action agent was started
+    and anything fails, a retry gets a fixed "couldn't finish" answer instead of a rerun.
     """
     redis_client = request.app.state.redis
     if not body.client_request_id:
@@ -190,14 +213,37 @@ async def query_memory(
             return QueryResponse.model_validate_json(stored)
         raise HTTPException(status_code=409, detail="Still working on it")
 
+    progress = _Progress()
     try:
-        response = await _answer_query(redis_client, body, user_id, db)
+        response = await _answer_query(redis_client, body, user_id, db, progress)
+        # The turn and any pending action are saved before the answer can be replayed
+        await db.commit()
     except BaseException:
-        # Nothing was answered: let the client retry instead of a 10-minute 409.
-        await redis_client.delete(key)
+        if progress.agent_started:
+            # Tools may already have run: a retry gets "couldn't finish", never a rerun
+            await _store_unfinished(redis_client, key, body.question, progress.session_id)
+        else:
+            # Nothing ran: let the client retry instead of a 10-minute 409.
+            await redis_client.delete(key)
         raise
     await redis_client.set(key, response.model_dump_json(), ex=REQUEST_MARKER_TTL_SECONDS)
     return response
+
+
+async def _store_unfinished(
+    redis_client: aioredis.Redis, key: str, question: str, session_id: str | None
+) -> None:
+    response = QueryResponse(
+        answer=_UNFINISHED[detect_language(question)],
+        sources=[],
+        session_id=session_id or "",
+        date_filter=None,
+    )
+    try:
+        await redis_client.set(key, response.model_dump_json(), ex=REQUEST_MARKER_TTL_SECONDS)
+    except Exception:
+        # The "processing" marker stays: retries get 409 until it expires, never a rerun
+        logger.warning("Could not store the unfinished answer", exc_info=True)
 
 
 async def _answer_query(
@@ -205,7 +251,9 @@ async def _answer_query(
     body: QueryRequest,
     user_id: uuid.UUID,
     db: AsyncSession,
+    progress: _Progress | None = None,
 ) -> QueryResponse:
+    progress = progress or _Progress()
     # Resolve or create session
     if body.session_id:
         try:
@@ -215,6 +263,7 @@ async def _answer_query(
     else:
         session_uuid = uuid.uuid4()
     session_id = str(session_uuid)
+    progress.session_id = session_id
     history = await _get_session_history(redis_client, session_id)
     if not history and body.session_id:
         # Redis context expired: resume follow-up context from the persisted session
@@ -247,6 +296,7 @@ async def _answer_query(
                     answer=notice, sources=[], session_id=session_id, date_filter=None
                 )
         if connected and await needs_tools(llm_service, body.question, history, connected):
+            progress.agent_started = True
             outcome = await run_action_agent(
                 db,
                 user_id,
