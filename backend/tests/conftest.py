@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.main import app
 from app.models import Base
+from tests.fakes.redis import InMemoryRedis
 
 # Use a test database (same postgres, different schema or in-memory approach)
 TEST_DATABASE_URL = settings.database_url
@@ -84,10 +85,23 @@ app.dependency_overrides[get_db] = override_get_db
 
 @pytest_asyncio.fixture
 async def client():
-    """Provide an async HTTP test client."""
+    """Provide an async HTTP test client.
+
+    ASGITransport does not run the lifespan, so the app gets an in-memory Redis: the
+    tests never push onto the real queues the worker reads.
+    """
+    had_redis = hasattr(app.state, "redis")
+    original_redis = getattr(app.state, "redis", None)
+    app.state.redis = InMemoryRedis()
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
+    try:
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            yield ac
+    finally:
+        if had_redis:
+            app.state.redis = original_redis
+        else:
+            del app.state.redis
 
 
 @pytest.fixture

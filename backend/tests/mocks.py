@@ -32,9 +32,10 @@ class MockEmbeddingService(EmbeddingService):
         while len(result) < self.dimensions:
             seed = hashlib.sha512(seed).digest()
             # Unpack 8 doubles from 64 bytes
-            floats = struct.unpack("8d", seed)
-            # Normalize to [-1, 1] range
-            result.extend(f / (abs(f) + 1.0) for f in floats)
+            # Read the digest as 16 unsigned ints (raw bytes as doubles can be NaN/inf)
+            ints = struct.unpack("16I", seed)
+            # Scale to the [-1, 1] range
+            result.extend(i / 0x7FFFFFFF - 1.0 for i in ints)
         return result[: self.dimensions]
 
 

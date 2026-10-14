@@ -240,17 +240,19 @@ async def test_reanalysis_of_conversation_without_text_clears_target_derivatives
 @pytest.mark.asyncio
 async def test_reanalysis_rolls_back_replacement_on_failure(db_session: AsyncSession) -> None:
     conversation, stale_entity, _, _ = await _seed_reanalysis_data(db_session)
+    # The rollback expires every loaded object, so keep the ids before it happens
+    conversation_id, stale_entity_id = conversation.id, stale_entity.id
 
     with pytest.raises(RuntimeError, match="embedding failure"):
         await reanalyse_conversation(
-            db_session, conversation.id, RecordingLLM(), RecordingEmbeddings(fail=True)
+            db_session, conversation_id, RecordingLLM(), RecordingEmbeddings(fail=True)
         )
 
-    assert await db_session.get(Entity, stale_entity.id) is not None
+    assert await db_session.get(Entity, stale_entity_id) is not None
     assert await db_session.scalar(
-        select(func.count(Chunk.id)).where(Chunk.conversation_id == conversation.id)
+        select(func.count(Chunk.id)).where(Chunk.conversation_id == conversation_id)
     ) == 1
-    persisted = await db_session.get(Conversation, conversation.id)
+    persisted = await db_session.get(Conversation, conversation_id)
     assert persisted is not None
     assert persisted.analysis_status == "reprocessing"
 

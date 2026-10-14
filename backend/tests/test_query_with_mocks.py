@@ -58,7 +58,7 @@ async def test_query_with_embedded_chunks(
     await db_session.execute(
         text(
             "INSERT INTO chunks (id, conversation_id, text, token_count, chunk_index, embedding) "
-            "VALUES (:id, :conv_id, :text, :tokens, :idx, :embedding::vector)"
+            "VALUES (:id, :conv_id, :text, :tokens, :idx, CAST(:embedding AS vector))"
         ),
         {
             "id": str(chunk_id),

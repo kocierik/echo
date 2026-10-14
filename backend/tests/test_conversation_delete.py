@@ -338,8 +338,9 @@ async def test_delete_conversation_treats_missing_audio_as_success(
     )
 
     assert response.status_code == 204
+    conversation_id = conversation.id
     db_session.expire_all()
-    assert await db_session.get(Conversation, conversation.id) is None
+    assert await db_session.get(Conversation, conversation_id) is None
 
 
 @pytest.mark.asyncio
