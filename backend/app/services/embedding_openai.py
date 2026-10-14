@@ -1,3 +1,5 @@
+import functools
+
 from openai import AsyncOpenAI
 
 from app.core.config import settings
@@ -26,6 +28,9 @@ class OpenAIEmbeddingService(EmbeddingService):
         return [item.embedding for item in response.data]
 
 
+# One instance per process: its HTTP connection pool is reused, so a request does not
+# pay a new TLS connection to OpenAI (seconds on the first call)
+@functools.cache
 def get_embedding_service() -> EmbeddingService:
     """Factory function to get the configured embedding service."""
     if settings.embedding_provider == "openai":

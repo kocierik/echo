@@ -41,11 +41,23 @@ class Settings(BaseSettings):
     # that take a temperature instead (gpt-4o). With chat completions, OpenAI accepts
     # function tools only with "none".
     llm_analysis_reasoning_effort: str = "low"
+    # "chat" (chat completions) or "responses": reasoning models need "responses" to call
+    # tools with any effort above "none"
+    llm_analysis_api: str = "chat"
 
     # LLM - query (RAG, qualità)
     llm_query_provider: str = "openai"
-    llm_query_model: str = "gpt-4o"
-    llm_query_reasoning_effort: str = ""
+    # Memory answers and the actions agent (gpt-4o shuts down 2027-01-14). Tools with
+    # reasoning need the Responses API
+    llm_query_model: str = "gpt-6-luna"
+    llm_query_reasoning_effort: str = "low"
+    llm_query_api: str = "responses"
+
+    # The intent check before a chat or voice request that may need an app: it runs
+    # before the answer starts, so it is fast (no reasoning); 10/10 on the evaluations
+    llm_intent_model: str = "gpt-6-luna"
+    llm_intent_reasoning_effort: str = "none"
+    llm_intent_api: str = "chat"
 
     # Embeddings
     embedding_provider: str = "openai"

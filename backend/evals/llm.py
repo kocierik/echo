@@ -6,6 +6,9 @@ Suites:
   compat      the calls Echo makes: complete with a temperature, JSON mode, tools, streaming
   extraction  entities from Italian sentences (evals/cases/extraction.json)
   routing     memory / app / "not connected" for chat requests (evals/cases/routing.json)
+  answers     memory answers from a fixed context: facts, language, no invention, and the
+              time to the first streamed piece (evals/cases/answers.json)
+  tools       the action agent's first tool for a request (evals/cases/tools.json)
 """
 
 import argparse
@@ -16,11 +19,14 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
+from app.routers.query import rag_system_prompt
 from app.services.analysis_pipeline import extract_entities
+from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
-from app.services.llm_openai import OpenAILLMService
-from evals.scoring import Extracted, score_extraction
+from app.services.llm_openai import openai_llm
+from evals.scoring import Extracted, normalize_words, score_extraction
 
 CASES = Path(__file__).parent / "cases"
 
@@ -124,15 +130,86 @@ async def routing(llm) -> bool:
         passed += ok
         mark = "ok  " if ok else "FAIL"
         print(
-            f"  {mark}  {case['id']:32} {route.kind:7} "
-            f"(want {case['expect']}) {elapsed:4.1f}s"
+            f"  {mark}  {case['id']:32} {route.kind:7} " f"(want {case['expect']}) {elapsed:4.1f}s"
         )
     total = len(suite["cases"])
     print(f"  {passed}/{total} passed")
     return passed == total
 
 
-SUITES = {"compat": compat, "extraction": extraction, "routing": routing}
+async def answers(llm) -> bool:
+    suite = json.loads((CASES / "answers.json").read_text(encoding="utf-8"))
+    passed, first_total, total_seconds = 0, 0.0, 0.0
+    for case in suite["cases"]:
+        messages = [
+            LLMMessage(role="system", content=rag_system_prompt(None)),
+            LLMMessage(
+                role="user",
+                content=(
+                    f"Context from memory:\n\n{suite['context']}\n\n---\n\n"
+                    f"Question: {case['question']}"
+                ),
+            ),
+        ]
+        start = time.perf_counter()
+        first = None
+        pieces = []
+        async for piece in llm.stream(messages, temperature=0.3):
+            first = first or time.perf_counter() - start
+            pieces.append(piece)
+        seconds = time.perf_counter() - start
+        answer = "".join(pieces)
+        words = set(normalize_words(answer))
+        problems = [f"missing {w!r}" for w in case.get("must", []) if w not in words]
+        problems += [f"says {w!r}" for w in case.get("forbid", []) if w in words]
+        problems += [f"none of {group}" for group in case.get("any", []) if not words & set(group)]
+        # The heuristic detector needs a few words: short answers are not checked
+        if len(words) >= 8 and detect_language(answer) != case["language"]:
+            problems.append(f"answered in {detect_language(answer)}")
+        passed += not problems
+        first_total += first or seconds
+        total_seconds += seconds
+        mark = "ok  " if not problems else "FAIL"
+        print(f"  {mark}  {case['id']:20} first {first or 0:4.1f}s, all {seconds:4.1f}s")
+        if problems:
+            print(f"          {'; '.join(problems)} · {answer[:160]!r}")
+    count = len(suite["cases"])
+    print(
+        f"  {passed}/{count} passed, first piece {first_total / count:.1f}s, "
+        f"answer {total_seconds / count:.1f}s on average"
+    )
+    return passed == count
+
+
+async def tools(llm) -> bool:
+    suite = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
+    offered = [SEARCH_MEMORY_TOOL, *suite["tools"]]
+    passed = 0
+    for case in suite["cases"]:
+        messages = [
+            LLMMessage(role="system", content=_system_prompt()),
+            LLMMessage(role="user", content=case["request"]),
+        ]
+        response, elapsed = await _timed(llm.complete_with_tools(messages, offered))
+        called = response.tool_calls[0].name if response.tool_calls else None
+        ok = called in case["first"]
+        passed += ok
+        mark = "ok  " if ok else "FAIL"
+        print(f"  {mark}  {case['id']:22} {called or '(no tool)':28} {elapsed:4.1f}s")
+        if not ok:
+            print(f"          want one of {case['first']}; said {response.content[:120]!r}")
+    count = len(suite["cases"])
+    print(f"  {passed}/{count} passed")
+    return passed == count
+
+
+SUITES = {
+    "compat": compat,
+    "extraction": extraction,
+    "routing": routing,
+    "answers": answers,
+    "tools": tools,
+}
 
 
 async def main() -> int:
@@ -144,13 +221,14 @@ async def main() -> int:
     parser.add_argument(
         "--reasoning-effort", default="", help='for reasoning models, e.g. "none" or "low"'
     )
+    parser.add_argument("--api", default="chat", choices=["chat", "responses"])
     args = parser.parse_args()
-    llm = OpenAILLMService(model=args.model, reasoning_effort=args.reasoning_effort)
+    llm = openai_llm(args.model, args.reasoning_effort, args.api)
     all_ok = True
     for name, suite in SUITES.items():
         if args.suite in (name, "all"):
-            effort = f" (reasoning {args.reasoning_effort})" if args.reasoning_effort else ""
-            print(f"\n{name} · {args.model}{effort}")
+            effort = f", reasoning {args.reasoning_effort}" if args.reasoning_effort else ""
+            print(f"\n{name} · {args.model} ({args.api}{effort})")
             all_ok &= await suite(llm)
     return 0 if all_ok else 1
 

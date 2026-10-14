@@ -1,0 +1,17 @@
+{
+  "tools": [
+    {"type": "function", "function": {"name": "GMAIL_FETCH_EMAILS", "description": "List the latest emails in the user's Gmail inbox, optionally filtered by a search query.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}}}},
+    {"type": "function", "function": {"name": "GMAIL_SEND_EMAIL", "description": "Send an email from the user's Gmail.", "parameters": {"type": "object", "properties": {"recipient_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["recipient_email", "body"]}}},
+    {"type": "function", "function": {"name": "GOOGLECALENDAR_EVENTS_LIST", "description": "List events in the user's Google Calendar between two times.", "parameters": {"type": "object", "properties": {"timeMin": {"type": "string"}, "timeMax": {"type": "string"}}}}},
+    {"type": "function", "function": {"name": "GOOGLECALENDAR_CREATE_EVENT", "description": "Create an event in the user's Google Calendar.", "parameters": {"type": "object", "properties": {"summary": {"type": "string"}, "start_datetime": {"type": "string"}, "event_duration_minutes": {"type": "integer"}, "attendees": {"type": "array", "items": {"type": "string"}}}, "required": ["summary", "start_datetime"]}}},
+    {"type": "function", "function": {"name": "TODOIST_CREATE_TASK", "description": "Create a task in the user's Todoist.", "parameters": {"type": "object", "properties": {"content": {"type": "string"}, "due_string": {"type": "string"}}, "required": ["content"]}}}
+  ],
+  "cases": [
+    {"id": "summarize-mail", "request": "Riassumimi le ultime mail", "first": ["GMAIL_FETCH_EMAILS"]},
+    {"id": "agenda-tomorrow", "request": "Che impegni ho domani?", "first": ["GOOGLECALENDAR_EVENTS_LIST"]},
+    {"id": "create-event", "request": "Segnami il dentista giovedì alle 15", "first": ["GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_EVENTS_LIST"]},
+    {"id": "create-task", "request": "Aggiungi un task: comprare il latte", "first": ["TODOIST_CREATE_TASK"]},
+    {"id": "send-needs-address", "request": "Manda a Marco una mail con il budget di Atlas", "first": ["search_memory", "GMAIL_FETCH_EMAILS", "GMAIL_SEND_EMAIL"]},
+    {"id": "memory-then-calendar", "request": "Cosa mi ha detto Ada sul lancio? Se c'è una data mettila in calendario", "first": ["search_memory"]}
+  ]
+}

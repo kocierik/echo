@@ -127,6 +127,7 @@ def env(monkeypatch):
         rag_calls=[],
     )
     monkeypatch.setattr(q, "get_llm_query_service", lambda: e.llm)
+    monkeypatch.setattr(q, "get_llm_intent_service", lambda: e.llm)
     monkeypatch.setattr(q, "get_embedding_service", lambda: None)
     monkeypatch.setattr(q, "get_action_provider", lambda: e.provider)
 

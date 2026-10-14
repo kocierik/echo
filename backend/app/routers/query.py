@@ -29,7 +29,7 @@ from app.models.chat_session import ChatSession
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
-from app.services.llm_openai import get_llm_query_service
+from app.services.llm_openai import get_llm_intent_service, get_llm_query_service
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.temporal import DateRange, extract_date_range
 
@@ -387,7 +387,9 @@ async def _answer_query(
                 reachable = connected
             except ActionProviderError:
                 logger.warning("Action provider unreachable", exc_info=True)
-            route = await route_request(llm_service, body.question, history, reachable)
+            route = await route_request(
+                get_llm_intent_service(), body.question, history, reachable
+            )
             if route.kind == "notice":
                 await _record_turn(
                     redis_client, db, user_id, session_id, history, body.question,

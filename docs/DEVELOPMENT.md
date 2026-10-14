@@ -134,8 +134,8 @@ STT options:
 
 | `STT_PROVIDER` | Models | Notes |
 |---|---|---|
-| `openai` (default) | `gpt-4o-transcribe` (recommended), `gpt-4o-mini-transcribe`, `whisper-1` | Prompt conditioning with known names |
-| `deepgram` | `DEEPGRAM_MODEL=nova-3`, needs `DEEPGRAM_API_KEY` | Fast, no prompt conditioning |
+| `openai` (default) | `gpt-4o-transcribe` (until 2027-02-26), `gpt-transcribe` (its replacement), `gpt-4o-mini-transcribe`, `whisper-1` | Prompt conditioning with known names |
+| `deepgram` | `DEEPGRAM_MODEL=nova-3`, needs `DEEPGRAM_API_KEY` | Fast; known names sent as keyterms (Nova-3) |
 
 ## Simulator
 
