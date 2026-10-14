@@ -65,7 +65,7 @@ Findings:
   temperature is sent then). On chat completions function tools work only with `none`; the
   Responses API runs them with reasoning. `gpt-6.1-sol` has no `none`.
 - Moving to the Responses API needed `openai` 2.x: the old `openai==1.51` pin was ours, not
-  Composio's (`composio==0.15` accepts any version).
+  Composio's (`composio` 0.15–0.22 accept it).
 - "Not connected" routing (Slack, Notion) failed with every model: the prompt now says that a
   request for an app that is not connected still names it, and Echo asks to connect it.
 - Live latency of the intent check was 6–9 s because every request built a new OpenAI client

@@ -23,6 +23,7 @@ from pathlib import Path
 import redis.asyncio as redis
 from sqlalchemy import select
 
+from app.actions.composio_provider import preload_sdk
 from app.actions.voice import find_wake
 from app.core.config import settings
 from app.core.database import async_session
@@ -662,6 +663,7 @@ async def main():
         asyncio.create_task(
             process_voice_queue(redis_client, shutdown_event), name="voice_worker"
         ),
+        asyncio.create_task(preload_sdk(), name="composio_preload"),
     ]
 
     # Wait for shutdown signal
