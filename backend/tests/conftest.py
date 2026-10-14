@@ -29,6 +29,13 @@ if not _database_name.endswith("_test"):
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 test_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
+# Never reach real services with the keys of the .env the containers load: the same values
+# as CI (tests that need a provider stub it or set the key themselves)
+settings.openai_api_key = "sk-test-not-real"
+settings.composio_api_key = ""
+settings.deepgram_api_key = ""
+settings.metrics_token = ""
+
 TEST_USER_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 TEST_API_KEY = "test-secret-key"
 TEST_API_KEY_HASH = hashlib.sha256(TEST_API_KEY.encode()).hexdigest()

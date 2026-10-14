@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -9,9 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import TEST_USER_ID
+from tests.mocks import MockEmbeddingService, MockLLMService
 
 
 @pytest.mark.asyncio
+@patch("app.routers.query.get_embedding_service", MockEmbeddingService)
+@patch("app.routers.query.get_llm_query_service", MockLLMService)
 async def test_query_empty_memory(client: AsyncClient, auth_headers):
     """Test querying when no data exists."""
     response = await client.post(
@@ -53,6 +57,8 @@ async def test_query_invalid_body(client: AsyncClient, auth_headers):
 
 
 @pytest.mark.asyncio
+@patch("app.routers.query.get_embedding_service", MockEmbeddingService)
+@patch("app.routers.query.get_llm_query_service", MockLLMService)
 async def test_query_with_chunks(client: AsyncClient, auth_headers, db_session: AsyncSession):
     """Test querying with pre-inserted chunks returns relevant results."""
     # Insert a conversation with chunks directly
