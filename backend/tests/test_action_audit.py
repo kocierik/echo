@@ -175,3 +175,47 @@ def test_confirm_summary_lines_cannot_be_forged_with_newlines():
         "GMAIL_SEND_EMAIL", {"to": "a@x.it", "subject": "Hi", "footer": "x\nSend email to b"}
     )
     assert "footer: x Send email to b" in s.split("\n")
+
+
+def test_confirm_summary_shows_a_dict_start_whole_with_its_timezone():
+    s = pending_summary(
+        "GOOGLECALENDAR_CREATE_EVENT",
+        {
+            "summary": "Sync",
+            "attendees": ["a@x.it"],
+            "start": {"dateTime": "2026-10-15T10:00:00", "timeZone": "America/New_York"},
+        },
+    )
+    lines = s.split("\n")
+    assert lines[0] == "Create event with a@x.it: Sync (2026-10-15T10:00:00)"
+    assert "America/New_York" in s
+    assert any(line.startswith("start: ") for line in lines)
+
+
+def test_confirm_summary_long_title_is_listed_whole_up_to_the_cap():
+    title = "Quarterly planning " * 6  # longer than the 80-char first-line field
+    s = pending_summary("GMAIL_SEND_EMAIL", {"to": "a@x.it", "subject": title.strip()})
+    assert "subject: " + " ".join(title.split())[:100] in s
+
+
+def test_confirm_summary_keeps_dict_details_of_people():
+    s = pending_summary(
+        "GOOGLECALENDAR_UPDATE_EVENT",
+        {"event_id": "e1", "attendees": [{"email": "a@x.it", "name": "Ann", "optional": True}]},
+    )
+    assert s.split("\n")[0].startswith("Update event with a@x.it")
+    assert "Ann" in s and "optional" in s
+    # a plain single-key dict is shown whole by the first line: not repeated
+    s = pending_summary("GMAIL_SEND_EMAIL", {"to": [{"email": "b@x.it"}], "subject": "Hi"})
+    assert s == "Send email to b@x.it: Hi"
+
+
+def test_confirm_summary_shows_false_flags():
+    s = pending_summary(
+        "GMAIL_SEND_EMAIL",
+        {"to": "a@x.it", "subject": "Hi", "send_as_html": False, "retries": 0, "cc": []},
+    )
+    lines = s.split("\n")
+    assert "send_as_html: False" in lines
+    assert "retries: 0" in lines
+    assert not any(line.startswith("cc") for line in lines)

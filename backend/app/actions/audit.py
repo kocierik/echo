@@ -117,13 +117,31 @@ def _people(value) -> list[str]:
 
 
 def _is_empty(value) -> bool:
-    if value is None or value is False:
+    """Only None, "" and empty containers: False and 0 are values that will be sent."""
+    if value is None:
         return True
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, list | tuple | dict | set):
+    if isinstance(value, str | list | tuple | dict | set):
         return len(value) == 0
     return False
+
+
+def _shown_whole(value) -> bool:
+    """A title/when value the first line shows completely (a short scalar)."""
+    if isinstance(value, bool) or not isinstance(value, str | int | float):
+        return False
+    return _display(value) == " ".join(str(value).split())
+
+
+def _people_whole(value) -> bool:
+    """A people value whose every item _people() shows completely (no dict details lost)."""
+    items = value if isinstance(value, list | tuple | set) else [value]
+    for item in items:
+        if isinstance(item, dict):
+            if not (len(item) == 1 and ("email" in item or "name" in item)):
+                return False
+        elif isinstance(item, list | tuple | set):
+            return False
+    return True
 
 
 def _argument_text(value) -> str:
@@ -203,19 +221,25 @@ def pending_summary(tool: str, arguments: dict) -> str:
         if key in _TARGET_KEYS:
             shown = _people(value)
             if shown:
-                used.add(raw_key)
+                if _people_whole(value):  # else listed again with its dict details
+                    used.add(raw_key)
                 target_key = target_key or key
                 main += [p for p in shown if p not in main]
         elif is_people_key(key) and key.lower() != "send_updates":
             shown = _people(value)
             if shown:
-                used.add(raw_key)
+                if _people_whole(value):
+                    used.add(raw_key)
                 label = " ".join(w for w in key.replace("-", "_").split("_") if w).capitalize()
                 extras.append(f"{label}: {', '.join(shown)}")
     target = ", ".join(main)
     title_key, title = _first(arguments, title_keys)
     when_key, when = _first(arguments, _WHEN_KEYS)
-    used.update(k for k in (title_key, when_key) if k is not None)
+    # Listed again below unless the first line shows them whole (a dict start's timeZone,
+    # a title past the 80-char field)
+    used.update(
+        k for k in (title_key, when_key) if k is not None and _shown_whole(arguments[k])
+    )
 
     ident = ""
     if not title and any(w in tool.upper() for w in _CHANGING_WORDS):
@@ -223,7 +247,7 @@ def pending_summary(tool: str, arguments: dict) -> str:
             shown = _people(arguments.get(key))
             if shown:
                 ident = f"{key}={shown[0]}"
-                if len(shown) == 1:
+                if len(shown) == 1 and _people_whole(arguments[key]):
                     used.add(key)
                 break
 
