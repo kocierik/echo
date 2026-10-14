@@ -127,7 +127,9 @@ void main() {
     );
 
     forgotten.complete();
-    await tester.pumpAndSettle();
+    // The screen is the first route here, so the success pop leaves its spinner
+    // running and pumpAndSettle would never return
+    await tester.pump(const Duration(seconds: 1));
 
     expect(fixture.store.value, isNull);
     expect(
@@ -162,7 +164,9 @@ void main() {
     await tester.tap(find.text('Forget device'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Forget device'));
-    await tester.pumpAndSettle();
+    // The screen is the first route here, so the success pop leaves its spinner
+    // running and pumpAndSettle would never return
+    await tester.pump(const Duration(seconds: 1));
     expect(fixture.store.value, isNull);
     expect(fixture.forgotCallbacks, 1);
   });

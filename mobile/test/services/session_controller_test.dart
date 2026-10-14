@@ -25,6 +25,8 @@ void main() {
     });
 
     await controller.logout();
+    // Stream events are delivered asynchronously: let the last one arrive
+    await Future<void>.delayed(Duration.zero);
 
     expect(states.map((state) => state.status), [
       SessionStatus.loggingOut,

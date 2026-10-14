@@ -19,9 +19,12 @@ void main() {
     expect(find.text('Network unavailable'), findsOneWidget);
 
     final api = _QueueTranscriptApi([
-      Future.error(Exception('Try again')),
+      // ignore() keeps the error from being reported before the screen listens
+      Future<List<RecentSegment>>.error(Exception('Try again'))..ignore(),
       Future.value(const []),
     ]);
+    // Unmount the first screen, or its state (and api) would be reused
+    await tester.pumpWidget(const SizedBox());
     await _pumpScreen(tester, api: api);
     await tester.pump();
     await tester.tap(find.byKey(const Key('transcripts-retry')));
@@ -101,6 +104,7 @@ void main() {
       find.byKey(const Key('transcripts-search-field')),
       'atlas',
     );
+    await tester.pump();
     expect(find.byKey(const Key('transcripts-searching')), findsOneWidget);
 
     scheduler.fireLatest();
