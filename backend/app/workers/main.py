@@ -47,6 +47,7 @@ from app.services.transcription_enhancer import (
 )
 from app.workers.digest import run_digest_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
+from app.workers.photos import process_photos
 from app.workers.retention import run_retention_loop
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 from app.workers.summaries import run_summary_loop
@@ -663,6 +664,7 @@ async def main():
         asyncio.create_task(
             process_voice_queue(redis_client, shutdown_event), name="voice_worker"
         ),
+        asyncio.create_task(process_photos(redis_client, shutdown_event), name="photo_worker"),
         asyncio.create_task(preload_sdk(), name="composio_preload"),
     ]
 

@@ -1,6 +1,7 @@
 """Unit tests: "Echo, ..." voice requests (wake detection, command window, voice worker)."""
 
 import asyncio
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -375,6 +376,9 @@ class _Redis:
     async def rpush(self, name, *values):
         self.lists.setdefault(name, []).extend(values)
         return len(self.lists[name])
+
+    async def expire(self, name, seconds):
+        self.keys[f"ttl:{name}"] = seconds
 
     async def rpop(self, name):
         items = self.lists.get(name) or []
@@ -1065,14 +1069,15 @@ async def test_worker_unreachable_apps_but_memory_question_uses_memory(worker):
 
 
 @pytest.mark.asyncio
-async def test_worker_not_configured_skips_the_intent_check(worker):
+async def test_worker_not_configured_checks_only_for_the_camera(worker):
     worker.provider_error = ActionProviderError("Composio is not configured")
     wake = _seg("Echo, leggimi le ultime mail")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
-    assert worker.llm.intent_checks == 0 and len(worker.rag_calls) == 1
+    # The intent check still runs (a photo needs no app); anything else is memory
+    assert worker.llm.intent_checks == 1 and len(worker.rag_calls) == 1
 
 
 # --- Fix round 1 (I1, M5): same spelling and "nothing connected" rules on voice --------
@@ -1137,3 +1142,45 @@ async def test_worker_needed_without_a_name_and_nothing_connected_gives_a_hint(w
         "Integrazioni."
     )
     assert answer["actions"] is True
+
+
+# --- Wearable camera -----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_worker_a_camera_request_asks_the_wearable_for_a_photo(worker):
+    from app.models.photo import Photo
+    from app.services.photos import DEVICE_COMMANDS_KEY
+
+    worker.llm.intent = {"camera": True, "needs_apps": False, "apps": []}
+    wake = _seg("[You] Echo, che pianta è questa?")
+    _ready(worker, wake)
+    redis = _Redis()
+
+    assert await vr.handle_voice_item(redis, str(wake.id)) is True
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    photo = next(o for o in worker.db.added if isinstance(o, Photo))
+    assert (photo.source, photo.question, photo.status) == (
+        "voice", "che pianta è questa?", "requested"
+    )
+    assert photo.chat_session_id == _voice_session(worker).id
+    # Only the question for now: the answer comes with the photo
+    last = _voice_session(worker).messages[-1]
+    assert last["role"] == "user" and last["photo_id"] == str(photo.id)
+    assert photo in worker.db.committed  # committed before the wearable is asked
+    [command] = redis.lists[DEVICE_COMMANDS_KEY.format(user_id=USER_ID)]
+    assert json.loads(command)["photo_id"] == str(photo.id)
+
+
+@pytest.mark.asyncio
+async def test_worker_without_composio_still_takes_photos(worker):
+    worker.provider_error = ActionProviderError("Composio is not configured")
+    worker.llm.intent = {"camera": True}
+    wake = _seg("[You] Echo, fai una foto")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.rag_calls == []
+    assert "photo_id" in _voice_session(worker).messages[-1]

@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     llm_intent_reasoning_effort: str = "none"
     llm_intent_api: str = "chat"
 
+    # Vision: answers a question about a photo from the wearable camera and describes it
+    # for memory (no tools: chat completions, ~2 s per photo)
+    llm_vision_model: str = "gpt-6-luna"
+    llm_vision_reasoning_effort: str = "low"
+    llm_vision_api: str = "chat"
+
+    # Wearable camera: a photo request the wearable has not answered by then fails, and
+    # the user is told in the chat
+    photo_request_timeout_s: int = 90
+    photo_max_bytes: int = 1024 * 1024
+
     # Embeddings
     embedding_provider: str = "openai"
     embedding_model: str = "text-embedding-3-small"  # 1536 dimensions, fixed by the schema

@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 11)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 12)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -322,11 +322,27 @@ def test_migration_010_creates_mentions_backfills_them_and_is_not_rerun(monkeypa
     calls = []
     for module in _migrations():
         calls = _run(module, state, monkeypatch).calls
+        if module.revision == "010":
+            break
     mentions = state.tables["entity_mentions"]
     assert {"entity_id", "conversation_id", "transcription_id"} <= set(mentions["columns"])
     assert any(
         sql.startswith("INSERT INTO entity_mentions") for kind, sql in calls if kind == "execute"
     )
+
+    migration_010 = next(m for m in _migrations() if m.revision == "010")
+    again = _run(migration_010, state, monkeypatch)
+
+    assert again.calls == []
+
+
+def test_migration_011_adds_photos_and_photo_chunks_once(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        _run(module, state, monkeypatch)
+    photos = state.tables["photos"]["columns"]
+    assert {"status", "source", "question", "image", "description", "answer"} <= set(photos)
+    assert state.tables["chunks"]["columns"]["photo_id"] is True  # nullable
 
     again = _run(_migrations()[-1], state, monkeypatch)
 

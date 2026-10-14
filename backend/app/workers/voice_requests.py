@@ -45,6 +45,7 @@ from app.services.llm_openai import (
     get_llm_query_service,
 )
 from app.services.memory_retrieval import retrieve_memory_context
+from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
 from app.workers.lifecycle import sleep_or_shutdown
 
@@ -133,14 +134,19 @@ async def _memory_answer(
     return response.content
 
 
+@dataclass
+class _PhotoRoute:
+    """The request needs the camera: no answer yet, the photo's analysis gives it."""
+
+
 async def _answer(
     db: AsyncSession,
     user_id: uuid.UUID,
     command: str,
     history: list[dict],
     session_id: uuid.UUID,
-) -> tuple[str, dict]:
-    """The answer and the extra keys of the assistant message."""
+) -> tuple[str, dict] | _PhotoRoute:
+    """The answer and the extra keys of the assistant message, or a photo to take."""
     provider = None
     connected: list[str] = []
     llm = get_llm_query_service()
@@ -149,6 +155,10 @@ async def _answer(
     except ActionProviderError:
         logger.info("[Voice] Action provider not configured; answering from memory")
     if provider is None:
+        # Still checked for the camera; app requests have nothing to act on
+        route = await route_request(get_llm_intent_service(), command, history, [], camera=True)
+        if route.kind == "photo":
+            return _PhotoRoute()
         return await _memory_answer(db, user_id, command, history, llm), {}
     # Every confirmed voice request goes through the same intent check as chat
     reachable: list[str] | None = None
@@ -157,7 +167,11 @@ async def _answer(
         reachable = connected
     except ActionProviderError:
         logger.warning("[Voice] Action provider unreachable", exc_info=True)
-    route = await route_request(get_llm_intent_service(), command, history, reachable)
+    route = await route_request(
+        get_llm_intent_service(), command, history, reachable, camera=True
+    )
+    if route.kind == "photo":
+        return _PhotoRoute()
     if route.kind == "notice":
         return route.notice, {"actions": True}
     if route.kind == "memory":
@@ -222,11 +236,38 @@ async def _process(
         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
     ]
     asked_at = _utcnow().isoformat()
-    answer, extra = await _answer(db, segment.user_id, command, history, voice_session.id)
+    result = await _answer(db, segment.user_id, command, history, voice_session.id)
+    if isinstance(result, _PhotoRoute):
+        await _request_photo(db, redis_client, segment, command, asked_at, voice_session)
+        logger.info(f"[Voice] Photo requested from segment {segment_id}")
+        return True
+    answer, extra = result
     _append_turn(voice_session, command, asked_at, answer, extra)
     await db.commit()
     logger.info(f"[Voice] Answered request from segment {segment_id}")
     return True
+
+
+async def _request_photo(
+    db: AsyncSession, redis_client, segment: Segment, command: str, asked_at: str, voice_session
+) -> None:
+    """Ask the wearable for a photo; its answer is appended when the photo is analysed."""
+    photo = request_photo(
+        db,
+        segment.user_id,
+        source="voice",
+        chat_session_id=voice_session.id,
+        question=command,
+        conversation_id=segment.conversation_id,
+    )
+    voice_session.messages = [
+        *(voice_session.messages or []),
+        {"role": "user", "content": command, "timestamp": asked_at, "photo_id": str(photo.id)},
+    ]
+    voice_session.updated_at = _utcnow()
+    await db.commit()
+    # After the commit: the photo's upload must find its row
+    await send_take_photo(redis_client, photo)
 
 
 def _append_turn(voice_session, command: str, asked_at: str, answer: str, extra: dict):

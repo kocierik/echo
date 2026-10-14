@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (008) for reading.
+-- Do not apply this file: it shows the schema at the head revision (011) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -102,6 +102,7 @@ CREATE TABLE chunks (
     token_count INTEGER NOT NULL,
     chunk_index INTEGER NOT NULL,
     embedding vector(1536),
+    photo_id UUID,  -- Migration 011: a photo's description (FK below, after photos)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -164,6 +165,31 @@ CREATE TABLE chat_sessions (
 );
 
 CREATE INDEX idx_chat_sessions_user ON chat_sessions (user_id, updated_at DESC);
+
+-- Migration 011: photos from the wearable camera (the wearable keeps nothing)
+CREATE TABLE photos (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'requested',  -- requested | received | done | failed
+    source VARCHAR(10) NOT NULL,                      -- voice | app
+    question TEXT,
+    chat_session_id UUID REFERENCES chat_sessions(id) ON DELETE CASCADE,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    captured_at TIMESTAMPTZ,
+    image BYTEA,                                      -- JPEG
+    image_sha256 VARCHAR(64),
+    size_bytes INTEGER,
+    description TEXT,                                 -- for memory search
+    answer TEXT,                                      -- shown in the chat
+    error VARCHAR(40),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_photos_user_id ON photos (user_id);
+CREATE INDEX ix_photos_conversation_id ON photos (conversation_id);
+CREATE INDEX ix_photos_status ON photos (status);
+ALTER TABLE chunks ADD FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE;
+CREATE INDEX ix_chunks_photo_id ON chunks (photo_id);
 
 -- ============================================================
 -- API KEYS: simple auth for MVP

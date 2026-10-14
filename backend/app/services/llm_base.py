@@ -17,6 +17,7 @@ class LLMMessage:
     tool_calls: list[LLMToolCall] | None = None  # assistant messages only
     tool_call_id: str | None = None  # tool messages only
     name: str | None = None
+    images: list[bytes] | None = None  # JPEG images, user messages only
 
 
 @dataclass

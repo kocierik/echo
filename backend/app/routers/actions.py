@@ -169,7 +169,8 @@ async def _record_outcome(
     action = await db.get(PendingAction, action_id)
     session = None
     if action is not None and action.session_id is not None:
-        session = await db.get(ChatSession, action.session_id)
+        # Locked: voice answers and photos rewrite the same message list
+        session = await db.get(ChatSession, action.session_id, with_for_update=True)
         if session is not None and session.user_id != user_id:
             session = None
 
@@ -337,8 +338,9 @@ async def voice_updates(
     messages = []
     if session is not None:
         for m in session.messages:
-            # Confirm/cancel outcomes answer a tap in the app: no notification
-            if m.get("role") != "assistant" or m.get("outcome"):
+            # Confirm/cancel outcomes answer a tap in the app, and so does a photo taken
+            # with the app's button: no notification
+            if m.get("role") != "assistant" or m.get("outcome") or m.get("notify") is False:
                 continue
             ts = _parse_ts(m.get("timestamp"))
             if ts is None or (since is not None and ts <= since):
@@ -350,6 +352,7 @@ async def voice_updates(
                     "content": m.get("content", ""),
                     "timestamp": m["timestamp"],
                     "pending_action": m.get("pending_action"),
+                    "photo_id": m.get("photo_id"),
                 }
             )
     return {"messages": messages, "now": datetime.now(timezone.utc).isoformat()}

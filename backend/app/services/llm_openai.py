@@ -1,3 +1,4 @@
+import base64
 import functools
 import json
 from collections.abc import AsyncIterator
@@ -6,6 +7,10 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.llm_base import LLMMessage, LLMResponse, LLMService, LLMToolCall
+
+
+def _data_url(image: bytes) -> str:
+    return "data:image/jpeg;base64," + base64.b64encode(image).decode("ascii")
 
 
 def _to_openai_message(m: LLMMessage) -> dict:
@@ -22,6 +27,17 @@ def _to_openai_message(m: LLMMessage) -> dict:
                     "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
                 }
                 for tc in m.tool_calls
+            ],
+        }
+    if m.images:
+        return {
+            "role": m.role,
+            "content": [
+                {"type": "text", "text": m.content},
+                *(
+                    {"type": "image_url", "image_url": {"url": _data_url(image)}}
+                    for image in m.images
+                ),
             ],
         }
     return {"role": m.role, "content": m.content}
@@ -58,7 +74,7 @@ class OpenAILLMService(LLMService):
     async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": m.role, "content": m.content} for m in messages],
+            messages=[_to_openai_message(m) for m in messages],
             **self._sampling(temperature),
         )
         choice = response.choices[0]
@@ -73,7 +89,7 @@ class OpenAILLMService(LLMService):
     ) -> AsyncIterator[str]:
         chunks = await self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": m.role, "content": m.content} for m in messages],
+            messages=[_to_openai_message(m) for m in messages],
             stream=True,
             **self._sampling(temperature),
         )
@@ -86,7 +102,7 @@ class OpenAILLMService(LLMService):
     ) -> dict:
         response = await self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": m.role, "content": m.content} for m in messages],
+            messages=[_to_openai_message(m) for m in messages],
             response_format={"type": "json_object"},
             **self._sampling(temperature),
         )
@@ -128,7 +144,20 @@ def _to_response_items(messages: list[LLMMessage]) -> list[dict]:
                 {"type": "function_call_output", "call_id": m.tool_call_id, "output": m.content}
             )
             continue
-        if m.content or not m.tool_calls:
+        if m.images:
+            items.append(
+                {
+                    "role": m.role,
+                    "content": [
+                        {"type": "input_text", "text": m.content},
+                        *(
+                            {"type": "input_image", "image_url": _data_url(image)}
+                            for image in m.images
+                        ),
+                    ],
+                }
+            )
+        elif m.content or not m.tool_calls:
             items.append({"role": m.role, "content": m.content})
         for tc in m.tool_calls or []:
             items.append(
@@ -263,6 +292,16 @@ def get_llm_query_service() -> LLMService:
             settings.llm_query_api,
         )
     raise ValueError(f"Unknown LLM provider: {settings.llm_query_provider}")
+
+
+@functools.cache
+def get_llm_vision_service() -> LLMService:
+    """LLM service that looks at photos from the wearable camera."""
+    return openai_llm(
+        settings.llm_vision_model,
+        settings.llm_vision_reasoning_effort,
+        settings.llm_vision_api,
+    )
 
 
 @functools.cache
