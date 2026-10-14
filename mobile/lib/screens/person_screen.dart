@@ -13,6 +13,7 @@ import '../widgets/person_avatar.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
 import 'conversation_detail_screen.dart';
+import '../utils/calendar_request.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
 
@@ -154,6 +155,9 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
               MemoryEntityRow(
                 entity: event,
                 now: now,
+                onAddToCalendar: ask == null
+                    ? null
+                    : () => askFromAnywhere(context, ask, calendarRequest(event)),
                 onTap: event.conversationId == null
                     ? null
                     : () => unawaited(_openConversation(event.conversationId!)),

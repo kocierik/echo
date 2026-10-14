@@ -1,7 +1,8 @@
 # Echo Memory Experience — Design
 
 Date: 2026-10-14. Status: decided by Claude on the user's delegation ("scegli tu come procedere").
-Phases 1 (Memories + Tasks) and 2 (Today + People) done on 2026-10-14; phase 3 open.
+All three phases done on 2026-10-14. "Add to calendar" goes through the action agent (Ask) rather
+than a dedicated endpoint, so it keeps the agent's confirmation, audit and "not connected" notices.
 
 ## Intent
 

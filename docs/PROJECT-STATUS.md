@@ -66,6 +66,9 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   oggi (con "Not a task"), l'ultimo riassunto giornaliero con il suo giorno.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
+- Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la
+  conversazione), suggerimenti dalle conversazioni e persone recenti; "Add to calendar" dagli eventi passa
+  dall'agente (conferma se ci sono invitati).
 - Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown; **schede Confirm/Cancel** per le
   azioni da confermare; conversazione **Voice requests** fissata in cima allo storico.
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).

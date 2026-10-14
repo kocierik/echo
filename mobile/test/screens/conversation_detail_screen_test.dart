@@ -53,13 +53,24 @@ void main() {
     );
   }
 
-  Future<void> pump(WidgetTester tester, FakeMemoryApi api, {List<String>? asked}) async {
+  Future<void> pump(
+    WidgetTester tester,
+    FakeMemoryApi api, {
+    List<String>? asked,
+    Size size = const Size(375, 900),
+    double textScale = 1,
+    ThemeData? theme,
+  }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(375, 900);
+    tester.view.physicalSize = size;
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
     await tester.pumpWidget(MaterialApp(
-      theme: AppTheme.light,
+      theme: theme ?? AppTheme.light,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+        child: child!,
+      ),
       home: Builder(
         builder: (context) => Scaffold(
           body: Center(
@@ -111,6 +122,23 @@ void main() {
     expect(asked.single, contains('"Lunch with Ada"'));
     expect(asked.single, contains('Today, 12:30'));
     expect(find.text('open'), findsOneWidget);
+  });
+
+  testWidgets('an event goes to the calendar through Ask', (tester) async {
+    final asked = <String>[];
+    await pump(tester, FakeMemoryApi(details: {'c1': detail()}), asked: asked);
+
+    await tester.tap(find.byKey(const Key('entity-calendar-e1')));
+    await tester.pumpAndSettle();
+
+    expect(asked, ['Add "Dentista" to my Google Calendar on 2026-10-16 at 15:00.']);
+    expect(find.text('open'), findsOneWidget);
+  });
+
+  testWidgets('without Ask there is no calendar button', (tester) async {
+    await pump(tester, FakeMemoryApi(details: {'c1': detail()}));
+
+    expect(find.byKey(const Key('entity-calendar-e1')), findsNothing);
   });
 
   testWidgets('a task is completed in place, and a failure undoes it', (tester) async {
@@ -190,5 +218,23 @@ void main() {
     await tester.tap(find.byKey(const Key('conversation-retry')));
     await tester.pumpAndSettle();
     expect(find.text('Lunch with Ada'), findsOneWidget);
+  });
+
+  testWidgets('fits 320 wide at 1.3 text scale in light and dark', (tester) async {
+    for (final theme in [AppTheme.light, AppTheme.dark]) {
+      await tester.pumpWidget(const SizedBox());
+      await pump(
+        tester,
+        FakeMemoryApi(details: {'c1': detail()}),
+        asked: [],
+        size: const Size(320, 640),
+        textScale: 1.3,
+        theme: theme,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Transcript'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
   });
 }

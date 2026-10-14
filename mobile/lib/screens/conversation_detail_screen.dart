@@ -13,6 +13,7 @@ import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
+import '../utils/calendar_request.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
 import 'transcript_detail_screen.dart';
@@ -286,7 +287,14 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
       ],
       if (events.isNotEmpty) ...[
         const _Section(title: 'Events'),
-        for (final event in events) MemoryEntityRow(entity: event, now: now),
+        for (final event in events)
+          MemoryEntityRow(
+            entity: event,
+            now: now,
+            onAddToCalendar: widget.onAsk == null
+                ? null
+                : () => askFromAnywhere(context, widget.onAsk!, calendarRequest(event)),
+          ),
       ],
       if (notes.isNotEmpty) ...[
         const _Section(title: 'Ideas & notes'),

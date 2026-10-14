@@ -32,10 +32,19 @@ String? eventWhen(MemoryEntity entity, DateTime now) {
 /// One extracted thing: an icon for its type, its name, and below either the
 /// event day, its content, or the sentence it came from.
 final class MemoryEntityRow extends StatelessWidget {
-  const MemoryEntityRow({required this.entity, this.onTap, this.now, super.key});
+  const MemoryEntityRow({
+    required this.entity,
+    this.onTap,
+    this.onAddToCalendar,
+    this.now,
+    super.key,
+  });
 
   final MemoryEntity entity;
   final VoidCallback? onTap;
+
+  /// For events: adds it to the calendar (through Ask).
+  final VoidCallback? onAddToCalendar;
 
   /// Injectable "now" for tests.
   final DateTime? now;
@@ -49,7 +58,7 @@ final class MemoryEntityRow extends StatelessWidget {
         : entity.content;
     final source = entity.sourceText;
 
-    return Semantics(
+    final row = Semantics(
       button: onTap != null,
       label: [
         entityTypeName(entity.type),
@@ -62,7 +71,7 @@ final class MemoryEntityRow extends StatelessWidget {
         key: Key('entity-${entity.id}'),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          padding: EdgeInsets.fromLTRB(20, 10, onAddToCalendar == null ? 20 : 0, 10),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -91,6 +100,24 @@ final class MemoryEntityRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+    final addToCalendar = onAddToCalendar;
+    if (addToCalendar == null) return row;
+    // Outside the row's summary label, so screen readers reach the button too
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: row),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, right: 8),
+          child: IconButton(
+            key: Key('entity-calendar-${entity.id}'),
+            tooltip: 'Add "${entity.name}" to calendar',
+            onPressed: addToCalendar,
+            icon: Icon(Icons.event_available_outlined, color: palette.blue),
+          ),
+        ),
+      ],
     );
   }
 }
