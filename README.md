@@ -80,16 +80,14 @@ This starts:
 
 ### 3. Initialize the database
 
-On first run, apply the schema and the migrations:
+On first run, create the database with the migrations:
 
 ```bash
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp 001
 docker compose exec api python -m alembic upgrade head
 ```
 
-`docs/schema.sql` is the baseline (revision 001) plus some later tables; the migrations are idempotent,
-so `upgrade head` adds only what is still missing. `make deploy` does all of this for you.
+Alembic creates everything (extensions, tables, indexes) on an empty database; `make deploy` runs
+it for you. `docs/schema.sql` is only a reference of the schema at the latest migration.
 
 After a `git pull`, apply new migrations with:
 
@@ -101,10 +99,10 @@ To reset the database (drops all data):
 
 ```bash
 docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp 001
 docker compose exec api python -m alembic upgrade head
 ```
+
+(`make db-reset` does the same.)
 
 ### 4. Create an API key
 
@@ -203,7 +201,7 @@ echo/
 │   ├── BETA-GATE-CHECKLIST.md
 │   ├── adr/              # Architectural Decision Records
 │   ├── superpowers/      # Design specs and implementation plans
-│   └── schema.sql
+│   └── schema.sql        # Reference only: Alembic creates the database
 ├── firmware/             # ESP32-S3 (Arduino + NimBLE), native unit tests in test/
 ├── mobile/               # Flutter app (iOS-first)
 ├── backend/
