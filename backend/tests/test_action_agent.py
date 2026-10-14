@@ -535,3 +535,37 @@ async def test_unknown_outcome_note_in_italian_even_without_a_model_answer():
         "Non sono riuscito a verificare se è andata a buon fine: "
         "controlla Todoist prima di riprovare."
     )
+
+
+# --- G4: the "check {App}" note after an unknown outcome is never dropped ----------------
+
+
+async def test_unknown_outcome_note_survives_a_successful_retry_of_the_same_tool():
+    from app.actions.provider import ActionOutcomeUnknown
+
+    class TimesOutOnce(FakeActionProvider):
+        async def execute(self, user_id, tool, arguments):
+            self.executed.append((tool, arguments))
+            if len(self.executed) == 1:
+                raise ActionOutcomeUnknown("timed out")
+            return ToolResult(ok=True, data={"id": "evt-2"})
+
+    db = FakeSession()
+    provider = TimesOutOnce(
+        connected={"googlecalendar"},
+        tools={"GOOGLECALENDAR_CREATE_EVENT": _schema("GOOGLECALENDAR_CREATE_EVENT")},
+    )
+    llm = RecordingLLM([
+        _calls(("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})),
+        _calls(("GOOGLECALENDAR_CREATE_EVENT", {"summary": "Dentist"})),
+        _text("Added the dentist."),
+    ])
+
+    outcome = await _run(db, "Add the dentist tomorrow at 10", provider, llm)
+
+    assert [log.outcome for log in db.of(ActionLog)] == ["unknown", "ok"]
+    # The first call may also have gone through (a duplicate event): the note stays
+    assert outcome.answer == (
+        "Added the dentist.\n"
+        "I couldn't confirm whether it went through — check Google Calendar before trying again."
+    )
