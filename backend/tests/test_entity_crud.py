@@ -1,13 +1,16 @@
 """Integration tests for entity CRUD endpoints."""
 import uuid
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import text
 
 from tests.conftest import TEST_USER_ID
+from tests.mocks import MockEmbeddingService
 
 
 @pytest.mark.asyncio
+@patch("app.services.embedding_openai.get_embedding_service", MockEmbeddingService)
 async def test_patch_entity(client, auth_headers, db_session):
     # Insert entity
     entity_id = uuid.uuid4()
