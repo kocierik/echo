@@ -6,9 +6,8 @@ import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.core.auth import get_current_user_id
@@ -16,6 +15,7 @@ from app.core.config import settings
 from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
+from app.core.rate_limit import limiter
 from app.routers import (
     actions,
     admin,
@@ -46,9 +46,6 @@ async def lifespan(app: FastAPI):
     await app.state.redis.aclose()
 
 
-# Rate limiter: uses client IP by default, configurable via settings
-limiter = Limiter(key_func=get_remote_address)
-
 app = FastAPI(
     title="Echo - Second Brain API",
     description="Personal AI memory backend for the Second Brain wearable device.",
@@ -56,7 +53,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Register rate limit exceeded handler
+# One shared limiter (per API key, else per IP): the routers decorate with the same one
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
