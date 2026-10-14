@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../models/device_status.dart';
 import '../services/app_controller.dart';
 import '../services/device_controller.dart';
-import '../theme/app_theme.dart';
 import 'settings/settings_components.dart';
 
 class DeviceDetailScreen extends StatefulWidget {

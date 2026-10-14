@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
-import 'package:echo_app/models/chat_message.dart';
 import 'package:echo_app/models/chat_session.dart';
 import 'package:echo_app/screens/chat_screen.dart';
 import 'package:echo_app/services/api_service.dart';

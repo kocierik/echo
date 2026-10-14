@@ -63,12 +63,12 @@ final class PairingStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 24),
-        _PairingNote(
+        const _PairingNote(
           icon: Icons.bluetooth_searching_rounded,
           text: 'Pairing may open a system confirmation.',
         ),
         const SizedBox(height: 12),
-        _PairingNote(
+        const _PairingNote(
           icon: Icons.lock_outline_rounded,
           text: 'The saved device identity enables secure reconnects.',
         ),
