@@ -1067,3 +1067,67 @@ async def test_worker_not_configured_skips_the_intent_check(worker):
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
     assert worker.llm.intent_checks == 0 and len(worker.rag_calls) == 1
+
+
+# --- Fix round 1 (I1, M5): same spelling and "nothing connected" rules on voice --------
+
+
+@pytest.mark.asyncio
+async def test_worker_google_calendar_spelling_with_only_todoist_is_a_notice(worker):
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    worker.llm.intent = {"needs_apps": True, "apps": ["google_calendar"]}
+    wake = _seg("Echo, aggiungi il dentista al calendario")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    assert _voice_session(worker).messages[-1]["content"] == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+
+
+@pytest.mark.asyncio
+async def test_worker_unknown_app_with_todoist_connected_is_a_notice(worker):
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    worker.llm.intent = {"needs_apps": True, "apps": ["trello"]}
+    wake = _seg("Hey Echo, add a card on Trello")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == []
+    assert _voice_session(worker).messages[-1]["content"] == (
+        "Trello isn't connected. Connect it in Settings → Automations → Integrations."
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["Google Calendar", "google-calendar", "GOOGLECALENDAR"])
+async def test_worker_connected_calendar_in_any_spelling_goes_to_the_agent(worker, name):
+    worker.provider = FakeActionProvider(connected={"googlecalendar"})
+    worker.llm.intent = {"needs_apps": True, "apps": [name]}
+    wake = _seg("Echo, aggiungi il dentista al calendario")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert len(worker.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_needed_without_a_name_and_nothing_connected_gives_a_hint(worker):
+    worker.provider = FakeActionProvider(connected=set())
+    worker.llm.intent = {"needs_apps": True, "apps": []}
+    wake = _seg("Echo, manda un messaggio a Marco")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    answer = _voice_session(worker).messages[-1]
+    assert answer["content"] == (
+        "Nessuna app è ancora collegata. Collegane una in Impostazioni → Automazioni → "
+        "Integrazioni."
+    )
+    assert answer["actions"] is True

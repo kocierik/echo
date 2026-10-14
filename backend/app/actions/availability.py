@@ -9,6 +9,7 @@ and a word like "agenda" alone does not make a request about the calendar.
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.services.language import detect_language
@@ -31,6 +32,9 @@ TEXTS = {
         "not_connected": (
             "{app} isn't connected. Connect it in Settings → Automations → Integrations."
         ),
+        "none_connected": (
+            "No apps are connected yet. Connect one in Settings → Automations → Integrations."
+        ),
     },
     "it": {
         "unreachable": (
@@ -38,6 +42,10 @@ TEXTS = {
         ),
         "not_connected": (
             "{app} non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+        ),
+        "none_connected": (
+            "Nessuna app è ancora collegata. Collegane una in Impostazioni → Automazioni → "
+            "Integrazioni."
         ),
     },
 }
@@ -61,6 +69,8 @@ Respond with ONLY a JSON object: {{"needs_apps": true, "apps": ["<slug>", ...]}}
 class RequestIntent:
     needs_apps: bool = False
     apps: list[str] = field(default_factory=list)
+    # Names the model gave that match no known or connected app, as written
+    unresolved: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -91,6 +101,11 @@ def _apps_section(connected: list[str] | None, known_apps: dict[str, str]) -> st
     )
 
 
+def _normalize(name: str) -> str:
+    """"Google Calendar", "google_calendar", "GOOGLECALENDAR" -> "googlecalendar"."""
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
 def _parse_intent(
     result, connected: list[str] | None, known_apps: dict[str, str]
 ) -> RequestIntent:
@@ -99,13 +114,21 @@ def _parse_intent(
     needs, apps = result.get("needs_apps"), result.get("apps", [])
     if needs is not True or not isinstance(apps, list):
         return RequestIntent()
-    allowed = set(known_apps) | set(connected or [])
+    # Slugs and display names, in any spelling, resolve to the slug
+    lookup = {_normalize(slug): slug for slug in (*known_apps, *(connected or []))}
+    lookup.update({_normalize(name): slug for slug, name in known_apps.items()})
     slugs: list[str] = []
+    unresolved: list[str] = []
     for app in apps:
-        slug = app.strip().lower() if isinstance(app, str) else None
-        if slug in allowed and slug not in slugs:  # unknown names are dropped
+        if not isinstance(app, str) or not _normalize(app):
+            continue
+        slug = lookup.get(_normalize(app))
+        if slug is None:
+            if app.strip() not in unresolved:
+                unresolved.append(app.strip())
+        elif slug not in slugs:
             slugs.append(slug)
-    return RequestIntent(needs_apps=True, apps=slugs)
+    return RequestIntent(needs_apps=True, apps=slugs, unresolved=unresolved)
 
 
 async def classify_request(
@@ -138,8 +161,13 @@ def unreachable_answer(request: str) -> str:
 
 
 def not_connected_answer(request: str, slug: str) -> str:
-    app = APP_NAMES.get(slug, slug.title())
+    """`slug` is a known slug or, for an app Echo cannot resolve, the name as given."""
+    app = APP_NAMES.get(slug) or (slug if slug != slug.lower() else slug.title())
     return TEXTS[detect_language(request)]["not_connected"].format(app=app)
+
+
+def none_connected_answer(request: str) -> str:
+    return TEXTS[detect_language(request)]["none_connected"]
 
 
 async def route_request(
@@ -149,8 +177,9 @@ async def route_request(
 
     `connected` None means Composio is configured but the connected list could not be
     fetched. Not needed -> memory; unreachable and needed -> the "couldn't reach" text;
-    a needed app not connected -> "{App} isn't connected" (never another app); all
-    needed apps connected -> the agent (memory when nothing at all is connected).
+    a needed app that is not connected, or that matches no app Echo knows ->
+    "{App} isn't connected" (never another app); needed with no app named and nothing
+    connected -> "No apps are connected yet"; otherwise the agent.
     """
     intent = await classify_request(llm, request, history, connected, APP_NAMES)
     if not intent.needs_apps:
@@ -160,6 +189,8 @@ async def route_request(
     missing = [slug for slug in intent.apps if slug not in connected]
     if missing:
         return Route("notice", not_connected_answer(request, missing[0]))
+    if intent.unresolved:
+        return Route("notice", not_connected_answer(request, intent.unresolved[0]))
     if not connected:
-        return Route("memory")
+        return Route("notice", none_connected_answer(request))
     return Route("agent")

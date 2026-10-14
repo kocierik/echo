@@ -7,6 +7,7 @@ only `get_db` is overridden and the query answer is stubbed.
 
 import hashlib
 import uuid
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -51,8 +52,11 @@ class _Session:
         pass
 
 
-@pytest.fixture
-def client(monkeypatch):
+@contextmanager
+def _app_client(monkeypatch):
+    """The real app with a fake DB; the overrides found on entry are restored on exit
+    (the integration conftest installs its own get_db override at import)."""
+
     async def fake_db():
         yield _Session()
 
@@ -60,12 +64,35 @@ def client(monkeypatch):
         return query.QueryResponse(answer="ok", sources=[], session_id=str(uuid.uuid4()))
 
     monkeypatch.setattr(query, "_answer_query", fake_answer)
+    previous = dict(app.dependency_overrides)
     app.dependency_overrides[get_db] = fake_db
     rate_limit.limiter.reset()
-    with TestClient(app) as c:
+    try:
+        with TestClient(app) as c:
+            yield c
+    finally:
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
+        rate_limit.limiter.reset()
+
+
+@pytest.fixture
+def client(monkeypatch):
+    with _app_client(monkeypatch) as c:
         yield c
-    app.dependency_overrides.clear()
-    rate_limit.limiter.reset()
+
+
+def test_the_client_restores_the_overrides_it_found(monkeypatch):
+    async def conftest_db():
+        yield None
+
+    app.dependency_overrides[get_db] = conftest_db
+    try:
+        with _app_client(monkeypatch):
+            app.dependency_overrides[get_current_user_id] = lambda: USER
+        assert app.dependency_overrides == {get_db: conftest_db}
+    finally:
+        app.dependency_overrides.pop(get_db, None)
 
 
 def _ask(client, key=None):
@@ -89,6 +116,8 @@ def test_one_shared_limiter_with_the_same_limits():
     assert segments.limiter is rate_limit.limiter
     assert app.state.limiter is rate_limit.limiter
 
+    # slowapi has no public way to list a route's limits: read the private registry so a
+    # changed decorator string fails here (the 429 tests below cover only the query route)
     def limits(name):
         return [str(item.limit) for item in rate_limit.limiter._route_limits[name]]
 

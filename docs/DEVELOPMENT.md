@@ -156,7 +156,7 @@ INSERT INTO api_keys (user_id, key_hash, name) VALUES (
 | `relation "query_feedback" does not exist` | Tabella non creata | `docker compose exec api python -m alembic upgrade head` |
 | `column "audio_energy" does not exist` | Migrazione non applicata | `docker compose exec api python -m alembic upgrade head` |
 | Worker si riavvia in loop | Errore nel codice o DB non aggiornato | `docker compose logs worker --tail 50` per vedere il traceback |
-| `alembic.util.exc.CommandError: Can't locate revision` | Alembic non inizializzato | `docker compose exec api python -m alembic stamp 001` poi `upgrade head` |
+| `alembic.util.exc.CommandError: Can't locate revision` | Il DB è segnato con una revisione che questo codice non conosce (es. altro branch) | Controlla con `docker compose exec api python -m alembic current`; usa `alembic stamp head` solo se sai che lo schema è già aggiornato all'ultima migrazione |
 
 ## Database migrations (Alembic)
 
