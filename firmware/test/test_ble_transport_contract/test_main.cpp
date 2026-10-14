@@ -57,7 +57,7 @@ void test_firmware_uses_approved_latency_constants() {
 
     TEST_ASSERT_TRUE(configSource.find("SEGMENT_DURATION_MS 6000") != std::string::npos);
     TEST_ASSERT_TRUE(configSource.find("VAD_SPEECH_END_FRAMES 25") != std::string::npos);
-    TEST_ASSERT_TRUE(configSource.find("VAD_ENERGY_THRESHOLD 2200") != std::string::npos);
+    TEST_ASSERT_TRUE(configSource.find("VAD_ENERGY_THRESHOLD 500") != std::string::npos);
     TEST_ASSERT_TRUE(configSource.find("BLE_PREFERRED_MTU 247") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("WINDOW_SIZE = 32") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("BURST_BUDGET_US = 3000") != std::string::npos);
