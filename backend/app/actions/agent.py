@@ -180,8 +180,9 @@ def _final_answer(
     """The model's answer, made explicit about tools that failed.
 
     A failure is cleared only by a later success of the same tool slug (a retry), never by
-    another tool of the same toolkit. If the answer does not name the toolkit of an uncleared
-    failure, it is replaced by the fixed notice so it cannot claim the failed step happened.
+    another tool of the same toolkit; an unknown outcome is never cleared (its note stays).
+    If the answer does not name the toolkit of an uncleared failure, it is replaced by the
+    fixed notice so it cannot claim the failed step happened.
     """
     answer = (content or "").strip()
     unresolved: list[_Failure] = []
@@ -200,10 +201,14 @@ def _final_answer(
 
 
 def _unknown_notes(failures: list[_Failure], succeeded: set[str], texts: dict) -> list[str]:
-    """One "check {App}" note per toolkit with a call whose outcome is unknown."""
+    """One "check {App}" note per toolkit with a call whose outcome is unknown.
+
+    Never cleared by a later success of the same tool: the timed-out call may have gone
+    through as well (a duplicate), so the user must still check the app.
+    """
     notes: list[str] = []
     for failure in failures:
-        if not failure.unknown or failure.tool in succeeded:
+        if not failure.unknown:
             continue
         note = texts["unknown"].format(toolkit=_toolkit_label(failure.toolkit))
         if note not in notes:
