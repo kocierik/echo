@@ -54,11 +54,13 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 ### App mobile
 - Onboarding a 4 step (server/API key → permessi → pairing → fine): server e chiave precompilabili in build
   (`--dart-define-from-file`), pairing saltabile e da fare dopo in Settings → Device.
-- Tab Today / Transcripts / Ask + Settings (Device, Connection, Privacy, Automations, Diagnostics, About).
+- Tab Today / Memories / Tasks / Ask + Settings (Device, Connection, Privacy, Automations, Diagnostics, About).
+- **Memories:** conversazioni per giorno (emoji, titolo, riassunto, persone, task, "Live"), ricerca sul server,
+  dettaglio con Summary (task con la frase d'origine, eventi, idee) e Transcript correggibile.
+- **Tasks:** task aperti per scadenza, completamento con Annulla, "Not a task", conversazione d'origine.
 - **Today:** stato wearable, ultima trascrizione, **task aperti (completabili)**, **riassunto del giorno**, pausa/ripresa.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
-- Transcript raggruppati per giorno con ricerca, correzione testo/speaker, eliminazione conversazione.
 - Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown; **schede Confirm/Cancel** per le
   azioni da confermare; conversazione **Voice requests** fissata in cima allo storico.
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).

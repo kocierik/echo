@@ -44,7 +44,12 @@ Settings → Device → **Pair Echo**.
 ## Features
 
 - **Today:** wearable status, latest transcripts, open tasks, daily summary, pause/resume.
-- **Transcripts:** grouped by day, searchable; edit text and speaker, delete a conversation.
+- **Memories:** conversations by day with emoji, title, summary, people and tasks (Live while
+  Echo is still listening); search across titles, summaries, transcripts and extracted entities.
+  The detail has a Summary (tasks with the sentence they came from, events, ideas) and the
+  Transcript, each line correctable; delete a conversation from its menu.
+- **Tasks:** open tasks by due day (Overdue, Today, Tomorrow, This week, Later, No date), complete
+  with Undo, **Not a task** to drop a wrong one, open the conversation it came from; Done below.
 - **Ask:** chat with your memory (text or voice), follow-ups, resumable history, feedback;
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
@@ -61,8 +66,8 @@ lib/
 ├── main.dart          # App entry, router, onboarding gate
 ├── models/            # View state, chat, segments, device status
 ├── services/          # API client, BLE relay/protocol, controllers, notifications
-├── screens/           # Today (home), Transcripts, Ask (chat), Settings, onboarding
-├── widgets/           # Shell, navigation, status strip, message bubble, ...
+├── screens/           # Today (home), Memories + conversation detail, Tasks, Ask (chat), Settings, onboarding
+├── widgets/           # Shell, navigation, status strip, conversation card, task tile, shared sections, formatting
 └── theme/             # Adaptive light/dark theme
 ```
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/app_view_state.dart';
 import '../models/device_status.dart';
 import '../theme/app_theme.dart';
 import 'device_status_strip.dart';
@@ -14,8 +15,8 @@ final class EchoAppShell extends StatelessWidget {
     required this.children,
     this.onStatusTap,
     super.key,
-  })  : assert(selectedIndex >= 0 && selectedIndex < 3),
-        assert(children.length == 3);
+  })  : assert(selectedIndex >= 0 && selectedIndex < AppViewState.tabCount),
+        assert(children.length == AppViewState.tabCount);
 
   final int selectedIndex;
   final DeviceStatus status;

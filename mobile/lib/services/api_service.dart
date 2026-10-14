@@ -9,10 +9,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/action_models.dart';
 import '../models/chat_session.dart';
+import '../models/memory.dart';
 import '../models/segment.dart';
+import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import 'api_exception.dart';
-import 'transcript_controller.dart';
 import 'voice_updates_service.dart';
 
 class QueryResponse {
@@ -62,6 +63,17 @@ abstract interface class ChatApi {
   });
   Future<ConfirmResult> confirmPendingAction(String id);
   Future<void> cancelPendingAction(String id);
+}
+
+/// What the Memories and Tasks screens read and change.
+abstract interface class MemoryApi {
+  Future<List<ConversationCard>> listConversations({int limit = 30, int offset = 0});
+  Future<ConversationDetail> getConversation(String id);
+  Future<MemorySearchResults> search(String query);
+  Future<List<TaskItem>> listTasks({required bool done, int limit = 200});
+  Future<void> setTaskDone(TaskItem task, bool done);
+  Future<void> deleteEntity(String id);
+  Future<void> deleteConversation(String conversationId);
 }
 
 abstract interface class TranscriptMemoryApi {
@@ -177,7 +189,11 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
 }
 
 class ApiService
-    implements ChatApi, TranscriptApi, TranscriptMemoryApi, VoiceUpdatesApi {
+    implements
+        ChatApi,
+        MemoryApi,
+        TranscriptMemoryApi,
+        VoiceUpdatesApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -345,29 +361,80 @@ class ApiService
     return response.statusCode == 200;
   }
 
-  Future<List<Conversation>> getConversations() async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/conversations?limit=50'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
+  @override
+  Future<List<ConversationCard>> listConversations({
+    int limit = 30,
+    int offset = 0,
+  }) async {
+    final response = await _getJson('/api/conversations?limit=$limit&offset=$offset');
     return _parseDecoded(response.data, (data) {
-      final items =
-          (data as Map<String, dynamic>)['conversations'] as List<dynamic>;
+      final items = (data as Map<String, dynamic>)['conversations'] as List<dynamic>;
       return items
-          .map((item) => Conversation.fromJson(
-                item as Map<String, dynamic>,
-              ))
+          .map((item) => ConversationCard.fromJson(item as Map<String, dynamic>))
           .toList();
     });
   }
 
   @override
+  Future<ConversationDetail> getConversation(String id) async {
+    final response = await _getJson('/api/conversations/${Uri.encodeComponent(id)}');
+    return _parseDecoded(
+      response.data,
+      (data) => ConversationDetail.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<MemorySearchResults> search(String query) async {
+    final q = Uri.encodeQueryComponent(query.trim());
+    final response = await _getJson('/api/search?q=$q');
+    return _parseDecoded(
+      response.data,
+      (data) => MemorySearchResults.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<List<TaskItem>> listTasks({required bool done, int limit = 200}) async {
+    final response = await _getJson('/api/entities/tasks?done=$done&limit=$limit');
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['entities'] as List<dynamic>;
+      return items
+          .map((item) => TaskItem.fromJson(item as Map<String, dynamic>))
+          .where((task) => task.name.isNotEmpty)
+          .toList();
+    });
+  }
+
+  @override
+  Future<void> setTaskDone(TaskItem task, bool done) {
+    return updateEntity(task.id, metadata: task.metadataWithDone(done));
+  }
+
+  @override
+  Future<void> deleteEntity(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(
+        Uri.parse('$server/api/entities/${Uri.encodeComponent(id)}'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
+  }
+
+  Future<_ApiResponse> _getJson(String path) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    return _send(
+      () => _client.get(Uri.parse('$server$path'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+  }
+
   Future<List<RecentSegment>> getRecentSegments({int limit = 50}) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
@@ -416,23 +483,6 @@ class ApiService
     );
   }
 
-  Future<ConversationDetail?> getConversationDetail(String id) async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/conversations/$id'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
-    return _parseDecoded(
-      response.data,
-      (data) => ConversationDetail.fromJson(data as Map<String, dynamic>),
-    );
-  }
-
   @override
   Future<void> deleteConversation(String id) async {
     final server = await _credentialStore.serverUrl;
@@ -472,49 +522,19 @@ class ApiService
     return response.data as Map<String, dynamic>;
   }
 
-  Future<List<Map<String, dynamic>>> getTasks({bool? done}) async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    var url = '$server/api/entities?entity_type=task&limit=8';
-    if (done != null) url += '&done=$done';
-    final response = await _send(
-      () => _client.get(Uri.parse(url), headers: headers),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
-    return _parseDecoded(response.data, (data) {
-      final rawTasks =
-          (data as Map<String, dynamic>)['entities'] as List<dynamic>;
-      final tasks = rawTasks
-          .map((item) => item as Map<String, dynamic>)
-          .toList();
-      final cutoff = DateTime.now().subtract(const Duration(days: 3));
-      return tasks.where((task) {
-        final metadata = task['metadata_'];
-        final isDone =
-            metadata is Map<String, dynamic> && metadata['done'] == true;
-        if (isDone) return false;
-        final createdAt = task['created_at'];
-        if (createdAt != null && createdAt is! String) {
-          throw const FormatException('created_at must be a string');
-        }
-        final created = DateTime.tryParse(createdAt as String? ?? '');
-        return created == null || created.isAfter(cutoff);
-      }).toList();
-    });
-  }
-
-  /// Open (not done) recent tasks for Today.
-  Future<List<OpenTask>> getOpenTasks() async {
-    final tasks = await getTasks();
-    return tasks
-        .map(OpenTask.fromJson)
-        .where((task) => task.name.isNotEmpty)
-        .toList();
+  /// Open tasks created in the last three days, newest first, for Today.
+  Future<List<TaskItem>> getOpenTasks() async {
+    final tasks = await listTasks(done: false, limit: 20);
+    final cutoff = DateTime.now().subtract(const Duration(days: 3));
+    return tasks.where((task) {
+      if (task.done) return false;
+      final created = task.createdAt;
+      return created == null || created.isAfter(cutoff);
+    }).toList();
   }
 
   /// Mark a task done, keeping the rest of its metadata.
-  Future<void> completeTask(OpenTask task) {
+  Future<void> completeTask(TaskItem task) {
     return updateEntity(task.id, metadata: task.completedMetadata);
   }
 
@@ -928,92 +948,4 @@ final class _UploadResponse {
 
   final int statusCode;
   final String body;
-}
-
-
-class Conversation {
-  final String id;
-  final String title;
-  final String? summary;
-  final String startedAt;
-  final int segmentCount;
-  final String analysisStatus;
-
-  Conversation({
-    required this.id,
-    required this.title,
-    this.summary,
-    required this.startedAt,
-    required this.segmentCount,
-    required this.analysisStatus,
-  });
-
-  factory Conversation.fromJson(Map<String, dynamic> json) {
-    return Conversation(
-      id: json['id'] ?? '',
-      title: json['title'] ?? 'Untitled',
-      summary: json['summary'],
-      startedAt: json['started_at'] ?? '',
-      segmentCount: json['segment_count'] ?? 0,
-      analysisStatus: json['analysis_status'] ?? 'pending',
-    );
-  }
-}
-
-class EntityItem {
-  final String id;
-  final String type;
-  final String name;
-  final String? content;
-
-  EntityItem({required this.id, required this.type, required this.name, this.content});
-
-  factory EntityItem.fromJson(Map<String, dynamic> json) {
-    return EntityItem(
-      id: json['id'] ?? '',
-      type: json['entity_type'] ?? 'note',
-      name: json['name'] ?? '',
-      content: json['content'],
-    );
-  }
-}
-
-class TranscriptEntry {
-  final String text;
-  final String recordedAt;
-
-  TranscriptEntry({required this.text, required this.recordedAt});
-
-  factory TranscriptEntry.fromJson(Map<String, dynamic> json) {
-    return TranscriptEntry(
-      text: json['text'] ?? '',
-      recordedAt: json['recorded_at'] ?? '',
-    );
-  }
-}
-
-class ConversationDetail {
-  final String id;
-  final String title;
-  final String summary;
-  final List<EntityItem> entities;
-  final List<TranscriptEntry> transcriptions;
-
-  ConversationDetail({
-    required this.id,
-    required this.title,
-    required this.summary,
-    required this.entities,
-    required this.transcriptions,
-  });
-
-  factory ConversationDetail.fromJson(Map<String, dynamic> json) {
-    return ConversationDetail(
-      id: json['id'] ?? '',
-      title: json['title'] ?? 'Conversation',
-      summary: json['summary'] ?? '',
-      entities: (json['entities'] as List? ?? []).map((e) => EntityItem.fromJson(e)).toList(),
-      transcriptions: (json['transcriptions'] as List? ?? []).map((e) => TranscriptEntry.fromJson(e)).toList(),
-    );
-  }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import '../theme/app_theme.dart';
+import 'sections.dart';
 
 /// Today's "Open tasks" section: up to [maxVisible] tasks, each completable.
 final class TodayTasksSection extends StatelessWidget {
@@ -17,11 +19,11 @@ final class TodayTasksSection extends StatelessWidget {
   });
 
   final bool loading;
-  final List<OpenTask> tasks;
+  final List<TaskItem> tasks;
   final String? error;
   final Set<String> completingIds;
   final VoidCallback onRetry;
-  final void Function(OpenTask task) onComplete;
+  final void Function(TaskItem task) onComplete;
   final int maxVisible;
 
   @override
@@ -31,21 +33,21 @@ final class TodayTasksSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        SectionHeader(
           title: 'Open tasks',
           trailing: hidden > 0 ? '+$hidden more' : null,
         ),
         Divider(color: palette.border),
         if (loading)
-          const _SectionLoading(key: Key('tasks-loading'), label: 'Loading open tasks')
+          const SectionLoading(key: Key('tasks-loading'), label: 'Loading open tasks')
         else if (error != null)
-          _SectionError(
+          SectionError(
             message: error!,
             retryKey: const Key('tasks-retry'),
             onRetry: onRetry,
           )
         else if (tasks.isEmpty)
-          const _SectionEmpty(message: 'No open tasks.')
+          const SectionEmpty(message: 'No open tasks.')
         else
           for (final task in tasks.take(maxVisible))
             _TaskRow(
@@ -84,21 +86,21 @@ final class TodaySummarySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SectionHeader(
+        SectionHeader(
           title: 'Daily summary',
           trailing: digest == null ? null : _dayLabel(digest.date, today ?? DateTime.now()),
         ),
         Divider(color: palette.border),
         if (loading)
-          const _SectionLoading(key: Key('summary-loading'), label: 'Loading daily summary')
+          const SectionLoading(key: Key('summary-loading'), label: 'Loading daily summary')
         else if (error != null)
-          _SectionError(
+          SectionError(
             message: error!,
             retryKey: const Key('summary-retry'),
             onRetry: onRetry,
           )
         else if (digest == null)
-          const _SectionEmpty(
+          const SectionEmpty(
             message: 'No summary yet. Echo writes one each night for the day before.',
           )
         else
@@ -124,7 +126,7 @@ final class _TaskRow extends StatelessWidget {
     required this.onComplete,
   });
 
-  final OpenTask task;
+  final TaskItem task;
   final bool completing;
   final VoidCallback onComplete;
 
@@ -169,117 +171,6 @@ final class _TaskRow extends StatelessWidget {
           ),
         ],
       ],
-    );
-  }
-}
-
-final class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.trailing});
-
-  final String title;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 44,
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-          ),
-          if (trailing != null)
-            Text(
-              trailing!,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: EchoPalette.of(context).text2,
-                  ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-final class _SectionLoading extends StatelessWidget {
-  const _SectionLoading({required this.label, super.key});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    return Semantics(
-      liveRegion: true,
-      label: label,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: LinearProgressIndicator(
-          minHeight: 2,
-          color: palette.blue,
-          backgroundColor: palette.surface2,
-        ),
-      ),
-    );
-  }
-}
-
-final class _SectionError extends StatelessWidget {
-  const _SectionError({
-    required this.message,
-    required this.retryKey,
-    required this.onRetry,
-  });
-
-  final String message;
-  final Key retryKey;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      label: message,
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: EchoPalette.of(context).text2,
-                  ),
-            ),
-          ),
-          SizedBox(
-            height: 44,
-            child: TextButton.icon(
-              key: retryKey,
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Retry'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-final class _SectionEmpty extends StatelessWidget {
-  const _SectionEmpty({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text(
-        message,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: EchoPalette.of(context).text2,
-            ),
-      ),
     );
   }
 }

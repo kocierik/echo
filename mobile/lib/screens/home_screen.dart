@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../models/device_status.dart';
 import '../models/segment.dart';
+import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -14,9 +15,9 @@ import '../widgets/today_memory_preview.dart';
 import 'transcript_detail_screen.dart';
 
 typedef LatestMemoryLoader = Future<List<RecentSegment>> Function();
-typedef OpenTasksLoader = Future<List<OpenTask>> Function();
+typedef OpenTasksLoader = Future<List<TaskItem>> Function();
 typedef DailySummaryLoader = Future<DailySummary?> Function();
-typedef TaskCompleter = Future<void> Function(OpenTask task);
+typedef TaskCompleter = Future<void> Function(TaskItem task);
 
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -67,7 +68,7 @@ final class _HomeScreenState extends State<HomeScreen> {
   bool _privacyBusy = false;
   bool? _requestedMuted;
   int _loadGeneration = 0;
-  List<OpenTask> _tasks = const [];
+  List<TaskItem> _tasks = const [];
   final Set<String> _completingTaskIds = {};
   String? _tasksError;
   bool _tasksLoading = true;
@@ -197,7 +198,7 @@ final class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _completeTask(OpenTask task) async {
+  Future<void> _completeTask(TaskItem task) async {
     if (_completingTaskIds.contains(task.id)) return;
     setState(() => _completingTaskIds.add(task.id));
     try {

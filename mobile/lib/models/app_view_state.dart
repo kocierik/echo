@@ -9,7 +9,10 @@ final class AppViewState {
     required this.device,
     this.themePreference = ThemePreference.system,
     this.selectedTab = 0,
-  }) : assert(selectedTab >= 0 && selectedTab <= 2);
+  }) : assert(selectedTab >= 0 && selectedTab < tabCount);
+
+  /// Today, Memories, Tasks, Ask.
+  static const tabCount = 4;
 
   final SessionState session;
   final DeviceStatus device;

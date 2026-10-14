@@ -44,13 +44,13 @@ void main() {
 
   test('restores a valid theme and selected tab', () async {
     preferences.values[AppController.themePreferenceKey] = 'dark';
-    preferences.values[AppController.selectedTabKey] = 2;
+    preferences.values[AppController.selectedTabKey] = AppController.askTab;
 
     controller = await createController();
 
     expect(controller.value.themePreference, ThemePreference.dark);
     expect(controller.themeMode, ThemeMode.dark);
-    expect(controller.value.selectedTab, 2);
+    expect(controller.value.selectedTab, AppController.askTab);
   });
 
   test('invalid restored values fall back to system and the first tab',
@@ -104,7 +104,7 @@ void main() {
       'light',
     );
     expect(preferences.values[AppController.selectedTabKey], 1);
-    expect(() => controller.setSelectedTab(3), throwsRangeError);
+    expect(() => controller.setSelectedTab(AppController.tabCount), throwsRangeError);
   });
 
   test('initialize is idempotent and subscribes to each stream once',
@@ -131,7 +131,7 @@ void main() {
 
       expect(controller.pendingChatSessionId.value, 'session-7');
       expect(controller.value.selectedTab, AppController.askTab);
-      expect(preferences.values[AppController.selectedTabKey], 2);
+      expect(preferences.values[AppController.selectedTabKey], AppController.askTab);
     });
 
     test('a voice payload without a session only selects Ask', () async {
@@ -141,7 +141,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       expect(controller.pendingChatSessionId.value, isNull);
-      expect(controller.value.selectedTab, 2);
+      expect(controller.value.selectedTab, AppController.askTab);
     });
 
     test('other payloads are ignored', () async {

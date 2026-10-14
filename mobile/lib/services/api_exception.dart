@@ -17,3 +17,10 @@ final class ApiException implements Exception {
     return 'ApiException(code: $code$status, retryable: $retryable): $message';
   }
 }
+/// A message to show for [error]: the server's own for API errors, otherwise
+/// the error text, or [fallback] when there is none.
+String userMessage(Object error, String fallback) {
+  if (error is ApiException) return error.message;
+  final message = error.toString().replaceFirst('Exception: ', '').trim();
+  return message.isEmpty ? fallback : message;
+}

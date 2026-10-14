@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/segment.dart';
+import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
@@ -232,7 +233,7 @@ void main() {
   });
 
   testWidgets('open tasks show loading then empty state', (tester) async {
-    final pending = Completer<List<OpenTask>>();
+    final pending = Completer<List<TaskItem>>();
     await _pumpToday(tester, openTasksLoader: () => pending.future);
     expect(find.byKey(const Key('tasks-loading')), findsOneWidget);
 
@@ -248,7 +249,7 @@ void main() {
       openTasksLoader: () async {
         attempts++;
         if (attempts == 1) throw StateError('offline');
-        return const [OpenTask(id: 't1', name: 'Call Ada')];
+        return const [TaskItem(id: 't1', name: 'Call Ada')];
       },
     );
     await tester.pump();
@@ -266,7 +267,7 @@ void main() {
     await _pumpToday(
       tester,
       openTasksLoader: () async => [
-        for (var i = 1; i <= 5; i++) OpenTask(id: 't$i', name: 'Task $i'),
+        for (var i = 1; i <= 5; i++) TaskItem(id: 't$i', name: 'Task $i'),
       ],
     );
     await tester.pump();
@@ -285,8 +286,8 @@ void main() {
     await _pumpToday(
       tester,
       openTasksLoader: () async => const [
-        OpenTask(id: 't1', name: 'Call Ada'),
-        OpenTask(id: 't2', name: 'Book flights'),
+        TaskItem(id: 't1', name: 'Call Ada'),
+        TaskItem(id: 't2', name: 'Book flights'),
       ],
       taskCompleter: (task) {
         completed.add(task.id);
@@ -312,7 +313,7 @@ void main() {
   ) async {
     await _pumpToday(
       tester,
-      openTasksLoader: () async => const [OpenTask(id: 't1', name: 'Call Ada')],
+      openTasksLoader: () async => const [TaskItem(id: 't1', name: 'Call Ada')],
       taskCompleter: (_) async => throw StateError('offline'),
     );
     await tester.pump();
@@ -378,7 +379,7 @@ void main() {
         textScale: 1.3,
         openTasksLoader: () async => [
           for (var i = 1; i <= 4; i++)
-            OpenTask(
+            TaskItem(
               id: 't$i',
               name: 'A fairly long task name number $i to wrap',
               dueDate: DateTime(2026, 10, 14),
@@ -403,9 +404,9 @@ Future<void> _pumpToday(
   Future<void> Function(bool)? setMuted,
   Future<void> Function()? onReconnect,
   Future<List<RecentSegment>> Function()? latestMemoryLoader,
-  Future<List<OpenTask>> Function()? openTasksLoader,
+  Future<List<TaskItem>> Function()? openTasksLoader,
   Future<DailySummary?> Function()? dailySummaryLoader,
-  Future<void> Function(OpenTask task)? taskCompleter,
+  Future<void> Function(TaskItem task)? taskCompleter,
   Stream<Object?>? segmentUploadedStream,
   ThemeData? theme,
   Size size = const Size(375, 812),

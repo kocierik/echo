@@ -26,8 +26,14 @@ final class AppController extends ValueNotifier<AppViewState> {
         ));
 
   static const themePreferenceKey = 'echo_theme_mode';
-  static const selectedTabKey = 'echo_selected_tab';
-  static const askTab = 2;
+  // v2: four tabs since Memories and Tasks replaced Transcripts (an old index 2
+  // meant Ask and would now open Tasks)
+  static const selectedTabKey = 'echo_selected_tab_v2';
+  static const todayTab = 0;
+  static const memoriesTab = 1;
+  static const tasksTab = 2;
+  static const askTab = 3;
+  static const tabCount = AppViewState.tabCount;
 
   /// A chat session the Ask tab should open (e.g. from a notification tap).
   /// The chat screen loads it and sets it back to null.
@@ -82,8 +88,8 @@ final class AppController extends ValueNotifier<AppViewState> {
 
   Future<void> setSelectedTab(int selectedTab) async {
     _ensureActive();
-    if (selectedTab < 0 || selectedTab > 2) {
-      throw RangeError.range(selectedTab, 0, 2, 'selectedTab');
+    if (selectedTab < 0 || selectedTab >= tabCount) {
+      throw RangeError.range(selectedTab, 0, tabCount - 1, 'selectedTab');
     }
     if (value.selectedTab != selectedTab) {
       value = value.copyWith(selectedTab: selectedTab);
@@ -130,7 +136,9 @@ final class AppController extends ValueNotifier<AppViewState> {
   }
 
   int _readSelectedTab(int? storedValue) {
-    if (storedValue == null || storedValue < 0 || storedValue > 2) return 0;
+    if (storedValue == null || storedValue < 0 || storedValue >= tabCount) {
+      return todayTab;
+    }
     return storedValue;
   }
 
