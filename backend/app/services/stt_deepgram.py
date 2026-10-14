@@ -69,8 +69,3 @@ class DeepgramSTTService(STTService):
             language=language,
             confidence=best.get("confidence"),
         )
-
-
-def get_deepgram_service() -> STTService:
-    """Factory function for Deepgram STT service."""
-    return DeepgramSTTService()

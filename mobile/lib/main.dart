@@ -7,7 +7,7 @@ import 'models/app_view_state.dart';
 import 'models/device_status.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
-import 'screens/onboarding_screen.dart';
+import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/transcripts_screen.dart';
 import 'services/api_service.dart';
