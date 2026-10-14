@@ -3,8 +3,9 @@
 The STT worker pushes the id of each segment where `find_wake` hits onto `queue:voice`.
 Every POLL_INTERVAL_S this loop takes the queued ids (oldest first): items whose command
 is still being spoken or transcribed go back to the queue; ready ones are confirmed with
-the cheap LLM, answered by the action agent (or from memory when no app is connected)
-and appended, question and answer with ISO timestamps, to the user's voice session.
+the cheap LLM, routed by the same intent check as chat (memory, a fixed "not connected"
+or "unreachable" answer, or the action agent) and appended, question and answer with ISO
+timestamps, to the user's voice session.
 
 If answering fails once the request is confirmed, the transaction is rolled back, the
 audit rows of tools that already ran are written again and the user gets a short
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
-from app.actions.availability import availability_notice
+from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.voice import (
@@ -143,19 +144,19 @@ async def _answer(
         provider = get_action_provider()
     except ActionProviderError:
         logger.info("[Voice] Action provider not configured; answering from memory")
-    if provider is not None:
-        # Every confirmed voice request counts as a possible tool request
-        reachable: list[str] | None = None
-        try:
-            connected = await provider.connected_toolkits(str(user_id))
-            reachable = connected
-        except ActionProviderError:
-            logger.warning("[Voice] Action provider unreachable", exc_info=True)
-        notice = await availability_notice(llm, command, history, reachable)
-        if notice is not None:
-            return notice, {"actions": True}
-
-    if not connected:
+    if provider is None:
+        return await _memory_answer(db, user_id, command, history, llm), {}
+    # Every confirmed voice request goes through the same intent check as chat
+    reachable: list[str] | None = None
+    try:
+        connected = await provider.connected_toolkits(str(user_id))
+        reachable = connected
+    except ActionProviderError:
+        logger.warning("[Voice] Action provider unreachable", exc_info=True)
+    route = await route_request(llm, command, history, reachable)
+    if route.kind == "notice":
+        return route.notice, {"actions": True}
+    if route.kind == "memory":
         return await _memory_answer(db, user_id, command, history, llm), {}
 
     outcome = await run_action_agent(

@@ -394,24 +394,42 @@ class _Redis:
             self.keys.pop(key, None)
 
 
+# Words a model would read as a request on that app (only for the fake below).
+_APP_WORDS = (
+    ("gmail", ("mail",)),
+    ("googlecalendar", ("calendar", "calendario", "agenda", "evento")),
+    ("slack", ("slack",)),
+)
+_NEEDS_GMAIL = {"needs_apps": True, "apps": ["gmail"]}
+_NOT_NEEDED = {"needs_apps": False, "apps": []}
+
+
 class _AnswerLLM(MockLLMService):
-    """Cheap LLM (assistant check) and query LLM (RAG answer) in one fake."""
+    """Cheap LLM (assistant check), intent check (H1) and query LLM (RAG) in one fake.
+
+    `intent` is the intent-check JSON; "error" raises; None answers like a model would
+    for a clear request: the apps whose words appear in the command.
+    """
 
     def __init__(self, is_request=True, answer="Risposta dalla memoria"):
         super().__init__(default_response=answer)
         self.is_request = is_request
-        self.needs_app = True  # answer of the named-app check (G2)
-        self.app_checks = 0
+        self.intent = None
+        self.intent_checks = 0
         self.json_calls = 0
 
     async def complete_json(self, messages, temperature=0.1):
         self.json_calls += 1
         self.call_log.append(messages)
-        if '"needs_app"' in messages[0].content:
-            self.app_checks += 1
-            if self.needs_app == "error":
+        if '"needs_apps"' in messages[0].content:
+            self.intent_checks += 1
+            if self.intent == "error":
                 raise RuntimeError("llm down")
-            return {"needs_app": self.needs_app}
+            if self.intent is not None:
+                return self.intent
+            text = messages[-1].content.lower()
+            apps = [slug for slug, words in _APP_WORDS if any(w in text for w in words)]
+            return {"needs_apps": bool(apps), "apps": apps}
         return {"assistant_request": self.is_request}
 
 
@@ -522,6 +540,7 @@ async def test_worker_stores_the_pending_action_like_chat(worker):
         id=uuid.uuid4(), summary="GMAIL_SEND_EMAIL: to=ada@example.com", status="pending"
     )
     worker.outcome = AgentOutcome(answer="Conferma nell'app.", pending_action=pending)
+    worker.llm.intent = _NEEDS_GMAIL
     wake = _seg("Echo, scrivi ad Ada che arrivo tardi")
     _ready(worker, wake)
 
@@ -542,6 +561,7 @@ async def test_worker_appends_to_one_voice_session_with_recent_history(worker):
     second = _seg("Echo, rispondi a Marco", 60.0)
     _ready(worker, first, second)
     redis = _Redis()
+    worker.llm.intent = _NEEDS_GMAIL
 
     await vr.handle_voice_item(redis, str(first.id))
     await vr.handle_voice_item(redis, str(second.id))
@@ -634,6 +654,8 @@ async def test_worker_failure_keeps_executed_audit_rows_and_tells_the_user(worke
         raise RuntimeError("LLM down in step 2")
 
     monkeypatch.setattr(vr, "run_action_agent", create_then_fail)
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    worker.llm.intent = {"needs_apps": True, "apps": ["todoist"]}
     wake = _seg("[You] Echo, crea un task per comprare il latte")
     _ready(worker, wake)
     redis = _Redis()
@@ -948,60 +970,73 @@ async def test_worker_named_app_with_nothing_connected(worker):
     )
 
 
-# --- G2: "{App} isn't connected" only when the request really needs the app -------------
+# --- H1: the voice path uses the same single intent check and routing ------------------
 
 
 @pytest.mark.asyncio
-async def test_worker_agenda_question_without_calendar_is_answered_from_memory(worker):
-    worker.provider = FakeActionProvider(connected=set())
-    worker.llm.needs_app = False
-    wake = _seg("Echo, cosa c'era in agenda alla riunione di ieri?")
+async def test_worker_memory_question_with_an_app_word_is_one_check_then_rag(worker):
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    worker.llm.intent = _NOT_NEEDED
+    wake = _seg("Echo, cosa c'era in agenda ieri?")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
-    assert worker.llm.app_checks == 1
+    assert worker.llm.intent_checks == 1
+    assert worker.llm.json_calls == 2  # the assistant check, then the one intent check
     assert worker.agent_calls == [] and len(worker.rag_calls) == 1
     assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"
 
 
 @pytest.mark.asyncio
-async def test_worker_agenda_question_with_other_apps_goes_on_to_the_agent(worker):
+async def test_worker_memory_question_with_apps_connected_no_longer_runs_the_agent(worker):
     worker.provider = FakeActionProvider(connected={"gmail"})
-    worker.llm.needs_app = False
+    worker.llm.intent = _NOT_NEEDED
     wake = _seg("Echo, cosa c'era in agenda alla riunione di ieri?")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
-    assert worker.llm.app_checks == 1
-    assert len(worker.agent_calls) == 1  # voice runs the agent whenever an app is connected
+    assert worker.agent_calls == [] and len(worker.rag_calls) == 1
 
 
 @pytest.mark.asyncio
-async def test_worker_calendar_request_without_calendar_says_so(worker):
-    worker.provider = FakeActionProvider(connected={"gmail"})
-    wake = _seg("Echo, aggiungi un evento domani alle 10")
+async def test_worker_calendar_request_with_only_todoist_says_calendar_is_missing(worker):
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    wake = _seg("Echo, aggiungi il dentista al calendario")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
     assert worker.agent_calls == [] and worker.rag_calls == []
-    assert _voice_session(worker).messages[-1]["content"] == (
+    assert worker.llm.intent_checks == 1
+    answer = _voice_session(worker).messages[-1]
+    assert answer["content"] == (
         "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
     )
+    assert answer["actions"] is True
 
 
 @pytest.mark.asyncio
-async def test_worker_app_check_error_means_memory_answer(worker):
-    worker.provider = FakeActionProvider(connected=set())
-    worker.llm.needs_app = "error"
-    wake = _seg("Echo, aggiungi un evento domani alle 10")
+async def test_worker_gmail_request_with_gmail_connected_goes_to_the_agent(worker):
+    wake = _seg("Echo, leggimi le ultime mail")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
-    assert len(worker.rag_calls) == 1
+    assert len(worker.agent_calls) == 1 and worker.rag_calls == []
+    assert worker.llm.intent_checks == 1
+
+
+@pytest.mark.asyncio
+async def test_worker_intent_check_error_means_memory_answer(worker):
+    worker.llm.intent = "error"
+    wake = _seg("Echo, leggimi le ultime mail")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and len(worker.rag_calls) == 1
     assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"
 
 
@@ -1012,12 +1047,23 @@ async def test_worker_unreachable_apps_but_memory_question_uses_memory(worker):
             raise ActionProviderError("Composio request timed out")
 
     worker.provider = Down()
-    worker.llm.needs_app = False
+    worker.llm.intent = _NOT_NEEDED
     wake = _seg("Echo, cosa mi ha detto Marco ieri?")
     _ready(worker, wake)
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
-    assert worker.llm.app_checks == 1
+    assert worker.llm.intent_checks == 1
     assert worker.agent_calls == [] and len(worker.rag_calls) == 1
     assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"
+
+
+@pytest.mark.asyncio
+async def test_worker_not_configured_skips_the_intent_check(worker):
+    worker.provider_error = ActionProviderError("Composio is not configured")
+    wake = _seg("Echo, leggimi le ultime mail")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.llm.intent_checks == 0 and len(worker.rag_calls) == 1

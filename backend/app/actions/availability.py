@@ -1,14 +1,15 @@
-"""Fixed answers when a tool request cannot reach the app it names.
+"""One intent check routes a possible app request: memory, a fixed answer, or the agent.
 
-Used by chat (requests that match the tool hint) and voice (every confirmed request)
-before the intent check: a request about Gmail must not be answered from memory as if
-Echo had looked, when Composio is down or Gmail is not connected. A word like "agenda"
-alone does not make a request about the app: one LLM check decides whether the request
-needs the app now; if not, it is answered from memory as usual.
+Used by chat (requests that match the tool hint) and voice (every confirmed request).
+A single LLM call says whether the request needs apps right now and which ones; from
+that one answer the request is answered from memory, gets a fixed answer (the app it
+needs is not connected, or the connected apps could not be reached), or goes to the
+action agent. A request for an app that is not connected is never routed to another app,
+and a word like "agenda" alone does not make a request about the calendar.
 """
 
 import logging
-import re
+from dataclasses import dataclass, field
 
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
@@ -23,19 +24,6 @@ APP_NAMES = {
     "todoist": "Todoist",
     "notion": "Notion",
 }
-
-# Words that name an initial toolkit (whole words, IT + EN).
-_NAMED = (
-    ("gmail", re.compile(r"\b(?:gmail|e-?mails?|mails?|posta)\b", re.IGNORECASE)),
-    (
-        "googlecalendar",
-        re.compile(r"\b(?:calendars?|calendario|calendari|agenda|evento|eventi)\b", re.IGNORECASE),
-    ),
-    ("slack", re.compile(r"\bslack\b", re.IGNORECASE)),
-    ("telegram", re.compile(r"\btelegram\b", re.IGNORECASE)),
-    ("todoist", re.compile(r"\btodoist\b", re.IGNORECASE)),
-    ("notion", re.compile(r"\bnotion\b", re.IGNORECASE)),
-)
 
 TEXTS = {
     "en": {
@@ -54,74 +42,124 @@ TEXTS = {
     },
 }
 
+HISTORY_MESSAGES = 6
 
-def named_toolkits(text: str) -> list[str]:
-    """Initial toolkits the request names, in a fixed order."""
-    return [slug for slug, pattern in _NAMED if pattern.search(text or "")]
+INTENT_PROMPT = """You route requests for a personal assistant called Echo. Echo can \
+answer from its memory of the user's recorded conversations, or read and act on the \
+user's apps (list, search, create, send, update or delete something there).
+{apps}
+Decide whether this request needs Echo to read or change something in an app right now, \
+and which apps (by slug, from the lists above). A request about what was said, decided \
+or planned in the user's past conversations is answered from memory and needs no app, \
+even when it mentions an agenda, a meeting, an email or a task. Use the recent \
+conversation for follow-ups.
+Respond with ONLY a JSON object: {{"needs_apps": true, "apps": ["<slug>", ...]}} or \
+{{"needs_apps": false, "apps": []}}."""
+
+
+@dataclass
+class RequestIntent:
+    needs_apps: bool = False
+    apps: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Route:
+    """`kind` is "memory", "notice" (answer with `notice`) or "agent"."""
+
+    kind: str
+    notice: str | None = None
+
+
+def _label(slug: str, known_apps: dict[str, str]) -> str:
+    return f"{slug} ({known_apps[slug]})" if slug in known_apps else slug
+
+
+def _apps_section(connected: list[str] | None, known_apps: dict[str, str]) -> str:
+    if connected is None:
+        listed = ", ".join(_label(s, known_apps) for s in known_apps)
+        return (
+            "Which apps are connected could not be checked right now. Apps Echo can "
+            f"use: {listed}."
+        )
+    connected_text = ", ".join(_label(s, known_apps) for s in connected) or "none"
+    missing = [s for s in known_apps if s not in connected]
+    missing_text = ", ".join(_label(s, known_apps) for s in missing) or "none"
+    return (
+        f"Connected apps: {connected_text}.\n"
+        f"Apps Echo supports that are NOT connected: {missing_text}."
+    )
+
+
+def _parse_intent(
+    result, connected: list[str] | None, known_apps: dict[str, str]
+) -> RequestIntent:
+    if not isinstance(result, dict):
+        return RequestIntent()
+    needs, apps = result.get("needs_apps"), result.get("apps", [])
+    if needs is not True or not isinstance(apps, list):
+        return RequestIntent()
+    allowed = set(known_apps) | set(connected or [])
+    slugs: list[str] = []
+    for app in apps:
+        slug = app.strip().lower() if isinstance(app, str) else None
+        if slug in allowed and slug not in slugs:  # unknown names are dropped
+            slugs.append(slug)
+    return RequestIntent(needs_apps=True, apps=slugs)
+
+
+async def classify_request(
+    llm,
+    question: str,
+    history: list[dict],
+    connected: list[str] | None,
+    known_apps: dict[str, str],
+) -> RequestIntent:
+    """One LLM call: does the request need apps now, and which? Errors -> memory.
+
+    `connected` None means the connected list could not be fetched; the prompt then
+    lists every known app.
+    """
+    try:
+        prompt = INTENT_PROMPT.format(apps=_apps_section(connected, known_apps))
+        messages = [LLMMessage(role="system", content=prompt)]
+        for msg in history[-HISTORY_MESSAGES:]:
+            messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
+        messages.append(LLMMessage(role="user", content=question))
+        result = await llm.complete_json(messages, temperature=0.0)
+    except Exception:
+        logger.warning("Request intent check failed; answering from memory", exc_info=True)
+        return RequestIntent()
+    return _parse_intent(result, connected, known_apps)
 
 
 def unreachable_answer(request: str) -> str:
     return TEXTS[detect_language(request)]["unreachable"]
 
 
-def not_connected_answer(request: str, connected: list[str]) -> str | None:
-    """The "{App} isn't connected" answer when the request names an app that is not
-    connected; None otherwise."""
-    missing = _missing(request, connected)
-    if not missing:
-        return None
-    return TEXTS[detect_language(request)]["not_connected"].format(app=APP_NAMES[missing[0]])
+def not_connected_answer(request: str, slug: str) -> str:
+    app = APP_NAMES.get(slug, slug.title())
+    return TEXTS[detect_language(request)]["not_connected"].format(app=app)
 
 
-def _missing(request: str, connected: list[str]) -> list[str]:
-    return [slug for slug in named_toolkits(request) if slug not in set(connected)]
-
-
-NEEDS_APP_PROMPT = """You route requests for a personal assistant called Echo. Echo can \
-answer from its memory of the user's recorded conversations, or read and act on the \
-user's apps. Decide whether this request needs Echo to read or change something in \
-{apps} right now (list, search, create, send, update or delete there), or whether it \
-asks about what was said, decided or planned in the user's conversations and can be \
-answered from memory. Use the recent conversation for follow-ups.
-Respond with ONLY a JSON object: {{"needs_app": true}} or {{"needs_app": false}}."""
-
-
-async def needs_app(llm, request: str, history: list[dict], apps: str) -> bool:
-    """One LLM check: does the request need to read or act on `apps` now? Errors -> False."""
-    try:
-        messages = [LLMMessage(role="system", content=NEEDS_APP_PROMPT.format(apps=apps))]
-        for msg in history[-6:]:
-            messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
-        messages.append(LLMMessage(role="user", content=request))
-        result = await llm.complete_json(messages, temperature=0.0)
-        return isinstance(result, dict) and result.get("needs_app") is True
-    except Exception:
-        logger.warning("App intent check failed; answering from memory", exc_info=True)
-        return False
-
-
-async def availability_notice(
+async def route_request(
     llm, request: str, history: list[dict], connected: list[str] | None
-) -> str | None:
-    """The fixed answer for a request that needs an app Echo cannot use, or None.
+) -> Route:
+    """Where a possible app request goes, from one intent check.
 
-    `connected` None means the provider could not be reached. The answer is given only
-    when the LLM check says the request needs the app (or, unreachable, any app) now;
-    otherwise None and the caller answers as usual (from memory when nothing is usable).
+    `connected` None means Composio is configured but the connected list could not be
+    fetched. Not needed -> memory; unreachable and needed -> the "couldn't reach" text;
+    a needed app not connected -> "{App} isn't connected" (never another app); all
+    needed apps connected -> the agent (memory when nothing at all is connected).
     """
+    intent = await classify_request(llm, request, history, connected, APP_NAMES)
+    if not intent.needs_apps:
+        return Route("memory")
     if connected is None:
-        named = named_toolkits(request)
-        apps = (
-            " or ".join(APP_NAMES[s] for s in named)
-            if named
-            else f"one of the user's connected apps ({', '.join(APP_NAMES.values())}, ...)"
-        )
-        if await needs_app(llm, request, history, apps):
-            return unreachable_answer(request)
-        return None
-    missing = _missing(request, connected)
-    if not missing:
-        return None
-    if not await needs_app(llm, request, history, " or ".join(APP_NAMES[s] for s in missing)):
-        return None
-    return not_connected_answer(request, connected)
+        return Route("notice", unreachable_answer(request))
+    missing = [slug for slug in intent.apps if slug not in connected]
+    if missing:
+        return Route("notice", not_connected_answer(request, missing[0]))
+    if not connected:
+        return Route("memory")
+    return Route("agent")
