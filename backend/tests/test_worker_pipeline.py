@@ -15,6 +15,7 @@ from sqlalchemy.dialects import postgresql
 from app.models.entity import Entity
 from app.services.analysis_pipeline import (
     AnalysisPipeline,
+    ConversationSummary,
     extract_entities,
     generate_conversation_summary,
 )
@@ -212,7 +213,7 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
 
     async def fake_summary(_llm, _full_text):
         events.append("summary")
-        return "Titolo", "Riassunto"
+        return ConversationSummary("Titolo", "Riassunto", "💬")
 
     async def fake_consolidate(_db, entities, _user_id):
         events.append("consolidate")
@@ -346,13 +347,13 @@ async def test_generate_conversation_summary():
     """Test that conversation summary returns title and summary tuple."""
     llm = MockLLMService()
 
-    title, summary = await generate_conversation_summary(
+    result = await generate_conversation_summary(
         llm, "Oggi ho parlato con Marco della conferenza PyCon a Firenze."
     )
 
-    assert isinstance(title, str)
-    assert len(title) > 0
-    assert isinstance(summary, str)
+    assert isinstance(result.title, str)
+    assert len(result.title) > 0
+    assert isinstance(result.summary, str)
 
 
 @pytest.mark.asyncio
@@ -363,9 +364,25 @@ async def test_generate_conversation_summary_truncates_long_text():
     # Generate a very long text (10K chars)
     long_text = "Questa è una frase di test. " * 500
 
-    title, summary = await generate_conversation_summary(llm, long_text)
+    result = await generate_conversation_summary(llm, long_text)
 
-    assert isinstance(title, str)
-    assert isinstance(summary, str)
+    assert isinstance(result.title, str)
+    assert isinstance(result.summary, str)
     # Check LLM was called (verify truncation happened internally)
     assert len(llm.call_log) == 1
+
+
+@pytest.mark.parametrize(
+    ("emoji", "expected"),
+    [("🍝", "🍝"), (" 👩‍💻 ", "👩‍💻"), ("🇮🇹", "🇮🇹"), ("food", None), ("", None), (None, None),
+     ("🍝🍝🍝🍝🍝🍝🍝🍝🍝", None), (3, None)],
+)
+@pytest.mark.asyncio
+async def test_conversation_summary_keeps_only_a_real_emoji(emoji, expected):
+    class _EmojiLLM(MockLLMService):
+        async def complete_json(self, messages, **kwargs):
+            return {"title": "Lunch", "summary": "Pasta.", "emoji": emoji}
+
+    result = await generate_conversation_summary(_EmojiLLM(), "Pranzo con Ada")
+
+    assert result.emoji == expected

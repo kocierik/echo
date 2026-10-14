@@ -73,7 +73,7 @@ docker compose up --build
 ```
 
 This starts:
-- **API** on http://localhost:8000 (FastAPI + Web UI)
+- **API** on http://localhost:8000 (FastAPI; interactive docs at `/docs`)
 - **Worker** (STT, analysis, voice requests, reanalysis, conversation summaries, daily digest, audio retention)
 - **PostgreSQL** with pgvector on port 5432
 - **Redis** on port 6379
@@ -143,11 +143,6 @@ With `COMPOSIO_API_KEY` set, open **Settings → Automations → Integrations** 
 apps). You log in with the provider in the browser; Composio keeps the account tokens. See
 [Actions](#actions-composio).
 
-### 7. Web UI and admin
-
-- http://localhost:8000 — chat with your memory and browse conversations.
-- http://localhost:8000/admin.html — stats, health, dead letter queue with retry.
-
 ## Actions (Composio)
 
 **Apps.** Gmail, Google Calendar, Slack, Telegram (as a bot: messages sent to the bot and groups it
@@ -214,7 +209,6 @@ echo/
 │   │   ├── actions/      # Composio provider, tool policy, agent, confirmations, audit, voice
 │   │   └── workers/      # Worker entry, voice requests, reanalysis, summaries, digest, retention
 │   ├── alembic/          # Migrations
-│   ├── static/           # Web UI + admin dashboard
 │   └── tests/
 ├── scripts/deploy.sh     # make deploy
 └── simulator/            # Device simulator (Python)
@@ -255,9 +249,15 @@ All `/api` endpoints require the `X-API-Key` header.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
 
 ### Memory
-- `GET /api/conversations`, `GET /api/conversations/{id}`, `DELETE /api/conversations/{id}`
-  (deletes audio, Segments, transcriptions, chunks and conversation entities).
-- `GET /api/entities`, `/api/entities/stats`, `/api/entities/people`, `/api/entities/tasks`,
+- `GET /api/conversations?limit=&offset=&date_from=&date_to=` — newest first, with `emoji`,
+  `duration_s`, `is_open` (still capturing), up to three `people` and `task_count`.
+- `GET /api/conversations/{id}` — Segments in order (`segment_id`, `text`, `speaker_label`,
+  `status`, pending ones included) and the extracted entities with their `source_text`.
+- `DELETE /api/conversations/{id}` — deletes audio, Segments, transcriptions, chunks and
+  conversation entities.
+- `GET /api/search?q=` — conversations (title, summary, transcript) and entities (name, content).
+- `GET /api/entities`, `/api/entities/stats`, `/api/entities/people`,
+  `/api/entities/tasks?done=` (with `source_text`),
   `PATCH|DELETE /api/entities/{id}`, `POST /api/entities/{id}/merge`, `POST /api/entities/deduplicate`.
 - `GET /api/digest?days=7`, `GET /api/digest/{date}`, `POST /api/digest/{date}` — daily digests.
 
@@ -292,7 +292,7 @@ All `/api` endpoints require the `X-API-Key` header.
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |
 | `SPEAKER_ENERGY_THRESHOLD` | `0` | Fixed energy threshold instead of the percentile (`0` = automatic) |
 | `DEEPGRAM_API_KEY` / `DEEPGRAM_MODEL` | — / `nova-3` | With `STT_PROVIDER=deepgram` |
-| `CORS_ORIGINS` | `*` | Comma-separated origins allowed by the Web UI's API calls |
+| `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser |
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | Starts the tunnel service ([guide](docs/CLOUDFLARE-TUNNEL.md)) |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
 

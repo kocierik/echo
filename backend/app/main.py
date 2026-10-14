@@ -5,7 +5,6 @@ from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
@@ -25,6 +24,7 @@ from app.routers import (
     entities,
     feedback,
     query,
+    search,
     segments,
 )
 
@@ -89,7 +89,7 @@ async def correlation_id_middleware(request: Request, call_next):
 
     return response
 
-# API routes (must be before static mount)
+# API routes
 app.include_router(segments.router, prefix=settings.api_prefix)
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
@@ -99,6 +99,7 @@ app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
+app.include_router(search.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")
@@ -205,7 +206,3 @@ async def prometheus_metrics():
     from fastapi.responses import PlainTextResponse
 
     return PlainTextResponse(metrics.export(), media_type="text/plain")
-
-
-# Serve frontend static files (MUST be last — catches all unmatched routes)
-app.mount("/", StaticFiles(directory="static", html=True), name="static")

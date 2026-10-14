@@ -79,6 +79,7 @@ CREATE TABLE conversations (
     user_id UUID NOT NULL,
     title TEXT,
     summary TEXT,
+    emoji VARCHAR(16),                       -- Migration 009
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

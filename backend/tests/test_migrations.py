@@ -184,7 +184,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 9)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 10)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -283,6 +283,17 @@ def test_running_001_to_007_again_changes_nothing(monkeypatch):
         # 006 re-applies "audio_path nullable" every time: harmless, nothing is created
         assert [c for c in op.calls if c[0] != "alter_column"] == [], module.revision
     assert state.tables == before
+
+
+def test_migration_009_adds_the_conversation_emoji_once(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        _run(module, state, monkeypatch)
+    assert "emoji" in state.tables["conversations"]["columns"]
+
+    again = _run(_migrations()[-1], state, monkeypatch)
+
+    assert again.calls == []
 
 
 def test_migration_003_is_defined_once():

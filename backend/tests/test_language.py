@@ -103,11 +103,12 @@ class _CapturingLLM:
 async def test_conversation_summary_is_requested_in_english():
     llm = _CapturingLLM({})
 
-    title, summary = await analysis_pipeline.generate_conversation_summary(llm, "Ciao Ada")
+    result = await analysis_pipeline.generate_conversation_summary(llm, "Ciao Ada")
 
     assert "in English" in llm.messages[0].content
-    assert title == "Untitled conversation"
-    assert summary == ""
+    assert result.title == "Untitled conversation"
+    assert result.summary == ""
+    assert result.emoji is None
 
 
 def test_digest_is_requested_in_english():
