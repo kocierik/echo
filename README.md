@@ -174,6 +174,7 @@ answer and are not stored in Echo's memory. Every executed call is recorded in *
 **Endpoints** (all under `/api/actions`, `X-API-Key` required):
 - `GET /toolkits?query=` — toolkits with their connection state.
 - `POST /toolkits/{slug}/connect` → `{"url"}` to open in the browser; `DELETE /toolkits/{slug}` — disconnect.
+- `GET /pending` — actions still waiting for a Confirm (chat or voice), newest first.
 - `POST /pending/{id}/confirm` → `{"status": "executed" | "failed" | "unknown", "message"}`
   (404 not found, 409 already handled, 410 expired); `POST /pending/{id}/cancel`.
 - `GET /log?limit=50` — audit log, newest first.

@@ -60,6 +60,17 @@ class ToolkitOut(BaseModel):
     connected: bool
 
 
+class PendingActionOut(BaseModel):
+    id: uuid.UUID
+    summary: str
+    tool: str
+    app: str
+    source: str
+    session_id: uuid.UUID | None
+    created_at: datetime
+    expires_at: datetime
+
+
 class ActionLogOut(BaseModel):
     tool: str
     toolkit: str
@@ -192,6 +203,37 @@ async def _record_outcome(
         if session.kind == "chat":
             await _append_to_context(redis_client, session.id, text)
     return text
+
+
+@router.get("/pending", response_model=list[PendingActionOut])
+async def list_pending_actions(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Actions waiting for a Confirm (from chat or voice) that have not expired, newest first."""
+    rows = (
+        await db.execute(
+            select(PendingAction)
+            .where(PendingAction.user_id == user_id)
+            .where(PendingAction.status == "pending")
+            .where(PendingAction.expires_at > datetime.now(timezone.utc))
+            .order_by(PendingAction.created_at.desc())
+            .limit(20)
+        )
+    ).scalars().all()
+    return [
+        PendingActionOut(
+            id=row.id,
+            summary=row.summary,
+            tool=row.tool,
+            app=APP_NAMES.get(toolkit_of(row.tool), toolkit_of(row.tool).title()),
+            source=row.source,
+            session_id=row.session_id,
+            created_at=row.created_at,
+            expires_at=row.expires_at,
+        )
+        for row in rows
+    ]
 
 
 @router.post("/pending/{action_id}/confirm")
