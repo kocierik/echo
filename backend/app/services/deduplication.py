@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.entity import Entity
+from app.services.entity_mentions import move_mentions
 from app.services.llm_base import LLMMessage, LLMService
 
 logger = logging.getLogger(__name__)
@@ -141,8 +142,8 @@ async def merge_entities(db: AsyncSession, canonical: Entity, duplicate: Entity)
         else:
             canonical.content = duplicate.content
 
-    # Update any entities that reference the duplicate's transcription/conversation
-    # (the duplicate's source references are valuable context for the canonical)
+    # The duplicate's conversations become the canonical's
+    await move_mentions(db, duplicate.id, canonical.id)
 
     # Delete the duplicate
     await db.delete(duplicate)

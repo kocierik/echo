@@ -256,6 +256,9 @@ All `/api` endpoints require the `X-API-Key` header.
 - `DELETE /api/conversations/{id}` — deletes audio, Segments, transcriptions, chunks and
   conversation entities.
 - `GET /api/search?q=` — conversations (title, summary, transcript) and entities (name, content).
+- `GET /api/people` — everyone Echo heard about, most recently seen first, with role, what Echo
+  knows about them, conversation count and open tasks naming them; `GET /api/people/{id}` adds
+  their conversations, tasks and events.
 - `GET /api/entities`, `/api/entities/stats`, `/api/entities/people`,
   `/api/entities/tasks?done=` (with `source_text`),
   `PATCH|DELETE /api/entities/{id}`, `POST /api/entities/{id}/merge`, `POST /api/entities/deduplicate`.

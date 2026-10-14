@@ -7,102 +7,28 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Conversation, Entity, Segment, Transcription
-from tests.conftest import TEST_USER_ID
+from tests.factories import make_conversation, make_entity
 
 NOW = datetime.now(timezone.utc)
-
-
-async def _conversation(
-    db: AsyncSession,
-    *,
-    started_at: datetime,
-    minutes: int = 10,
-    title: str | None = "Lunch with Ada",
-    summary: str | None = "Ada proposes the Atlas project.",
-    emoji: str | None = "🍝",
-    texts: tuple[str | None, ...] = ("[Tu] Domani pranzo con Ada.",),
-    user_id: uuid.UUID = TEST_USER_ID,
-) -> tuple[Conversation, list[Transcription | None]]:
-    conversation = Conversation(
-        user_id=user_id,
-        title=title,
-        summary=summary,
-        emoji=emoji,
-        started_at=started_at,
-        ended_at=started_at + timedelta(minutes=minutes),
-        analysis_status="completed",
-    )
-    db.add(conversation)
-    await db.flush()
-    transcriptions: list[Transcription | None] = []
-    for index, text in enumerate(texts):
-        segment = Segment(
-            user_id=user_id,
-            received_at=started_at,
-            recorded_at=started_at + timedelta(seconds=index * 10),
-            duration_ms=5000,
-            audio_path=f"/tmp/{uuid.uuid4()}.adpcm",
-            audio_size_bytes=10,
-            transcription_status="completed" if text is not None else "pending",
-            conversation_id=conversation.id,
-        )
-        db.add(segment)
-        await db.flush()
-        if text is None:
-            transcriptions.append(None)
-            continue
-        transcription = Transcription(
-            segment_id=segment.id,
-            text=text,
-            speaker_label="self",
-            language="it",
-            stt_provider="test",
-            stt_model="test",
-        )
-        db.add(transcription)
-        await db.flush()
-        transcriptions.append(transcription)
-    return conversation, transcriptions
-
-
-def _entity(
-    conversation: Conversation,
-    entity_type: str,
-    name: str,
-    *,
-    source: Transcription | None = None,
-    metadata: dict | None = None,
-    content: str | None = None,
-) -> Entity:
-    return Entity(
-        user_id=conversation.user_id,
-        entity_type=entity_type,
-        name=name,
-        content=content,
-        metadata_=metadata or {},
-        conversation_id=conversation.id,
-        source_transcription_id=source.id if source else None,
-    )
 
 
 @pytest.mark.asyncio
 async def test_list_has_emoji_duration_people_tasks_and_open_state(
     client, auth_headers, db_session: AsyncSession
 ):
-    closed, _ = await _conversation(db_session, started_at=NOW - timedelta(hours=3), minutes=12)
+    closed, _ = await make_conversation(db_session, started_at=NOW - timedelta(hours=3), minutes=12)
     db_session.add_all(
         [
-            _entity(closed, "person", "Ada"),
-            _entity(closed, "person", "Marco"),
-            _entity(closed, "person", "Ada"),  # listed once
-            _entity(closed, "person", "Bea"),
-            _entity(closed, "person", "Carlo"),  # only three are listed
-            _entity(closed, "task", "Chiamare Ada"),
-            _entity(closed, "idea", "Atlas"),
+            make_entity(closed, "person", "Ada"),
+            make_entity(closed, "person", "Marco"),
+            make_entity(closed, "person", "Ada"),  # listed once
+            make_entity(closed, "person", "Bea"),
+            make_entity(closed, "person", "Carlo"),  # only three are listed
+            make_entity(closed, "task", "Chiamare Ada"),
+            make_entity(closed, "idea", "Atlas"),
         ]
     )
-    live, _ = await _conversation(
+    live, _ = await make_conversation(
         db_session, started_at=NOW - timedelta(seconds=30), minutes=0, title=None, emoji=None
     )
     await db_session.commit()
@@ -128,12 +54,14 @@ async def test_list_has_emoji_duration_people_tasks_and_open_state(
 @pytest.mark.asyncio
 async def test_list_filters_by_overlapping_period(client, auth_headers, db_session: AsyncSession):
     day = datetime(2026, 10, 10, tzinfo=timezone.utc)
-    await _conversation(db_session, started_at=day - timedelta(days=1), title="Before")
-    across_midnight, _ = await _conversation(
+    await make_conversation(db_session, started_at=day - timedelta(days=1), title="Before")
+    across_midnight, _ = await make_conversation(
         db_session, started_at=day - timedelta(minutes=5), minutes=20, title="Across midnight"
     )
-    inside, _ = await _conversation(db_session, started_at=day + timedelta(hours=9), title="Inside")
-    await _conversation(db_session, started_at=day + timedelta(days=1, hours=1), title="After")
+    inside, _ = await make_conversation(
+        db_session, started_at=day + timedelta(hours=9), title="Inside"
+    )
+    await make_conversation(db_session, started_at=day + timedelta(days=1, hours=1), title="After")
     await db_session.commit()
 
     response = await client.get(
@@ -163,13 +91,13 @@ async def test_list_rejects_an_unbounded_limit(client, auth_headers):
 async def test_detail_lists_pending_segments_speakers_and_entity_sources(
     client, auth_headers, db_session: AsyncSession
 ):
-    conversation, (said, pending) = await _conversation(
+    conversation, (said, pending) = await make_conversation(
         db_session,
         started_at=NOW - timedelta(hours=1),
         texts=("[Tu] Devo chiamare Ada domani.", None),
     )
     db_session.add(
-        _entity(
+        make_entity(
             conversation,
             "task",
             "Chiamare Ada",
@@ -202,21 +130,21 @@ async def test_detail_lists_pending_segments_speakers_and_entity_sources(
 async def test_search_finds_titles_summaries_transcripts_and_entities(
     client, auth_headers, db_session: AsyncSession
 ):
-    by_title, _ = await _conversation(
+    by_title, _ = await make_conversation(
         db_session, started_at=NOW - timedelta(days=3), title="Atlas kickoff", summary="Plan."
     )
-    by_transcript, (said,) = await _conversation(
+    by_transcript, (said,) = await make_conversation(
         db_session,
         started_at=NOW - timedelta(days=1),
         title="Lunch",
         summary="Food.",
         texts=("[Tu] Il progetto atlas parte lunedì.",),
     )
-    await _conversation(
+    await make_conversation(
         db_session, started_at=NOW, title="Gym", summary="Legs.", texts=("Squat.",)
     )
-    db_session.add(_entity(by_transcript, "idea", "Atlas dashboard", source=said))
-    db_session.add(_entity(by_transcript, "note", "Budget", content="Atlas costs 10k"))
+    db_session.add(make_entity(by_transcript, "idea", "Atlas dashboard", source=said))
+    db_session.add(make_entity(by_transcript, "note", "Budget", content="Atlas costs 10k"))
     await db_session.commit()
 
     response = await client.get("/api/search", headers=auth_headers, params={"q": "ATLAS"})
@@ -235,8 +163,8 @@ async def test_search_finds_titles_summaries_transcripts_and_entities(
 async def test_search_matches_wildcards_literally_and_needs_two_characters(
     client, auth_headers, db_session: AsyncSession
 ):
-    await _conversation(db_session, started_at=NOW, title="Sconto del 50%", texts=("ok",))
-    await _conversation(db_session, started_at=NOW, title="Sconto del 500", texts=("ok",))
+    await make_conversation(db_session, started_at=NOW, title="Sconto del 50%", texts=("ok",))
+    await make_conversation(db_session, started_at=NOW, title="Sconto del 500", texts=("ok",))
     await db_session.commit()
 
     literal = await client.get("/api/search", headers=auth_headers, params={"q": "50%"})
@@ -251,10 +179,10 @@ async def test_search_never_returns_another_users_memory(
     client, auth_headers, db_session: AsyncSession
 ):
     stranger = uuid.uuid4()
-    other, (said,) = await _conversation(
+    other, (said,) = await make_conversation(
         db_session, started_at=NOW, title="Atlas secret", user_id=stranger
     )
-    db_session.add(_entity(other, "note", "Atlas secret note", source=said))
+    db_session.add(make_entity(other, "note", "Atlas secret note", source=said))
     await db_session.commit()
 
     response = await client.get("/api/search", headers=auth_headers, params={"q": "atlas"})
@@ -266,14 +194,14 @@ async def test_search_never_returns_another_users_memory(
 async def test_open_tasks_include_tasks_without_a_done_flag_and_their_source(
     client, auth_headers, db_session: AsyncSession
 ):
-    conversation, (said,) = await _conversation(
+    conversation, (said,) = await make_conversation(
         db_session, started_at=NOW, texts=("[Tu] Devo comprare il latte.",)
     )
     db_session.add_all(
         [
-            _entity(conversation, "task", "Comprare il latte", source=said),
-            _entity(conversation, "task", "Pagare la bolletta", metadata={"done": False}),
-            _entity(conversation, "task", "Prenotare il volo", metadata={"done": True}),
+            make_entity(conversation, "task", "Comprare il latte", source=said),
+            make_entity(conversation, "task", "Pagare la bolletta", metadata={"done": False}),
+            make_entity(conversation, "task", "Prenotare il volo", metadata={"done": True}),
         ]
     )
     await db_session.commit()

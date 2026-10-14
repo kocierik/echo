@@ -17,8 +17,14 @@ from app.models import Base
 
 VERSIONS = Path(__file__).parents[1] / "alembic" / "versions"
 BASELINE_TABLES = {
-    "segments", "transcriptions", "conversations", "chunks", "entities", "digests",
-    "chat_sessions", "api_keys",
+    "segments",
+    "transcriptions",
+    "conversations",
+    "chunks",
+    "entities",
+    "digests",
+    "chat_sessions",
+    "api_keys",
 }
 
 
@@ -60,9 +66,7 @@ class _Inspector:
         return list(self.state.tables)
 
     def get_columns(self, table):
-        return [
-            {"name": c, "nullable": n} for c, n in self.state.tables[table]["columns"].items()
-        ]
+        return [{"name": c, "nullable": n} for c, n in self.state.tables[table]["columns"].items()]
 
     def get_indexes(self, table):
         return list(self.state.tables[table]["indexes"])
@@ -77,8 +81,7 @@ _CREATE_INDEX = re.compile(
     re.S,
 )
 _NAMED_FK = re.compile(
-    r"CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES (\w+)\(id\)"
-    r"(?: ON DELETE ([A-Z ]+))?"
+    r"CONSTRAINT (\w+) FOREIGN KEY \((\w+)\) REFERENCES (\w+)\(id\)" r"(?: ON DELETE ([A-Z ]+))?"
 )
 _EXTENSION = re.compile(r'CREATE EXTENSION IF NOT EXISTS "?([\w-]+)"?')
 
@@ -106,6 +109,8 @@ class _Op:
             self.state.tables[m.group(3)]["indexes"].append(
                 {"name": m.group(2), "column_names": cols, "unique": bool(m.group(1))}
             )
+        elif sql.split()[0] in {"INSERT", "UPDATE", "DELETE"}:
+            pass  # data backfills: no schema change
         else:
             raise AssertionError(f"unexpected SQL: {sql}")
 
@@ -127,16 +132,22 @@ class _Op:
             self._add_fk(table, fk_name, column, referred, ondelete)
 
     def _add_fk(self, table, name, column, referred, ondelete):
-        self.state.tables[table]["fks"].append({
-            "name": name, "constrained_columns": [column], "referred_table": referred,
-            "referred_columns": ["id"], "options": {"ondelete": ondelete} if ondelete else {},
-        })
+        self.state.tables[table]["fks"].append(
+            {
+                "name": name,
+                "constrained_columns": [column],
+                "referred_table": referred,
+                "referred_columns": ["id"],
+                "options": {"ondelete": ondelete} if ondelete else {},
+            }
+        )
 
     # alembic.op operations (002+)
     def create_table(self, name, *items, **kw):
         self.calls.append(("create_table", name))
-        cols = [(c.name, c.nullable and not c.primary_key) for c in items
-                if isinstance(c, sa.Column)]
+        cols = [
+            (c.name, c.nullable and not c.primary_key) for c in items if isinstance(c, sa.Column)
+        ]
         self.state.add_table(name, cols)
         for item in items:
             if isinstance(item, sa.ForeignKeyConstraint):
@@ -184,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 10)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 11)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -210,17 +221,26 @@ def test_baseline_creates_the_extensions_and_the_001_tables(monkeypatch):
     assert "kind" not in state.tables["chat_sessions"]["columns"]
     fk = state.tables["segments"]["fks"][0]
     assert (fk["name"], fk["referred_table"], fk["options"]) == (
-        "fk_segments_conversation", "conversations", {},
+        "fk_segments_conversation",
+        "conversations",
+        {},
     )
-    indexes = {
-        i["name"] for t in state.tables.values() for i in t["indexes"]
-    }
+    indexes = {i["name"] for t in state.tables.values() for i in t["indexes"]}
     assert indexes == {
-        "idx_segments_user_recorded", "idx_segments_status", "idx_segments_conversation",
-        "idx_transcriptions_segment", "idx_conversations_user_time",
-        "idx_chunks_conversation", "idx_chunks_embedding", "idx_entities_user_type",
-        "idx_entities_name", "idx_entities_conversation", "idx_entities_embedding",
-        "idx_digests_user_date", "idx_chat_sessions_user", "idx_api_keys_hash",
+        "idx_segments_user_recorded",
+        "idx_segments_status",
+        "idx_segments_conversation",
+        "idx_transcriptions_segment",
+        "idx_conversations_user_time",
+        "idx_chunks_conversation",
+        "idx_chunks_embedding",
+        "idx_entities_user_type",
+        "idx_entities_name",
+        "idx_entities_conversation",
+        "idx_entities_embedding",
+        "idx_digests_user_date",
+        "idx_chat_sessions_user",
+        "idx_api_keys_hash",
     }
 
 
@@ -290,6 +310,23 @@ def test_migration_009_adds_the_conversation_emoji_once(monkeypatch):
     for module in _migrations():
         _run(module, state, monkeypatch)
     assert "emoji" in state.tables["conversations"]["columns"]
+
+    migration_009 = next(m for m in _migrations() if m.revision == "009")
+    again = _run(migration_009, state, monkeypatch)
+
+    assert again.calls == []
+
+
+def test_migration_010_creates_mentions_backfills_them_and_is_not_rerun(monkeypatch):
+    state = _State()
+    calls = []
+    for module in _migrations():
+        calls = _run(module, state, monkeypatch).calls
+    mentions = state.tables["entity_mentions"]
+    assert {"entity_id", "conversation_id", "transcription_id"} <= set(mentions["columns"])
+    assert any(
+        sql.startswith("INSERT INTO entity_mentions") for kind, sql in calls if kind == "execute"
+    )
 
     again = _run(_migrations()[-1], state, monkeypatch)
 

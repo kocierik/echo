@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation
 from app.models.segment import Segment
+from app.services.entity_mentions import release_conversation
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,8 @@ async def delete_conversation(
         staged_files.append((original_path, staged_path))
 
     try:
+        # People and tasks also mentioned in other conversations are kept
+        await release_conversation(db, conversation.id)
         await db.delete(conversation)
         await db.commit()
     except Exception:

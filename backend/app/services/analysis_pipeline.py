@@ -17,6 +17,7 @@ from app.services.chunking import chunk_text
 from app.services.deduplication import deduplicate_entities
 from app.services.embedding_base import EmbeddingService
 from app.services.entity_consolidation import consolidate_entities
+from app.services.entity_mentions import record_mentions
 from app.services.llm_base import LLMMessage, LLMService
 from app.workers.retry import retry_with_backoff
 
@@ -75,7 +76,8 @@ class AnalysisPipeline:
         # --- Consolidate with existing entities ---
         # Update existing entities if new info refers to something already known,
         # only insert truly new entities
-        new_entities = await consolidate_entities(db, entities, user_id)
+        consolidation = await consolidate_entities(db, entities, user_id)
+        new_entities = consolidation.new
         for entity in new_entities:
             db.add(entity)
 
@@ -93,8 +95,10 @@ class AnalysisPipeline:
             for entity, embedding in zip(new_entities, entity_embeddings):
                 entity.embedding = embedding
 
-        # Flush to persist entities before dedup
+        # Flush to persist entities before dedup, then note where each was mentioned
+        # (a merge during dedup moves the mention to the surviving entity)
         await db.flush()
+        await record_mentions(db, consolidation.resolved)
 
         # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
         await deduplicate_entities(db, user_id, self.llm_service)
