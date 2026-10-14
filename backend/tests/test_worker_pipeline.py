@@ -19,6 +19,7 @@ from app.services.analysis_pipeline import (
     extract_entities,
     generate_conversation_summary,
 )
+from app.services.entity_consolidation import ConsolidationResult
 from app.workers import main as worker_main
 from tests.mocks import MockLLMService
 
@@ -217,7 +218,7 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
 
     async def fake_consolidate(_db, entities, _user_id):
         events.append("consolidate")
-        return entities
+        return ConsolidationResult(new=entities, resolved=entities)
 
     async def fake_deduplicate(_db, _user_id, _llm):
         events.append("deduplicate")

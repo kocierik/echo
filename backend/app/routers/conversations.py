@@ -6,14 +6,16 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.conversation import Conversation
 from app.models.entity import Entity
+from app.models.entity_mention import EntityMention
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.conversation_deleter import (
@@ -110,17 +112,38 @@ def _is_open(conversation: Conversation, now: datetime) -> bool:
 async def _people_and_tasks(
     db: AsyncSession, conversation_ids: list[uuid.UUID]
 ) -> tuple[dict[uuid.UUID, list[str]], dict[uuid.UUID, int]]:
+    """People (in order of appearance) and task counts mentioned in each conversation."""
     people: dict[uuid.UUID, list[str]] = defaultdict(list)
     tasks: dict[uuid.UUID, int] = defaultdict(int)
     if not conversation_ids:
         return people, tasks
-    rows = await db.execute(
-        select(Entity.conversation_id, Entity.entity_type, Entity.name)
-        .where(Entity.conversation_id.in_(conversation_ids))
-        .where(Entity.entity_type.in_(("person", "task")))
-        .order_by(Entity.created_at)
+    kinds = ("person", "task")
+    mentioned = await db.execute(
+        select(
+            EntityMention.conversation_id,
+            Entity.id,
+            Entity.entity_type,
+            Entity.name,
+            EntityMention.created_at,
+        )
+        .join(Entity, Entity.id == EntityMention.entity_id)
+        .where(EntityMention.conversation_id.in_(conversation_ids))
+        .where(Entity.entity_type.in_(kinds))
     )
-    for conversation_id, entity_type, name in rows.all():
+    # Entities written without a mention still count for the conversation they point at
+    pointing = await db.execute(
+        select(
+            Entity.conversation_id, Entity.id, Entity.entity_type, Entity.name, Entity.created_at
+        )
+        .where(Entity.conversation_id.in_(conversation_ids))
+        .where(Entity.entity_type.in_(kinds))
+    )
+    seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    rows = sorted([*mentioned.all(), *pointing.all()], key=lambda row: row[4])
+    for conversation_id, entity_id, entity_type, name, _ in rows:
+        if (conversation_id, entity_id) in seen:
+            continue
+        seen.add((conversation_id, entity_id))
         if entity_type == "task":
             tasks[conversation_id] += 1
         elif name not in people[conversation_id]:
@@ -160,6 +183,27 @@ async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
         )
         for conv, segment_count in rows
     ]
+
+
+def conversation_entities(conversation_id: uuid.UUID):
+    """Entities mentioned in a conversation, with the sentence they came from there.
+
+    Includes entities that point at it without a mention (written before mentions).
+    """
+    mention_text = aliased(Transcription)
+    entity_text = aliased(Transcription)
+    mention = aliased(EntityMention)
+    return (
+        select(Entity, func.coalesce(mention_text.text, entity_text.text))
+        .outerjoin(
+            mention,
+            and_(mention.entity_id == Entity.id, mention.conversation_id == conversation_id),
+        )
+        .outerjoin(mention_text, mention_text.id == mention.transcription_id)
+        .outerjoin(entity_text, entity_text.id == Entity.source_transcription_id)
+        .where(or_(mention.id.is_not(None), Entity.conversation_id == conversation_id))
+        .order_by(func.coalesce(mention.created_at, Entity.created_at))
+    )
 
 
 # --- Endpoints ---
@@ -228,12 +272,7 @@ async def get_conversation(
         for row in segment_rows.all()
     ]
 
-    entity_rows = await db.execute(
-        select(Entity, Transcription.text)
-        .outerjoin(Transcription, Transcription.id == Entity.source_transcription_id)
-        .where(Entity.conversation_id == conversation_id)
-        .order_by(Entity.created_at)
-    )
+    entity_rows = await db.execute(conversation_entities(conversation_id))
     entities = [
         EntityOut(
             id=e.id,

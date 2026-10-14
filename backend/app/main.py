@@ -23,6 +23,7 @@ from app.routers import (
     digest,
     entities,
     feedback,
+    people,
     query,
     search,
     segments,
@@ -100,6 +101,7 @@ app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
+app.include_router(people.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

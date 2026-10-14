@@ -229,3 +229,14 @@ CREATE TABLE action_log (
 );
 
 CREATE INDEX ix_action_log_user_created ON action_log (user_id, created_at);
+
+CREATE TABLE entity_mentions (                -- Migration 010
+    id UUID PRIMARY KEY,
+    entity_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    transcription_id UUID REFERENCES transcriptions(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (entity_id, conversation_id)
+);
+CREATE INDEX ix_entity_mentions_entity_id ON entity_mentions (entity_id);
+CREATE INDEX ix_entity_mentions_conversation_id ON entity_mentions (conversation_id);

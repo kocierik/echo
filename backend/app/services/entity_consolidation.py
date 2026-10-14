@@ -12,6 +12,7 @@ Strategy:
 
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,11 +28,20 @@ logger = logging.getLogger(__name__)
 CONSOLIDATION_THRESHOLD = 0.85
 
 
+@dataclass(frozen=True)
+class ConsolidationResult:
+    # Entities to insert (nothing similar existed)
+    new: list["Entity"]
+    # For each extracted entity, in order: itself if new, else the existing one it
+    # was merged into (which now points at the same conversation and sentence)
+    resolved: list["Entity"]
+
+
 async def consolidate_entities(
     db: "AsyncSession",
     new_entities: list["Entity"],
     user_id: uuid.UUID,
-) -> list["Entity"]:
+) -> ConsolidationResult:
     """Consolidate new entities with existing ones.
 
     For each new entity:
@@ -45,17 +55,19 @@ async def consolidate_entities(
         user_id: Owner user ID.
 
     Returns:
-        List of entities that are truly NEW and should be inserted.
-        (Existing entities are updated in-place via the session.)
+        The entities that are truly NEW and should be inserted, and every extracted
+        entity resolved to the row that holds it. (Existing entities are updated
+        in-place via the session.)
     """
     from sqlalchemy import select
 
     from app.models.entity import Entity
 
     if not new_entities:
-        return []
+        return ConsolidationResult(new=[], resolved=[])
 
     truly_new: list[Entity] = []
+    resolved: list[Entity] = []
 
     for new_entity in new_entities:
         # Look for existing entity of the same type with similar name
@@ -81,14 +93,16 @@ async def consolidate_entities(
         if best_match is not None:
             # Update existing entity with new information
             _merge_into_existing(best_match, new_entity)
+            resolved.append(best_match)
             logger.debug(
                 f"[Consolidation] Updated existing '{best_match.name}' "
                 f"with new info (sim={best_similarity:.2f})"
             )
         else:
             truly_new.append(new_entity)
+            resolved.append(new_entity)
 
-    return truly_new
+    return ConsolidationResult(new=truly_new, resolved=resolved)
 
 
 def _merge_into_existing(existing: "Entity", new: "Entity") -> None:

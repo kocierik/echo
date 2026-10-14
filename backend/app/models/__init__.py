@@ -6,6 +6,7 @@ from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.digest import Digest
 from app.models.entity import Entity
+from app.models.entity_mention import EntityMention
 from app.models.pending_action import PendingAction
 from app.models.query_feedback import QueryFeedback
 from app.models.segment import Segment
@@ -21,6 +22,7 @@ __all__ = [
     "Conversation",
     "Digest",
     "Entity",
+    "EntityMention",
     "PendingAction",
     "QueryFeedback",
     "Segment",

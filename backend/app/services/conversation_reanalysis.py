@@ -19,6 +19,7 @@ from app.services.analysis_pipeline import (
 )
 from app.services.chunking import chunk_text
 from app.services.embedding_base import EmbeddingService
+from app.services.entity_mentions import record_mentions, release_conversation
 from app.services.llm_base import LLMService
 from app.workers.retry import retry_with_backoff
 
@@ -66,6 +67,8 @@ async def reanalyse_conversation(
         }
 
         await db.execute(delete(Chunk).where(Chunk.conversation_id == conversation_id))
+        # Entities also mentioned in other conversations survive (moved there)
+        await release_conversation(db, conversation_id)
         await db.execute(delete(Entity).where(Entity.conversation_id == conversation_id))
         await db.flush()
 
@@ -106,6 +109,8 @@ async def reanalyse_conversation(
 
         for entity in fresh_entities:
             db.add(entity)
+        await db.flush()
+        await record_mentions(db, fresh_entities)
 
         if fresh_entities:
             entity_texts = [
