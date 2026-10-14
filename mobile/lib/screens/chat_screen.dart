@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
+import '../utils/chat_suggestions.dart';
 import 'chat_history_screen.dart';
 import 'conversation_detail_screen.dart';
 
@@ -43,11 +44,7 @@ final class ChatScreen extends StatefulWidget {
 }
 
 final class _ChatScreenState extends State<ChatScreen> {
-  static const _suggestions = [
-    'What did I decide today?',
-    'Summarize my latest conversation.',
-    'What tasks did I mention this week?',
-  ];
+  List<String> _suggestions = defaultChatSuggestions;
 
   late final ChatController _controller;
   late final ChatApi _api;
@@ -85,6 +82,7 @@ final class _ChatScreenState extends State<ChatScreen> {
       _onOpenSessionRequest();
       _onAskRequest();
     });
+    unawaited(_loadSuggestions());
   }
 
   @override
@@ -113,6 +111,16 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_controller.send(question));
   }
 
+  /// Suggestions from the latest conversations; the defaults stay on any failure.
+  Future<void> _loadSuggestions() async {
+    final api = _memoryApi;
+    if (api == null) return;
+    try {
+      final recent = await api.listConversations(limit: 10);
+      if (mounted) setState(() => _suggestions = chatSuggestions(recent, DateTime.now()));
+    } catch (_) {}
+  }
+
   void _onOpenSessionRequest() {
     final request = widget.openSessionRequest;
     if (!mounted || request == null) return;
@@ -130,6 +138,9 @@ final class _ChatScreenState extends State<ChatScreen> {
         text: state.composerText,
         selection: TextSelection.collapsed(offset: state.composerText.length),
       );
+    }
+    if (state.messages.isEmpty && _messageCount > 0) {
+      unawaited(_loadSuggestions()); // a new chat: suggest from what happened since
     }
     if (state.messages.length != _messageCount || state.sending) {
       _messageCount = state.messages.length;

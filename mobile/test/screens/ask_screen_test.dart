@@ -66,6 +66,21 @@ void main() {
     expect(find.text('Marco suggested the sushi place.'), findsOneWidget);
   });
 
+  testWidgets('suggestions come from the latest conversations', (tester) async {
+    final harness = _Harness();
+    final memory = FakeMemoryApi(conversations: [
+      card('c1', startedAt: DateTime.now(), title: 'Lunch with Ada', people: const ['Ada']),
+    ]);
+    await harness.pump(tester, memoryApi: memory);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Summarize "Lunch with Ada".'), findsOneWidget);
+    expect(find.text('What is still open with Ada?'), findsOneWidget);
+    await tester.tap(find.text('What is still open with Ada?'));
+    await tester.pumpAndSettle();
+    expect(harness.api.queries, ['What is still open with Ada?']);
+  });
+
   testWidgets('a source opens the conversation it comes from', (tester) async {
     final harness = _Harness(
       queryHandler: (_, __) async => QueryResponse(
@@ -96,7 +111,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('chat-source-k1')));
     await tester.pumpAndSettle();
-    expect(memory.calls, ['detail c1']);
+    expect(memory.calls.last, 'detail c1');
     expect(find.text('Lunch with Marco'), findsOneWidget);
   });
 
