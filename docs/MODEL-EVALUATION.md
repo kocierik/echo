@@ -41,6 +41,9 @@ One run per model on 14 extraction and 10 routing cases: directional, not statis
 | `gpt-6-luna`, `gpt-6.1-sol` | (temperature) | 0/4 | — | — | reject any temperature but 1 |
 | `gpt-6.1-sol` | low | tools fail | — | — | no "none" effort: tools only on the Responses API |
 
+Decision (2026-10-14): analysis runs on `gpt-6-luna` with low reasoning (the default); chat
+and the agent stay on `gpt-4o` until they move to the Responses API.
+
 Findings:
 - The gpt-6 models need `LLM_*_REASONING_EFFORT` (no temperature is sent then). With chat
   completions, function tools work only with `none`, so the action agent cannot use reasoning

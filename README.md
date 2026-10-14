@@ -289,7 +289,7 @@ All `/api` endpoints require the `X-API-Key` header.
 | `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio |
 | `STT_PROVIDER` / `STT_MODEL` | `openai` / `gpt-4o-transcribe` | STT provider (`openai` or `deepgram`) and model |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
-| `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Entity extraction, summaries, digest, voice-request check |
+| `LLM_ANALYSIS_MODEL` | `gpt-6-luna` | Entity extraction, summaries, digest, voice-request check |
 | `LLM_QUERY_MODEL` | `gpt-4o` | Memory answers and the actions agent |
 | `LLM_ANALYSIS_REASONING_EFFORT` / `LLM_QUERY_REASONING_EFFORT` | — | For reasoning models (gpt-5/6): `none`, `low`, … (no temperature is sent then; the agent's tools need `none`). See [docs/MODEL-EVALUATION.md](docs/MODEL-EVALUATION.md) |
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
