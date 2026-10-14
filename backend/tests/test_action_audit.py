@@ -48,14 +48,14 @@ def test_pending_summary_truncates_the_body_preview():
 def test_pending_summary_known_verbs_and_targets():
     assert pending_summary(
         "GMAIL_REPLY_TO_THREAD", {"thread_id": "t1", "message_body": "Thanks!"}
-    ) == "Reply to email\nThanks!"
+    ) == "Reply to email\nThanks!\nthread_id: t1"  # G1: no argument is hidden
     assert pending_summary(
         "TELEGRAM_SEND_MESSAGE", {"chat_id": 42, "text": "On my way"}
     ) == "Send Telegram message to 42\nOn my way"
     assert pending_summary(
         "GOOGLECALENDAR_UPDATE_EVENT",
         {"event_id": "e1", "summary": "Dentist", "start_datetime": "2026-10-14T10:00"},
-    ) == "Update event: Dentist (2026-10-14T10:00)"
+    ) == "Update event: Dentist (2026-10-14T10:00)\nevent_id: e1"
     assert pending_summary(
         "GOOGLECALENDAR_CREATE_EVENT", {"summary": "Sync", "attendees": ["a@x.it", "b@x.it"]}
     ) == "Create event with a@x.it, b@x.it: Sync"
@@ -109,6 +109,69 @@ def test_pending_summary_update_without_title_shows_the_target_id():
     )
     s = pending_summary("TODOIST_DELETE_TASK", {"task_id": "t-5"})
     assert "task_id=t-5" in s
+    # with a title the first line names the event, not the id (listed below it since G1)
     assert "evt-9" not in pending_summary(
         "GOOGLECALENDAR_UPDATE_EVENT", {"event_id": "evt-9", "summary": "Dentist"}
+    ).split("\n")[0]
+
+
+# --- G1: nothing hidden on a confirm card -----------------------------------------------
+
+
+def test_confirm_summary_lists_every_other_argument():
+    s = pending_summary(
+        "GMAIL_SEND_EMAIL",
+        {
+            "recipient_email": "ann@x.it",
+            "subject": "Budget",
+            "body": "Hi team, numbers attached.",
+            "participants": ["p1@x.it", {"email": "p2@x.it"}],
+            "user_email": "hidden@x.it",
+            "weird_flag": "z" * 300,
+            "empty": "",
+            "nothing": None,
+        },
     )
+    lines = s.split("\n")
+    assert lines[0] == "Send email to ann@x.it: Budget"
+    assert lines[1] == "Hi team, numbers attached."
+    assert "participants: p1@x.it, p2@x.it" in lines
+    assert "user_email: hidden@x.it" in lines
+    assert "weird_flag: " + "z" * 100 + "…" in lines
+    assert "z" * 101 not in s
+    # the body is only the preview, never repeated as an argument line
+    assert s.count("numbers attached") == 1
+    assert "empty" not in s and "nothing" not in s
+
+
+def test_confirm_summary_shows_other_body_like_keys_as_capped_previews():
+    s = pending_summary(
+        "SLACK_SEND_MESSAGE",
+        {"channel": "#team", "text": "short", "html_content": "h" * 500, "members": ["u1", "u2"]},
+    )
+    lines = s.split("\n")
+    assert lines[:2] == ["Send Slack message to #team", "short"]
+    assert "members: u1, u2" in lines
+    assert "html_content: " + "h" * 200 + "…" in lines
+    assert "h" * 201 not in s
+
+
+def test_confirm_summary_lists_ids_and_create_read_are_unchanged():
+    s = pending_summary(
+        "GOOGLECALENDAR_UPDATE_EVENT", {"event_id": "evt-9", "summary": "Dentist"}
+    )
+    assert s == "Update event: Dentist\nevent_id: evt-9"
+    # CREATE without people: unchanged, nothing extra listed
+    assert pending_summary(
+        "TODOIST_CREATE_TASK", {"content": "Buy milk", "project_id": "p1", "priority": 4}
+    ) == "Create task: Buy milk"
+    assert pending_summary("GMAIL_FETCH_EMAILS", {"query": "from:ada", "max_results": 5}) == (
+        "Gmail Fetch Emails (query=from:ada, max_results=5)"
+    )
+
+
+def test_confirm_summary_lines_cannot_be_forged_with_newlines():
+    s = pending_summary(
+        "GMAIL_SEND_EMAIL", {"to": "a@x.it", "subject": "Hi", "footer": "x\nSend email to b"}
+    )
+    assert "footer: x Send email to b" in s.split("\n")
