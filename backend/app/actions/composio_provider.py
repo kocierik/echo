@@ -11,9 +11,11 @@ SDK surface used (all synchronous):
   `.redirect_url` (`initiate()` is rejected for Composio-managed OAuth).
 - `connected_accounts.delete(nanoid)`.
 - `auth_configs.list(toolkit_slug=..)` -> `.items` (each `.id`, `.created_at`);
-  `auth_configs.create(toolkit={"slug": s}, auth_config={"type": "use_composio_managed_auth",
-  "tool_access_config": {"tools_for_connected_account_creation": []}})` -> `.auth_config.id`.
-  (This is what `toolkits.authorize` does internally, so no COMPOSIO_AUTH_CONFIG_IDS setting.)
+  `auth_configs.create(toolkit_slug, {"type": "use_composio_managed_auth",
+  "tool_access_config": {"tools_for_connected_account_creation": []}})` -> object with `.id`.
+  This wrapper takes the slug and the options positionally and unwraps `.auth_config`; the
+  `toolkit={"slug": s}, auth_config=...` form that `toolkits.authorize` uses internally belongs
+  to the raw HTTP client and raises TypeError here. No COMPOSIO_AUTH_CONFIG_IDS setting.
 - `toolkits.get(slug)` -> object with `.slug`, `.name`, `.meta.description`;
   `toolkits.get(query={"search": q, "limit": n})` -> list of the same shape.
 - `tools.get(user_id, toolkits=[..], limit=n)` / `tools.get(user_id, tools=[slugs])` -> list
@@ -148,12 +150,12 @@ class ComposioActionProvider:
             config_id = items[0].id
         else:
             config_id = self.client.auth_configs.create(
-                toolkit={"slug": toolkit},
-                auth_config={
+                toolkit,
+                {
                     "type": "use_composio_managed_auth",
                     "tool_access_config": {"tools_for_connected_account_creation": []},
                 },
-            ).auth_config.id
+            ).id
         self._auth_config_ids[toolkit] = config_id
         return config_id
 

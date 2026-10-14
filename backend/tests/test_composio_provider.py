@@ -61,8 +61,11 @@ class StubClient:
     def _ac_list(self, **kw):
         return _ns(items=self.auth_config_items)
 
-    def _ac_create(self, **kw):
-        return _ns(auth_config=_ns(id="ac_new"))
+    # Same signature as the SDK wrapper (composio.core.models.auth_configs), which already
+    # unwraps `.auth_config`: a keyword call like the raw client's raises TypeError here too
+    def _ac_create(self, toolkit, options):
+        self.calls["auth_config_create"] = (toolkit, options)
+        return _ns(id="ac_new")
 
 
 async def test_execute_maps_success_and_failure():
@@ -120,6 +123,9 @@ async def test_connect_link_creates_managed_auth_config_when_missing():
     client = StubClient()
     await ComposioActionProvider(client=client).connect_link("u1", "gmail", None)
     assert client.calls["link"][1] == "ac_new"
+    toolkit, options = client.calls["auth_config_create"]
+    assert toolkit == "gmail"
+    assert options["type"] == "use_composio_managed_auth"
 
 
 async def test_disconnect_deletes_the_active_account():
