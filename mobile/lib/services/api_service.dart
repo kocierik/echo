@@ -79,6 +79,15 @@ abstract interface class MemoryApi {
   Future<PersonDetail> getPerson(String id);
 }
 
+/// Everything Today reads and does: the memory, plus the digest and the actions
+/// waiting for a Confirm.
+abstract interface class TodayApi implements MemoryApi {
+  Future<DailySummary?> getLatestDigest();
+  Future<List<PendingAction>> listPendingActions();
+  Future<ConfirmResult> confirmPendingAction(String id);
+  Future<void> cancelPendingAction(String id);
+}
+
 abstract interface class TranscriptMemoryApi {
   Future<TranscriptionCorrectionResult> correctTranscription(
     String segmentId,
@@ -194,7 +203,7 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
 class ApiService
     implements
         ChatApi,
-        MemoryApi,
+        TodayApi,
         TranscriptMemoryApi,
         VoiceUpdatesApi {
   ApiService({
@@ -429,6 +438,22 @@ class ApiService
   }
 
   @override
+  Future<List<PendingAction>> listPendingActions() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server/api/actions/pending'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
+    );
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) => PendingAction.fromJson(item as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
+  @override
   Future<List<PersonSummary>> listPeople() async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
@@ -464,25 +489,6 @@ class ApiService
     );
   }
 
-  Future<List<RecentSegment>> getRecentSegments({int limit = 50}) async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/segments/recent?limit=$limit'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.list,
-    );
-    return _parseDecoded(response.data, (data) {
-      return (data as List<dynamic>)
-          .map((item) => RecentSegment.fromJson(
-                item as Map<String, dynamic>,
-              ))
-          .toList();
-    });
-  }
 
   @override
   Future<TranscriptionCorrectionResult> correctTranscription(
@@ -526,48 +532,12 @@ class ApiService
     );
   }
 
-  Future<Map<String, dynamic>?> getStats() async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(Uri.parse('$server/api/stats'), headers: headers),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
-    return response.data as Map<String, dynamic>;
-  }
 
-  Future<Map<String, dynamic>?> getDigest(String date) async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/digest/$date'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
-    return response.data as Map<String, dynamic>;
-  }
 
-  /// Open tasks created in the last three days, newest first, for Today.
-  Future<List<TaskItem>> getOpenTasks() async {
-    final tasks = await listTasks(done: false, limit: 20);
-    final cutoff = DateTime.now().subtract(const Duration(days: 3));
-    return tasks.where((task) {
-      if (task.done) return false;
-      final created = task.createdAt;
-      return created == null || created.isAfter(cutoff);
-    }).toList();
-  }
 
-  /// Mark a task done, keeping the rest of its metadata.
-  Future<void> completeTask(TaskItem task) {
-    return updateEntity(task.id, metadata: task.completedMetadata);
-  }
 
   /// The most recent daily digest of the last two days, or null if none exists.
+  @override
   Future<DailySummary?> getLatestDigest() async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;

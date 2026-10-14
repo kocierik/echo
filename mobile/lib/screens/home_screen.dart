@@ -3,97 +3,107 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/action_models.dart';
 import '../models/device_status.dart';
-import '../models/segment.dart';
+import '../models/memory.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
+import '../services/api_exception.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/device_card.dart';
 import '../widgets/privacy_control.dart';
-import '../widgets/today_insights.dart';
-import '../widgets/today_memory_preview.dart';
-import 'transcript_detail_screen.dart';
+import '../widgets/today_sections.dart';
+import 'conversation_detail_screen.dart';
+import 'navigation.dart';
+import 'task_editing.dart';
 
-typedef LatestMemoryLoader = Future<List<RecentSegment>> Function();
-typedef OpenTasksLoader = Future<List<TaskItem>> Function();
-typedef DailySummaryLoader = Future<DailySummary?> Function();
-typedef TaskCompleter = Future<void> Function(TaskItem task);
-
+/// Today: the wearable, what needs a decision, the day so far, what is due,
+/// and the latest daily summary.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
     required this.setMuted,
-    required this.onAsk,
-    required this.onTranscripts,
+    required this.onOpenMemories,
+    required this.onOpenTasks,
     this.onReconnect,
-    this.latestMemoryLoader,
-    this.openTasksLoader,
-    this.dailySummaryLoader,
-    this.taskCompleter,
+    this.onPair,
+    this.onAsk,
     this.api,
     this.segmentUploadedStream,
     this.onMuteAcknowledged,
+    this.openConversation,
+    this.clock = DateTime.now,
     super.key,
   });
 
   final DeviceStatus deviceStatus;
   final Future<void> Function(bool muted) setMuted;
   final Future<void> Function()? onReconnect;
-  final VoidCallback onAsk;
-  final VoidCallback onTranscripts;
-  final LatestMemoryLoader? latestMemoryLoader;
-  final OpenTasksLoader? openTasksLoader;
-  final DailySummaryLoader? dailySummaryLoader;
-  final TaskCompleter? taskCompleter;
-  final ApiService? api;
+
+  /// Opens pairing when no Echo is paired.
+  final VoidCallback? onPair;
+  final VoidCallback onOpenMemories;
+  final VoidCallback onOpenTasks;
+  final AskCallback? onAsk;
+  final TodayApi? api;
   final Stream<Object?>? segmentUploadedStream;
   final Future<void> Function()? onMuteAcknowledged;
+  final ConversationOpener? openConversation;
+  final DateTime Function() clock;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-final class _HomeScreenState extends State<HomeScreen> {
+final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   static const _muteAcknowledgementTimeout = Duration(seconds: 8);
 
-  late final ApiService _api;
-  late final bool _ownsApi;
-  StreamSubscription<Object?>? _segmentUploadSubscription;
+  late final TodayApi _api;
+  ApiService? _ownedApi;
+  StreamSubscription<Object?>? _uploadSubscription;
+
+  // Microphone
   Timer? _muteTimeout;
-  RecentSegment? _latestMemory;
-  String? _memoryError;
   String? _privacyError;
   String? _announcement;
-  bool _memoryLoading = true;
   bool _privacyBusy = false;
   bool? _requestedMuted;
-  int _loadGeneration = 0;
-  List<TaskItem> _tasks = const [];
-  final Set<String> _completingTaskIds = {};
-  String? _tasksError;
+
+  // Sections: each loads on its own, so one failure never blanks the screen
+  List<ConversationCard> _conversations = const [];
+  bool _conversationsLoading = true;
+  String? _conversationsError;
+  int _conversationsGeneration = 0;
+
+  List<TaskItem> _openTasks = const [];
   bool _tasksLoading = true;
+  String? _tasksError;
   int _tasksGeneration = 0;
+
   DailySummary? _summary;
-  String? _summaryError;
   bool _summaryLoading = true;
+  String? _summaryError;
+
+  List<PendingAction> _pending = const [];
+  final Set<String> _pendingBusy = {};
+
+  @override
+  MemoryApi get taskApi => _api;
 
   @override
   void initState() {
     super.initState();
-    final injectedApi = widget.api;
-    _ownsApi = injectedApi == null;
-    _api = injectedApi ?? ApiService();
+    _api = widget.api ?? (_ownedApi = ApiService());
     _subscribeToUploads();
-    unawaited(_loadLatestMemory(showLoading: true));
-    unawaited(_loadTasks(showLoading: true));
-    unawaited(_loadSummary());
+    unawaited(_refreshAll());
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.segmentUploadedStream != widget.segmentUploadedStream) {
-      unawaited(_segmentUploadSubscription?.cancel());
+      unawaited(_uploadSubscription?.cancel());
       _subscribeToUploads();
     }
 
@@ -108,138 +118,174 @@ final class _HomeScreenState extends State<HomeScreen> {
     _requestedMuted = null;
     _privacyBusy = false;
     _privacyError = null;
-    _announcement = requestedMuted
-        ? 'Microphone muted'
-        : 'Microphone listening resumed';
+    _announcement = requestedMuted ? 'Microphone muted' : 'Microphone listening resumed';
     setState(() {});
-    unawaited(
-      (widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call(),
-    );
+    unawaited((widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call());
   }
 
   @override
   void dispose() {
-    _loadGeneration++;
+    _conversationsGeneration++;
     _tasksGeneration++;
     _muteTimeout?.cancel();
-    unawaited(_segmentUploadSubscription?.cancel());
-    if (_ownsApi) _api.dispose();
+    unawaited(_uploadSubscription?.cancel());
+    _ownedApi?.dispose();
     super.dispose();
   }
 
   void _subscribeToUploads() {
-    _segmentUploadSubscription = widget.segmentUploadedStream?.listen((_) {
-      unawaited(_loadLatestMemory());
+    // New speech changes today's conversations and, after analysis, the tasks
+    _uploadSubscription = widget.segmentUploadedStream?.listen((_) {
+      unawaited(_loadConversations());
       unawaited(_loadTasks());
     });
   }
 
-  Future<void> _loadLatestMemory({bool showLoading = false}) async {
-    final generation = ++_loadGeneration;
-    if (showLoading && mounted) {
+  Future<void> _refreshAll() async {
+    await Future.wait([_loadConversations(), _loadTasks(), _loadSummary(), _loadPending()]);
+  }
+
+  Future<void> _loadConversations({bool showLoading = false}) async {
+    final generation = ++_conversationsGeneration;
+    if (showLoading) {
       setState(() {
-        _memoryLoading = true;
-        _memoryError = null;
+        _conversationsLoading = true;
+        _conversationsError = null;
       });
     }
-
     try {
-      final loader = widget.latestMemoryLoader ??
-          () => _api.getRecentSegments(limit: 20);
-      final segments = await loader();
-      if (!mounted || generation != _loadGeneration) return;
+      final all = await _api.listConversations(limit: 30);
+      if (!mounted || generation != _conversationsGeneration) return;
       setState(() {
-        _latestMemory = segments.cast<RecentSegment?>().firstWhere(
-              (segment) =>
-                  segment != null &&
-                  segment.isCompleted &&
-                  stripMemoryPrefix(segment.text ?? '').isNotEmpty,
-              orElse: () => null,
-            );
-        _memoryLoading = false;
-        _memoryError = null;
+        _conversations = todayConversations(all, widget.clock());
+        _conversationsLoading = false;
+        _conversationsError = null;
       });
-    } catch (_) {
-      if (!mounted || generation != _loadGeneration) return;
+    } catch (error) {
+      if (!mounted || generation != _conversationsGeneration) return;
       setState(() {
-        _memoryLoading = false;
-        _memoryError = 'Could not load the latest memory.';
+        _conversationsLoading = false;
+        _conversationsError = userMessage(error, "Could not load today's conversations.");
       });
     }
   }
 
   Future<void> _loadTasks({bool showLoading = false}) async {
     final generation = ++_tasksGeneration;
-    if (showLoading && mounted) {
+    if (showLoading) {
       setState(() {
         _tasksLoading = true;
         _tasksError = null;
       });
     }
-
     try {
-      final loader = widget.openTasksLoader ?? _api.getOpenTasks;
-      final tasks = await loader();
+      final open = await _api.listTasks(done: false);
       if (!mounted || generation != _tasksGeneration) return;
       setState(() {
-        // Keep tasks being completed hidden until the backend confirms
-        _tasks = tasks
-            .where((task) => !_completingTaskIds.contains(task.id))
-            .toList();
+        _openTasks = open;
         _tasksLoading = false;
         _tasksError = null;
+        resetTaskEdits();
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || generation != _tasksGeneration) return;
       setState(() {
         _tasksLoading = false;
-        _tasksError = 'Could not load open tasks.';
+        _tasksError = userMessage(error, 'Could not load tasks.');
       });
-    }
-  }
-
-  Future<void> _completeTask(TaskItem task) async {
-    if (_completingTaskIds.contains(task.id)) return;
-    setState(() => _completingTaskIds.add(task.id));
-    try {
-      final completer = widget.taskCompleter ?? _api.completeTask;
-      await completer(task);
-      if (!mounted) return;
-      setState(() {
-        _completingTaskIds.remove(task.id);
-        _tasks = _tasks.where((item) => item.id != task.id).toList();
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _completingTaskIds.remove(task.id));
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(content: Text('Echo could not update the task.')),
-      );
     }
   }
 
   Future<void> _loadSummary() async {
-    if (mounted) {
-      setState(() {
-        _summaryLoading = true;
-        _summaryError = null;
-      });
-    }
+    setState(() => _summaryError = null);
     try {
-      final loader = widget.dailySummaryLoader ?? _api.getLatestDigest;
-      final summary = await loader();
+      final summary = await _api.getLatestDigest();
       if (!mounted) return;
       setState(() {
         _summary = summary;
         _summaryLoading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _summaryLoading = false;
-        _summaryError = 'Could not load the daily summary.';
+        _summaryError = userMessage(error, 'Could not load the daily summary.');
       });
     }
+  }
+
+  /// Pending actions are optional: a failure just shows none.
+  Future<void> _loadPending() async {
+    try {
+      final pending = await _api.listPendingActions();
+      if (mounted) setState(() => _pending = pending);
+    } catch (_) {
+      if (mounted) setState(() => _pending = const []);
+    }
+  }
+
+  Future<void> _confirm(PendingAction action) async {
+    if (_pendingBusy.contains(action.id)) return;
+    setState(() => _pendingBusy.add(action.id));
+    try {
+      final result = await _api.confirmPendingAction(action.id);
+      if (!mounted) return;
+      _replacePending(action.copyWith(status: result.status));
+      _snack(result.message);
+    } catch (error) {
+      if (!mounted) return;
+      _snack(userMessage(error, 'Could not confirm this action.'));
+      unawaited(_loadPending()); // it may have expired or been handled elsewhere
+    } finally {
+      if (mounted) setState(() => _pendingBusy.remove(action.id));
+    }
+  }
+
+  Future<void> _cancel(PendingAction action) async {
+    if (_pendingBusy.contains(action.id)) return;
+    setState(() => _pendingBusy.add(action.id));
+    try {
+      await _api.cancelPendingAction(action.id);
+      if (!mounted) return;
+      _replacePending(action.copyWith(status: 'cancelled'));
+    } catch (error) {
+      if (!mounted) return;
+      _snack(userMessage(error, 'Could not cancel this action.'));
+      unawaited(_loadPending());
+    } finally {
+      if (mounted) setState(() => _pendingBusy.remove(action.id));
+    }
+  }
+
+  void _replacePending(PendingAction changed) {
+    setState(() {
+      _pending = [for (final a in _pending) a.id == changed.id ? changed : a];
+    });
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openConversation(ConversationCard conversation) async {
+    final opener = widget.openConversation;
+    if (opener != null) {
+      await opener(context, conversation.id);
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => ConversationDetailScreen(
+            conversationId: conversation.id,
+            api: _api,
+            onAsk: widget.onAsk,
+            clock: widget.clock,
+          ),
+        ),
+      );
+    }
+    if (mounted) await _refreshAll();
   }
 
   Future<void> _requestMuted(bool muted) async {
@@ -248,9 +294,7 @@ final class _HomeScreenState extends State<HomeScreen> {
       _requestedMuted = muted;
       _privacyBusy = true;
       _privacyError = null;
-      _announcement = muted
-          ? 'Requesting microphone mute'
-          : 'Requesting listening resume';
+      _announcement = muted ? 'Requesting microphone mute' : 'Requesting listening resume';
     });
 
     _muteTimeout?.cancel();
@@ -299,105 +343,82 @@ final class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _openLatestMemory() async {
-    final segment = _latestMemory;
-    if (segment == null) return;
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => TranscriptDetailScreen(segment: segment, api: _api),
-      ),
-    );
-    if (!mounted) return;
-    await _loadLatestMemory();
+  VoidCallback? _deviceAction(PrivacyControlPresentation presentation) {
+    return switch (presentation) {
+      PrivacyControlPresentation.listening => () => unawaited(_requestMuted(true)),
+      PrivacyControlPresentation.muted => () => unawaited(_requestMuted(false)),
+      PrivacyControlPresentation.connecting => null,
+      PrivacyControlPresentation.offline =>
+        widget.onReconnect == null ? null : () => unawaited(_reconnect()),
+      PrivacyControlPresentation.unpaired => widget.onPair,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final presentation = _presentation(widget.deviceStatus.connectionState);
-    final visual = _visualFor(presentation, palette);
-    final privacyAction = switch (presentation) {
-      PrivacyControlPresentation.listening => () => _requestMuted(true),
-      PrivacyControlPresentation.muted => () => _requestMuted(false),
-      PrivacyControlPresentation.connecting => null,
-      PrivacyControlPresentation.offline =>
-        widget.onReconnect == null ? null : _reconnect,
-    };
+    final presentation = devicePresentation(widget.deviceStatus.connectionState);
+    final now = widget.clock();
+    final tasks = editedTasks(todayTasks(_openTasks, now));
 
-    return ColoredBox(
+    // A Material, not a ColoredBox: row ink splashes paint on it
+    return Material(
       color: palette.background,
       child: SafeArea(
         top: false,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: IntrinsicHeight(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _TodayHeader(date: DateTime.now()),
-                        const SizedBox(height: 20),
-                        _DeviceHero(visual: visual),
-                        const SizedBox(height: 18),
-                        TodayMemoryPreview(
-                          loading: _memoryLoading,
-                          segment: _latestMemory,
-                          error: _memoryError,
-                          onRetry: () => unawaited(
-                            _loadLatestMemory(showLoading: true),
-                          ),
-                          onTap: _latestMemory == null
-                              ? null
-                              : () => unawaited(_openLatestMemory()),
-                          onViewAll: widget.onTranscripts,
-                        ),
-                        const SizedBox(height: 12),
-                        TodayTasksSection(
-                          loading: _tasksLoading,
-                          tasks: _tasks,
-                          error: _tasksError,
-                          completingIds: _completingTaskIds,
-                          onRetry: () => unawaited(
-                            _loadTasks(showLoading: true),
-                          ),
-                          onComplete: (task) => unawaited(_completeTask(task)),
-                        ),
-                        const SizedBox(height: 12),
-                        TodaySummarySection(
-                          loading: _summaryLoading,
-                          summary: _summary,
-                          error: _summaryError,
-                          onRetry: () => unawaited(_loadSummary()),
-                        ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.center,
-                          child: TextButton.icon(
-                            onPressed: widget.onAsk,
-                            icon: const Icon(Icons.auto_awesome_outlined),
-                            label: const Text('Ask Echo'),
-                          ),
-                        ),
-                        const Spacer(),
-                        PrivacyControl(
-                          presentation: presentation,
-                          onPressed: privacyAction,
-                          busy: _privacyBusy,
-                          error: _privacyError,
-                          onRetry: privacyAction,
-                          announcement: _announcement,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+        child: RefreshIndicator(
+          onRefresh: _refreshAll,
+          child: ListView(
+            key: const Key('today'),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+            children: [
+              _TodayHeader(date: now),
+              const SizedBox(height: 16),
+              DeviceCard(
+                presentation: presentation,
+                onAction: _deviceAction(presentation),
+                busy: _privacyBusy,
+                error: _privacyError,
+                announcement: _announcement,
               ),
-            );
-          },
+              const SizedBox(height: 12),
+              NeedsYouSection(
+                actions: _pending,
+                busyIds: _pendingBusy,
+                onConfirm: (a) => unawaited(_confirm(a)),
+                onCancel: (a) => unawaited(_cancel(a)),
+              ),
+              TodayRecapSection(
+                loading: _conversationsLoading,
+                conversations: _conversations,
+                error: _conversationsError,
+                onRetry: () => unawaited(_loadConversations(showLoading: true)),
+                onOpen: (c) => unawaited(_openConversation(c)),
+                onSeeAll: widget.onOpenMemories,
+              ),
+              const SizedBox(height: 8),
+              TodayTasksSection(
+                loading: _tasksLoading,
+                tasks: tasks,
+                error: _tasksError,
+                busy: isTaskBusy,
+                now: now,
+                onRetry: () => unawaited(_loadTasks(showLoading: true)),
+                onToggle: (t) => unawaited(toggleTask(t)),
+                onDismiss: (t) => unawaited(dismissTask(t)),
+                onSeeAll: widget.onOpenTasks,
+              ),
+              const SizedBox(height: 8),
+              DigestSection(
+                loading: _summaryLoading,
+                summary: _summary,
+                error: _summaryError,
+                onRetry: () => unawaited(_loadSummary()),
+                now: now,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -406,56 +427,7 @@ final class _HomeScreenState extends State<HomeScreen> {
 
 bool _isRequestedTelemetry(DeviceStatus status, bool requestedMuted) {
   return status.connectionState ==
-      (requestedMuted
-          ? DeviceConnectionState.muted
-          : DeviceConnectionState.listening);
-}
-
-PrivacyControlPresentation _presentation(DeviceConnectionState state) {
-  return switch (state) {
-    DeviceConnectionState.listening => PrivacyControlPresentation.listening,
-    DeviceConnectionState.muted => PrivacyControlPresentation.muted,
-    DeviceConnectionState.scanning ||
-    DeviceConnectionState.connecting ||
-    DeviceConnectionState.bonding ||
-    DeviceConnectionState.reconnecting => PrivacyControlPresentation.connecting,
-    DeviceConnectionState.unpaired ||
-    DeviceConnectionState.bluetoothOff ||
-    DeviceConnectionState.offline ||
-    DeviceConnectionState.error => PrivacyControlPresentation.offline,
-  };
-}
-
-_DeviceVisual _visualFor(
-  PrivacyControlPresentation presentation,
-  EchoPalette palette,
-) {
-  return switch (presentation) {
-    PrivacyControlPresentation.listening => _DeviceVisual(
-        title: 'Listening',
-        detail: 'Your microphone is active and private controls are ready.',
-        icon: Icons.graphic_eq_rounded,
-        color: palette.green,
-      ),
-    PrivacyControlPresentation.muted => _DeviceVisual(
-        title: 'Microphone muted',
-        detail: 'Echo is not listening. Resume whenever you are ready.',
-        icon: Icons.mic_off_rounded,
-        color: palette.red,
-      ),
-    PrivacyControlPresentation.connecting => _DeviceVisual(
-        title: 'Connecting',
-        detail: 'Echo is restoring the private device connection.',
-        icon: Icons.bluetooth_searching_rounded,
-        color: palette.amber,
-      ),
-    PrivacyControlPresentation.offline => _DeviceVisual(
-        title: 'Echo is offline',
-        detail: 'Reconnect when the device is nearby and Bluetooth is on.',
-        icon: Icons.bluetooth_disabled_rounded,
-        color: palette.blue,
-      ),
-  };
+      (requestedMuted ? DeviceConnectionState.muted : DeviceConnectionState.listening);
 }
 
 final class _TodayHeader extends StatelessWidget {
@@ -469,99 +441,27 @@ final class _TodayHeader extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('Echo', style: Theme.of(context).textTheme.titleLarge),
+        Text('Today', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(width: 10),
-        // Takes the free space, and gives way to the date on narrow screens
+        // Takes the free space, and gives way on narrow screens
         Expanded(
           child: Text(
-            'Today',
+            _formatDate(date),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: palette.text2,
-                ),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: palette.text2),
           ),
-        ),
-        Text(
-          _formatDate(date),
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: palette.text2,
-              ),
         ),
       ],
     );
   }
 }
 
-final class _DeviceHero extends StatelessWidget {
-  const _DeviceHero({required this.visual});
-
-  final _DeviceVisual visual;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      liveRegion: true,
-      label: '${visual.title}. ${visual.detail}',
-      // A minimum, not a fixed height: large text sizes need more room
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 148),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(visual.icon, size: 48, color: visual.color),
-            const SizedBox(height: 12),
-            Text(
-              visual.title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              visual.detail,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: EchoPalette.of(context).text2,
-                  ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-final class _DeviceVisual {
-  const _DeviceVisual({
-    required this.title,
-    required this.detail,
-    required this.icon,
-    required this.color,
-  });
-
-  final String title;
-  final String detail;
-  final IconData icon;
-  final Color color;
-}
-
 String _formatDate(DateTime value) {
+  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
   ];
-  return '${months[value.month - 1]} ${value.day}';
+  return '${weekdays[value.weekday - 1]}, ${months[value.month - 1]} ${value.day}';
 }

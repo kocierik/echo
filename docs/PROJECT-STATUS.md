@@ -61,7 +61,9 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **People** (in Memories): persone per ultima volta viste; la pagina di una persona ha ruolo e note, task ed
   eventi che la nominano, conversazioni in cui compare e "Ask about" (nuova chat con la domanda già inviata).
   Anche una conversazione ha "Ask about this conversation".
-- **Today:** stato wearable, ultima trascrizione, **task aperti (completabili)**, **riassunto del giorno**, pausa/ripresa.
+- **Today:** scheda del dispositivo (muto/riprendi, riconnetti o **Pair Echo**), **Needs you** con le azioni da
+  confermare (anche quelle vocali), la giornata finora (conversazioni, minuti, persone), task in scadenza o creati
+  oggi (con "Not a task"), l'ultimo riassunto giornaliero con il suo giorno.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown; **schede Confirm/Cancel** per le
@@ -174,8 +176,6 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   in chat e una a voce, le conferme, Telegram e Todoist, e i tempi reali di una richiesta.
 - **`composio==0.15.0`:** la 0.22 richiede `openai>=2.48`; per aggiornare vanno alzati insieme `openai` e `composio`.
 - **Instradamento:** dipende da una sola risposta del modello, provato solo con risposte simulate.
-- **Home senza dispositivo:** con il pairing saltato, Today mostra "Echo is offline" e un "Reconnect Echo" che non fa
-  nulla; servirebbe "No Echo paired" con un pulsante "Pair Echo".
 - **Minori:** se Redis non salva la risposta dopo il commit, i retry ricevono 409 per 10 minuti; schede e risposte
   possono essere lunghe con molti destinatari; il rilevamento della lingua per le risposte fisse è euristico
   (frasi brevi o miste cadono sull'inglese).

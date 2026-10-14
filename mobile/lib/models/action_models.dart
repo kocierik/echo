@@ -36,12 +36,20 @@ final class PendingAction {
     required this.summary,
     this.status,
     this.expiresAt,
+    this.app,
+    this.source,
   });
 
   final String id;
   final String summary;
   final String? status;
   final DateTime? expiresAt;
+
+  /// "Gmail", "Google Calendar"… (listed actions only).
+  final String? app;
+
+  /// "voice" or "chat" (listed actions only).
+  final String? source;
 
   factory PendingAction.fromJson(Map<String, dynamic> json) {
     final status = json['status'];
@@ -59,11 +67,15 @@ final class PendingAction {
         throw const FormatException('expires_at must be a valid date');
       }
     }
+    final app = json['app'];
+    final source = json['source'];
     return PendingAction(
       id: _string(json, 'id'),
       summary: _string(json, 'summary', allowEmpty: true),
       status: status as String?,
       expiresAt: expiresAt,
+      app: app is String ? app : null,
+      source: source is String ? source : null,
     );
   }
 
@@ -72,6 +84,8 @@ final class PendingAction {
         summary: summary,
         status: status ?? this.status,
         expiresAt: expiresAt,
+        app: app,
+        source: source,
       );
 }
 

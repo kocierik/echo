@@ -1,463 +1,401 @@
 import 'dart:async';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
-import 'package:echo_app/models/segment.dart';
-import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-void main() {
-  const listening = DeviceStatus(
-    connectionState: DeviceConnectionState.listening,
-  );
-  const muted = DeviceStatus(
-    connectionState: DeviceConnectionState.muted,
-  );
-  const connecting = DeviceStatus(
-    connectionState: DeviceConnectionState.connecting,
-  );
-  const offline = DeviceStatus(
-    connectionState: DeviceConnectionState.offline,
-  );
+import '../support/fake_memory_api.dart';
 
-  testWidgets('four Today states fit supported light and dark viewports', (
-    tester,
-  ) async {
-    for (final theme in [AppTheme.light, AppTheme.dark]) {
-      for (final viewport in const [
-        (size: Size(375, 812), textScale: 1.0),
-        (size: Size(320, 812), textScale: 1.3),
-      ]) {
-        for (final status in [listening, muted, connecting, offline]) {
-          await _pumpToday(
-            tester,
-            status: status,
-            theme: theme,
-            size: viewport.size,
-            textScale: viewport.textScale,
-          );
-          expect(tester.takeException(), isNull);
+void main() {
+  // A Wednesday evening
+  final now = DateTime(2026, 10, 14, 18);
+  const listening = DeviceStatus(connectionState: DeviceConnectionState.listening);
+  const muted = DeviceStatus(connectionState: DeviceConnectionState.muted);
+  const connecting = DeviceStatus(connectionState: DeviceConnectionState.connecting);
+  const offline = DeviceStatus(connectionState: DeviceConnectionState.offline);
+  const unpaired = DeviceStatus(connectionState: DeviceConnectionState.unpaired);
+
+  final calls = <String>[];
+
+  Future<void> pumpToday(
+    WidgetTester tester, {
+    FakeTodayApi? api,
+    DeviceStatus status = listening,
+    Future<void> Function(bool)? setMuted,
+    Future<void> Function()? onReconnect,
+    Stream<Object?>? uploads,
+    ThemeData? theme,
+    Size size = const Size(375, 812),
+    double textScale = 1,
+  }) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = size;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    await tester.pumpWidget(MaterialApp(
+      theme: theme ?? AppTheme.light,
+      home: MediaQuery(
+        data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),
+        child: Scaffold(
+          body: HomeScreen(
+            api: api ?? FakeTodayApi(),
+            deviceStatus: status,
+            setMuted: setMuted ?? (_) async {},
+            onReconnect: onReconnect,
+            onPair: () => calls.add('pair'),
+            onOpenMemories: () => calls.add('memories'),
+            onOpenTasks: () => calls.add('tasks'),
+            openConversation: (context, id) async => calls.add('open $id'),
+            segmentUploadedStream: uploads,
+            onMuteAcknowledged: () async {},
+            clock: () => now,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+  }
+
+  setUp(calls.clear);
+
+  group('device', () {
+    testWidgets('every state fits light and dark viewports', (tester) async {
+      for (final theme in [AppTheme.light, AppTheme.dark]) {
+        for (final viewport in const [
+          (size: Size(375, 812), textScale: 1.0),
+          (size: Size(320, 640), textScale: 1.3),
+        ]) {
+          for (final status in [listening, muted, connecting, offline, unpaired]) {
+            await pumpToday(
+              tester,
+              status: status,
+              theme: theme,
+              size: viewport.size,
+              textScale: viewport.textScale,
+            );
+            expect(tester.takeException(), isNull);
+          }
         }
       }
-    }
-  });
+    });
 
-  testWidgets('mute waits for telemetry acknowledgement before changing state', (
-    tester,
-  ) async {
-    final writes = <bool>[];
-    Future<void> setMuted(bool value) async => writes.add(value);
+    testWidgets('mute waits for the device before changing state', (tester) async {
+      final writes = <bool>[];
+      Future<void> setMuted(bool value) async => writes.add(value);
 
-    await _pumpToday(tester, status: listening, setMuted: setMuted);
-    await tester.tap(find.text('Mute microphone'));
-    await tester.pump();
-
-    expect(writes, [true]);
-    expect(find.text('Listening'), findsOneWidget);
-    expect(find.text('Mute microphone'), findsOneWidget);
-
-    await _pumpToday(tester, status: muted, setMuted: setMuted);
-
-    expect(find.text('Microphone muted'), findsOneWidget);
-    expect(find.text('Resume listening'), findsOneWidget);
-    expect(find.byKey(const Key('privacy-progress')), findsNothing);
-  });
-
-  testWidgets('resume command sends false', (tester) async {
-    final writes = <bool>[];
-    await _pumpToday(
-      tester,
-      status: muted,
-      setMuted: (value) async => writes.add(value),
-    );
-
-    await tester.tap(find.text('Resume listening'));
-    await tester.pump();
-
-    expect(writes, [false]);
-    expect(find.text('Microphone muted'), findsOneWidget);
-
-    await _pumpToday(tester, status: listening, setMuted: (value) async {});
-  });
-
-  testWidgets('failed mute command exposes a retry without haptic success', (
-    tester,
-  ) async {
-    var attempts = 0;
-    await _pumpToday(
-      tester,
-      status: listening,
-      setMuted: (_) async {
-        attempts++;
-        if (attempts == 1) throw StateError('write failed');
-      },
-    );
-
-    await tester.tap(find.text('Mute microphone'));
-    await tester.pump();
-
-    expect(find.text('Echo could not update the microphone.'), findsOneWidget);
-    expect(find.byKey(const Key('privacy-retry')), findsOneWidget);
-
-    // Today now has tasks and the summary: the retry sits below the fold
-    await tester.ensureVisible(find.byKey(const Key('privacy-retry')));
-    await tester.tap(find.byKey(const Key('privacy-retry')));
-    await tester.pump();
-    expect(attempts, 2);
-
-    await _pumpToday(tester, status: muted, setMuted: (_) async {});
-  });
-
-  testWidgets('connecting disables the privacy action', (tester) async {
-    final writes = <bool>[];
-    await _pumpToday(
-      tester,
-      status: connecting,
-      setMuted: (value) async => writes.add(value),
-    );
-
-    expect(find.text('Connecting…'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('privacy-action')));
-    await tester.pump();
-
-    expect(writes, isEmpty);
-  });
-
-  testWidgets('offline reconnect delegates without optimistic listening state', (
-    tester,
-  ) async {
-    var reconnects = 0;
-    await _pumpToday(
-      tester,
-      status: offline,
-      onReconnect: () async => reconnects++,
-    );
-
-    await tester.tap(find.text('Reconnect Echo'));
-    await tester.pump();
-
-    expect(reconnects, 1);
-    expect(find.text('Echo is offline'), findsOneWidget);
-    expect(find.text('Listening'), findsNothing);
-  });
-
-  testWidgets('latest memory shows loading, error, empty, and retry states', (
-    tester,
-  ) async {
-    final pending = Completer<List<RecentSegment>>();
-    await _pumpToday(tester, latestMemoryLoader: () => pending.future);
-    expect(find.byKey(const Key('memory-loading')), findsOneWidget);
-
-    pending.complete(const []);
-    await tester.pump();
-    expect(find.text('No completed memories yet.'), findsOneWidget);
-
-    var attempts = 0;
-    // Unmount the first screen, or its state (and loader) would be reused
-    await tester.pumpWidget(const SizedBox());
-    await _pumpToday(
-      tester,
-      latestMemoryLoader: () async {
-        attempts++;
-        if (attempts == 1) throw StateError('offline');
-        return const [];
-      },
-    );
-    await tester.pump();
-    expect(find.text('Could not load the latest memory.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('memory-retry')));
-    await tester.pump();
-    expect(attempts, 2);
-    expect(find.text('No completed memories yet.'), findsOneWidget);
-  });
-
-  testWidgets('latest memory chooses completed nonempty content and opens detail', (
-    tester,
-  ) async {
-    var loads = 0;
-    await _pumpToday(
-      tester,
-      latestMemoryLoader: () async {
-        loads++;
-        return [
-          _segment(status: 'processing', text: 'Still processing'),
-          _segment(id: 'empty', text: '   '),
-          _segment(
-            id: 'latest',
-            text: '[You] Project Atlas is ready for review.',
-            speaker: 'self',
-          ),
-        ];
-      },
-    );
-    await tester.pump();
-
-    expect(find.text('Project Atlas is ready for review.'), findsOneWidget);
-    // The speaker shares a line with the time: "10:00  ·  You"
-    expect(find.textContaining('·  You'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('memory-content')));
-    await tester.pumpAndSettle();
-    expect(find.text('Transcript'), findsOneWidget);
-
-    Navigator.of(tester.element(find.text('Transcript'))).pop();
-    await tester.pumpAndSettle();
-    expect(loads, 2);
-  });
-
-  testWidgets('segment upload refreshes latest memory once per event', (
-    tester,
-  ) async {
-    final uploads = StreamController<int>();
-    addTearDown(uploads.close);
-    var loads = 0;
-    await _pumpToday(
-      tester,
-      segmentUploadedStream: uploads.stream,
-      latestMemoryLoader: () async {
-        loads++;
-        return const [];
-      },
-    );
-    await tester.pump();
-    expect(loads, 1);
-
-    uploads.add(1);
-    await tester.pump();
-    await tester.pump();
-    expect(loads, 2);
-  });
-
-  testWidgets('open tasks show loading then empty state', (tester) async {
-    final pending = Completer<List<TaskItem>>();
-    await _pumpToday(tester, openTasksLoader: () => pending.future);
-    expect(find.byKey(const Key('tasks-loading')), findsOneWidget);
-
-    pending.complete(const []);
-    await tester.pump();
-    expect(find.text('No open tasks.'), findsOneWidget);
-  });
-
-  testWidgets('open tasks error offers a retry', (tester) async {
-    var attempts = 0;
-    await _pumpToday(
-      tester,
-      openTasksLoader: () async {
-        attempts++;
-        if (attempts == 1) throw StateError('offline');
-        return const [TaskItem(id: 't1', name: 'Call Ada')];
-      },
-    );
-    await tester.pump();
-    expect(find.text('Could not load open tasks.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('tasks-retry')));
-    await tester.pump();
-    expect(attempts, 2);
-    expect(find.text('Call Ada'), findsOneWidget);
-  });
-
-  testWidgets('shows at most three open tasks with a count of the rest', (
-    tester,
-  ) async {
-    await _pumpToday(
-      tester,
-      openTasksLoader: () async => [
-        for (var i = 1; i <= 5; i++) TaskItem(id: 't$i', name: 'Task $i'),
-      ],
-    );
-    await tester.pump();
-
-    expect(find.text('Task 1'), findsOneWidget);
-    expect(find.text('Task 3'), findsOneWidget);
-    expect(find.text('Task 4'), findsNothing);
-    expect(find.text('+2 more'), findsOneWidget);
-  });
-
-  testWidgets('completing a task removes it only after the backend confirms', (
-    tester,
-  ) async {
-    final completion = Completer<void>();
-    final completed = <String>[];
-    await _pumpToday(
-      tester,
-      openTasksLoader: () async => const [
-        TaskItem(id: 't1', name: 'Call Ada'),
-        TaskItem(id: 't2', name: 'Book flights'),
-      ],
-      taskCompleter: (task) {
-        completed.add(task.id);
-        return completion.future;
-      },
-    );
-    await tester.pump();
-
-    await tester.tap(find.byKey(const Key('task-complete-t1')));
-    await tester.pump();
-    expect(completed, ['t1']);
-    expect(find.text('Call Ada'), findsOneWidget);
-    expect(find.byKey(const Key('task-complete-t1')), findsNothing);
-
-    completion.complete();
-    await tester.pump();
-    expect(find.text('Call Ada'), findsNothing);
-    expect(find.text('Book flights'), findsOneWidget);
-  });
-
-  testWidgets('a failed task completion keeps the task and reports it', (
-    tester,
-  ) async {
-    await _pumpToday(
-      tester,
-      openTasksLoader: () async => const [TaskItem(id: 't1', name: 'Call Ada')],
-      taskCompleter: (_) async => throw StateError('offline'),
-    );
-    await tester.pump();
-
-    await tester.tap(find.byKey(const Key('task-complete-t1')));
-    await tester.pump();
-    await tester.pump();
-
-    expect(find.text('Call Ada'), findsOneWidget);
-    expect(find.byKey(const Key('task-complete-t1')), findsOneWidget);
-    expect(find.text('Echo could not update the task.'), findsOneWidget);
-  });
-
-  testWidgets('daily summary shows the latest digest', (tester) async {
-    final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    await _pumpToday(
-      tester,
-      dailySummaryLoader: () async => DailySummary(
-        date: DateTime(yesterday.year, yesterday.month, yesterday.day),
-        summary: 'Reviewed Project Atlas with Ada.',
-      ),
-    );
-    await tester.pump();
-    expect(find.text('Reviewed Project Atlas with Ada.'), findsOneWidget);
-    expect(find.text('Yesterday'), findsOneWidget);
-  });
-
-  testWidgets('daily summary empty state', (tester) async {
-    await _pumpToday(tester, dailySummaryLoader: () async => null);
-    await tester.pump();
-    expect(
-      find.text('No summary yet. Echo writes one each night for the day before.'),
-      findsOneWidget,
-    );
-  });
-
-  testWidgets('daily summary error offers a retry', (tester) async {
-    var attempts = 0;
-    await _pumpToday(
-      tester,
-      dailySummaryLoader: () async {
-        attempts++;
-        if (attempts == 1) throw StateError('offline');
-        return null;
-      },
-    );
-    await tester.pump();
-    expect(find.text('Could not load the daily summary.'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('summary-retry')));
-    await tester.pump();
-    expect(attempts, 2);
-  });
-
-  testWidgets('Today with tasks and summary fits small viewports', (
-    tester,
-  ) async {
-    for (final theme in [AppTheme.light, AppTheme.dark]) {
-      await _pumpToday(
-        tester,
-        theme: theme,
-        size: const Size(320, 812),
-        textScale: 1.3,
-        openTasksLoader: () async => [
-          for (var i = 1; i <= 4; i++)
-            TaskItem(
-              id: 't$i',
-              name: 'A fairly long task name number $i to wrap',
-              dueDate: DateTime(2026, 10, 14),
-            ),
-        ],
-        dailySummaryLoader: () async => DailySummary(
-          date: DateTime(2026, 10, 12),
-          summary: 'A long summary sentence. ' * 12,
-        ),
-      );
+      await pumpToday(tester, status: listening, setMuted: setMuted);
+      await tester.tap(find.text('Mute microphone'));
       await tester.pump();
+
+      expect(writes, [true]);
+      expect(find.text('Listening'), findsOneWidget);
+      expect(find.byKey(const Key('privacy-progress')), findsOneWidget);
+
+      await pumpToday(tester, status: muted, setMuted: setMuted);
+
+      expect(find.text('Microphone muted'), findsOneWidget);
+      expect(find.text('Resume listening'), findsOneWidget);
+      expect(find.byKey(const Key('privacy-progress')), findsNothing);
+    });
+
+    testWidgets('resume sends false', (tester) async {
+      final writes = <bool>[];
+      await pumpToday(tester, status: muted, setMuted: (value) async => writes.add(value));
+
+      await tester.tap(find.text('Resume listening'));
+      await tester.pump();
+
+      expect(writes, [false]);
+      await pumpToday(tester, status: listening);
+    });
+
+    testWidgets('a failed mute offers a retry', (tester) async {
+      var attempts = 0;
+      await pumpToday(
+        tester,
+        setMuted: (_) async {
+          attempts++;
+          if (attempts == 1) throw StateError('write failed');
+        },
+      );
+
+      await tester.tap(find.text('Mute microphone'));
+      await tester.pump();
+      expect(find.text('Echo could not update the microphone.'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('privacy-retry')));
+      await tester.pump();
+      expect(attempts, 2);
+      await pumpToday(tester, status: muted);
+    });
+
+    testWidgets('no device change is confirmed after eight seconds', (tester) async {
+      await pumpToday(tester, setMuted: (_) async {});
+
+      await tester.tap(find.text('Mute microphone'));
+      await tester.pump(const Duration(seconds: 9));
+
+      expect(find.text('Echo did not confirm the microphone change.'), findsOneWidget);
+    });
+
+    testWidgets('connecting disables the action', (tester) async {
+      final writes = <bool>[];
+      await pumpToday(tester, status: connecting, setMuted: (v) async => writes.add(v));
+
+      await tester.tap(find.byKey(const Key('privacy-action')));
+      await tester.pump();
+
+      expect(find.text('Connecting…'), findsOneWidget);
+      expect(writes, isEmpty);
+    });
+
+    testWidgets('offline reconnects without pretending to listen', (tester) async {
+      var reconnects = 0;
+      await pumpToday(tester, status: offline, onReconnect: () async => reconnects++);
+
+      await tester.tap(find.text('Reconnect Echo'));
+      await tester.pump();
+
+      expect(reconnects, 1);
+      expect(find.text('Echo is offline'), findsOneWidget);
+    });
+
+    testWidgets('without a paired Echo it offers pairing', (tester) async {
+      await pumpToday(tester, status: unpaired);
+
+      expect(find.text('No Echo paired'), findsOneWidget);
+      await tester.tap(find.text('Pair Echo'));
+      await tester.pump();
+
+      expect(calls, ['pair']);
+    });
+  });
+
+  group('today so far', () {
+    FakeTodayApi withConversations() => FakeTodayApi(conversations: [
+          card('live', startedAt: DateTime(2026, 10, 14, 17, 50), title: null, isOpen: true,
+              people: const [], taskCount: 0, duration: const Duration(minutes: 10)),
+          card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30),
+              duration: const Duration(minutes: 47), people: const ['Ada', 'Marco']),
+          card('standup', startedAt: DateTime(2026, 10, 14, 9), title: 'Standup',
+              duration: const Duration(minutes: 8), people: const ['Luca']),
+          card('yesterday', startedAt: DateTime(2026, 10, 13, 20), title: 'Dinner plans'),
+        ]);
+
+    testWidgets("recaps only today's conversations and opens one", (tester) async {
+      await pumpToday(tester, api: withConversations());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('3 conversations · 1 h 5 min · with Ada, Marco, Luca'),
+        findsOneWidget,
+      );
+      expect(find.text('Conversation in progress'), findsOneWidget);
+      expect(find.text('Standup'), findsOneWidget);
+      expect(find.text('Dinner plans'), findsNothing);
+
+      await tester.tap(find.text('Lunch with Ada'));
+      await tester.pumpAndSettle();
+      expect(calls, ['open lunch']);
+
+      await tester.tap(find.byKey(const Key('recap-see-all')));
+      expect(calls.last, 'memories');
+    });
+
+    testWidgets('empty and error states', (tester) async {
+      await pumpToday(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('No conversations yet today.'), findsOneWidget);
+
+      final api = withConversations()..listError = serverError('Offline');
+      await tester.pumpWidget(const SizedBox());
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+      expect(find.text('Offline'), findsWidgets);
+
+      api.listError = null;
+      await tester.tap(find.byKey(const Key('recap-retry')));
+      await tester.pumpAndSettle();
+      expect(find.text('Standup'), findsOneWidget);
+    });
+
+    testWidgets('new speech refreshes conversations and tasks', (tester) async {
+      final uploads = StreamController<Object?>();
+      addTearDown(uploads.close);
+      final api = FakeTodayApi();
+      await pumpToday(tester, api: api, uploads: uploads.stream);
+      await tester.pumpAndSettle();
+      final before = api.calls.length;
+
+      uploads.add(null);
+      await tester.pumpAndSettle();
+
+      expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false']));
+    });
+  });
+
+  group('tasks', () {
+    FakeTodayApi withTasks() => FakeTodayApi(openTasks: [
+          task('late', 'Pay the bill', due: DateTime(2026, 10, 12)),
+          task('today', 'Call Ada', due: DateTime(2026, 10, 14)),
+          task('later', 'Book the trip', due: DateTime(2026, 10, 30),
+              createdAt: DateTime(2026, 10, 1)),
+          task('fresh', 'Buy a gift', createdAt: DateTime(2026, 10, 14, 11),
+              source: '[Tu] Devo comprare un regalo.'),
+          task('old', 'Old idea', createdAt: DateTime(2026, 10, 1)),
+        ]);
+
+    testWidgets('shows what is due and what was created today', (tester) async {
+      await pumpToday(tester, api: withTasks());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pay the bill'), findsOneWidget);
+      expect(find.text('Overdue · Oct 12'), findsOneWidget);
+      expect(find.text('Call Ada'), findsOneWidget);
+      expect(find.text('Buy a gift'), findsOneWidget);
+      expect(find.text('“Devo comprare un regalo.”'), findsOneWidget);
+      expect(find.text('Book the trip'), findsNothing);
+      expect(find.text('Old idea'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('Pay the bill')).dy,
+        lessThan(tester.getTopLeft(find.text('Buy a gift')).dy),
+      );
+    });
+
+    testWidgets('a task is completed or dropped in place', (tester) async {
+      final api = withTasks();
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('task-toggle-today')));
+      await tester.tap(find.byKey(const Key('task-toggle-today')));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('done today true'));
+
+      await tester.ensureVisible(find.byKey(const Key('task-menu-fresh')));
+      await tester.tap(find.byKey(const Key('task-menu-fresh')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('task-dismiss-fresh')));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('delete entity fresh'));
+      expect(find.text('Buy a gift'), findsNothing);
+    });
+
+    testWidgets('nothing due, and See all', (tester) async {
+      await pumpToday(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Nothing due today.'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const Key('tasks-see-all')));
+      await tester.tap(find.byKey(const Key('tasks-see-all')));
+      expect(calls, ['tasks']);
+    });
+  });
+
+  group('needs you', () {
+    const voice = PendingAction(
+      id: 'a1',
+      summary: 'Send the budget to Marco',
+      status: 'pending',
+      app: 'Gmail',
+      source: 'voice',
+    );
+
+    testWidgets('is hidden when nothing waits', (tester) async {
+      await pumpToday(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('needs-you')), findsNothing);
+    });
+
+    testWidgets('confirms a voice request in place', (tester) async {
+      final api = FakeTodayApi(pending: [voice])
+        ..confirmResult = const ConfirmResult(status: 'executed', message: 'Email sent.');
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Gmail · Voice request'), findsOneWidget);
+      expect(find.text('Send the budget to Marco'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('action-confirm-a1')));
+      await tester.pumpAndSettle();
+
+      expect(api.calls, contains('confirm a1'));
+      expect(find.text('Email sent.'), findsOneWidget);
+      expect(find.byKey(const Key('action-confirm-a1')), findsNothing);
+    });
+
+    testWidgets('cancels, and reports a failed confirm', (tester) async {
+      final api = FakeTodayApi(pending: [voice])..confirmError = serverError('Expired');
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('action-confirm-a1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Expired'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('action-cancel-a1')));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('cancel a1'));
+    });
+  });
+
+  group('daily summary', () {
+    testWidgets("is labelled with its day", (tester) async {
+      final api = FakeTodayApi(
+        digest: DailySummary(date: DateTime(2026, 10, 13), summary: 'Met Ada about Atlas.'),
+      );
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('Met Ada about Atlas.'), findsOneWidget);
+    });
+
+    testWidgets('empty and error states', (tester) async {
+      await pumpToday(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Echo writes a summary of each day overnight.'), findsOneWidget);
+
+      final api = FakeTodayApi()..digestError = serverError('Digest down');
+      await tester.pumpWidget(const SizedBox());
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+      expect(find.text('Digest down'), findsOneWidget);
+      api
+        ..digestError = null
+        ..digest = DailySummary(date: DateTime(2026, 10, 13), summary: 'Recovered.');
+      await tester.ensureVisible(find.byKey(const Key('summary-retry')));
+      await tester.tap(find.byKey(const Key('summary-retry')));
+      await tester.pumpAndSettle();
+      expect(find.text('Recovered.'), findsOneWidget);
+    });
+  });
+
+  testWidgets('a full Today fits 320 wide at 1.3 text scale', (tester) async {
+    final api = FakeTodayApi(
+      conversations: [
+        card('c1', startedAt: DateTime(2026, 10, 14, 12),
+            title: 'A long conversation title about many things at once',
+            people: const ['Alessandro', 'Margherita', 'Bartolomeo', 'Ada']),
+      ],
+      openTasks: [
+        task('t1', 'A rather long task name that needs to wrap on a small screen',
+            due: DateTime(2026, 10, 10), source: '[Tu] Una frase lunga da cui nasce il task.'),
+      ],
+      digest: DailySummary(date: DateTime(2026, 10, 13), summary: 'A long summary. ' * 20),
+      pending: const [
+        PendingAction(id: 'a1', summary: 'Send a long email to many people', status: 'pending',
+            app: 'Google Calendar', source: 'voice'),
+      ],
+    );
+    for (final theme in [AppTheme.light, AppTheme.dark]) {
+      await pumpToday(tester, api: api, theme: theme, size: const Size(320, 640), textScale: 1.3);
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     }
   });
-}
-
-Future<void> _pumpToday(
-  WidgetTester tester, {
-  DeviceStatus status = const DeviceStatus(
-    connectionState: DeviceConnectionState.listening,
-  ),
-  Future<void> Function(bool)? setMuted,
-  Future<void> Function()? onReconnect,
-  Future<List<RecentSegment>> Function()? latestMemoryLoader,
-  Future<List<TaskItem>> Function()? openTasksLoader,
-  Future<DailySummary?> Function()? dailySummaryLoader,
-  Future<void> Function(TaskItem task)? taskCompleter,
-  Stream<Object?>? segmentUploadedStream,
-  ThemeData? theme,
-  Size size = const Size(375, 812),
-  double textScale = 1,
-}) async {
-  tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = size;
-  addTearDown(tester.view.resetDevicePixelRatio);
-  addTearDown(tester.view.resetPhysicalSize);
-
-  await tester.pumpWidget(MaterialApp(
-    theme: theme ?? AppTheme.light,
-    home: MediaQuery(
-      data: MediaQueryData(
-        size: size,
-        textScaler: TextScaler.linear(textScale),
-      ),
-      child: Scaffold(
-        body: HomeScreen(
-          deviceStatus: status,
-          setMuted: setMuted ?? (_) async {},
-          onReconnect: onReconnect,
-          onAsk: () {},
-          onTranscripts: () {},
-          latestMemoryLoader: latestMemoryLoader ?? () async => const [],
-          openTasksLoader: openTasksLoader ?? () async => const [],
-          dailySummaryLoader: dailySummaryLoader ?? () async => null,
-          taskCompleter: taskCompleter ?? (_) async {},
-          segmentUploadedStream: segmentUploadedStream,
-          onMuteAcknowledged: () async {},
-        ),
-      ),
-    ),
-  ));
-  await tester.pump();
-}
-
-RecentSegment _segment({
-  String id = 'segment',
-  String status = 'completed',
-  String? text = 'A completed memory',
-  String? speaker = 'other',
-}) {
-  return RecentSegment(
-    id: id,
-    receivedAt: DateTime(2026, 10, 2, 9, 30),
-    recordedAt: DateTime(2026, 10, 2, 9, 29),
-    durationMs: 1200,
-    transcriptionStatus: status,
-    text: text,
-    speaker: speaker,
-    conversationId: 'conversation',
-  );
 }

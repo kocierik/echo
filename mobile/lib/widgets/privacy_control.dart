@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-enum PrivacyControlPresentation { listening, muted, connecting, offline }
+enum PrivacyControlPresentation { listening, muted, connecting, offline, unpaired }
 
 final class PrivacyControl extends StatelessWidget {
   const PrivacyControl({
@@ -39,7 +39,7 @@ final class PrivacyControl extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           SizedBox(
-            height: 58,
+            height: 48,
             width: double.infinity,
             child: FilledButton.icon(
               key: const Key('privacy-action'),
@@ -133,6 +133,13 @@ final class PrivacyControl extends StatelessWidget {
       PrivacyControlPresentation.offline => _PrivacyControlConfig(
           label: 'Reconnect Echo',
           icon: Icons.bluetooth_searching_rounded,
+          background: palette.blue,
+          foreground: Colors.white,
+          border: palette.blue,
+        ),
+      PrivacyControlPresentation.unpaired => _PrivacyControlConfig(
+          label: 'Pair Echo',
+          icon: Icons.bluetooth_rounded,
           background: palette.blue,
           foreground: Colors.white,
           border: palette.blue,

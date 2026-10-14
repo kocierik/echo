@@ -1,14 +1,16 @@
 import 'dart:async';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
+import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/services/api_service.dart';
 
 /// An in-memory [MemoryApi] (and [TranscriptMemoryApi]) recording every call.
-final class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
+class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   FakeMemoryApi({
     List<ConversationCard>? conversations,
     Map<String, ConversationDetail>? details,
@@ -138,6 +140,47 @@ final class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
     String speaker,
   ) {
     throw UnimplementedError();
+  }
+}
+
+/// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
+final class FakeTodayApi extends FakeMemoryApi implements TodayApi {
+  FakeTodayApi({
+    super.conversations,
+    super.openTasks,
+    this.digest,
+    List<PendingAction>? pending,
+  }) : pending = pending ?? [];
+
+  DailySummary? digest;
+  Object? digestError;
+  List<PendingAction> pending;
+  ConfirmResult confirmResult = const ConfirmResult(status: 'executed', message: 'Done.');
+  Object? confirmError;
+
+  @override
+  Future<DailySummary?> getLatestDigest() async {
+    calls.add('digest');
+    if (digestError case final error?) throw error;
+    return digest;
+  }
+
+  @override
+  Future<List<PendingAction>> listPendingActions() async {
+    calls.add('pending');
+    return List.of(pending);
+  }
+
+  @override
+  Future<ConfirmResult> confirmPendingAction(String id) async {
+    calls.add('confirm $id');
+    if (confirmError case final error?) throw error;
+    return confirmResult;
+  }
+
+  @override
+  Future<void> cancelPendingAction(String id) async {
+    calls.add('cancel $id');
   }
 }
 

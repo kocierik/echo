@@ -40,6 +40,15 @@ final class ActionCard extends StatelessWidget {
     }
   }
 
+  /// "Gmail · Voice request" for an action listed outside its chat.
+  String? get _caption {
+    final parts = [
+      if (action.app case final app?) app,
+      if (action.source == 'voice') 'Voice request',
+    ];
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
@@ -56,29 +65,38 @@ final class ActionCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_caption case final caption?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(caption, style: Theme.of(context).textTheme.labelSmall),
+            ),
           Text(action.summary, style: Theme.of(context).textTheme.bodyMedium),
           const SizedBox(height: 10),
           if (_pending)
-            Row(
+            // Wraps on narrow screens with large text instead of overflowing
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 FilledButton(
                   key: Key('action-confirm-${action.id}'),
                   onPressed: busy ? null : onConfirm,
                   child: const Text('Confirm'),
                 ),
-                const SizedBox(width: 8),
                 OutlinedButton(
                   key: Key('action-cancel-${action.id}'),
                   onPressed: busy ? null : onCancel,
                   child: const Text('Cancel'),
                 ),
-                if (busy) ...[
-                  const SizedBox(width: 12),
-                  const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                if (busy)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 4),
+                    child: SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   ),
-                ],
               ],
             )
           else if (label != null)
