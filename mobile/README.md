@@ -17,19 +17,9 @@ flutter run
 
 ### Native projects (`ios/`, `android/`)
 
-The native projects are versioned. If your checkout is missing them (they were
-git-ignored before October 2026), regenerate the missing files once — `flutter create`
-never overwrites existing files such as `ios/Runner/Info.plist` or
-`android/app/src/main/AndroidManifest.xml`:
-
-```bash
-cd mobile
-flutter create --platforms=ios,android --org <your.reverse.domain> --project-name echo_app .
-```
-
-Then check that `ios/Runner/Info.plist` still declares `UIBackgroundModes` →
-`bluetooth-central` and the Bluetooth/microphone/speech usage descriptions, set the
-signing team in Xcode, and commit the generated `ios/` and `android/` files.
+Both are versioned; the bundle/application id is `com.kocierik.echo`. `ios/Runner/Info.plist` must
+keep `UIBackgroundModes` → `bluetooth-central` and the Bluetooth, microphone and speech usage
+descriptions. Set your signing team in Xcode; Android release signing is not configured yet.
 
 ## Configuration
 
@@ -47,7 +37,9 @@ flutter build ios --dart-define-from-file=dart_defines.json
 
 A key compiled in can be read from the app binary: keep such builds for your own devices.
 
-The onboarding then requests Bluetooth, notification and microphone permissions and pairs the wearable.
+The onboarding then requests Bluetooth, notification and microphone permissions and pairs the
+wearable. Without the wearable at hand, **Skip for now** finishes the setup; pair it later from
+Settings → Device → **Pair Echo**.
 
 ## Features
 

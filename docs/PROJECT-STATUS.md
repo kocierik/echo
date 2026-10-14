@@ -1,8 +1,9 @@
 # Echo — Stato del progetto (14/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
-Prima analisi su `main` @ `5b235d0`; aggiornato dopo i giri di correzioni del 13/10 e l'implementazione
-delle azioni Composio del 13–14/10, tutto committato su `main` (nessun push).
+Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
+13–14/10 e la verifica completa sul nuovo PC del 14/10 (tutte e tre le suite eseguite, Composio provato
+dal vivo). Tutto su `origin/main`.
 
 ---
 
@@ -28,9 +29,9 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
 
 | Componente | Tecnologia | Test |
 |---|---|---|
-| `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 8 suite Unity native (protocollo, stato transfer, bond, mute, overflow, ring buffer) |
-| `mobile/` | Flutter (flutter_blue_plus, secure storage, local notifications) | ~25 file di test (servizi + widget) |
-| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI | ~30 file pytest (unitari + integrazione con Postgres) |
+| `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 8 suite Unity native, 79 test (protocollo, stato transfer, bond, mute, overflow, ring buffer) |
+| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 319 test (servizi + widget), `flutter analyze` pulito |
+| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio | 502 test pytest (unitari + integrazione con Postgres), ruff pulito |
 | `backend/static/` | Web UI vanilla (chat + admin) | — |
 | `simulator/` | Python, simula il device via HTTP | — |
 
@@ -52,7 +53,8 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - `SET_TIME` (ancora temporale dal telefono), `SET_MUTED` persistente in NVS, `DEVICE_STATUS` v2, `DEVICE_INFO`.
 
 ### App mobile
-- Onboarding a 4 step (server/API key → permessi → pairing → fine).
+- Onboarding a 4 step (server/API key → permessi → pairing → fine): server e chiave precompilabili in build
+  (`--dart-define-from-file`), pairing saltabile e da fare dopo in Settings → Device.
 - Tab Today / Transcripts / Ask + Settings (Device, Connection, Privacy, Automations, Diagnostics, About).
 - **Today:** stato wearable, ultima trascrizione, **task aperti (completabili)**, **riassunto del giorno**, pausa/ripresa.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
@@ -99,7 +101,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 |---|---|---|
 | 1 | La rianalisi (modifica in staging) scatenava integrazioni e regole, duplicando eventi/task | tolta, nessun commit necessario |
 | 2 | Storico chat sovrascritto dalla history Redis (scadenza 30 min, max 20 messaggi) | `6eb2c9d` |
-| 3 | Progetti nativi iOS/Android ignorati da git | `a591b1e` (ma vanno rigenerati: vedi §4) |
+| 3 | Progetti nativi iOS/Android ignorati da git | `a591b1e`, versionati il 14/10 in `e9f5ffd` |
 | 4 | Eventi "tutto il giorno" rifiutati da Google (fine = inizio) | `6eb2c9d` |
 | 5 | Eventi automatici senza orario e con date non ISO | `e231d95` |
 | 6 | DLQ: voci di rianalisi mandavano in 500 elenco e retry, e venivano perse | `6eb2c9d` |
@@ -142,36 +144,44 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 | Rate limit per IP (dietro Cloudflare Tunnel tutti condividevano lo stesso limite): ora per API key (hash), IP solo senza chiave | `2a83625` |
 | Tentativi con API key sbagliata mai limitati: dopo 10 errori in 15 minuti lo stesso client riceve 429 (anche con la chiave giusta, così la risposta non rivela nulla); se Redis non risponde l'autenticazione continua a funzionare | vedi `git log` |
 
+### Risolti il 14/10/2026 (verifica sul nuovo PC)
+
+| Problema | Commit |
+|---|---|
+| `make test-all` girava sul DB di sviluppo e ne cancellava i dati dopo ogni test: ora i test rifiutano un DB che non finisce in `_test`, `make test-all` usa `echo_test` (creato e migrato da solo) nel container api | `ff887a9` |
+| I test usavano le chiavi vere del `.env`: tre chiamavano OpenAI a ogni esecuzione e, con la chiave Composio valida, una query passava da Composio; ora valori finti come in CI e servizi simulati | `31b287e` |
+| 13 test backend rotti (Redis mancante nel client di test, embedding finti con NaN, SQL non valido, oggetti scaduti letti dopo un rollback) | `1ee44e2` |
+| "Connect" di un'app su Composio falliva con `TypeError` quando non esisteva ancora l'auth config (firma del wrapper SDK sbagliata) | `3bc3888` |
+| 24 test Flutter rotti con Flutter 3.44; overflow a 320 pt con testo 1,3 in Today e onboarding; righe dei transcript lette due volte dagli screen reader | `e4b9a75`, `09538c6` |
+| Progetti nativi `ios/`, `android/` e `pubspec.lock` non versionati; application id Android `com.example` | `e9f5ffd`, `450edd0` |
+| 12 avvisi di `flutter analyze`; test firmware con la vecchia soglia VAD | `99c8b0b`, `c0de03f` |
+| Server URL e API key da riscrivere a ogni installazione; pairing obbligatorio | `4a326d8`, `cf39a6e` |
+| `make deploy` creava la chiave di esempio pubblica `my-secret-key`; porte 8000/5432/6379 aperte sulla LAN; codice morto e documentazione superata | vedi `git log` |
+
 ### Ancora aperti
 
-- **Speaker (#11):** la soglia ora è configurabile ma va calibrata su registrazioni reali.
-- **Entità nella lingua parlata:** nomi e contenuti di task/eventi estratti restano nella lingua della trascrizione
+- **La chiave di esempio `my-secret-key` è l'unica API key del DB di sviluppo**, esposto su internet dal tunnel:
+  vedi §6, primo punto.
+- **Speaker (#11):** la soglia è configurabile ma va calibrata su registrazioni reali.
+- **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
-  (tradurre perderebbe fedeltà e confonderebbe la deduplicazione): dimmi se preferisci tradurli.
-- **Composio mai provato dal vivo:** quanti strumenti restituisce per toolkit, login di Telegram e Todoist, tempi reali di
-  una richiesta e nomi esatti degli strumenti da confermare vanno verificati con una `COMPOSIO_API_KEY` vera.
+  (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
+- **Composio provato solo in parte:** il collegamento di Google Calendar funziona; restano da provare una richiesta
+  in chat e una a voce, le conferme, Telegram e Todoist, e i tempi reali di una richiesta.
 - **`composio==0.15.0`:** la 0.22 richiede `openai>=2.48`; per aggiornare vanno alzati insieme `openai` e `composio`.
-- **Instradamento:** dipende da una sola risposta del modello (provata solo con risposte simulate). A voce, con app
-  collegate, le domande sulla memoria ora vanno al RAG invece che all'agente.
-- **Migrazioni mai eseguite su un Postgres vero dopo il 14/10:** la CI le esegue da un database vuoto
-  (`alembic upgrade head`) ed è il primo controllo reale.
+- **Instradamento:** dipende da una sola risposta del modello, provato solo con risposte simulate.
+- **Home senza dispositivo:** con il pairing saltato, Today mostra "Echo is offline" e un "Reconnect Echo" che non fa
+  nulla; servirebbe "No Echo paired" con un pulsante "Pair Echo".
 - **Minori:** se Redis non salva la risposta dopo il commit, i retry ricevono 409 per 10 minuti; schede e risposte
-  possono essere lunghe con molti destinatari.
-- **Rilevamento lingua euristico:** per le risposte fisse (conferme calendario, "nessun risultato") si contano parole comuni
-  italiane/inglesi; frasi molto brevi o miste cadono sull'inglese.
+  possono essere lunghe con molti destinatari; il rilevamento della lingua per le risposte fisse è euristico
+  (frasi brevi o miste cadono sull'inglese).
 
 ### Ambiente di sviluppo e CI
-- `ruff check app/ tests/` è pulito. La CI ora ha anche il job `mobile` (`flutter analyze` + `flutter test`) e i test nativi
-  del firmware (`pio test -e native`): **nessuno dei due è ancora girato** e potrebbero far emergere problemi preesistenti.
-- I test di integrazione con Postgres (step "Integration tests" della CI) non sono stati eseguiti in locale: qui Docker/Podman
-  non sono attivi.
-- **Test backend su Windows:** `asyncpg==0.29` non ha wheel per Python 3.13 e richiede MSVC. Usare Python 3.11 (come la CI) o Docker.
-  Per i test unitari basta un venv 3.13 con `asyncpg>=0.30` e `pytest --noconftest`.
-- `uv.lock` rigenerato (era già disallineato da `pyproject.toml`; formato aggiornato da uv 0.9.5).
-- **L'app Flutter non è mai stata compilata né testata** dopo le modifiche del 13–14/10 (SDK non disponibile qui):
-  il job CI `mobile` sarà il primo controllo e può far emergere errori di compilazione.
-- Backend: 456 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
-  i test con Postgres girano solo in CI.
+- Tutto gira in Docker: `make test-all`, `make test`, `make lint`, `make fmt` usano il container api (l'immagine
+  installa le dipendenze dev). Guida: [DEVELOPMENT.md](DEVELOPMENT.md).
+- La CI usa `echo_test` e chiavi finte; dopo le correzioni del 14/10 le tre suite passano in locale: l'esito della CI
+  va controllato su GitHub Actions.
+- Build Android non verificata su questo PC (manca l'SDK Android).
 
 ---
 
@@ -182,49 +192,48 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 |---|---|
 | Test continuo di 2 h su iPhone (foreground/background/locked) | ❌ da eseguire: [checklist](BETA-GATE-CHECKLIST.md) |
 | Test batteria 12 h | ⏸ rimandato finché non arriva l'hardware |
-| Today: task aperti + riassunto giornaliero | ✅ (test widget da eseguire) |
+| Today: task aperti + riassunto giornaliero | ✅ |
 | Storico chat completo e riprendibile | ✅ |
 | Rianalisi senza side effect | ✅ |
-| Build iOS release riproducibile | ⚠️ `.gitignore` corretto, ma il progetto Xcode/Gradle va rigenerato con `flutter create` e committato ([mobile/README.md](../mobile/README.md)) |
+| Build iOS release riproducibile | ⚠️ progetti nativi versionati; build release da provare |
 | Diagnostica del limite di consolidamento cross-conversazione | ❓ non trovata in UI |
 
 ### Dalla roadmap (ancora aperti)
-- **Hardware reale:** calibrazione VAD (soglia fissa, nessuna adattiva), misura consumi, range BLE.
+- **Hardware reale:** calibrazione VAD (soglia fissa a 500, nessuna adattiva), misura consumi, range BLE.
 - **Memoria:** diarization vera (oggi solo energia), riassunti settimanali, raggruppamento conversazioni per argomento.
 - **Query:** filtri per persona ("cosa ha detto Marco?") e per tipo di entità nel RAG.
 - **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), lettura batteria (sempre 255), storage offline su microSD.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
-- **Fase Composio:** le integrazioni automatiche e le regole sono state sostituite dalle azioni Composio (conferma in-app,
-  audit, richieste vocali "Echo, ..."); tabelle `rules`/`integrations` rimosse dalla migrazione 008.
-- **Multi-utente / OAuth login:** fuori scope beta; l'API key si crea ancora a mano via SQL.
+- **Multi-utente / OAuth login:** fuori scope beta; l'API key si crea con `make create-key`.
 - **Android in background:** non è un gate della beta.
 
 ---
 
 ## 5. Debito tecnico
 
-- **Limite sui tentativi con API key sbagliata:** il client è riconosciuto da `CF-Connecting-IP` (Cloudflare Tunnel),
-  intestazione che si può falsificare da chi raggiunge direttamente la porta 8000, che `docker-compose.yml` pubblica
-  sull'host. Conviene esporla solo su `127.0.0.1` se il tunnel gira sulla stessa macchina.
-- Fatto il 14/10: schema creato solo da Alembic, rate limit per API key, verifica d'intento unica, limite sui tentativi
-  con API key sbagliata (vedi sopra).
-- Fatto il 13/10: codice morto rimosso (firmware Wi-Fi/NTP, 7 file mobile, MessageBubble commentato), client delle
-  integrazioni unificati, script del workaround aziendale rimossi, file generati da Flutter non più versionati,
-  `uv.lock` rigenerato, README/ROADMAP/ADR/piani aggiornati.
+- **Struttura del mobile:** `lib/services/` ha 30 file piatti (controller, adattatori, client API, BLE); andrebbe divisa
+  per area (`ble/`, `api/`, `onboarding/`…) quando si tocca quella parte.
+- **`backend/app/routers/query.py`** concentra RAG, instradamento verso le azioni e idempotenza: candidato a
+  dividersi se cresce ancora.
+- Fatto il 14/10: codice morto rimosso (`get_redis`, factory Deepgram inutilizzata, `embedding_dimensions`, gauge delle
+  metriche, runner duplicato dei test speaker, riesportazione dell'onboarding), target `make` tutti nel container,
+  porte solo su `127.0.0.1`, `make deploy` senza chiave di esempio, documentazione allineata.
 
 ---
 
 ## 6. Prossimi passi consigliati
 
-**Per te** (servono hardware, SDK o account):
+**Per te:**
 
-1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`), poi
-   `flutter test` o push per vedere i job CI `mobile` e firmware (mai girati).
-2. **Controllare in CI le migrazioni da database vuoto e i test di integrazione con Postgres.**
-3. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
-4. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
-5. **Provare le azioni Composio:** `COMPOSIO_API_KEY` nel `.env`, `alembic upgrade head` (arriva alla 008), collegare un
-   account da Settings → Automations → Integrations, provare una richiesta in chat e una a voce ("Echo, …").
+1. **Sostituire la chiave di esempio** (subito: il backend è pubblico): `make create-key`, mettere la chiave stampata
+   in `mobile/dart_defines.json` e reinstallare l'app (o inserirla in Settings → Connection), poi
+   `make revoke-example-key`.
+2. **Controllare la CI** su GitHub Actions dopo il push.
+3. **Provare le azioni Composio** dal vivo: una richiesta in chat ("che impegni ho domani?"), una che chiede conferma
+   ("crea un evento con Marco"), una a voce ("Echo, …").
+4. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
+5. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
 6. Test batteria 12 h quando arriva l'hardware.
 
-**Per me**, se vuoi: pubblicare la porta 8000 solo su `127.0.0.1`, ed eventualmente la traduzione delle entità estratte.
+**Per me**, se vuoi: Today senza dispositivo ("Pair Echo"), divisione di `mobile/lib/services/`, traduzione delle
+entità estratte.

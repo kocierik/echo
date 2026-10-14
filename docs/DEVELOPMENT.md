@@ -1,352 +1,158 @@
 # Development Guide
 
+Setup, daily commands and troubleshooting. The [README](../README.md) has the architecture, the
+API reference and the configuration table; [PROJECT-STATUS.md](PROJECT-STATUS.md) has what works and
+what is left.
+
 ## Prerequisites
 
-- Python 3.11+
-- Docker & Docker Compose (for PostgreSQL + Redis)
-- PlatformIO (for firmware)
-- OpenAI API key
+- Docker & Docker Compose
+- An OpenAI API key (optional: Composio for actions, Deepgram for STT)
+- Flutter 3.x (+ Xcode for iOS) for the app, PlatformIO for the firmware
 
-## Quick start (development)
-
-### Option A: Full Docker (recommended)
+## First run
 
 ```bash
-cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-
+cp .env.example .env          # set OPENAI_API_KEY (and COMPOSIO_API_KEY for actions)
 docker compose up --build -d
-docker compose exec api python -m alembic upgrade head
-docker compose exec postgres psql -U echo -d echo -c "
-INSERT INTO api_keys (user_id, key_hash, name) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    encode(sha256('my-secret-key'::bytea), 'hex'),
-    'default'
-);"
+make db-migrate               # Alembic creates extensions, tables and indexes
+make create-key               # prints a random API key once: put it in the app
+curl http://localhost:8000/health
 ```
 
-Open http://localhost:8000
+The published ports (8000, 5432, 6379) listen on `127.0.0.1` only. To reach the API from the phone,
+use Cloudflare Tunnel ([CLOUDFLARE-TUNNEL.md](CLOUDFLARE-TUNNEL.md)).
 
-### Option B: Infrastructure in Docker, backend local
-
-Useful when Docker networking has issues (corporate firewalls, Podman on Windows).
+## After a `git pull`
 
 ```bash
-# Start only DB and Redis
+make deploy                   # build, start, migrate, restart api + worker, health check
+```
+
+Or by hand: `docker compose up --build -d`, `make db-migrate`, `docker compose restart api worker`.
+Skipping the migrations leaves the code ahead of the database: see [Troubleshooting](#troubleshooting).
+
+## Make targets
+
+| Target | What it does |
+|---|---|
+| `make up` / `down` / `build` / `logs` / `logs-api` / `logs-worker` | Docker Compose shortcuts |
+| `make deploy` | Idempotent build + migrate + restart ([scripts/deploy.sh](../scripts/deploy.sh)) |
+| `make db-migrate` | `alembic upgrade head` on the `echo` database |
+| `make db-new-migration MSG="..."` | Autogenerate a migration from the models |
+| `make db-reset` | Drop and recreate the schema (**deletes all data**) |
+| `make create-key` | Create an API key; random unless `KEY=...` is given, printed only once |
+| `make revoke-example-key` | Delete the README's example key `my-secret-key` |
+| `make test-all` | All backend tests in the api container, on `echo_test` |
+| `make test` | DB-free backend unit tests |
+| `make lint` / `make fmt` | ruff check / format, in the api container |
+| `make shell` | Shell in the api container |
+
+## Tests
+
+```bash
+make test-all                 # backend: api container, echo_test database, fake service keys
+cd mobile && flutter analyze && flutter test
+cd firmware && pio test -e native
+```
+
+- The backend tests delete conversations, segments and entities, so `conftest.py` refuses any
+  database whose name does not end in `_test`. `make test-all` creates and migrates `echo_test`
+  and uses Redis db 15.
+- They never reach real services: `conftest.py` replaces the `.env` keys with the CI values (fake
+  OpenAI key, no Composio/Deepgram key) and the HTTP client gets an in-memory Redis. Tests that need
+  a provider stub it (`tests/mocks.py`, `tests/fakes/`).
+- To run them outside Docker, point `DATABASE_URL` at a `*_test` database and run
+  `alembic upgrade head` on it first.
+- CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs ruff, the migrations on an empty
+  database, the backend tests, `flutter analyze` + `flutter test`, the firmware build and native tests.
+
+## Database migrations (Alembic)
+
+- An empty database is created by `alembic upgrade head` alone: 001 creates the extensions
+  (uuid-ossp, vector) and the baseline tables, 002+ the rest. Every migration skips what already
+  exists.
+- `docs/schema.sql` is a reference of the schema at the latest migration: never apply it.
+- New migration: change the model, `make db-new-migration MSG="add xyz"`, review `upgrade()` and
+  `downgrade()` in `backend/alembic/versions/`, commit it.
+- Current revision: `docker compose exec api python -m alembic current`.
+- Migration 008 drops the `rules` and `integrations` tables (replaced by Composio). Back them up
+  first if they hold data you want: `docker compose exec -T postgres pg_dump -U echo -d echo -t rules -t integrations > backup.sql`.
+
+## Mobile app
+
+```bash
+cd mobile
+cp dart_defines.example.json dart_defines.json   # git-ignored: server URL and API key
+flutter run --dart-define-from-file=dart_defines.json
+```
+
+The values prefill the onboarding (the server URL defaults to `https://echo.man.ovh`). Pairing can
+be skipped and done later from Settings → Device. Details in [mobile/README.md](../mobile/README.md).
+
+## Firmware
+
+```bash
+cd firmware
+pio run -t upload            # flash the XIAO ESP32-S3 Sense
+pio device monitor           # serial output
+```
+
+The wearable talks only BLE to the phone ([ADR 0006](adr/0006-ble-relay-through-phone.md)); tunables
+such as `VAD_ENERGY_THRESHOLD` are in `src/config.h`.
+
+## Running the backend outside Docker
+
+With only Postgres and Redis in Docker (`docker-compose-infra.yml`):
+
+```bash
 docker compose -f docker-compose-infra.yml up -d
-
-# Create the database (Alembic creates extensions, tables and indexes)
 cd backend
-python -m alembic upgrade head
-
-docker compose -f docker-compose-infra.yml exec postgres psql -U echo -d echo -c "
-INSERT INTO api_keys (user_id, key_hash, name) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    encode(sha256('my-secret-key'::bytea), 'hex'),
-    'default'
-);"
-
-# Install Python deps
-pip install -e ".[dev]"
-
-# Run the API
+pip install -e ".[dev]"      # Python 3.11, as in CI and the image
 export DATABASE_URL="postgresql+asyncpg://echo:echo@localhost:5432/echo"
 export REDIS_URL="redis://localhost:6379/0"
 export AUDIO_STORAGE_PATH="/tmp/echo_audio"
 export OPENAI_API_KEY="sk-your-key"
+python -m alembic upgrade head
 python -m uvicorn app.main:app --reload --port 8000
-
-# In another terminal, run the worker
-python -m app.workers.main
+python -m app.workers.main   # in another terminal
 ```
 
-## Project structure
+## Providers
 
-```
-echo/
-├── backend/           # Python FastAPI backend
-│   ├── app/
-│   │   ├── core/      # Config, DB, Auth
-│   │   ├── models/    # SQLAlchemy models
-│   │   ├── routers/   # API endpoints
-│   │   ├── services/  # Business logic (STT, LLM, Embeddings, Dedup)
-│   │   └── workers/   # Background processing
-│   ├── static/        # Web UI
-│   └── tests/         # Unit + integration tests
-├── firmware/          # ESP32-S3 Arduino firmware
-│   └── src/           # Modules (VAD, ADPCM, HTTP, Buffer, etc.)
-└── docs/              # Schema, ADRs, Roadmap
-```
+STT, LLM and embeddings sit behind interfaces in `backend/app/services/` (`STTService`,
+`LLMService`, `EmbeddingService`; [ADR 0004](adr/0004-provider-abstraction-layer.md)). To add one,
+implement the interface in `app/services/{service}_{provider}.py`, select it in the factory
+(`get_stt_service()` and the like) and add its settings to `app/core/config.py`.
 
-## Running tests
+STT options:
 
-```bash
-# All tests, in the api container on the echo_test database (created and migrated if missing)
-make test-all
-
-# Unit tests only (no DB required)
-make test
-```
-
-The tests delete conversations, segments and entities, so `conftest.py` refuses any database
-whose name does not end in `_test`. To run them outside docker, point `DATABASE_URL` at such a
-database and run `alembic upgrade head` on it first.
-
-## Operazioni comuni
-
-### Primo avvio (da zero)
-
-```bash
-# 1. Copia e configura environment
-cp .env.example .env
-# Modifica .env: aggiungi OPENAI_API_KEY
-
-# 2. Avvia tutti i servizi
-docker compose up --build -d
-
-# 3. Crea il database con le migrazioni (Alembic crea estensioni, tabelle e indici)
-docker compose exec api python -m alembic upgrade head
-
-# 4. Crea una API key
-docker compose exec -T postgres psql -U echo -d echo -c "
-INSERT INTO api_keys (user_id, key_hash, name) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    encode(sha256('my-secret-key'::bytea), 'hex'),
-    'default'
-);"
-
-# 5. Verifica che tutto funzioni
-curl http://localhost:8000/health
-```
-
-### Dopo un git pull (aggiornamento codice)
-
-```bash
-# 1. Ricostruisci le immagini Docker (nuovo codice)
-docker compose up --build -d
-
-# 2. Applica eventuali nuove migrazioni al database
-docker compose exec api python -m alembic upgrade head
-
-# 3. Riavvia il worker (carica il nuovo codice)
-docker compose restart worker
-
-# 4. Verifica
-curl http://localhost:8000/health
-```
-
-### Reset completo del database (cancella tutti i dati)
-
-```bash
-docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker compose exec api python -m alembic upgrade head
-
-# Ricrea API key
-docker compose exec -T postgres psql -U echo -d echo -c "
-INSERT INTO api_keys (user_id, key_hash, name) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    encode(sha256('my-secret-key'::bytea), 'hex'),
-    'default'
-);"
-```
-
-### Troubleshooting
-
-| Errore | Causa | Soluzione |
-|--------|-------|-----------|
-| `NameError: name 'X' is not defined` nel worker | Colonne nuove nel codice ma non nel DB | `docker compose exec api python -m alembic upgrade head && docker compose restart worker` |
-| `relation "query_feedback" does not exist` | Tabella non creata | `docker compose exec api python -m alembic upgrade head` |
-| `column "audio_energy" does not exist` | Migrazione non applicata | `docker compose exec api python -m alembic upgrade head` |
-| Worker si riavvia in loop | Errore nel codice o DB non aggiornato | `docker compose logs worker --tail 50` per vedere il traceback |
-| `alembic.util.exc.CommandError: Can't locate revision` | Il DB è segnato con una revisione che questo codice non conosce (es. altro branch) | Controlla con `docker compose exec api python -m alembic current`; usa `alembic stamp head` solo se sai che lo schema è già aggiornato all'ultima migrazione |
-
-## Database migrations (Alembic)
-
-We use [Alembic](https://alembic.sqlalchemy.org/) to version database schema changes. This ensures any environment can be brought up-to-date with a single command.
-
-### After pulling new code
-
-```bash
-# Docker
-docker compose exec api python -m alembic upgrade head
-
-# Local
-cd backend && python -m alembic upgrade head
-```
-
-### Creating a new migration
-
-When you modify a SQLAlchemy model (add a column, change a type, add an index):
-
-```bash
-# Auto-generate from model diff
-docker compose exec api python -m alembic revision --autogenerate -m "add xyz column"
-
-# Or with Makefile
-make db-new-migration MSG="add xyz column"
-```
-
-Review the generated file in `backend/alembic/versions/`, verify the `upgrade()` and `downgrade()` functions, then commit it.
-
-### Rolling back
-
-```bash
-# Undo last migration
-docker compose exec api python -m alembic downgrade -1
-
-# Check current revision
-docker compose exec api python -m alembic current
-```
-
-### Fresh database setup
-
-```bash
-# On an empty database, the migrations create everything: 001 creates the extensions
-# (uuid-ossp, vector) and the baseline tables, 002+ the rest
-docker compose exec api python -m alembic upgrade head
-```
-
-`docs/schema.sql` is a reference only (the schema at the latest migration): never apply it.
-Every migration skips what already exists, so a database created earlier from `schema.sql`
-is migrated by the same `alembic upgrade head`. CI runs `alembic upgrade head` on an empty
-database before the integration tests.
-
-## Firmware development
-
-```bash
-cd firmware
-
-# Edit config.h with your Wi-Fi and server settings
-# Then:
-pio run -t upload    # Flash to device
-pio device monitor   # Serial output
-```
-
-## Key design decisions
-
-All architectural decisions are documented in `docs/adr/`:
-
-1. **Wi-Fi direct + PSRAM buffer** — no BLE/mobile app in MVP
-2. **ADPCM encoding** — 4:1 compression at negligible CPU cost
-3. **Store-then-analyze** — never lose audio, analyze async
-4. **Provider abstraction** — swap STT/LLM/Embedding providers freely
-5. **Entities + vector search** — structured knowledge + semantic retrieval
-
-## Adding a new AI provider
-
-1. Create `app/services/{service}_{provider}.py`
-2. Implement the abstract interface (`STTService`, `LLMService`, or `EmbeddingService`)
-3. Add a factory function (e.g., `get_stt_service()`)
-4. Add config in `app/core/config.py`
-5. The worker and routers pick up the new provider via the factory
-
-## STT providers
-
-Echo supports multiple Speech-to-Text providers. Switch via env vars.
-
-### OpenAI (default)
-
-```env
-STT_PROVIDER=openai
-STT_MODEL=gpt-4o-transcribe
-```
-
-Models available:
-- `gpt-4o-transcribe` — best accuracy, $0.006/min (recommended)
-- `gpt-4o-mini-transcribe` — cheaper, $0.003/min, slightly less accurate
-- `whisper-1` — legacy, same price as gpt-4o-transcribe but worse
-
-Supports prompt conditioning (names, jargon) for improved accuracy.
-
-### Deepgram
-
-```env
-STT_PROVIDER=deepgram
-DEEPGRAM_API_KEY=dg-your-key-here
-DEEPGRAM_MODEL=nova-3
-```
-
-Get an API key at [console.deepgram.com](https://console.deepgram.com) ($200 free credits).
-
-Pros: very fast, good Italian, built-in punctuation and smart formatting.
-Cons: no prompt conditioning (can't bias toward known names).
+| `STT_PROVIDER` | Models | Notes |
+|---|---|---|
+| `openai` (default) | `gpt-4o-transcribe` (recommended), `gpt-4o-mini-transcribe`, `whisper-1` | Prompt conditioning with known names |
+| `deepgram` | `DEEPGRAM_MODEL=nova-3`, needs `DEEPGRAM_API_KEY` | Fast, no prompt conditioning |
 
 ## Simulator
 
-The simulator runs on your PC and emulates the wearable device using your microphone.
+Emulates the wearable with your microphone and posts Segments over HTTP:
 
 ```bash
 cd simulator
 pip install -r requirements.txt
-python simulate_device.py
+python simulate_device.py -s http://localhost:8000 -k <api-key>
 ```
 
-### Key features
+By default it records only speech (VAD, `-t` sets the threshold); `--continuous` records everything
+in fixed chunks and skips silence. Other options (`--gain`, `--save-wav`, `--list-devices`,
+`--device`) are in [simulator/README.md](../simulator/README.md).
 
-- **Pre-buffer (500ms):** captures audio BEFORE the VAD triggers, so you never lose the start of a phrase
-- **Utterance segmentation:** segments end on natural pauses (not fixed duration), giving the STT model complete phrases
-- **Continuation window (500ms):** if speech resumes within 500ms of a pause, it stays in the same segment
-- **Continuous mode (`--continuous`):** records everything in fixed chunks, skips silence-only. Best quality, higher API cost.
-- **Local transcription preview:** optional faster-whisper for real-time feedback (install `faster-whisper` to enable)
-- **Max segment duration:** 30s safety limit (VAD mode), configurable chunk size (continuous mode)
+## Troubleshooting
 
-### Recording modes
-
-**Continuous mode (default):** records everything in fixed 30s chunks. Only skips chunks that are 100% silence. Zero words lost. Best quality.
-
-**VAD mode (`--vad`):** records only when speech is detected. Smart enough to handle natural pauses (2s tolerance + continuation window). Use when cost savings matter more than quality.
-
-### Useful options
-
-```bash
-# Default: continuous mode (records everything)
-python simulate_device.py
-
-# VAD mode (only records speech, saves API cost)
-python simulate_device.py --vad
-
-# Lower VAD threshold if your mic is quiet (VAD mode)
-python simulate_device.py --vad --vad-threshold 300
-
-# Amplify microphone signal
-python simulate_device.py --gain 5
-
-# Save WAV files for debugging audio quality
-python simulate_device.py --save-wav
-
-# Custom chunk duration
-python simulate_device.py --segment-duration 20
-
-# List available microphones
-python simulate_device.py --list-devices
-
-# Use a specific microphone
-python simulate_device.py --device 2
-```
-
-## API endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/segments` | Ingest audio from device |
-| POST | `/api/query` | RAG query on memory |
-| POST | `/api/query/feedback` | Rate a RAG response (👍/👎) |
-| GET | `/api/conversations` | List conversations |
-| GET | `/api/conversations/{id}` | Conversation detail |
-| GET | `/api/entities` | List/filter entities |
-| PATCH | `/api/entities/{id}` | Update an entity |
-| DELETE | `/api/entities/{id}` | Delete an entity |
-| POST | `/api/entities/{id}/merge` | Merge entity into another |
-| GET | `/api/entities/stats` | Entity type counts |
-| GET | `/api/entities/people` | List people |
-| GET | `/api/entities/tasks` | List tasks (filter by done) |
-| POST | `/api/entities/deduplicate` | Trigger entity dedup |
-| GET | `/api/digest?days=7` | List recent daily digests |
-| GET | `/api/chat-sessions` | List saved chat sessions |
-| GET | `/api/stats` | System statistics |
-| GET | `/health` | Health check (DB + Redis + queues) |
-| GET | `/metrics` | Prometheus metrics |
-
-## Environment variables
-
-See `.env.example` for all available configuration options.
+| Error | Cause | Fix |
+|---|---|---|
+| `column ... does not exist`, `relation ... does not exist` | Migrations not applied | `make db-migrate`, then `docker compose restart api worker` |
+| Worker restarting in a loop | Code error or database behind | `docker compose logs worker --tail 50` |
+| `Can't locate revision` | The database is marked with a revision this code does not know (other branch) | `alembic current`; `alembic stamp head` only if the schema is already at the latest migration |
+| `Refusing to run the tests on database 'echo'` | Tests pointed at the dev database | `make test-all` |
+| Composio `401 Unauthorized` | `COMPOSIO_API_KEY` is not the project API key | Use the project key (`ak_…`), not the MCP consumer key (`ck_…`); then `docker compose up -d --force-recreate api worker` |
+| `.env` change ignored | `docker compose restart` does not reload `env_file` | `docker compose up -d --force-recreate api worker` |

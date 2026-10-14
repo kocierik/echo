@@ -1,6 +1,6 @@
 # Cloudflare Tunnel Setup
 
-Esponi il backend Echo su internet senza aprire porte sul router. Il device si connette ovunque ci sia Wi-Fi.
+Esponi il backend Echo su internet senza aprire porte sul router: l'app (e con lei il wearable, via BLE) lo raggiunge da qualsiasi rete.
 
 ## Prerequisiti
 
@@ -47,32 +47,29 @@ Il servizio `tunnel` nel `docker-compose.yml` si connetterà automaticamente a C
 
 ```bash
 curl https://echo.man.ovh/health
-# Dovrebbe ritornare: {"status":"ok","postgres":"ok","redis":"ok"}
+# Dovrebbe ritornare {"status":"ok","postgres":"ok","redis":"ok",...}
 ```
 
-### 6. Configura il device
+### 6. Configura l'app e il simulatore
 
-Nel firmware `config.h`:
-```c
-#define SERVER_HOST "echo.man.ovh"
-#define SERVER_PORT 443
-#define SERVER_ENDPOINT "/api/segments"
-```
-
-E nel `http_sender.h`, cambia `http://` in `https://` (Cloudflare gestisce il TLS).
+Nell'app il server URL è già `https://echo.man.ovh` (onboarding, o Settings → Connection). Il wearable
+non parla con il backend: manda l'audio al telefono via BLE e l'app lo inoltra.
 
 Nel simulatore:
 ```bash
-python simulate_device.py -s https://echo.man.ovh
+python simulate_device.py -s https://echo.man.ovh -k <api-key>
 ```
 
 ## Sicurezza
 
-Il tunnel è già sicuro:
-- TLS end-to-end (Cloudflare termina HTTPS)
-- Nessuna porta aperta sul router
-- L'API key protegge gli endpoint
-- Cloudflare filtra attacchi DDoS
+- TLS fino a Cloudflare, nessuna porta aperta sul router, filtro DDoS di Cloudflare.
+- **L'API key è l'unica protezione degli endpoint**: con il backend su internet non usare mai la chiave
+  di esempio `my-secret-key` del README (è pubblica). Crea una chiave casuale con `make create-key`,
+  mettila nell'app, poi elimina quella di esempio con `make revoke-example-key`. `make deploy` avvisa
+  se è ancora attiva.
+- Il tunnel raggiunge `api` sulla rete interna di Docker: le porte pubblicate da `docker-compose.yml`
+  ascoltano solo su `127.0.0.1`. Una porta aperta sulla LAN permetterebbe di falsificare
+  `CF-Connecting-IP`, che il limite sui tentativi con API key sbagliata usa per riconoscere il client.
 
 ## Costi
 

@@ -1,21 +1,21 @@
 # Echo — Roadmap
 
-> Aggiornata al 13/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> Aggiornata al 14/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
 > La fase attuale è la core beta ([spec](superpowers/specs/2026-10-01-core-beta-design.md)).
 
 ## Fase 1: MVP ✅ (completata)
 
 Il vertical slice end-to-end è implementato:
 
-- [x] Firmware ESP32-S3 (VAD + ADPCM + HTTP POST + PSRAM buffer + NTP)
+- [x] Firmware ESP32-S3 (VAD + ADPCM + HTTP POST + PSRAM buffer + NTP; poi sostituiti da BLE via telefono, ADR 0006)
 - [x] Backend FastAPI (ingest audio + STT + entity extraction + RAG query)
 - [x] Database PostgreSQL + pgvector (schema completo)
 - [x] Background worker (STT → analisi → chunking → embeddings)
 - [x] Web UI (chat + sidebar conversazioni + dettaglio entità)
 - [x] Deduplicazione entità
-- [x] Retention audio 30 giorni
+- [x] Retention audio (oggi 24 h dopo la trascrizione, 7 giorni per gli incompleti)
 - [x] Provider abstraction (STT, LLM, Embeddings)
-- [x] Documentazione (CONTEXT.md, 5 ADR, README, schema.sql)
+- [x] Documentazione (CONTEXT.md, ADR, README, schema.sql)
 - [x] Docker Compose (full stack + infra-only per dev locale)
 
 ## Fase 2: Stabilizzazione e test (in corso: core beta)
@@ -26,7 +26,7 @@ Obiettivo: il sistema funziona in modo affidabile per un utente reale.
 - [ ] Flash firmware sul XIAO ESP32-S3 Sense reale
 - [ ] Calibrare soglia VAD nell'ambiente reale (ufficio, casa)
 - [ ] Verificare durata batteria effettiva
-- [ ] Test range Wi-Fi e comportamento buffer PSRAM
+- [ ] Test range BLE e comportamento buffer PSRAM
 
 ### 2.2 — Test backend end-to-end
 - [ ] Deploy su macchina personale (Linux/Mac con Docker)
@@ -37,14 +37,14 @@ Obiettivo: il sistema funziona in modo affidabile per un utente reale.
 ### 2.3 — Bug fix e robustezza
 - [x] Gestione errori nel worker (retry, dead letter queue)
 - [x] Logging strutturato (JSON logs)
-- [ ] Graceful shutdown del worker (parziale: i task vengono cancellati e il lavoro in corso rimesso in coda, senza attesa)
+- [x] Graceful shutdown del worker (attende fino a 30 s il lavoro in corso)
 - [x] Timeout e circuit breaker per chiamate OpenAI
 - [ ] Validazione input più rigorosa sugli endpoint
 
 ### 2.4 — Test automatizzati
 - [x] Integration test con DB reale (service container Postgres/Redis in CI)
 - [x] Mock OpenAI per test senza API key
-- [x] CI pipeline (GitHub Actions; niente CD, l'app Flutter non è in CI)
+- [x] CI pipeline (GitHub Actions: backend, Flutter, firmware; niente CD)
 
 ## Fase 3: Miglioramenti core
 
@@ -92,20 +92,19 @@ Obiettivo: usabilità fuori casa/ufficio.
 
 Obiettivo: il secondo cervello agisce nel mondo.
 
-### 5.1 — Integrazioni (MCP / Function Calling)
-- [x] Google Calendar (crea/leggi eventi)
-- [ ] Gmail (bozze, riassunti)
-- [ ] Slack/Teams (oggi solo invio su webhook Slack)
-- [x] Notion (crea pagine) — Obsidian da fare
-- [ ] GitHub/Jira (crea issue da task estratti)
-- [ ] Home Assistant (controllo smart home)
-- [ ] Todoist/TickTick (oggi solo creazione task Todoist, niente sync)
+### 5.1 — Azioni sulle app (Composio)
+- [x] Gmail, Google Calendar, Slack, Telegram (bot), Todoist, Notion + altre app cercabili
+- [x] Agente con tool calling, conferma in-app per invii/modifiche/cancellazioni, registro delle azioni
+- [x] Richieste vocali "Echo, …" con risposta nella conversazione Voice requests
+- [ ] Prova dal vivo di chat, conferme e voce (il collegamento di Google Calendar funziona)
+- [ ] GitHub/Jira, Home Assistant, Obsidian
 
 ### 5.2 — Automazioni
-- [x] Regole utente: "quando sento un task, crealo su Todoist"
 - [ ] Promemoria automatici basati su contesto
 - [ ] Riassunto giornaliero via email
 - [ ] Action suggestions ("Vuoi che crei un evento per la conferenza?")
+- Le regole automatiche ("quando sento un task, crealo su Todoist") e le integrazioni scritte a mano sono state
+  rimosse: le azioni partono solo su richiesta esplicita (migrazione 008).
 
 ## Fase 6: Multi-provider e self-hosting
 
@@ -140,6 +139,7 @@ Obiettivo: altri possono usare il sistema.
 
 ## Priorità immediata
 
+0. **Sostituire la chiave API di esempio** sul backend esposto dal tunnel ([PROJECT-STATUS.md](PROJECT-STATUS.md) §6).
 1. **Test di 2 ore della core beta** su iPhone con build release: [BETA-GATE-CHECKLIST.md](BETA-GATE-CHECKLIST.md).
 2. **Calibrazione VAD e misura consumi** sul device reale (soglia oggi fissa a 500).
 3. **Prima settimana d'uso reale**: qualità di trascrizioni, entità e risposte RAG su conversazioni italiane.

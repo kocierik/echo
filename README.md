@@ -77,6 +77,9 @@ This starts:
 - **Worker** (STT, analysis, voice requests, reanalysis, conversation summaries, daily digest, audio retention)
 - **PostgreSQL** with pgvector on port 5432
 - **Redis** on port 6379
+- **Tunnel** (Cloudflare, only with `CLOUDFLARE_TUNNEL_TOKEN`)
+
+The ports listen on `127.0.0.1` only; the phone reaches the API through the tunnel.
 
 ### 3. Initialize the database
 
@@ -89,11 +92,8 @@ docker compose exec api python -m alembic upgrade head
 Alembic creates everything (extensions, tables, indexes) on an empty database; `make deploy` runs
 it for you. `docs/schema.sql` is only a reference of the schema at the latest migration.
 
-After a `git pull`, apply new migrations with:
-
-```bash
-docker compose exec api python -m alembic upgrade head
-```
+After a `git pull`, run `make deploy` (rebuild, migrate, restart): code ahead of the database
+fails with errors such as `column ... does not exist`.
 
 To reset the database (drops all data):
 
@@ -107,15 +107,12 @@ docker compose exec api python -m alembic upgrade head
 ### 4. Create an API key
 
 ```bash
-docker compose exec -T postgres psql -U echo -d echo -c "
-INSERT INTO api_keys (user_id, key_hash, name) VALUES (
-    'a0000000-0000-0000-0000-000000000001',
-    encode(sha256('my-secret-key'::bytea), 'hex'),
-    'default'
-);"
+make create-key              # prints a random key once
 ```
 
-Your API key is `my-secret-key`. Use a long random key outside local testing.
+The examples below use `my-secret-key` (`make create-key KEY=my-secret-key`) for local testing
+only: that key is public, so never keep it on a backend reachable from the internet
+(`make revoke-example-key` deletes it; `make deploy` warns while it is active).
 
 ### 5. Flash the wearable and install the app
 
@@ -124,8 +121,10 @@ cd firmware && pio run -t upload        # XIAO ESP32-S3 Sense
 cd ../mobile && flutter run             # see mobile/README.md
 ```
 
-The app onboarding asks for the server URL and API key, requests permissions and pairs the wearable.
-To expose a home server, see [docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md).
+The app onboarding asks for the server URL and API key (both can be compiled in, see
+[mobile/README.md](mobile/README.md)), requests permissions and pairs the wearable; pairing can be
+skipped and done later from Settings → Device. To expose a home server, see
+[docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md).
 
 Without hardware, the [simulator](simulator/README.md) or plain HTTP can send audio:
 
@@ -198,12 +197,14 @@ echo/
 ├── docs/
 │   ├── PROJECT-STATUS.md # What works, known issues, next steps
 │   ├── ROADMAP.md
+│   ├── DEVELOPMENT.md    # Setup, make targets, tests, troubleshooting
+│   ├── CLOUDFLARE-TUNNEL.md
 │   ├── BETA-GATE-CHECKLIST.md
 │   ├── adr/              # Architectural Decision Records
 │   ├── superpowers/      # Design specs and implementation plans
 │   └── schema.sql        # Reference only: Alembic creates the database
 ├── firmware/             # ESP32-S3 (Arduino + NimBLE), native unit tests in test/
-├── mobile/               # Flutter app (iOS-first)
+├── mobile/               # Flutter app (iOS-first), native projects in ios/ and android/
 ├── backend/
 │   ├── app/
 │   │   ├── core/         # config, auth, database, logging, circuit breaker, timezone
@@ -215,6 +216,7 @@ echo/
 │   ├── alembic/          # Migrations
 │   ├── static/           # Web UI + admin dashboard
 │   └── tests/
+├── scripts/deploy.sh     # make deploy
 └── simulator/            # Device simulator (Python)
 ```
 
@@ -288,14 +290,18 @@ All `/api` endpoints require the `X-API-Key` header.
 | `USER_TIMEZONE` | `Europe/Rome` | Timezone for relative dates, the digest and calendar requests |
 | `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |
+| `SPEAKER_ENERGY_THRESHOLD` | `0` | Fixed energy threshold instead of the percentile (`0` = automatic) |
+| `DEEPGRAM_API_KEY` / `DEEPGRAM_MODEL` | — / `nova-3` | With `STT_PROVIDER=deepgram` |
+| `CORS_ORIGINS` | `*` | Comma-separated origins allowed by the Web UI's API calls |
+| `CLOUDFLARE_TUNNEL_TOKEN` | — | Starts the tunnel service ([guide](docs/CLOUDFLARE-TUNNEL.md)) |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
 
 ## Development
 
 - Backend tests: `make test-all` runs them in the api container on the `echo_test` database
   (created and migrated if missing). The tests delete data, so they refuse any database whose
-  name does not end in `_test`. `make test` runs the DB-free subset; `make lint` runs ruff.
-  See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+  name does not end in `_test`, and they never use the real keys from `.env`. `make test` runs the
+  DB-free subset; `make lint` / `make fmt` run ruff. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - Mobile: `cd mobile && flutter test`.
 - Firmware: `cd firmware && pio test -e native`.
 - CI (`.github/workflows/ci.yml`) runs ruff, the backend tests with Postgres/Redis, the Flutter
