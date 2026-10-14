@@ -290,6 +290,50 @@ def pending_summary(tool: str, arguments: dict) -> str:
     return "\n".join(lines)
 
 
+# ActionLog columns copied back after a rollback (the id is regenerated).
+_AUDIT_COLUMNS = (
+    "user_id", "source", "toolkit", "tool", "arguments_summary", "outcome", "error",
+    "created_at",
+)
+
+
+class AuditRecorder:
+    """Session wrapper that remembers the audit rows added through it.
+
+    The agent adds an ActionLog row for every tool it executes and leaves the commit to
+    the caller; if answering fails afterwards, the rollback would erase the record of
+    actions that really happened. The recorder keeps them so they can be written again
+    (see `restore_audit`). Everything else is delegated to the wrapped session.
+    """
+
+    def __init__(self, db: AsyncSession):
+        self._db = db
+        self.audit_rows: list[ActionLog] = []
+
+    def add(self, obj, *args, **kwargs):
+        if isinstance(obj, ActionLog):
+            self.audit_rows.append(obj)
+        return self._db.add(obj, *args, **kwargs)
+
+    def snapshot_audit(self) -> list[dict]:
+        """Column values of the recorded rows (read before a rollback discards them)."""
+        return [
+            {column: getattr(row, column, None) for column in _AUDIT_COLUMNS}
+            for row in self.audit_rows
+        ]
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+
+def restore_audit(db: AsyncSession, snapshot: list[dict]) -> None:
+    """After a rollback: add the snapshotted audit rows again (the caller commits)."""
+    for values in snapshot:
+        if values.get("created_at") is None:
+            values = {k: v for k, v in values.items() if k != "created_at"}  # use the default
+        db.add(ActionLog(**values))
+
+
 async def log_action(
     db: AsyncSession,
     user_id: uuid.UUID,

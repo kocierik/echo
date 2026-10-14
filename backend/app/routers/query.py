@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
+from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import availability_notice
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
@@ -197,37 +199,58 @@ async def query_memory(
     the first one is still running) so a client retry never runs an action twice. The
     session is committed before the response is stored; if the action agent was started
     and anything fails, a retry gets a fixed "couldn't finish" answer instead of a rerun.
+    Either way, the audit rows of tools that already ran are committed after a failure.
     """
     redis_client = request.app.state.redis
-    if not body.client_request_id:
-        return await _answer_query(redis_client, body, user_id, db)
+    key = None
+    if body.client_request_id:
+        key = f"query:req:{user_id}:{body.client_request_id}"
+        if not await redis_client.set(
+            key, _PROCESSING, nx=True, ex=REQUEST_MARKER_TTL_SECONDS
+        ):
+            stored = await redis_client.get(key)
+            if isinstance(stored, bytes):
+                stored = stored.decode()
+            if stored and stored != _PROCESSING:
+                return QueryResponse.model_validate_json(stored)
+            raise HTTPException(status_code=409, detail="Still working on it")
 
-    key = f"query:req:{user_id}:{body.client_request_id}"
-    if not await redis_client.set(
-        key, _PROCESSING, nx=True, ex=REQUEST_MARKER_TTL_SECONDS
-    ):
-        stored = await redis_client.get(key)
-        if isinstance(stored, bytes):
-            stored = stored.decode()
-        if stored and stored != _PROCESSING:
-            return QueryResponse.model_validate_json(stored)
-        raise HTTPException(status_code=409, detail="Still working on it")
-
+    recorder = AuditRecorder(db)
     progress = _Progress()
     try:
-        response = await _answer_query(redis_client, body, user_id, db, progress)
-        # The turn and any pending action are saved before the answer can be replayed
-        await db.commit()
+        response = await _answer_query(redis_client, body, user_id, recorder, progress)
+        if key is not None:
+            # The turn and any pending action are saved before the answer can be replayed
+            await db.commit()
     except BaseException:
         if progress.agent_started:
-            # Tools may already have run: a retry gets "couldn't finish", never a rerun
-            await _store_unfinished(redis_client, key, body.question, progress.session_id)
-        else:
+            # Tools may already have run: keep their audit rows (get_db rolls back), and a
+            # retry gets "couldn't finish", never a rerun
+            await _commit_executed_audit(db, recorder)
+            if key is not None:
+                await _store_unfinished(redis_client, key, body.question, progress.session_id)
+        elif key is not None:
             # Nothing ran: let the client retry instead of a 10-minute 409.
             await redis_client.delete(key)
         raise
-    await redis_client.set(key, response.model_dump_json(), ex=REQUEST_MARKER_TTL_SECONDS)
+    if key is not None:
+        await redis_client.set(key, response.model_dump_json(), ex=REQUEST_MARKER_TTL_SECONDS)
     return response
+
+
+async def _commit_executed_audit(db: AsyncSession, recorder: AuditRecorder) -> None:
+    """After a failure on the agent path: roll back, re-add the audit rows, commit."""
+    snapshot = recorder.snapshot_audit()  # read before the rollback discards the rows
+    if not snapshot:
+        return
+    try:
+        await db.rollback()
+        restore_audit(db, snapshot)
+        await db.commit()
+    except Exception:
+        logger.exception("Could not save the audit rows of a failed request")
+        with suppress(Exception):
+            await db.rollback()
 
 
 async def _store_unfinished(
