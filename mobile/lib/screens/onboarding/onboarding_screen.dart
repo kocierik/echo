@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/build_defaults.dart';
 import '../../services/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
 import 'backend_step.dart';
@@ -24,8 +25,8 @@ final class OnboardingScreen extends StatefulWidget {
 }
 
 final class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _serverController = TextEditingController(text: 'https://');
-  final _apiKeyController = TextEditingController();
+  final _serverController = TextEditingController(text: BuildDefaults.serverUrl);
+  final _apiKeyController = TextEditingController(text: BuildDefaults.apiKey);
 
   @override
   void initState() {

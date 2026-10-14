@@ -34,10 +34,20 @@ signing team in Xcode, and commit the generated `ios/` and `android/` files.
 ## Configuration
 
 On first launch the onboarding asks for:
-- **Server URL:** your Echo backend URL (e.g., `https://echo.example.com`)
+- **Server URL:** your Echo backend, prefilled with `https://echo.man.ovh`
 - **API Key:** your Echo API key
 
-then requests Bluetooth, notification and microphone permissions and pairs the wearable.
+Both can be compiled in so the onboarding only needs a tap on Continue. Copy
+`dart_defines.example.json` to `dart_defines.json` (git-ignored), put your key in it and run:
+
+```bash
+flutter run --dart-define-from-file=dart_defines.json
+flutter build ios --dart-define-from-file=dart_defines.json
+```
+
+A key compiled in can be read from the app binary: keep such builds for your own devices.
+
+The onboarding then requests Bluetooth, notification and microphone permissions and pairs the wearable.
 
 ## Features
 
