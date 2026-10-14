@@ -1,6 +1,7 @@
 # Echo — Development Commands
 .PHONY: help up down build logs logs-api logs-worker test test-all lint fmt deploy db-reset db-migrate \
-	db-new-migration shell worker create-key revoke-example-key
+	db-new-migration shell worker create-key revoke-example-key \
+	eval-llm eval-stt-collect eval-stt
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -42,12 +43,22 @@ test-all: ## Run all tests in the api container on the echo_test database
 	docker compose exec -T $(TEST_ENV) api python -m alembic upgrade head
 	docker compose exec -T $(TEST_ENV) api python -m pytest tests/ -q -p no:cacheprovider
 
+eval-llm: ## Evaluate an LLM (real API calls): make eval-llm MODEL=gpt-6-luna EFFORT=none SUITE=all
+	docker compose exec -T api python -m evals.llm --model "$(MODEL)" --suite "$(or $(SUITE),all)" \
+		--reasoning-effort "$(EFFORT)"
+
+eval-stt-collect: ## Save recent transcribed clips for the STT comparison (git-ignored)
+	docker compose exec -T api python -m evals.stt collect --limit "$(or $(LIMIT),50)"
+
+eval-stt: ## Compare STT services: make eval-stt PROVIDERS=deepgram:nova-3,openai:gpt-transcribe
+	docker compose exec -T api python -m evals.stt run --providers "$(PROVIDERS)"
+
 lint: ## Run ruff linter in the api container
-	docker compose exec -T api python -m ruff check app/ tests/
+	docker compose exec -T api python -m ruff check app/ tests/ evals/
 
 fmt: ## Auto-format code with ruff in the api container
-	docker compose exec -T api python -m ruff format app/ tests/
-	docker compose exec -T api python -m ruff check --fix app/ tests/
+	docker compose exec -T api python -m ruff format app/ tests/ evals/
+	docker compose exec -T api python -m ruff check --fix app/ tests/ evals/
 
 # --- Deploy ---
 

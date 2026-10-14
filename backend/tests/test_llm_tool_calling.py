@@ -92,3 +92,26 @@ async def test_invalid_tool_arguments_become_empty_dict():
         [LLMMessage(role="user", content="x")], tools=[]
     )
     assert response.tool_calls == [LLMToolCall("c1", "GMAIL_FETCH_EMAILS", {})]
+
+
+@pytest.mark.asyncio
+async def test_a_temperature_model_gets_its_temperature():
+    completions = FakeCompletions(content="ok")
+    service = _service(completions)
+
+    await service.complete([LLMMessage(role="user", content="hi")], temperature=0.3)
+
+    assert completions.kwargs["temperature"] == 0.3
+    assert "extra_body" not in completions.kwargs
+
+
+@pytest.mark.asyncio
+async def test_a_reasoning_model_gets_its_effort_and_no_temperature():
+    completions = FakeCompletions(content="ok")
+    service = _service(completions)
+    service.reasoning_effort = "none"
+
+    await service.complete_with_tools([LLMMessage(role="user", content="hi")], tools=[])
+
+    assert "temperature" not in completions.kwargs
+    assert completions.kwargs["extra_body"] == {"reasoning_effort": "none"}

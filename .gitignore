@@ -79,3 +79,6 @@ mobile/devtools_options.yaml
 # only their build/generated outputs are ignored above.
 
 .codestudio/
+
+# Evaluation recordings: your voice and the people around you
+backend/evals/data/

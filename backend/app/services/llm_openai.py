@@ -35,17 +35,30 @@ def _parse_arguments(raw: str | None) -> dict:
 
 
 class OpenAILLMService(LLMService):
-    """OpenAI GPT LLM implementation."""
+    """OpenAI GPT LLM implementation.
 
-    def __init__(self, model: str):
+    With a `reasoning_effort` (reasoning models), the effort is sent and the
+    temperature is not: those models accept only their default temperature.
+    """
+
+    reasoning_effort = ""
+
+    def __init__(self, model: str, reasoning_effort: str = ""):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = model
+        self.reasoning_effort = reasoning_effort
+
+    def _sampling(self, temperature: float) -> dict:
+        if self.reasoning_effort:
+            # Not a named argument in the pinned SDK: sent as is
+            return {"extra_body": {"reasoning_effort": self.reasoning_effort}}
+        return {"temperature": temperature}
 
     async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
-            temperature=temperature,
+            **self._sampling(temperature),
         )
         choice = response.choices[0]
         return LLMResponse(
@@ -60,8 +73,8 @@ class OpenAILLMService(LLMService):
         chunks = await self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
-            temperature=temperature,
             stream=True,
+            **self._sampling(temperature),
         )
         async for chunk in chunks:
             if chunk.choices and (piece := chunk.choices[0].delta.content):
@@ -73,8 +86,8 @@ class OpenAILLMService(LLMService):
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[{"role": m.role, "content": m.content} for m in messages],
-            temperature=temperature,
             response_format={"type": "json_object"},
+            **self._sampling(temperature),
         )
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
@@ -87,7 +100,7 @@ class OpenAILLMService(LLMService):
             messages=[_to_openai_message(m) for m in messages],
             tools=tools,
             tool_choice="auto",
-            temperature=temperature,
+            **self._sampling(temperature),
         )
         message = response.choices[0].message
         return LLMResponse(
@@ -108,12 +121,18 @@ class OpenAILLMService(LLMService):
 def get_llm_analysis_service() -> LLMService:
     """LLM service for async analysis (economico)."""
     if settings.llm_analysis_provider == "openai":
-        return OpenAILLMService(model=settings.llm_analysis_model)
+        return OpenAILLMService(
+            model=settings.llm_analysis_model,
+            reasoning_effort=settings.llm_analysis_reasoning_effort,
+        )
     raise ValueError(f"Unknown LLM provider: {settings.llm_analysis_provider}")
 
 
 def get_llm_query_service() -> LLMService:
     """LLM service for RAG queries (qualità)."""
     if settings.llm_query_provider == "openai":
-        return OpenAILLMService(model=settings.llm_query_model)
+        return OpenAILLMService(
+            model=settings.llm_query_model,
+            reasoning_effort=settings.llm_query_reasoning_effort,
+        )
     raise ValueError(f"Unknown LLM provider: {settings.llm_query_provider}")

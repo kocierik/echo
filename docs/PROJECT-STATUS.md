@@ -169,6 +169,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ### Ancora aperti
 
+- **`gpt-4o` e `gpt-4o-mini` si spengono il 14/1/2027** (avviso OpenAI del 14/10/2026), `gpt-4o-transcribe` il
+  26/2/2027: banco di prova e risultati in [MODEL-EVALUATION.md](MODEL-EVALUATION.md); la migrazione è da fare.
+
 - **La chiave di esempio `my-secret-key` è l'unica API key del DB di sviluppo**, esposto su internet dal tunnel:
   vedi §6, primo punto.
 - **Speaker (#11):** la soglia è configurabile ma va calibrata su registrazioni reali.

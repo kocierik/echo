@@ -41,9 +41,13 @@ class OpenAISTTService(STTService):
         kwargs = {
             "model": self.model,
             "file": audio_file,
-            "language": language,
             "response_format": response_format,
         }
+        if self.model.startswith(("gpt-transcribe", "gpt-live-transcribe")):
+            # The newer models take a list of languages and reject the singular field
+            kwargs["extra_body"] = {"languages": [language]}
+        else:
+            kwargs["language"] = language
 
         # Prompt improves accuracy by conditioning on expected vocabulary
         if prompt:
