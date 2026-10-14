@@ -1,7 +1,8 @@
-# Echo — Stato del progetto (13/10/2026)
+# Echo — Stato del progetto (14/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
-Prima analisi su `main` @ `5b235d0`; aggiornato dopo tre giri di correzioni, tutte committate su `main`.
+Prima analisi su `main` @ `5b235d0`; aggiornato dopo i giri di correzioni del 13/10 e l'implementazione
+delle azioni Composio del 13–14/10, tutto committato su `main` (nessun push).
 
 ---
 
@@ -10,6 +11,7 @@ Prima analisi su `main` @ `5b235d0`; aggiornato dopo tre giri di correzioni, tut
 Wearable "second brain": un pendente ESP32-S3 ascolta, registra solo quando rileva voce, manda l'audio
 al telefono via BLE; l'app lo inoltra a un backend self-hosted che trascrive, estrae entità
 (persone, task, idee, eventi, note), costruisce una memoria vettoriale e risponde a domande in linguaggio naturale (RAG).
+Su richiesta esplicita (chat o "Echo, …" a voce) agisce sulle app collegate tramite Composio.
 
 ```
 XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-first) ──HTTP──▶ FastAPI
@@ -17,8 +19,9 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
   PSRAM ring buffer 512KB                                                             ▼
   mute persistente (NVS)                                                    Worker: STT → speaker → analisi
                                                                             → entità → chunk/embedding
-                                                                            → integrazioni/regole
+                                                                            + richieste vocali "Echo, …"
                                                                             + riassunti, digest, retention
+                                                          Azioni: agente → Composio (Gmail, Calendar, Slack…)
                                                                                       ▼
                                                                          PostgreSQL + pgvector
 ```
@@ -55,8 +58,12 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Transcript raggruppati per giorno con ricerca, correzione testo/speaker, eliminazione conversazione.
-- Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown.
-- Integrations (Composio), tema chiaro/scuro, errori API tipizzati, logout.
+- Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown; **schede Confirm/Cancel** per le
+  azioni da confermare; conversazione **Voice requests** fissata in cima allo storico.
+- Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).
+- Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano);
+  il tocco apre la conversazione Voice requests.
+- Tema chiaro/scuro, errori API tipizzati, logout.
 
 ### Backend
 - `POST /api/segments`: ingest idempotente (hash audio + `recorded_at`), limite 5 MB, rate limit 60/min.
@@ -68,8 +75,15 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Titoli e riassunti per conversazione** generati in modo asincrono a conversazione chiusa (`workers/summaries.py`).
 - RAG `POST /api/query`: filtro temporale da linguaggio naturale (IT/EN) o esplicito (anche aperto), ricerca vettoriale
   chunk + entità, re-ranking da feedback, follow-up multi-turn; storico completo in Postgres, contesto ricaricato se Redis è scaduto.
-- Azioni su app collegate (Gmail, Calendar...) via Composio: da chat e da richieste vocali "Echo, ...", con conferma in-app e audit.
-  Sostituiscono le vecchie integrazioni automatiche, le regole e il client Google Calendar scritto a mano (rimossi).
+- **Azioni via Composio** (`app/actions/`, [design](superpowers/specs/2026-10-13-composio-actions-design.md)):
+  - Gmail, Google Calendar, Slack, Telegram (bot), Todoist, Notion + altre app cercabili; WhatsApp/Instagram personali no.
+  - Agente OpenAI con tool calling e `search_memory`; dalla chat solo quando la richiesta riguarda un'app
+    (pre-controllo a parole chiave + verifica dell'intento), dalla voce con "Echo, …" (anche "Eco", "Hey/Ehi Echo").
+  - Lettura e creazione subito; invio ad altri, modifica, cancellazione e creazioni con invitati → azione in attesa
+    da confermare (30 min, una volta sola). La scheda mostra tutti gli argomenti; strumenti sconosciuti = conferma.
+  - Registro di ogni chiamata eseguita (anche quando la richiesta fallisce a metà); timeout → esito "sconosciuto".
+  - Retry sicuri con `client_request_id`; messaggi espliciti se l'app non è collegata o Composio non risponde.
+  - Sostituiscono le vecchie integrazioni automatiche, le regole e il client Google Calendar scritto a mano (rimossi).
 - Correzione trascrizione con audit + rianalisi in coda con lock distribuito, senza chiamate esterne.
 - Eliminazione conversazione a cascata; retention audio (completati 24 h, incompleti 7 giorni).
 - Digest giornaliero automatico (alle 4:00 locali, per il giorno appena finito), CRUD entità/task, merge entità,
@@ -110,14 +124,29 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 | — | `POST /api/query/feedback` rispondeva sempre 500 (il 👍/👎 non funzionava) | `5633513` |
 | — | Installazioni nuove senza la migrazione 006 (`schema.sql` + `stamp head`); `deploy.sh` nascondeva le migrazioni fallite | `3fbb621` |
 
+### Risolti il 13–14/10/2026 nel lavoro sulle azioni Composio
+
+Revisione per ogni task + revisione finale dell'intero lavoro e due giri successivi. Correzioni principali: richieste chat
+oltre il timeout dell'app con retry che ripeteva l'azione; eventi con invitati creati senza conferma; scheda di conferma
+che nascondeva destinatari (cc/bcc), testo e fuso orario; toolkit cercati mai usati; troppi strumenti offerti al modello;
+risposte silenziose dalla memoria con Composio irraggiungibile; timeout riportati come "non fatto"; telemetria SDK
+non davvero spenta; registro azioni perso quando una richiesta chat falliva. Dettagli e decisioni nel registro del
+lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei messaggi di commit.
+
 ### Ancora aperti
 
 - **Speaker (#11):** la soglia ora è configurabile ma va calibrata su registrazioni reali.
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi estratti restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione): dimmi se preferisci tradurli.
-- **Todoist v1 non verificata dal vivo:** l'endpoint `POST https://api.todoist.com/api/v1/tasks` e i campi usati vengono da
-  note di migrazione di terze parti; la documentazione ufficiale è bloccata dal proxy aziendale. Da provare con un token reale.
+- **Composio mai provato dal vivo:** quanti strumenti restituisce per toolkit, login di Telegram e Todoist, tempi reali di
+  una richiesta e nomi esatti degli strumenti da confermare vanno verificati con una `COMPOSIO_API_KEY` vera.
+- **`composio==0.15.0`:** la 0.22 richiede `openai>=2.48`; per aggiornare vanno alzati insieme `openai` e `composio`.
+- **Instradamento:** se la verifica "serve l'app?" sbaglia, una richiesta per un'app non collegata può finire su un'altra
+  app collegata (es. un task Todoist invece di "Calendar non collegato"); in quei casi ci sono due chiamate di
+  classificazione in serie.
+- **Minori:** se Redis non salva la risposta dopo il commit, i retry ricevono 409 per 10 minuti; schede e risposte
+  possono essere lunghe con molti destinatari.
 - **Rilevamento lingua euristico:** per le risposte fisse (conferme calendario, "nessun risultato") si contano parole comuni
   italiane/inglesi; frasi molto brevi o miste cadono sull'inglese.
 
@@ -129,7 +158,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Test backend su Windows:** `asyncpg==0.29` non ha wheel per Python 3.13 e richiede MSVC. Usare Python 3.11 (come la CI) o Docker.
   Per i test unitari basta un venv 3.13 con `asyncpg>=0.30` e `pytest --noconftest`.
 - `uv.lock` rigenerato (era già disallineato da `pyproject.toml`; formato aggiornato da uv 0.9.5).
-- I test Flutter scritti il 13/10 **non sono stati eseguiti** in locale (SDK non disponibile): li lancerà il nuovo job CI.
+- **L'app Flutter non è mai stata compilata né testata** dopo le modifiche del 13–14/10 (SDK non disponibile qui):
+  il job CI `mobile` sarà il primo controllo e può far emergere errori di compilazione.
+- Backend: 399 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
+  i test con Postgres girano solo in CI.
 
 ---
 
@@ -179,8 +211,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 2. **Controllare i test di integrazione con Postgres** in CI.
 3. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
 4. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
-5. **Provare le azioni Composio** con una `COMPOSIO_API_KEY` reale e un account collegato.
+5. **Provare le azioni Composio:** `COMPOSIO_API_KEY` nel `.env`, `alembic upgrade head` (arriva alla 008), collegare un
+   account da Settings → Automations → Integrations, provare una richiesta in chat e una a voce ("Echo, …").
 6. Test batteria 12 h quando arriva l'hardware.
 
 **Per me**, se vuoi: baseline Alembic che crea lo schema da zero (al posto di `schema.sql`), rate limiting per API key
-invece che per IP, ed eventualmente traduzione delle entità estratte.
+invece che per IP, un'unica verifica d'intento per le richieste alle app (invece di due in serie), ed eventualmente la
+traduzione delle entità estratte.
