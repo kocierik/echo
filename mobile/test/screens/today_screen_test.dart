@@ -101,6 +101,8 @@ void main() {
     expect(find.text('Echo could not update the microphone.'), findsOneWidget);
     expect(find.byKey(const Key('privacy-retry')), findsOneWidget);
 
+    // Today now has tasks and the summary: the retry sits below the fold
+    await tester.ensureVisible(find.byKey(const Key('privacy-retry')));
     await tester.tap(find.byKey(const Key('privacy-retry')));
     await tester.pump();
     expect(attempts, 2);
@@ -153,6 +155,8 @@ void main() {
     expect(find.text('No completed memories yet.'), findsOneWidget);
 
     var attempts = 0;
+    // Unmount the first screen, or its state (and loader) would be reused
+    await tester.pumpWidget(const SizedBox());
     await _pumpToday(
       tester,
       latestMemoryLoader: () async {
@@ -192,7 +196,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Project Atlas is ready for review.'), findsOneWidget);
-    expect(find.text('You'), findsOneWidget);
+    // The speaker shares a line with the time: "10:00  ·  You"
+    expect(find.textContaining('·  You'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('memory-content')));
     await tester.pumpAndSettle();

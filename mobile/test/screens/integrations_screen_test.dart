@@ -114,8 +114,7 @@ void main() {
     api.initial = [
       _toolkit('googlecalendar', 'Google Calendar', connected: true),
     ];
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    _leaveAndReturn(tester);
     await tester.pumpAndSettle();
 
     expect(api.queries.length, initialLoads + 2);
@@ -214,8 +213,7 @@ void main() {
   });
 
   void resume(WidgetTester tester) {
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    _leaveAndReturn(tester);
   }
 
   testWidgets('a failed reload on resume keeps the list and shows a SnackBar',
@@ -290,4 +288,19 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text("Couldn't refresh the list."), findsNothing);
   });
+}
+
+/// Leaves the app and comes back through every lifecycle state, as a device
+/// does: AppLifecycleListener asserts on a jump such as paused -> resumed.
+void _leaveAndReturn(WidgetTester tester) {
+  for (final state in const [
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+    AppLifecycleState.hidden,
+    AppLifecycleState.inactive,
+    AppLifecycleState.resumed,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
 }

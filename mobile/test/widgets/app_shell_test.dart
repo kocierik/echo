@@ -28,6 +28,7 @@ void main() {
         matchesSemantics(
           label: 'Transcripts',
           isButton: true,
+          hasSelectedState: true,
           isSelected: true,
           hasTapAction: true,
         ),
@@ -66,7 +67,7 @@ void main() {
 
       await tester.tap(find.text('Increment'));
       await tester.drag(
-        find.byKey(const Key('retained-scroll')),
+        find.byKey(const PageStorageKey('retained-scroll')),
         const Offset(0, -240),
       );
       await tester.pump();
@@ -111,6 +112,9 @@ void main() {
 
     testWidgets('keeps 56 point status and 64 point safe navigation geometry',
         (tester) async {
+      // At ratio 1 the 20 pixel inset is 20 points
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
       tester.view.padding = const FakeViewPadding(bottom: 20);
       addTearDown(tester.view.resetPadding);
       await tester.pumpWidget(_themed(

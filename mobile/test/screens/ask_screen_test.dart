@@ -39,6 +39,7 @@ void main() {
     await harness.pump(tester);
 
     await tester.enterText(find.byType(TextField), 'Find my launch notes');
+    await tester.pump();
     await tester.tap(find.byKey(const Key('chat-send')));
     await tester.pump();
     expect(find.byKey(const Key('chat-sending')), findsOneWidget);
@@ -148,6 +149,7 @@ void main() {
         );
 
     await tester.enterText(find.byType(TextField), 'Summarize it');
+    await tester.pump();
     await tester.tap(find.byKey(const Key('chat-send')));
     await tester.pumpAndSettle();
 

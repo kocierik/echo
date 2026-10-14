@@ -50,6 +50,7 @@ void main() {
       find.byKey(const Key('transcript-text-field')),
       '  Edited memory  ',
     );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('save-transcript')));
     await tester.pumpAndSettle();
 
@@ -70,6 +71,7 @@ void main() {
       find.byKey(const Key('transcript-text-field')),
       'Edited memory',
     );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('save-transcript')));
     await tester.pumpAndSettle();
 
@@ -90,6 +92,7 @@ void main() {
       find.byKey(const Key('transcript-text-field')),
       'Edited memory',
     );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('save-transcript')));
     await tester.pumpAndSettle();
 
@@ -125,6 +128,7 @@ void main() {
       find.byKey(const Key('transcript-text-field')),
       'Edited memory',
     );
+    await tester.pump();
     await tester.tap(find.byKey(const Key('save-transcript')));
     await tester.pumpAndSettle();
 
