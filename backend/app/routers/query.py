@@ -11,8 +11,6 @@ from datetime import datetime, timezone
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +21,7 @@ from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.chat_session import ChatSession
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import detect_language
@@ -34,8 +33,6 @@ from app.services.temporal import DateRange, extract_date_range
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
-
-limiter = Limiter(key_func=get_remote_address)
 
 # Session TTL: 30 minutes of inactivity
 SESSION_TTL_SECONDS = 30 * 60
