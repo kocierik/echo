@@ -292,13 +292,18 @@ void test_transport_gates_each_notification_at_the_deadline() {
     TEST_ASSERT_TRUE(source.find("notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs)") !=
                      std::string::npos);
     TEST_ASSERT_EQUAL_UINT32(1, countOccurrences(source, "_audioCharacteristic->notify("));
-    TEST_ASSERT_EQUAL_UINT32(2, countOccurrences(source, "_controlCharacteristic->notify("));
+    // FORGET_BOND_OK, DEVICE_STATUS and PHOTO_FAILED
+    TEST_ASSERT_EQUAL_UINT32(3, countOccurrences(source, "_controlCharacteristic->notify("));
     TEST_ASSERT_TRUE(source.find(
         "if (!beforeBurstDeadline(deadlineUs)) return false;\n"
         "        const bool ok = _audioCharacteristic->notify") != std::string::npos);
     TEST_ASSERT_TRUE(source.find(
         "if (!beforeBurstDeadline(deadlineUs)) return false;\n"
         "        const bool notified = _controlCharacteristic->notify") != std::string::npos);
+    TEST_ASSERT_TRUE(source.find(
+        "if (!beforeBurstDeadline(deadlineUs)) return false;\n"
+        "        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return false;") !=
+        std::string::npos);
 }
 
 void test_indicator_uses_named_active_low_led_values() {
@@ -386,7 +391,7 @@ void test_overflow_cancellation_does_not_dequeue() {
     TEST_ASSERT_TRUE(reportStart != std::string::npos);
     const std::string cancelBody = source.substr(cancelStart, reportStart - cancelStart);
     TEST_ASSERT_TRUE(cancelBody.find(
-        "if (!_active || _segment.segmentId != segmentId) return false") !=
+        "if (!_active || _activeIsPhoto || _segment.segmentId != segmentId) return false") !=
         std::string::npos);
     TEST_ASSERT_TRUE(cancelBody.find("_state.cancelSegment()") != std::string::npos);
     TEST_ASSERT_TRUE(cancelBody.find("_active = false") != std::string::npos);

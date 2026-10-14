@@ -62,6 +62,35 @@
 #define SILENCE_TIMEOUT_MS 120000      // 2 minutes silence = new conversation
 
 // ============================================================
+// Camera (XIAO ESP32-S3 Sense, OV3660 or OV2640 on the B2B connector)
+// ============================================================
+// Taken only on TAKE_PHOTO from the app; the JPEG stays in RAM until uploaded.
+// FRAMESIZE_XGA (1024x768) keeps text readable at ~60-120 KB (~3-5 s over BLE);
+// FRAMESIZE_SVGA (800x600) halves the transfer.
+#define PHOTO_FRAME_SIZE FRAMESIZE_XGA
+#define PHOTO_JPEG_QUALITY 12          // 0-63, lower is better
+#define PHOTO_MAX_BYTES (512 * 1024)   // PSRAM slot for one JPEG
+#define PHOTO_WARMUP_FRAMES 3          // dropped while auto-exposure settles
+#define PHOTO_FLASH_MS 300             // LED on while a photo is taken
+
+#define CAM_PIN_PWDN -1
+#define CAM_PIN_RESET -1
+#define CAM_PIN_XCLK 10
+#define CAM_PIN_SIOD 40
+#define CAM_PIN_SIOC 39
+#define CAM_PIN_D7 48
+#define CAM_PIN_D6 11
+#define CAM_PIN_D5 12
+#define CAM_PIN_D4 14
+#define CAM_PIN_D3 16
+#define CAM_PIN_D2 18
+#define CAM_PIN_D1 17
+#define CAM_PIN_D0 15
+#define CAM_PIN_VSYNC 38
+#define CAM_PIN_HREF 47
+#define CAM_PIN_PCLK 13
+
+// ============================================================
 // Hardware Pins
 // ============================================================
 #define LED_PIN 21                     // Built-in LED on XIAO ESP32-S3

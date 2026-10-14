@@ -26,6 +26,9 @@ public:
     /** Reflect the app-controlled privacy state. */
     void setMuted(bool muted);
 
+    /** LED on for `durationMs`: a photo is being taken. */
+    void flash(uint16_t durationMs);
+
     bool isMuted() const { return _muted; }
 
 private:
@@ -33,6 +36,7 @@ private:
     bool _blinking = false;
     bool _muted = false;
     uint32_t _lastBlinkMs = 0;
+    uint32_t _flashUntilMs = 0;
     bool _ledState = false;
 };
 
@@ -48,6 +52,14 @@ void Indicators::begin() {
 
 void Indicators::update() {
     // --- LED control ---
+    if (_flashUntilMs != 0) {
+        if (static_cast<int32_t>(millis() - _flashUntilMs) < 0) {
+            digitalWrite(LED_PIN, LED_ON);
+            return;
+        }
+        _flashUntilMs = 0;
+    }
+
     if (_muted) {
         // Double-blink every 2s to indicate muted state
         uint32_t phase = millis() % 2000;
@@ -95,4 +107,10 @@ void Indicators::setMuted(bool muted) {
     } else {
         digitalWrite(LED_PIN, LED_OFF);
     }
+}
+
+void Indicators::flash(uint16_t durationMs) {
+    _flashUntilMs = millis() + durationMs;
+    if (_flashUntilMs == 0) _flashUntilMs = 1;
+    digitalWrite(LED_PIN, LED_ON);
 }

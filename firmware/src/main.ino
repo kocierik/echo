@@ -9,6 +9,8 @@
  * 4. Store every completed segment in PSRAM
  * 5. Relay the oldest segment over BLE
  * 6. Keep capture active while BLE advances incrementally
+ * 7. On TAKE_PHOTO from the app, take a photo (camera task, core 0) and relay it
+ *    before the audio; it stays in RAM only until the app confirms the upload
  */
 
 #include "config.h"
@@ -20,6 +22,8 @@
 #include "indicators.h"
 #include "device_preferences.h"
 #include "mute_state.h"
+#include "photo_slot.h"
+#include "camera_capture.h"
 
 // ============================================================
 // Global instances
@@ -31,6 +35,8 @@ BleTransport bleTransport;
 PSRAMBuffer buffer;
 Indicators indicators;
 DevicePreferences devicePreferences;
+PhotoSlot photoSlot;
+CameraCapture camera;
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
     [](bool muted) { return devicePreferences.saveMuted(muted); });
@@ -65,12 +71,27 @@ uint32_t nextSegmentId = 1;
 uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
 void discardInProgressCapture();
+void dropPhotoForPrivacy();
+
+void handleTakePhoto(void*) {
+    if (muteState.isMuted()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_MUTED);
+    } else if (!camera.isAvailable()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_NO_CAMERA);
+    } else if (!photoSlot.request()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_BUSY);
+    } else {
+        indicators.flash(PHOTO_FLASH_MS);  // visible to the people around
+        camera.trigger();
+    }
+}
 
 void handleMuteCommand(bool muted, void*) {
     const bool changed = muteState.isMuted() != muted;
     const bool persisted = muteState.setMuted(muted);
 
     if (changed) discardInProgressCapture();
+    if (muteState.isMuted()) dropPhotoForPrivacy();
 
     indicators.setMuted(muteState.isMuted());
     bleTransport.setMuted(muteState.isMuted());
@@ -117,6 +138,14 @@ void setup() {
         while (true) { delay(1000); }
     }
 
+    // Camera (optional): the JPEG slot lives in PSRAM; no camera, no photos
+    uint8_t* photoBuffer = (uint8_t*)ps_malloc(PHOTO_MAX_BYTES);
+    if (photoBuffer != nullptr) photoSlot.attach(photoBuffer, PHOTO_MAX_BYTES);
+    const bool cameraAvailable = camera.begin(photoSlot);
+    Serial.printf("[Camera] %s\n", cameraAvailable ? "ready" : "not available");
+    bleTransport.setPhotoSlot(&photoSlot, cameraAvailable);
+    bleTransport.setTakePhotoCallback(handleTakePhoto, nullptr);
+
     if (!bleTransport.begin()) {
         Serial.println("[FATAL] BLE transport init failed");
         while (true) { delay(1000); }
@@ -143,12 +172,17 @@ void loop() {
     indicators.update();
     bleTransport.update(buffer);
 
+    uint8_t photoFailure = 0;
+    if (photoSlot.takeFailure(photoFailure)) bleTransport.reportPhotoFailed(photoFailure);
+
 
 
     if (muteState.isMuted()) {
         if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {
             discardInProgressCapture();
         }
+        // A photo that finished after muting is dropped too
+        if (photoSlot.isReady()) dropPhotoForPrivacy();
 
         delay(50);
         return;
@@ -234,6 +268,14 @@ void discardInProgressCapture() {
     vad.reset();
     preBufferCount = 0;
     preBufferWriteIdx = 0;
+}
+
+void dropPhotoForPrivacy() {
+    bleTransport.cancelPhoto();
+    if (photoSlot.discard()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_MUTED);
+        Serial.println("[Privacy] Photo dropped: muted");
+    }
 }
 
 void encodeFrame(const int16_t* samples, size_t count) {

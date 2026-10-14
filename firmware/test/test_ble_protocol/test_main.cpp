@@ -69,9 +69,9 @@ void test_little_endian_round_trips() {
 
 void test_segment_start_exact_bytes() {
     const SegmentStart frame = {
-        0x78563412U, 2U, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
+        0x78563412U, 3U, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
     const uint8_t expected[] = {
-        0x01, 0x12, 0x34, 0x56, 0x78, 0x02, 0x11, 0x22, 0x33, 0x44,
+        0x01, 0x12, 0x34, 0x56, 0x78, 0x03, 0x11, 0x22, 0x33, 0x44,
         0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xAA, 0xBB, 0xCC, 0xDD};
     uint8_t encoded[SEGMENT_START_SIZE] = {};
 
@@ -89,7 +89,7 @@ void test_device_status_v2_exact_bytes_and_round_trips() {
     TEST_ASSERT_EQUAL_UINT32(14, encodeDeviceStatusV2(
         true, true, 255, 3, 12000, 7, bytes, sizeof(bytes)));
     const uint8_t expected[] = {
-        0x20, 0x02, 0x03, 0xFF, 0x03, 0x00,
+        0x20, 0x03, 0x03, 0xFF, 0x03, 0x00,
         0xE0, 0x2E, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, bytes, sizeof(expected));
 
@@ -105,7 +105,7 @@ void test_device_status_v2_exact_bytes_and_round_trips() {
 
 void test_device_info_exact_bytes_and_round_trips() {
     const DeviceInfo info = {PROTOCOL_VERSION, 1, 2, 3};
-    const uint8_t expected[] = {0x21, 0x02, 0x01, 0x02, 0x03};
+    const uint8_t expected[] = {0x21, 0x03, 0x01, 0x02, 0x03};
     uint8_t bytes[DEVICE_INFO_SIZE] = {};
 
     TEST_ASSERT_EQUAL_UINT32(
@@ -122,7 +122,7 @@ void test_device_info_exact_bytes_and_round_trips() {
 
 void test_status_and_info_reject_malformed_frames() {
     const uint8_t validStatus[] = {
-        0x20, 0x02, 0x00, 0x64, 0x01, 0x00,
+        0x20, 0x03, 0x00, 0x64, 0x01, 0x00,
         0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00};
     uint8_t malformedStatus[DEVICE_STATUS_SIZE] = {};
     DeviceStatus status = {};
@@ -134,7 +134,7 @@ void test_status_and_info_reject_malformed_frames() {
     malformedStatus[1] = 1;
     TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
     std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
-    malformedStatus[2] = 0x04;
+    malformedStatus[2] = 0x08;
     TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
     std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
     malformedStatus[3] = 101;
@@ -276,6 +276,59 @@ void test_time_anchor_uses_wrap_safe_millis_delta() {
     TEST_ASSERT_EQUAL_UINT64(99ULL, unixSeconds);
 }
 
+void test_status_frames_still_decode_with_the_valid_status() {
+    const uint8_t validStatus[] = {
+        0x20, 0x03, 0x04, 0x64, 0x01, 0x00,
+        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00};
+    DeviceStatus status = {};
+    TEST_ASSERT_TRUE(decodeDeviceStatusV2(validStatus, sizeof(validStatus), status));
+    TEST_ASSERT_TRUE(status.cameraAvailable);
+    TEST_ASSERT_FALSE(status.muted);
+}
+
+void test_camera_flag_is_bit_two_of_the_status() {
+    DeviceStatus status = {false, false, 50, 0, 0, 0};
+    uint8_t bytes[DEVICE_STATUS_SIZE] = {};
+    encodeDeviceStatusV2(status, bytes, sizeof(bytes));
+    TEST_ASSERT_EQUAL_HEX8(0x00, bytes[2]);
+    status.cameraAvailable = true;
+    encodeDeviceStatusV2(status, bytes, sizeof(bytes));
+    TEST_ASSERT_EQUAL_HEX8(0x04, bytes[2]);
+}
+
+void test_photo_start_has_the_segment_start_layout_with_its_own_type() {
+    const SegmentStart frame = {
+        PHOTO_SEGMENT_ID_FLAG | 7U, PROTOCOL_VERSION, 90000U, 0U, 380U, 0x12345678U};
+    uint8_t encoded[SEGMENT_START_SIZE] = {};
+
+    TEST_ASSERT_EQUAL_UINT32(SEGMENT_START_SIZE,
+        encodeSegmentStart(frame, encoded, sizeof(encoded), FRAME_PHOTO_START));
+    TEST_ASSERT_EQUAL_HEX8(FRAME_PHOTO_START, encoded[0]);
+    SegmentStart decoded = {};
+    TEST_ASSERT_TRUE(decodeSegmentStart(encoded, sizeof(encoded), decoded));
+    TEST_ASSERT_EQUAL_HEX32(frame.segmentId, decoded.segmentId);
+    TEST_ASSERT_EQUAL_UINT32(90000U, decoded.totalLength);
+    // Only the two start types
+    TEST_ASSERT_EQUAL_UINT32(0, encodeSegmentStart(frame, encoded, sizeof(encoded), FRAME_SEGMENT_DATA));
+}
+
+void test_take_photo_and_photo_failed_frames() {
+    const uint8_t take[] = {FRAME_TAKE_PHOTO};
+    const uint8_t takeTooLong[] = {FRAME_TAKE_PHOTO, 0};
+    ControlFrame frame = {};
+    TEST_ASSERT_TRUE(decodeControlFrame(take, sizeof(take), frame));
+    TEST_ASSERT_EQUAL_HEX8(FRAME_TAKE_PHOTO, frame.type);
+    TEST_ASSERT_FALSE(decodeControlFrame(takeTooLong, sizeof(takeTooLong), frame));
+
+    uint8_t failed[PHOTO_FAILED_SIZE] = {};
+    TEST_ASSERT_EQUAL_UINT32(PHOTO_FAILED_SIZE, encodePhotoFailed(PHOTO_FAILED_BUSY, failed, sizeof(failed)));
+    TEST_ASSERT_EQUAL_HEX8(FRAME_PHOTO_FAILED, failed[0]);
+    TEST_ASSERT_EQUAL_UINT8(PHOTO_FAILED_BUSY, failed[1]);
+    TEST_ASSERT_EQUAL_UINT32(0, encodePhotoFailed(0, failed, sizeof(failed)));
+    TEST_ASSERT_EQUAL_UINT32(0, encodePhotoFailed(PHOTO_FAILED_NO_CAMERA + 1, failed, sizeof(failed)));
+    TEST_ASSERT_EQUAL_UINT32(0, encodePhotoFailed(PHOTO_FAILED_MUTED, failed, 1));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_crc32_known_vector);
@@ -295,5 +348,9 @@ int main(int, char**) {
     RUN_TEST(test_protocol_encoders_accept_maximum_fields_and_reject_short_buffers);
     RUN_TEST(test_time_anchor_resolves_captures_before_and_after_set_time);
     RUN_TEST(test_time_anchor_uses_wrap_safe_millis_delta);
+    RUN_TEST(test_status_frames_still_decode_with_the_valid_status);
+    RUN_TEST(test_camera_flag_is_bit_two_of_the_status);
+    RUN_TEST(test_photo_start_has_the_segment_start_layout_with_its_own_type);
+    RUN_TEST(test_take_photo_and_photo_failed_frames);
     return UNITY_END();
 }
