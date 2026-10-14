@@ -8,6 +8,8 @@ namespace EchoBleProtocol {
 constexpr uint8_t FRAME_SEGMENT_START = 0x01;
 constexpr uint8_t FRAME_SEGMENT_METADATA = 0x02;
 constexpr uint8_t FRAME_SEGMENT_DATA = 0x03;
+// v3: starts a photo transfer; then SEGMENT_METADATA and SEGMENT_DATA as for audio
+constexpr uint8_t FRAME_PHOTO_START = 0x04;
 constexpr uint8_t FRAME_READY = 0x10;
 constexpr uint8_t FRAME_ACK_WINDOW = 0x11;
 constexpr uint8_t FRAME_RESTART_SEGMENT = 0x12;
@@ -16,9 +18,19 @@ constexpr uint8_t FRAME_SET_TIME = 0x14;
 constexpr uint8_t FRAME_SET_MUTED = 0x15;
 constexpr uint8_t FRAME_FORGET_BOND = 0x16;
 constexpr uint8_t FRAME_FORGET_BOND_OK = 0x17;
+constexpr uint8_t FRAME_TAKE_PHOTO = 0x18;   // v3, app -> wearable
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
 constexpr uint8_t FRAME_DEVICE_INFO = 0x21;
-constexpr uint8_t PROTOCOL_VERSION = 2;
+constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reason]
+// 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
+constexpr uint8_t PROTOCOL_VERSION = 3;
+
+constexpr uint8_t PHOTO_FAILED_MUTED = 1;
+constexpr uint8_t PHOTO_FAILED_CAPTURE = 2;
+constexpr uint8_t PHOTO_FAILED_BUSY = 3;
+constexpr uint8_t PHOTO_FAILED_NO_CAMERA = 4;
+// Photo transfers use ids with the high bit set, apart from audio segment ids
+constexpr uint32_t PHOTO_SEGMENT_ID_FLAG = 0x80000000U;
 
 constexpr size_t SEGMENT_START_SIZE = 20;
 constexpr size_t SEGMENT_METADATA_SIZE = 19;
@@ -30,6 +42,8 @@ constexpr size_t SET_TIME_SIZE = 11;
 constexpr size_t SET_MUTED_SIZE = 2;
 constexpr size_t FORGET_BOND_SIZE = 1;
 constexpr size_t FORGET_BOND_OK_SIZE = 1;
+constexpr size_t TAKE_PHOTO_SIZE = 1;
+constexpr size_t PHOTO_FAILED_SIZE = 2;
 constexpr size_t DEVICE_STATUS_SIZE = 14;
 constexpr size_t DEVICE_INFO_SIZE = 5;
 constexpr size_t MAX_CONTROL_FRAME_SIZE = SET_TIME_SIZE;
@@ -136,6 +150,7 @@ struct DeviceStatus {
     uint16_t bufferCount;
     uint32_t bufferBytes;
     uint32_t droppedSegments;
+    bool cameraAvailable;  // v3; left out of an initializer it is false
 };
 
 struct DeviceInfo {
@@ -183,9 +198,11 @@ struct ControlFrame {
     bool muted;
 };
 
-inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, size_t capacity) {
+inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, size_t capacity,
+                                 uint8_t frameType = FRAME_SEGMENT_START) {
     if (output == nullptr || capacity < SEGMENT_START_SIZE) return 0;
-    output[0] = FRAME_SEGMENT_START;
+    if (frameType != FRAME_SEGMENT_START && frameType != FRAME_PHOTO_START) return 0;
+    output[0] = frameType;
     writeU32(output + 1, frame.segmentId);
     output[5] = frame.protocolVersion;
     writeU32(output + 6, frame.totalLength);
@@ -196,7 +213,8 @@ inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, siz
 }
 
 inline bool decodeSegmentStart(const uint8_t* input, size_t length, SegmentStart& frame) {
-    if (input == nullptr || length != SEGMENT_START_SIZE || input[0] != FRAME_SEGMENT_START) return false;
+    if (input == nullptr || length != SEGMENT_START_SIZE ||
+        (input[0] != FRAME_SEGMENT_START && input[0] != FRAME_PHOTO_START)) return false;
     frame.segmentId = readU32(input + 1);
     frame.protocolVersion = input[5];
     frame.totalLength = readU32(input + 6);
@@ -244,7 +262,8 @@ inline size_t encodeDeviceStatusV2(const DeviceStatus& status,
     output[0] = FRAME_DEVICE_STATUS;
     output[1] = PROTOCOL_VERSION;
     output[2] = static_cast<uint8_t>((status.muted ? 0x01 : 0x00) |
-                                     (status.overflowed ? 0x02 : 0x00));
+                                     (status.overflowed ? 0x02 : 0x00) |
+                                     (status.cameraAvailable ? 0x04 : 0x00));
     output[3] = status.batteryPercent;
     writeU16(output + 4, status.bufferCount);
     writeU32(output + 6, status.bufferBytes);
@@ -264,9 +283,10 @@ inline size_t encodeDeviceStatusV2(bool muted, bool overflowed, uint8_t batteryP
 inline bool decodeDeviceStatusV2(const uint8_t* input, size_t length, DeviceStatus& status) {
     if (input == nullptr || length != DEVICE_STATUS_SIZE ||
         input[0] != FRAME_DEVICE_STATUS || input[1] != PROTOCOL_VERSION ||
-        (input[2] & 0xFC) != 0 || !isValidBatteryPercent(input[3])) return false;
+        (input[2] & 0xF8) != 0 || !isValidBatteryPercent(input[3])) return false;
     status.muted = (input[2] & 0x01) != 0;
     status.overflowed = (input[2] & 0x02) != 0;
+    status.cameraAvailable = (input[2] & 0x04) != 0;
     status.batteryPercent = input[3];
     status.bufferCount = readU16(input + 4);
     status.bufferBytes = readU32(input + 6);
@@ -293,6 +313,14 @@ inline bool decodeDeviceInfo(const uint8_t* input, size_t length, DeviceInfo& in
     info.firmwareMinor = input[3];
     info.firmwarePatch = input[4];
     return true;
+}
+
+inline size_t encodePhotoFailed(uint8_t reason, uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < PHOTO_FAILED_SIZE ||
+        reason < PHOTO_FAILED_MUTED || reason > PHOTO_FAILED_NO_CAMERA) return 0;
+    output[0] = FRAME_PHOTO_FAILED;
+    output[1] = reason;
+    return PHOTO_FAILED_SIZE;
 }
 
 inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame& frame) {
@@ -323,6 +351,8 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
             return true;
         case FRAME_FORGET_BOND:
             return length == FORGET_BOND_SIZE;
+        case FRAME_TAKE_PHOTO:
+            return length == TAKE_PHOTO_SIZE;
         default:
             return false;
     }

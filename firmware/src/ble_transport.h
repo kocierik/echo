@@ -9,11 +9,13 @@
 #include "ble_transport_events.h"
 #include "ble_transfer_state.h"
 #include "config.h"
+#include "photo_slot.h"
 #include "psram_buffer.h"
 
 class BleTransport {
 public:
     typedef void (*MuteCommandCallback)(bool muted, void* context);
+    typedef void (*TakePhotoCallback)(void* context);
 
     BleTransport()
         : _serverCallbacks(*this), _controlCallbacks(*this) {}
@@ -26,6 +28,33 @@ public:
     void setMuted(bool muted) {
         _muted = muted;
         _pendingStatus.request();
+    }
+
+    /** Photos: sent before audio (the user is waiting for them), freed on UPLOAD_OK. */
+    void setPhotoSlot(PhotoSlot* slot, bool cameraAvailable) {
+        _photoSlot = slot;
+        _cameraAvailable = cameraAvailable;
+        _pendingStatus.request();
+    }
+
+    void setTakePhotoCallback(TakePhotoCallback callback, void* context) {
+        _takePhotoCallback = callback;
+        _takePhotoContext = context;
+    }
+
+    /** Tell the app why there is no photo (EchoBleProtocol::PHOTO_FAILED_*). */
+    void reportPhotoFailed(uint8_t reason) {
+        _pendingPhotoFailure = reason;
+    }
+
+    /** Muted: stop sending a photo (the slot is emptied by the caller). */
+    void cancelPhoto() {
+        if (!_active || !_activeIsPhoto) return;
+        _state.cancelSegment();
+        _active = false;
+        _activeIsPhoto = false;
+        _segmentData = nullptr;
+        _preambleStep = 0;
     }
 
     bool begin() {
@@ -88,6 +117,9 @@ public:
             if (notified) ++notificationsSent;
             if (!notified || !beforeBurstDeadline(deadlineUs)) return;
         }
+        if (_pendingPhotoFailure != 0 && _connected) {
+            if (!notifyPhotoFailed(deadlineUs)) return;
+        }
         if (!_connected || !_timeAnchor.isValid() || !_state.isReady()) {
             return;
         }
@@ -101,9 +133,17 @@ public:
         }
 
         if (!_active) {
-            if (!buffer.peek(_segment, &_segmentData)) return;
-            Serial.printf("[BLE] next segment id=%u len=%u\n", _segment.segmentId,
-                          static_cast<unsigned>(_segment.dataLength));
+            if (_photoSlot != nullptr && _photoSlot->isReady()) {
+                _segment = _photoSlot->segment();
+                _segmentData = _photoSlot->data();
+                _activeIsPhoto = true;
+            } else if (buffer.peek(_segment, &_segmentData)) {
+                _activeIsPhoto = false;
+            } else {
+                return;
+            }
+            Serial.printf("[BLE] next %s id=%u len=%u\n", _activeIsPhoto ? "photo" : "segment",
+                          _segment.segmentId, static_cast<unsigned>(_segment.dataLength));
             _chunkPayloadSize = payloadSizeForMtu();
             if (_chunkPayloadSize == 0) return;
             const size_t chunks = (_segment.dataLength + _chunkPayloadSize - 1) / _chunkPayloadSize;
@@ -144,7 +184,7 @@ public:
     }
 
     bool cancelActiveForOverflow(uint32_t segmentId) {
-        if (!_active || _segment.segmentId != segmentId) return false;
+        if (!_active || _activeIsPhoto || _segment.segmentId != segmentId) return false;
         _state.cancelSegment();
         _active = false;
         _segmentData = nullptr;
@@ -284,6 +324,7 @@ private:
             buffer.count(),
             static_cast<uint32_t>(buffer.bytesUsed()),
             buffer.droppedSegmentCount(),
+            _cameraAvailable,
         };
         EchoBleProtocol::encodeDeviceStatusV2(status, frame, sizeof(frame));
         if (!beforeBurstDeadline(deadlineUs)) return false;
@@ -304,11 +345,28 @@ private:
             chunks,
             _segment.crc,
         };
-        EchoBleProtocol::encodeSegmentStart(start, frame, sizeof(frame));
+        EchoBleProtocol::encodeSegmentStart(
+            start, frame, sizeof(frame),
+            _activeIsPhoto ? EchoBleProtocol::FRAME_PHOTO_START
+                           : EchoBleProtocol::FRAME_SEGMENT_START);
         if (!notifyAudio(frame, sizeof(frame), deadlineUs)) return false;
         ++_preambleStep;
         Serial.printf("[BLE] transfer started segment=%u chunks=%u\n",
                       _segment.segmentId, chunks);
+        return true;
+    }
+
+    bool notifyPhotoFailed(uint32_t deadlineUs) {
+        if (_controlCharacteristic == nullptr) return false;
+        uint8_t frame[EchoBleProtocol::PHOTO_FAILED_SIZE] = {};
+        if (EchoBleProtocol::encodePhotoFailed(_pendingPhotoFailure, frame, sizeof(frame)) == 0) {
+            _pendingPhotoFailure = 0;
+            return true;
+        }
+        if (!beforeBurstDeadline(deadlineUs)) return false;
+        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return false;
+        Serial.printf("[BLE] photo failed reason=%u\n", _pendingPhotoFailure);
+        _pendingPhotoFailure = 0;
         return true;
     }
 
@@ -397,6 +455,7 @@ private:
         _negotiatedMtu = 23;
         _forgetBondPending = false;
         _active = false;
+        _activeIsPhoto = false;  // a photo stays in its slot: sent again on reconnect
         _segmentData = nullptr;
         _state.onDisconnected();
         NimBLEDevice::startAdvertising();
@@ -486,6 +545,11 @@ private:
             case EchoBleProtocol::FRAME_FORGET_BOND:
                 _forgetBondPending = true;
                 break;
+            case EchoBleProtocol::FRAME_TAKE_PHOTO:
+                Serial.println("[BLE] control FRAME_TAKE_PHOTO");
+                if (_takePhotoCallback != nullptr) _takePhotoCallback(_takePhotoContext);
+                else reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_NO_CAMERA);
+                break;
             default:
                 Serial.printf("[BLE] control unknown type=%u\n", frame.type);
                 break;
@@ -497,6 +561,19 @@ private:
         if (!_state.canAcceptUploadOk(segmentId)) {
             Serial.printf("[BLE] acceptUpload rejected segment=%u state=%d\n", segmentId, _state.phase());
             restartActive();
+            return;
+        }
+        if (_activeIsPhoto) {
+            if (_photoSlot == nullptr || !_photoSlot->release(segmentId)) {
+                Serial.printf("[BLE] acceptUpload missing photo=%u\n", segmentId);
+                restartActive();
+                return;
+            }
+            Serial.printf("[BLE] upload accepted photo=%u\n", segmentId);
+            _state.uploadAccepted();
+            _active = false;
+            _activeIsPhoto = false;
+            _segmentData = nullptr;
             return;
         }
         BufferedSegment oldest = {};
@@ -534,6 +611,12 @@ private:
     uint8_t _preambleStep = 0;
     bool _connected = false;
     bool _active = false;
+    bool _activeIsPhoto = false;
+    bool _cameraAvailable = false;
+    uint8_t _pendingPhotoFailure = 0;
+    PhotoSlot* _photoSlot = nullptr;
+    TakePhotoCallback _takePhotoCallback = nullptr;
+    void* _takePhotoContext = nullptr;
     bool _muted = false;
     bool _overflowSinceLastStatus = false;
     bool _disconnectPending = false;
