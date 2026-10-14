@@ -3,9 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('flutter_blue_plus exposes background restoration APIs', () {
-    final configureRestoreState = () =>
+    Future<void> configureRestoreState() =>
         FlutterBluePlus.setOptions(restoreState: true);
-    final createDevice = () =>
+    BluetoothDevice createDevice() =>
         BluetoothDevice.fromId('compile-time-capability-probe');
 
     expect(configureRestoreState, isA<Future<void> Function()>());

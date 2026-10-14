@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/chat_message.dart';
-import '../models/chat_session.dart';
 import 'api_exception.dart';
 import 'api_service.dart';
 import 'request_id.dart';

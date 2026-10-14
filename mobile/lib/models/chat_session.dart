@@ -49,7 +49,7 @@ final class ChatSessionMessage {
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
     if (role != 'user' && role != 'assistant') {
-      throw FormatException('role must be user or assistant');
+      throw const FormatException('role must be user or assistant');
     }
 
     return ChatSessionMessage(

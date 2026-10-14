@@ -7,7 +7,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_status.dart';
 import 'api_service.dart';
 import 'app_controller.dart';
-import 'app_preferences.dart';
 import 'ble_service.dart';
 import 'device_controller.dart';
 import 'device_identity_store.dart';

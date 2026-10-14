@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:echo_app/models/device_status.dart';
-import 'package:echo_app/models/session_state.dart';
 import 'package:echo_app/screens/settings_screen.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:echo_app/services/app_controller.dart';

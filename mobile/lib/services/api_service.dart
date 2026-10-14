@@ -731,6 +731,7 @@ class ApiService
     });
   }
 
+  @override
   Future<VoiceUpdates> getVoiceUpdates(DateTime? since) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
