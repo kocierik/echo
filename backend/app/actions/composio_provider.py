@@ -302,8 +302,11 @@ class ComposioActionProvider:
             _executes=True,
         )
         if not isinstance(result, dict):
+            # The request was sent: it may have run, so the user is told to check the app
             logger.warning("Composio execute returned %s", type(result).__name__)
-            return ToolResult(ok=False, error="unexpected response from Composio")
+            return ToolResult(
+                ok=False, unknown=True, error="unexpected response from Composio"
+            )
         if result.get("successful"):
             return ToolResult(ok=True, data=result.get("data"))
         return ToolResult(ok=False, error=str(result.get("error") or "Tool failed"))

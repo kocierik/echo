@@ -318,7 +318,9 @@ async def test_sdk_calls_run_with_tracking_disabled():
 
 
 @pytest.mark.parametrize("raw", [None, "ok", ["successful"], 42])
-async def test_execute_non_dict_result_is_a_failure_not_a_crash(raw):
+async def test_execute_non_dict_result_is_an_unknown_outcome(raw):
     client = StubClient(active=["gmail"], execute_result=raw)
     result = await ComposioActionProvider(client=client).execute("u1", "GMAIL_SEND_EMAIL", {})
-    assert result == ToolResult(ok=False, error="unexpected response from Composio")
+    assert result == ToolResult(
+        ok=False, unknown=True, error="unexpected response from Composio"
+    )
