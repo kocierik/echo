@@ -11,6 +11,7 @@ final class ConversationCardTile extends StatelessWidget {
     required this.conversation,
     required this.onTap,
     this.dayFrom,
+    this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
     super.key,
   });
 
@@ -19,6 +20,7 @@ final class ConversationCardTile extends StatelessWidget {
 
   /// Outside a day-grouped list: "now", to say the day too ("Yesterday · 10:00").
   final DateTime? dayFrom;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +40,7 @@ final class ConversationCardTile extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          padding: padding,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

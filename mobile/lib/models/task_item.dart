@@ -66,9 +66,6 @@ final class TaskItem {
 
   Map<String, dynamic> metadataWithDone(bool done) => {...metadata, 'done': done};
 
-  /// The legacy name used by Today: all of the metadata with done = true.
-  Map<String, dynamic> get completedMetadata => metadataWithDone(true);
-
   TaskItem copyWithDone(bool done) => TaskItem(
         id: id,
         name: name,

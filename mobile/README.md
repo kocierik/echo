@@ -43,7 +43,9 @@ Settings → Device → **Pair Echo**.
 
 ## Features
 
-- **Today:** wearable status, latest transcripts, open tasks, daily summary, pause/resume.
+- **Today:** one device card (mute/resume, reconnect, or **Pair Echo** without a device); **Needs
+  you** with actions waiting for a Confirm (voice requests too); today so far (conversations,
+  minutes, people); tasks due today or created today; the latest daily summary, by its day.
 - **Memories:** conversations by day with emoji, title, summary, people and tasks (Live while
   Echo is still listening); search across titles, summaries, transcripts and extracted entities.
   The detail has a Summary (tasks with the sentence they came from, events, ideas) and the

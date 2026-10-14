@@ -16,6 +16,7 @@ final class TaskTile extends StatelessWidget {
     this.onDismiss,
     this.onOpenConversation,
     this.now,
+    this.padding = const EdgeInsets.only(left: 8, right: 4),
     super.key,
   });
 
@@ -27,6 +28,7 @@ final class TaskTile extends StatelessWidget {
 
   /// Injectable "now" for tests.
   final DateTime? now;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +41,7 @@ final class TaskTile extends StatelessWidget {
 
     return Padding(
       key: Key('task-${task.id}'),
-      padding: const EdgeInsets.only(left: 8, right: 4),
+      padding: padding,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

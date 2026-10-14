@@ -293,10 +293,6 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onCancelReconnect;
   final VoidCallback? onRequireOnboarding;
 
-  void _openChat() {
-    unawaited(appController.setSelectedTab(AppController.askTab));
-  }
-
   void _openSettings(BuildContext context) {
     if (onSettingsTap != null) {
       onSettingsTap!();
@@ -365,9 +361,13 @@ class MainShell extends StatelessWidget {
                   return controller.setMuted(muted);
                 },
                 onReconnect: deviceController?.reconnect,
-                onAsk: _openChat,
-                onTranscripts: () {
+                onPair: onRequireOnboarding,
+                onAsk: appController.requestAsk,
+                onOpenMemories: () {
                   unawaited(appController.setSelectedTab(AppController.memoriesTab));
+                },
+                onOpenTasks: () {
+                  unawaited(appController.setSelectedTab(AppController.tasksTab));
                 },
                 segmentUploadedStream: segmentUploadedStream,
               ),

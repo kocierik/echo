@@ -200,19 +200,16 @@ void main() {
 
     test('maps malformed nested model fields to invalid_response', () async {
       final service = _service(
-        (request) => _jsonResponse(request, 200, [
-          {
-            'id': 42,
-            'received_at': 'not-a-date',
-            'recorded_at': '2026-10-02T12:00:00Z',
-            'duration_ms': '100',
-            'transcription_status': 'completed',
-          }
-        ]),
+        (request) => _jsonResponse(request, 200, {
+          'conversations': [
+            {'id': 42, 'started_at': 'not-a-date', 'duration_s': '100'},
+          ],
+          'total': 1,
+        }),
       );
 
       await _expectApiException(
-        service.getRecentSegments(),
+        service.listConversations(),
         code: 'invalid_response',
       );
     });
@@ -409,32 +406,32 @@ void main() {
       expect(await service.getLatestDigest(), isNull);
     });
 
-    test('open tasks skip done and nameless tasks and parse due dates',
-        () async {
-      final now = DateTime.now().toUtc().toIso8601String();
-      final service = _service((request) => _jsonResponse(request, 200, {
-            'entities': [
-              {
-                'id': 'open',
-                'name': 'Call Ada',
-                'metadata_': {'done': false, 'due_date': '2026-10-14'},
-                'created_at': now,
-              },
-              {
-                'id': 'done',
-                'name': 'Send report',
-                'metadata_': {'done': true},
-                'created_at': now,
-              },
-              {'id': 'blank', 'name': ' ', 'metadata_': {}, 'created_at': now},
-            ],
-            'total': 3,
-          }));
+    test('open tasks ask the server for done=false and skip nameless ones', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {
+          'entities': [
+            {
+              'id': 'open',
+              'name': 'Call Ada',
+              'metadata_': {'due_date': '2026-10-14'},
+              'source_text': '[Tu] Chiamo Ada.',
+              'conversation_id': 'c1',
+              'created_at': '2026-10-14T09:30:00Z',
+            },
+            {'id': 'blank', 'name': ' ', 'metadata_': {}, 'created_at': '2026-10-14T09:30:00Z'},
+          ],
+          'total': 2,
+        });
+      });
 
-      final tasks = await service.getOpenTasks();
+      final tasks = await service.listTasks(done: false);
 
+      expect(captured.url.toString(), 'https://echo.test/api/entities/tasks?done=false&limit=200');
       expect(tasks.map((task) => task.id), ['open']);
       expect(tasks.single.dueDate, DateTime(2026, 10, 14));
+      expect(tasks.single.sourceText, '[Tu] Chiamo Ada.');
     });
 
     test('completing a task sends the full metadata with done true', () async {
@@ -444,17 +441,58 @@ void main() {
         return _jsonResponse(request, 200, {'id': 'task-1'});
       });
 
-      await service.completeTask(const TaskItem(
-        id: 'task-1',
-        name: 'Call Ada',
-        metadata: {'done': false, 'priority': 'high'},
-      ));
+      await service.setTaskDone(
+        const TaskItem(id: 'task-1', name: 'Call Ada', metadata: {'priority': 'high'}),
+        true,
+      );
 
       expect(captured.method, 'PATCH');
       expect(captured.url.toString(), 'https://echo.test/api/entities/task-1');
       expect(jsonDecode(captured.body), {
-        'metadata_': {'done': true, 'priority': 'high'},
+        'metadata_': {'priority': 'high', 'done': true},
       });
+    });
+
+    test('search encodes the query', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'conversations': [], 'entities': []});
+      });
+
+      final results = await service.search(' 50% off & more ');
+
+      expect(captured.url.query, 'q=50%25+off+%26+more');
+      expect(results.isEmpty, isTrue);
+    });
+
+    test('people and pending actions parse their lists', () async {
+      final service = _service((request) => switch (request.url.path) {
+            '/api/people' => _jsonResponse(request, 200, [
+                {'id': 'p1', 'name': 'Ada', 'conversation_count': 2, 'open_task_count': 1},
+                {'id': 'p2', 'name': ' '},
+              ]),
+            _ => _jsonResponse(request, 200, [
+                {
+                  'id': 'a1',
+                  'summary': 'Send the budget',
+                  'tool': 'GMAIL_SEND_EMAIL',
+                  'app': 'Gmail',
+                  'source': 'voice',
+                  'session_id': null,
+                  'created_at': '2026-10-14T09:30:00Z',
+                  'expires_at': '2026-10-14T10:00:00Z',
+                },
+              ]),
+          });
+
+      final people = await service.listPeople();
+      final pending = await service.listPendingActions();
+
+      expect(people.map((p) => p.name), ['Ada']);
+      expect(people.single.openTaskCount, 1);
+      expect(pending.single.app, 'Gmail');
+      expect(pending.single.source, 'voice');
     });
   });
 
