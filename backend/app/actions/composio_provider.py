@@ -1,8 +1,9 @@
 """Composio implementation of ActionProvider.
 
-Verified against composio==0.15.0 / composio-client==1.39.0 (installed source). The default
+Verified against composio==0.22.0 / composio-client==1.43.0 (installed source). The default
 `Composio(api_key=...)` provider already returns OpenAI ChatCompletionToolParam dicts, so
-`composio_openai` is NOT needed (it would also force openai>=2.48; Echo pins openai==1.51.0).
+`composio_openai` is NOT needed. 0.24+ depend on composio-client 2.0 release candidates,
+whose import takes ~50 s instead of ~20 s.
 
 SDK surface used (all synchronous):
 - `connected_accounts.list(user_ids=[..], toolkit_slugs=[..], statuses=["ACTIVE"])` ->
@@ -76,10 +77,30 @@ REQUIRED_TOOLS = (
 )
 
 
+def _import_sdk() -> None:
+    import composio  # noqa: F401
+    from composio.core.models.base import allow_tracking  # noqa: F401
+
+
+async def preload_sdk() -> None:
+    """Import the SDK in the background at startup.
+
+    The import takes ~20 s (it builds its pydantic models); done lazily, it would fall inside
+    the first app request and its SDK_TIMEOUT_SECONDS. A request arriving meanwhile waits on
+    Python's import lock for the rest of it.
+    """
+    if not settings.composio_api_key:
+        return
+    try:
+        await asyncio.to_thread(_import_sdk)
+    except Exception as e:
+        logger.warning("Composio SDK preload failed: %s", type(e).__name__)
+
+
 def _without_tracking(fn):
     """Wrap an SDK callable so it runs with SDK telemetry off.
 
-    composio 0.15 reads `allow_tracking` from a ContextVar (default True) that
+    composio reads `allow_tracking` from a ContextVar (default True) that
     `Composio(allow_tracking=False)` sets only in the context that built the client; a worker
     thread has its own context, so each call sets it itself.
     """
@@ -212,7 +233,7 @@ class ComposioActionProvider:
     def _important_slugs(self, toolkits: list[str]) -> list[str]:
         """Composio's "important" (featured) tools of these toolkits.
 
-        `tools.get` has no such filter in composio 0.15.0; the raw API listing does.
+        `tools.get` has no such filter; the raw API listing does.
         """
         response = self.client.client.tools.list(
             toolkit_slug=",".join(toolkits), important="true", limit=MAX_OFFERED_TOOLS

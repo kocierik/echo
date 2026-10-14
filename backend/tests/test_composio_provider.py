@@ -330,3 +330,28 @@ async def test_execute_non_dict_result_is_an_unknown_outcome(raw):
     assert result == ToolResult(
         ok=False, unknown=True, error="unexpected response from Composio"
     )
+
+
+async def test_preload_imports_the_sdk_only_when_configured(monkeypatch):
+    from app.actions import composio_provider
+
+    imports = []
+    monkeypatch.setattr(composio_provider, "_import_sdk", lambda: imports.append(1))
+    monkeypatch.setattr(composio_provider.settings, "composio_api_key", "")
+    await composio_provider.preload_sdk()
+    assert imports == []
+
+    monkeypatch.setattr(composio_provider.settings, "composio_api_key", "ak_test")
+    await composio_provider.preload_sdk()
+    assert imports == [1]
+
+
+async def test_a_failed_preload_does_not_stop_startup(monkeypatch):
+    from app.actions import composio_provider
+
+    def broken():
+        raise ImportError("no sdk")
+
+    monkeypatch.setattr(composio_provider, "_import_sdk", broken)
+    monkeypatch.setattr(composio_provider.settings, "composio_api_key", "ak_test")
+    await composio_provider.preload_sdk()

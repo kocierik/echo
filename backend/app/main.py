@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import uuid
 from contextlib import asynccontextmanager
@@ -9,6 +10,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
+from app.actions.composio_provider import preload_sdk
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import async_session, engine
@@ -42,8 +44,10 @@ async def lifespan(app: FastAPI):
         decode_responses=False,
         max_connections=20,
     )
+    preload = asyncio.create_task(preload_sdk())
     yield
     # Shutdown: close the pool
+    preload.cancel()
     await app.state.redis.aclose()
 
 

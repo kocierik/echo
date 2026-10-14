@@ -182,8 +182,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
 - **Composio provato solo in parte:** il collegamento di Google Calendar funziona; restano da provare una richiesta
   in chat e una a voce, le conferme, Telegram e Todoist, e i tempi reali di una richiesta.
-- **`composio==0.15.0`:** la 0.22 richiede `openai>=2.48`; per aggiornare vanno alzati insieme `openai` e `composio`.
-- **Instradamento:** dipende da una sola risposta del modello, provato solo con risposte simulate.
+- **`composio==0.22.0`:** dalla 0.24 dipende da `composio-client` 2.0 (release candidate), che si carica in ~50 s
+  invece di ~20 s: da riprovare quando il client 2.0 sarà stabile. L'SDK si carica all'avvio di api e worker.
+- **Instradamento:** dipende da una sola risposta del modello; 10/10 sui casi di `make eval-llm SUITE=routing`.
 - **Minori:** se Redis non salva la risposta dopo il commit, i retry ricevono 409 per 10 minuti; schede e risposte
   possono essere lunghe con molti destinatari; il rilevamento della lingua per le risposte fisse è euristico
   (frasi brevi o miste cadono sull'inglese).
