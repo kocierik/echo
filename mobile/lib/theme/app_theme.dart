@@ -216,6 +216,24 @@ class AppTheme {
           );
         }),
       ),
+      // Selected in the action blue, like the navigation (Material 3 would use
+      // the green "secondary", which means "listening" here)
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          minimumSize: minimumSize,
+          textStyle: WidgetStatePropertyAll(textTheme.labelMedium),
+          shape: WidgetStatePropertyAll(componentShape),
+          side: WidgetStatePropertyAll(BorderSide(color: palette.border)),
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            return states.contains(WidgetState.selected)
+                ? palette.blue.withValues(alpha: 0.14)
+                : palette.surface;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            return states.contains(WidgetState.selected) ? palette.blue : palette.text2;
+          }),
+        ),
+      ),
       dividerTheme: DividerThemeData(
         color: palette.border,
         thickness: 1,

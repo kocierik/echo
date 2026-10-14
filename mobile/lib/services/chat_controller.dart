@@ -197,7 +197,7 @@ final class ChatController extends ChangeNotifier {
         sending: false,
         error: stillWorking
             ? stillWorkingMessage
-            : _errorMessage(error, 'Could not send your question.'),
+            : userMessage(error, 'Could not send your question.'),
       ));
     }
   }
@@ -247,7 +247,7 @@ final class ChatController extends ChangeNotifier {
       _emit(_state.copyWith(
         sessionId: notFound ? null : id,
         loadingSession: false,
-        error: _errorMessage(error, 'Could not load this chat.'),
+        error: userMessage(error, 'Could not load this chat.'),
       ));
     }
   }
@@ -292,7 +292,7 @@ final class ChatController extends ChangeNotifier {
       reverted[currentIndex] = previous;
       _emit(_state.copyWith(
         messages: reverted,
-        error: _errorMessage(error, 'Could not save feedback.'),
+        error: userMessage(error, 'Could not save feedback.'),
       ));
     }
   }
@@ -317,7 +317,7 @@ final class ChatController extends ChangeNotifier {
       }
     } catch (error) {
       if (!_isCurrent(generation)) return;
-      _failAction(id, _errorMessage(error, 'Could not confirm this action.'));
+      _failAction(id, userMessage(error, 'Could not confirm this action.'));
     }
   }
 
@@ -339,7 +339,7 @@ final class ChatController extends ChangeNotifier {
       }
     } catch (error) {
       if (!_isCurrent(generation)) return;
-      _failAction(id, _errorMessage(error, 'Could not cancel this action.'));
+      _failAction(id, userMessage(error, 'Could not cancel this action.'));
     }
   }
 
@@ -414,7 +414,7 @@ final class ChatController extends ChangeNotifier {
       if (!_isVoiceCurrent(generation)) return;
       _emit(_state.copyWith(
         listening: false,
-        error: _errorMessage(error, 'Could not start voice input.'),
+        error: userMessage(error, 'Could not start voice input.'),
       ));
     }
   }
@@ -427,7 +427,7 @@ final class ChatController extends ChangeNotifier {
     } catch (error) {
       if (_isVoiceCurrent(generation)) {
         _emit(_state.copyWith(
-          error: _errorMessage(error, 'Could not stop voice input.'),
+          error: userMessage(error, 'Could not stop voice input.'),
         ));
       }
     } finally {
@@ -463,12 +463,6 @@ final class ChatController extends ChangeNotifier {
     final label = source['label'];
     if (label is String && label.trim().isNotEmpty) return label.trim();
     return 'Source ${index + 1}';
-  }
-
-  String _errorMessage(Object error, String fallback) {
-    if (error is ApiException) return error.message;
-    final message = error.toString().replaceFirst('Exception: ', '').trim();
-    return message.isEmpty ? fallback : message;
   }
 
   bool _isCurrent(int generation) =>

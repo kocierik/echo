@@ -1,7 +1,7 @@
 # Echo Memory Experience — Design
 
-Date: 2026-10-14. Status: decided by Claude on the user's delegation ("scegli tu come procedere"),
-phase 1 in progress.
+Date: 2026-10-14. Status: decided by Claude on the user's delegation ("scegli tu come procedere").
+Phase 1 (Memories + Tasks) done on 2026-10-14; phases 2 and 3 open.
 
 ## Intent
 

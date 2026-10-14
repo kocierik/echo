@@ -18,15 +18,17 @@ void main() {
       ));
 
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Transcripts'), findsOneWidget);
+      expect(find.text('Memories'), findsOneWidget);
+      expect(find.text('Tasks'), findsOneWidget);
       expect(find.text('Ask'), findsOneWidget);
       expect(find.byIcon(Icons.home_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.description_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.forum_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
       expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
       expect(
         tester.getSemantics(find.byKey(const Key('echo-nav-1'))),
         matchesSemantics(
-          label: 'Transcripts',
+          label: 'Memories',
           isButton: true,
           hasSelectedState: true,
           isSelected: true,
@@ -46,14 +48,15 @@ void main() {
       ));
 
       final widths = List.generate(
-        3,
+        4,
         (index) => tester.getSize(find.byKey(Key('echo-nav-$index'))).width,
       );
       expect(widths[0], widths[1]);
       expect(widths[1], widths[2]);
+      expect(widths[2], widths[3]);
 
-      await tester.tap(find.byKey(const Key('echo-nav-2')));
-      expect(selected, 2);
+      await tester.tap(find.byKey(const Key('echo-nav-3')));
+      expect(selected, 3);
     });
   });
 
@@ -98,6 +101,7 @@ void main() {
             SizedBox(),
             SizedBox(),
             SizedBox(),
+            SizedBox(),
           ],
         ),
       ));
@@ -127,6 +131,7 @@ void main() {
             SizedBox(),
             SizedBox(),
             SizedBox(),
+            SizedBox(),
           ],
         ),
       ));
@@ -136,7 +141,7 @@ void main() {
         tester.getSize(find.byType(EchoBottomNavigation)).height,
         84,
       );
-      for (var index = 0; index < 3; index++) {
+      for (var index = 0; index < 4; index++) {
         expect(
           tester.getSize(find.byKey(Key('echo-nav-$index'))).height,
           greaterThanOrEqualTo(44),
@@ -276,6 +281,7 @@ void main() {
               SizedBox(),
               SizedBox(),
               SizedBox(),
+              SizedBox(),
             ],
           ),
         ),
@@ -326,6 +332,7 @@ final class _ShellHostState extends State<_ShellHost> {
       children: [
         _RetainedTab(key: widget.retainedKey),
         const ColoredBox(color: Colors.red),
+        const ColoredBox(color: Colors.green),
         const ColoredBox(color: Colors.blue),
       ],
     );

@@ -9,7 +9,8 @@ import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/transcripts_screen.dart';
+import 'screens/memories_screen.dart';
+import 'screens/tasks_screen.dart';
 import 'services/api_service.dart';
 import 'services/app_controller.dart';
 import 'services/app_lifecycle_coordinator.dart';
@@ -293,7 +294,7 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onRequireOnboarding;
 
   void _openChat() {
-    unawaited(appController.setSelectedTab(2));
+    unawaited(appController.setSelectedTab(AppController.askTab));
   }
 
   void _openSettings(BuildContext context) {
@@ -312,7 +313,7 @@ class MainShell extends StatelessWidget {
           preferences: preferences,
           onRequireOnboarding: onRequireOnboarding,
           onOpenTranscripts: () {
-            unawaited(appController.setSelectedTab(1));
+            unawaited(appController.setSelectedTab(AppController.memoriesTab));
           },
         ),
       ),
@@ -366,13 +367,12 @@ class MainShell extends StatelessWidget {
                 onReconnect: deviceController?.reconnect,
                 onAsk: _openChat,
                 onTranscripts: () {
-                  unawaited(appController.setSelectedTab(1));
+                  unawaited(appController.setSelectedTab(AppController.memoriesTab));
                 },
                 segmentUploadedStream: segmentUploadedStream,
               ),
-              TranscriptsScreen(
-                segmentUploadedStream: segmentUploadedStream,
-              ),
+              MemoriesScreen(segmentUploadedStream: segmentUploadedStream),
+              TasksScreen(segmentUploadedStream: segmentUploadedStream),
               ChatScreen(
                 openSessionRequest: appController.pendingChatSessionId,
               ),

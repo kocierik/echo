@@ -11,7 +11,8 @@ final class EchoBottomNavigation extends StatelessWidget {
 
   static const _destinations = <_EchoDestination>[
     _EchoDestination('Today', Icons.home_rounded),
-    _EchoDestination('Transcripts', Icons.description_outlined),
+    _EchoDestination('Memories', Icons.forum_outlined),
+    _EchoDestination('Tasks', Icons.check_circle_outline_rounded),
     _EchoDestination('Ask', Icons.chat_bubble_outline_rounded),
   ];
 

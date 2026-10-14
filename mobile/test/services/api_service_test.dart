@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/segment.dart';
-import 'package:echo_app/models/today_insights.dart';
+import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,8 +154,10 @@ void main() {
     test('former silent list methods throw on server failures', () async {
       final operations = <Future<Object?> Function(ApiService)>[
         (service) => service.getSessions(),
-        (service) => service.getConversations(),
-        (service) => service.getTasks(),
+        (service) => service.listConversations(),
+        (service) => service.getConversation('c1'),
+        (service) => service.search('atlas'),
+        (service) => service.listTasks(done: false),
         (service) => service.getToolkits(),
         (service) => service.getActionLog(),
       ];
@@ -442,7 +444,7 @@ void main() {
         return _jsonResponse(request, 200, {'id': 'task-1'});
       });
 
-      await service.completeTask(const OpenTask(
+      await service.completeTask(const TaskItem(
         id: 'task-1',
         name: 'Call Ada',
         metadata: {'done': false, 'priority': 'high'},
