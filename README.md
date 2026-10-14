@@ -241,6 +241,9 @@ All `/api` endpoints require the `X-API-Key` header.
 }
 ```
 
+  `POST /api/query/stream` takes the same body and answers as Server-Sent Events: `token`
+  (`{"text"}`) for each piece of a memory answer as it is written, then `done` with the full
+  response, or `error` (`{"status", "detail"}`).
   Either date bound may be omitted. With `client_request_id`, a retry of the same message returns the
   stored answer (409 "Still working on it" while the first attempt is running), so an action never
   runs twice. The response carries `answer`, `sources`, `session_id` and, when Echo is waiting for a

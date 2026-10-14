@@ -11,7 +11,7 @@ from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.main import app
 from app.models import Base
 from tests.fakes.redis import InMemoryRedis
@@ -96,6 +96,8 @@ async def override_get_db():
 
 
 app.dependency_overrides[get_db] = override_get_db
+# Streaming endpoints open their own session: the test database too
+app.dependency_overrides[get_session_factory] = lambda: test_session
 
 
 @pytest_asyncio.fixture

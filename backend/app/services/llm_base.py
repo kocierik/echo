@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 
@@ -41,6 +42,17 @@ class LLMService(ABC):
             LLMResponse with generated text.
         """
         ...
+
+    async def stream(
+        self, messages: list[LLMMessage], temperature: float = 0.3
+    ) -> AsyncIterator[str]:
+        """Yield the completion in pieces as it is generated.
+
+        Providers without streaming yield the whole completion at once.
+        """
+        response = await self.complete(messages, temperature)
+        if response.content:
+            yield response.content
 
     @abstractmethod
     async def complete_json(

@@ -1,4 +1,5 @@
 import json
+from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
 
@@ -52,6 +53,19 @@ class OpenAILLMService(LLMService):
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
         )
+
+    async def stream(
+        self, messages: list[LLMMessage], temperature: float = 0.3
+    ) -> AsyncIterator[str]:
+        chunks = await self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": m.role, "content": m.content} for m in messages],
+            temperature=temperature,
+            stream=True,
+        )
+        async for chunk in chunks:
+            if chunk.choices and (piece := chunk.choices[0].delta.content):
+                yield piece
 
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1

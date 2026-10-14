@@ -61,7 +61,7 @@ def _app_client(monkeypatch):
     async def fake_db():
         yield _Session()
 
-    async def fake_answer(redis_client, body, user_id, db, progress=None):
+    async def fake_answer(redis_client, body, user_id, db, progress=None, on_token=None):
         return query.QueryResponse(answer="ok", sources=[], session_id=str(uuid.uuid4()))
 
     monkeypatch.setattr(query, "_answer_query", fake_answer)
@@ -92,13 +92,16 @@ def test_the_client_restores_the_overrides_it_found(monkeypatch):
     async def conftest_db():
         yield None
 
+    previous = dict(app.dependency_overrides)
     app.dependency_overrides[get_db] = conftest_db
+    found = dict(app.dependency_overrides)
     try:
         with _app_client(monkeypatch):
             app.dependency_overrides[get_current_user_id] = lambda: USER
-        assert app.dependency_overrides == {get_db: conftest_db}
+        assert app.dependency_overrides == found
     finally:
-        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.clear()
+        app.dependency_overrides.update(previous)
 
 
 def _ask(client, key=None):

@@ -1,18 +1,21 @@
 """Query API: natural language search over personal memory with RAG."""
 
+import asyncio
 import json
 import logging
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.actions.agent import run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
@@ -20,7 +23,7 @@ from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
-from app.core.database import get_db
+from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
 from app.models.chat_session import ChatSession
 from app.services.embedding_openai import get_embedding_service
@@ -61,6 +64,10 @@ class _Progress:
 
     session_id: str | None = None
     agent_started: bool = False
+
+
+# Receives each piece of a streamed answer
+TokenCallback = Callable[[str], Awaitable[None]]
 
 
 class QueryRequest(BaseModel):
@@ -172,23 +179,118 @@ async def query_memory(
     Either way, the audit rows of tools that already ran are committed after a failure.
     """
     redis_client = request.app.state.redis
-    key = None
-    if body.client_request_id:
-        key = f"query:req:{user_id}:{body.client_request_id}"
-        if not await redis_client.set(
-            key, _PROCESSING, nx=True, ex=REQUEST_MARKER_TTL_SECONDS
-        ):
-            stored = await redis_client.get(key)
-            if isinstance(stored, bytes):
-                stored = stored.decode()
-            if stored and stored != _PROCESSING:
-                return QueryResponse.model_validate_json(stored)
-            raise HTTPException(status_code=409, detail="Still working on it")
+    key, stored = await _claim_request(redis_client, user_id, body)
+    if stored is not None:
+        return stored
+    return await _answer_and_store(redis_client, key, body, user_id, db)
 
+
+@router.post("/stream")
+@limiter.limit("20/minute")
+async def query_memory_stream(
+    request: Request,
+    body: QueryRequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    session_factory: async_sessionmaker = Depends(get_session_factory),
+):
+    """`POST /api/query` as Server-Sent Events, so the answer shows while it is written.
+
+    Events: `token` ({"text"}) for each piece of a memory answer, then `done` with the
+    full QueryResponse, or `error` ({"status", "detail"}). Answers from the action agent
+    and fixed notices arrive whole in `done`. Retries with the same `client_request_id`
+    behave as in `POST /api/query` (409 before the stream starts). If the client goes
+    away, the answer is still completed and stored for its retry.
+    """
+    redis_client = request.app.state.redis
+    key, stored = await _claim_request(redis_client, user_id, body)
+    queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+    async def on_token(piece: str) -> None:
+        await queue.put(("token", json.dumps({"text": piece})))
+
+    async def answer() -> None:
+        async with session_factory() as db:
+            try:
+                response = await _answer_and_store(
+                    redis_client, key, body, user_id, db, on_token
+                )
+                await db.commit()
+                await queue.put(("done", response.model_dump_json()))
+            except HTTPException as exc:
+                await db.rollback()
+                error = {"status": exc.status_code, "detail": exc.detail}
+                await queue.put(("error", json.dumps(error)))
+            except Exception:
+                logger.exception("Streaming query failed")
+                await db.rollback()
+                error = {"status": 500, "detail": "Echo could not answer. Try again."}
+                await queue.put(("error", json.dumps(error)))
+
+    async def events():
+        if stored is not None:
+            yield _sse("done", stored.model_dump_json())
+            return
+        # Not tied to this generator: a client that disconnects does not cancel it
+        task = asyncio.create_task(answer())
+        _RUNNING.add(task)
+        task.add_done_callback(_RUNNING.discard)
+        while True:
+            kind, data = await queue.get()
+            yield _sse(kind, data)
+            if kind != "token":
+                return
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# Streaming answers still running (a reference keeps them from being collected)
+_RUNNING: set[asyncio.Task] = set()
+
+
+def _sse(event: str, data: str) -> str:
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+async def _claim_request(
+    redis_client: aioredis.Redis, user_id: uuid.UUID, body: QueryRequest
+) -> tuple[str | None, QueryResponse | None]:
+    """Mark a request with a client_request_id as running.
+
+    Returns its marker key and, when it already finished, the stored answer to replay;
+    raises 409 while the first attempt is still running.
+    """
+    if not body.client_request_id:
+        return None, None
+    key = f"query:req:{user_id}:{body.client_request_id}"
+    if await redis_client.set(key, _PROCESSING, nx=True, ex=REQUEST_MARKER_TTL_SECONDS):
+        return key, None
+    stored = await redis_client.get(key)
+    if isinstance(stored, bytes):
+        stored = stored.decode()
+    if stored and stored != _PROCESSING:
+        return key, QueryResponse.model_validate_json(stored)
+    raise HTTPException(status_code=409, detail="Still working on it")
+
+
+async def _answer_and_store(
+    redis_client: aioredis.Redis,
+    key: str | None,
+    body: QueryRequest,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    on_token: TokenCallback | None = None,
+) -> QueryResponse:
+    """Answer, then store the answer under the request's marker for its retries."""
     recorder = AuditRecorder(db)
     progress = _Progress()
     try:
-        response = await _answer_query(redis_client, body, user_id, recorder, progress)
+        response = await _answer_query(
+            redis_client, body, user_id, recorder, progress, on_token
+        )
         if key is not None:
             # The turn and any pending action are saved before the answer can be replayed
             await db.commit()
@@ -245,7 +347,9 @@ async def _answer_query(
     user_id: uuid.UUID,
     db: AsyncSession,
     progress: _Progress | None = None,
+    on_token: TokenCallback | None = None,
 ) -> QueryResponse:
+    """Answer one question. With `on_token`, a memory answer is passed on as it is written."""
     progress = progress or _Progress()
     # Resolve or create session
     if body.session_id:
@@ -381,16 +485,21 @@ async def _answer_query(
     user_message = f"Context from memory:\n\n{context}\n\n---\n\nQuestion: {body.question}"
     messages.append(LLMMessage(role="user", content=user_message))
 
-    response = await llm_service.complete(messages, temperature=0.3)
+    if on_token is None:
+        answer = (await llm_service.complete(messages, temperature=0.3)).content
+    else:
+        pieces: list[str] = []
+        async for piece in llm_service.stream(messages, temperature=0.3):
+            pieces.append(piece)
+            await on_token(piece)
+        answer = "".join(pieces)
 
     # Save to session history (store clean question, not the RAG-augmented one)
     # and persist to Postgres for permanent chat history
-    await _record_turn(
-        redis_client, db, user_id, session_id, history, body.question, response.content
-    )
+    await _record_turn(redis_client, db, user_id, session_id, history, body.question, answer)
 
     return QueryResponse(
-        answer=response.content,
+        answer=answer,
         sources=sources,
         session_id=session_id,
         date_filter=_format_date_filter(date_range),

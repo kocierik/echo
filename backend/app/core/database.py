@@ -16,3 +16,12 @@ async def get_db() -> AsyncSession:
         except Exception:
             await session.rollback()
             raise
+
+
+def get_session_factory() -> async_sessionmaker:
+    """FastAPI dependency for endpoints that open their own session.
+
+    A streaming response outlives get_db, whose session closes before the body is
+    sent; such endpoints open a session from this factory inside the stream.
+    """
+    return async_session
