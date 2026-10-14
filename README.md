@@ -291,6 +291,7 @@ All `/api` endpoints require the `X-API-Key` header.
 | `STT_LANGUAGE` | `it` | Primary language for STT |
 | `LLM_ANALYSIS_MODEL` | `gpt-4o-mini` | Entity extraction, summaries, digest, voice-request check |
 | `LLM_QUERY_MODEL` | `gpt-4o` | Memory answers and the actions agent |
+| `LLM_ANALYSIS_REASONING_EFFORT` / `LLM_QUERY_REASONING_EFFORT` | — | For reasoning models (gpt-5/6): `none`, `low`, … (no temperature is sent then; the agent's tools need `none`). See [docs/MODEL-EVALUATION.md](docs/MODEL-EVALUATION.md) |
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |

@@ -67,6 +67,11 @@ cd firmware && pio test -e native
 - CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs ruff, the migrations on an empty
   database, the backend tests, `flutter analyze` + `flutter test`, the firmware build and native tests.
 
+## Evaluating models
+
+`make eval-llm` and `make eval-stt` compare models on Echo's own tasks with real API calls
+(cents per run); results and deadlines are in [MODEL-EVALUATION.md](MODEL-EVALUATION.md).
+
 ## Database migrations (Alembic)
 
 - An empty database is created by `alembic upgrade head` alone: 001 creates the extensions

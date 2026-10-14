@@ -1,0 +1,15 @@
+{
+  "connected": ["gmail", "googlecalendar", "todoist"],
+  "cases": [
+    {"id": "calendar-read", "text": "Che impegni ho domani in calendario?", "expect": "agent"},
+    {"id": "mail-summary", "text": "Riassumimi le ultime mail", "expect": "agent"},
+    {"id": "memory-about-person", "text": "Cosa mi ha detto Marco ieri sul budget?", "expect": "memory"},
+    {"id": "todoist-create", "text": "Crea un task su Todoist per comprare il latte", "expect": "agent"},
+    {"id": "slack-not-connected", "text": "Manda un messaggio su Slack a Luca", "expect": "notice"},
+    {"id": "tasks-from-memory", "text": "Quali task avevo segnato la settimana scorsa?", "expect": "memory"},
+    {"id": "notion-not-connected", "text": "Aggiungi una nota su Notion con le idee di oggi", "expect": "notice"},
+    {"id": "english-memory", "text": "What did Ada say about the launch?", "expect": "memory"},
+    {"id": "english-schedule", "text": "Schedule a meeting with Ada tomorrow at 10", "expect": "agent"},
+    {"id": "mail-mentioned-in-memory", "text": "Ho parlato con Marco della sua mail sul preventivo?", "expect": "memory"}
+  ]
+}

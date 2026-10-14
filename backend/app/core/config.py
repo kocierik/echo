@@ -36,10 +36,15 @@ class Settings(BaseSettings):
     # LLM - analysis (async, economico)
     llm_analysis_provider: str = "openai"
     llm_analysis_model: str = "gpt-4o-mini"
+    # For reasoning models (gpt-5/gpt-6 families): "none", "low", ... Empty for models
+    # that take a temperature instead (gpt-4o). With chat completions, OpenAI accepts
+    # function tools only with "none".
+    llm_analysis_reasoning_effort: str = ""
 
     # LLM - query (RAG, qualità)
     llm_query_provider: str = "openai"
     llm_query_model: str = "gpt-4o"
+    llm_query_reasoning_effort: str = ""
 
     # Embeddings
     embedding_provider: str = "openai"
