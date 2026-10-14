@@ -29,11 +29,19 @@ logs-worker: ## Tail worker logs
 test: ## Run unit tests (no DB required)
 	cd backend && python -m pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py tests/test_circuit_breaker.py -v --noconftest
 
-test-all: ## Run all tests (requires running DB)
-	cd backend && python -m pytest tests/ -v
+# The tests delete data, so they run on their own database and Redis db, never on echo
+TEST_ENV = -e DATABASE_URL=postgresql+asyncpg://echo:echo@postgres:5432/echo_test \
+	-e REDIS_URL=redis://redis:6379/15
 
-lint: ## Run ruff linter
-	cd backend && python -m ruff check app/ tests/
+test-all: ## Run all tests in the api container on the echo_test database
+	docker compose exec -T postgres psql -U echo -d postgres -tAc \
+		"SELECT 1 FROM pg_database WHERE datname = 'echo_test'" | grep -q 1 || \
+		docker compose exec -T postgres psql -U echo -d postgres -c "CREATE DATABASE echo_test"
+	docker compose exec -T $(TEST_ENV) api python -m alembic upgrade head
+	docker compose exec -T $(TEST_ENV) api python -m pytest tests/ -q -p no:cacheprovider
+
+lint: ## Run ruff linter in the api container
+	docker compose exec -T api python -m ruff check app/ tests/
 
 fmt: ## Auto-format code with ruff
 	cd backend && python -m ruff format app/ tests/

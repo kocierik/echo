@@ -7,7 +7,7 @@ import uuid
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
@@ -16,8 +16,15 @@ from app.main import app
 from app.models import Base
 from tests.fakes.redis import InMemoryRedis
 
-# Use a test database (same postgres, different schema or in-memory approach)
+# The fixtures delete conversations, segments and entities after every test, so refuse
+# any database whose name does not end in "_test" (the dev database is "echo").
 TEST_DATABASE_URL = settings.database_url
+_database_name = make_url(TEST_DATABASE_URL).database or ""
+if not _database_name.endswith("_test"):
+    raise pytest.UsageError(
+        f"Refusing to run the tests on database {_database_name!r}: they delete its data. "
+        "Point DATABASE_URL at a database ending in '_test' (`make test-all` uses echo_test)."
+    )
 
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 test_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)

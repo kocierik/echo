@@ -292,9 +292,10 @@ All `/api` endpoints require the `X-API-Key` header.
 
 ## Development
 
-- Backend tests: `cd backend && python -m pytest tests -q` (DB tests need Postgres + Redis, e.g.
-  `docker compose -f docker-compose-infra.yml up -d`); `make test` runs the DB-free subset;
-  `make lint` runs ruff. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- Backend tests: `make test-all` runs them in the api container on the `echo_test` database
+  (created and migrated if missing). The tests delete data, so they refuse any database whose
+  name does not end in `_test`. `make test` runs the DB-free subset; `make lint` runs ruff.
+  See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - Mobile: `cd mobile && flutter test`.
 - Firmware: `cd firmware && pio test -e native`.
 - CI (`.github/workflows/ci.yml`) runs ruff, the backend tests with Postgres/Redis, the Flutter
