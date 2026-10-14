@@ -133,6 +133,14 @@ risposte silenziose dalla memoria con Composio irraggiungibile; timeout riportat
 non davvero spenta; registro azioni perso quando una richiesta chat falliva. Dettagli e decisioni nel registro del
 lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei messaggi di commit.
 
+### Risolti il 14/10/2026 (debito tecnico)
+
+| Problema | Commit |
+|---|---|
+| Due verifiche d'intento in serie e richieste per un'app non collegata finite su un'altra app: ora una sola verifica (chat e voce) che dice quali app servono; app non collegata o non riconosciuta → "{App} non è collegata", nessuna app collegata → invito a collegarne una | `c941d1b` + fix |
+| Database creato da `docs/schema.sql` + `stamp 001`: ora la migrazione 001 crea lo schema base e un'installazione nuova è solo `alembic upgrade head` (CI, `deploy.sh`, `make db-reset`, README); `schema.sql` resta come riferimento; 003 non più duplicata | `bbadc78` |
+| Rate limit per IP (dietro Cloudflare Tunnel tutti condividevano lo stesso limite): ora per API key (hash), IP solo senza chiave | `2a83625` |
+
 ### Ancora aperti
 
 - **Speaker (#11):** la soglia ora è configurabile ma va calibrata su registrazioni reali.
@@ -142,9 +150,10 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Composio mai provato dal vivo:** quanti strumenti restituisce per toolkit, login di Telegram e Todoist, tempi reali di
   una richiesta e nomi esatti degli strumenti da confermare vanno verificati con una `COMPOSIO_API_KEY` vera.
 - **`composio==0.15.0`:** la 0.22 richiede `openai>=2.48`; per aggiornare vanno alzati insieme `openai` e `composio`.
-- **Instradamento:** se la verifica "serve l'app?" sbaglia, una richiesta per un'app non collegata può finire su un'altra
-  app collegata (es. un task Todoist invece di "Calendar non collegato"); in quei casi ci sono due chiamate di
-  classificazione in serie.
+- **Instradamento:** dipende da una sola risposta del modello (provata solo con risposte simulate). A voce, con app
+  collegate, le domande sulla memoria ora vanno al RAG invece che all'agente.
+- **Migrazioni mai eseguite su un Postgres vero dopo il 14/10:** la CI le esegue da un database vuoto
+  (`alembic upgrade head`) ed è il primo controllo reale.
 - **Minori:** se Redis non salva la risposta dopo il commit, i retry ricevono 409 per 10 minuti; schede e risposte
   possono essere lunghe con molti destinatari.
 - **Rilevamento lingua euristico:** per le risposte fisse (conferme calendario, "nessun risultato") si contano parole comuni
@@ -160,7 +169,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - `uv.lock` rigenerato (era già disallineato da `pyproject.toml`; formato aggiornato da uv 0.9.5).
 - **L'app Flutter non è mai stata compilata né testata** dopo le modifiche del 13–14/10 (SDK non disponibile qui):
   il job CI `mobile` sarà il primo controllo e può far emergere errori di compilazione.
-- Backend: 399 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
+- Backend: 450 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
   i test con Postgres girano solo in CI.
 
 ---
@@ -193,9 +202,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ## 5. Debito tecnico
 
-- **Schema DB doppio:** `docs/schema.sql` copre solo fino alla migrazione 005; le istruzioni ora fanno `stamp 001` +
-  `upgrade head`, ma sarebbe più semplice creare il DB solo con Alembic (baseline 001 che crea davvero le tabelle).
-- **Rate limiting per IP** dietro Cloudflare Tunnel: tutte le richieste arrivano dallo stesso IP.
+- **Richieste senza API key valida non limitate:** l'autenticazione fallisce prima del rate limit (come prima), quindi
+  i tentativi di indovinare una chiave non sono limitati.
+- Fatto il 14/10: schema creato solo da Alembic, rate limit per API key, verifica d'intento unica (vedi sopra).
 - Fatto il 13/10: codice morto rimosso (firmware Wi-Fi/NTP, 7 file mobile, MessageBubble commentato), client delle
   integrazioni unificati, script del workaround aziendale rimossi, file generati da Flutter non più versionati,
   `uv.lock` rigenerato, README/ROADMAP/ADR/piani aggiornati.
@@ -208,13 +217,12 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 1. **Rigenerare e committare i progetti nativi** (`flutter create --platforms=ios,android .` in `mobile/`), poi
    `flutter test` o push per vedere i job CI `mobile` e firmware (mai girati).
-2. **Controllare i test di integrazione con Postgres** in CI.
+2. **Controllare in CI le migrazioni da database vuoto e i test di integrazione con Postgres.**
 3. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
 4. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
 5. **Provare le azioni Composio:** `COMPOSIO_API_KEY` nel `.env`, `alembic upgrade head` (arriva alla 008), collegare un
    account da Settings → Automations → Integrations, provare una richiesta in chat e una a voce ("Echo, …").
 6. Test batteria 12 h quando arriva l'hardware.
 
-**Per me**, se vuoi: baseline Alembic che crea lo schema da zero (al posto di `schema.sql`), rate limiting per API key
-invece che per IP, un'unica verifica d'intento per le richieste alle app (invece di due in serie), ed eventualmente la
-traduzione delle entità estratte.
+**Per me**, se vuoi: rate limit anche sui tentativi con API key sbagliata, ed eventualmente la traduzione delle
+entità estratte.
