@@ -39,7 +39,7 @@ from app.services.llm_openai import get_llm_analysis_service
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
-    build_stt_prompt,
+    build_stt_context,
     clean_transcription,
     is_meaningful_transcription,
     speaker_prefix,
@@ -513,15 +513,15 @@ async def process_stt(redis_client: redis.Redis):
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
 
-                # Build context-aware prompt from known entities
-                stt_prompt = await build_stt_prompt(db, segment.user_id)
+                # Known names and topics, as a prompt or keyterms depending on the provider
+                stt_context = await build_stt_context(db, segment.user_id)
 
-                # Transcribe with retry (passing context prompt for better accuracy)
                 stt_result = await retry_with_backoff(
                     stt_service.transcribe,
                     wav_data,
                     language=settings.stt_language,
-                    prompt=stt_prompt or None,
+                    prompt=stt_context.prompt or None,
+                    keyterms=stt_context.keyterms,
                     operation_name=f"STT segment {segment_id}",
                 )
 
@@ -543,8 +543,10 @@ async def process_stt(redis_client: redis.Redis):
                     text=cleaned_text,
                     language=stt_result.language,
                     confidence=stt_result.confidence,
-                    stt_provider=settings.stt_provider,
-                    stt_model=settings.stt_model,
+                    # The service that ran (stt_model would name OpenAI's model
+                    # even when Deepgram transcribed)
+                    stt_provider=stt_service.provider,
+                    stt_model=stt_service.model,
                 )
                 db.add(transcription)
 

@@ -9,6 +9,7 @@ Improves transcription quality by:
 import logging
 import re
 import uuid
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -20,65 +21,85 @@ logger = logging.getLogger(__name__)
 MIN_TRANSCRIPTION_LENGTH = 2
 
 
-async def build_stt_prompt(db: "AsyncSession", user_id: uuid.UUID) -> str:
-    """Build a Whisper conditioning prompt from the user's known entities.
+@dataclass(frozen=True)
+class STTContext:
+    """What the speech-to-text service is told about the user's vocabulary."""
 
-    Whisper uses the prompt to bias transcription toward known vocabulary.
-    This dramatically improves accuracy for:
-    - People's names (especially non-English names)
-    - Technical jargon or project names
-    - Recurring topics
+    # A realistic "previous transcription" for prompt-conditioned models (OpenAI)
+    prompt: str
+    # Short names and terms for providers that take a list (Deepgram keyterms)
+    keyterms: list[str]
 
-    The prompt is structured as a realistic "previous transcription" so Whisper
-    treats it as context rather than instructions.
+
+# A keyterm is a name, not a sentence: longer entity names (most tasks) are skipped
+_MAX_KEYTERM_WORDS = 3
+_MAX_KEYTERM_CHARS = 40
+
+
+async def build_stt_context(db: "AsyncSession", user_id: uuid.UUID) -> STTContext:
+    """Build the transcription hints from the user's known entities.
+
+    Names are the highest-value hint (especially non-English ones), then project names
+    and recurring topics.
     """
     from sqlalchemy import select
 
     from app.models.entity import Entity
 
-    # Fetch recent person entities (names are the highest-value prompt content)
-    people_query = (
-        select(Entity.name)
-        .where(Entity.user_id == user_id)
-        .where(Entity.entity_type == "person")
-        .order_by(Entity.updated_at.desc())
-        .limit(20)
+    people_names = list(
+        (
+            await db.execute(
+                select(Entity.name)
+                .where(Entity.user_id == user_id)
+                .where(Entity.entity_type == "person")
+                .order_by(Entity.updated_at.desc())
+                .limit(20)
+            )
+        ).scalars()
     )
-    result = await db.execute(people_query)
-    people_names = [row[0] for row in result.all()]
-
-    # Fetch recent non-person entities for jargon/topics
-    topics_query = (
-        select(Entity.name)
-        .where(Entity.user_id == user_id)
-        .where(Entity.entity_type != "person")
-        .order_by(Entity.updated_at.desc())
-        .limit(10)
+    topic_names = list(
+        (
+            await db.execute(
+                select(Entity.name)
+                .where(Entity.user_id == user_id)
+                .where(Entity.entity_type != "person")
+                .order_by(Entity.updated_at.desc())
+                .limit(10)
+            )
+        ).scalars()
     )
-    result = await db.execute(topics_query)
-    topic_names = [row[0] for row in result.all()]
+    return STTContext(
+        prompt=_prompt(people_names, topic_names),
+        keyterms=_keyterms([*people_names, *topic_names]),
+    )
 
-    if not people_names and not topic_names:
-        return ""
 
-    # Build prompt as a realistic utterance (Whisper works best this way)
+def _prompt(people_names: list[str], topic_names: list[str]) -> str:
+    """A realistic utterance: Whisper-style models treat it as context, not instructions."""
     parts = []
     if people_names:
-        # Include names naturally so Whisper learns the vocabulary
-        names_str = ", ".join(people_names[:10])
-        parts.append(f"Ho parlato con {names_str}.")
-
+        parts.append(f"Ho parlato con {', '.join(people_names[:10])}.")
     if topic_names:
-        topics_str = ", ".join(topic_names[:5])
-        parts.append(f"Abbiamo discusso di {topics_str}.")
+        parts.append(f"Abbiamo discusso di {', '.join(topic_names[:5])}.")
+    # The prompt budget is ~224 tokens: keep it short
+    return " ".join(parts)[:500]
 
-    prompt = " ".join(parts)
 
-    # Whisper prompt max is ~224 tokens, keep it short
-    if len(prompt) > 500:
-        prompt = prompt[:500]
-
-    return prompt
+def _keyterms(names: list[str]) -> list[str]:
+    terms: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        term = " ".join(name.split())
+        if (
+            not term
+            or len(term) > _MAX_KEYTERM_CHARS
+            or len(term.split()) > _MAX_KEYTERM_WORDS
+            or term.lower() in seen
+        ):
+            continue
+        seen.add(term.lower())
+        terms.append(term)
+    return terms
 
 
 def is_meaningful_transcription(text: str) -> bool:
