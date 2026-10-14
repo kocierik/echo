@@ -59,8 +59,9 @@ user's apps (list, search, create, send, update or delete something there).
 Decide whether this request needs Echo to read or change something in an app right now, \
 and which apps (by slug, from the lists above). A request about what was said, decided \
 or planned in the user's past conversations is answered from memory and needs no app, \
-even when it mentions an agenda, a meeting, an email or a task. Use the recent \
-conversation for follow-ups.
+even when it mentions an agenda, a meeting, an email or a task. A request for an app \
+that is NOT connected still needs that app: name it, and Echo will ask the user to \
+connect it. Use the recent conversation for follow-ups.
 Respond with ONLY a JSON object: {{"needs_apps": true, "apps": ["<slug>", ...]}} or \
 {{"needs_apps": false, "apps": []}}."""
 

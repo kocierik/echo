@@ -6,7 +6,7 @@
     {"id": "memory-about-person", "text": "Cosa mi ha detto Marco ieri sul budget?", "expect": "memory"},
     {"id": "todoist-create", "text": "Crea un task su Todoist per comprare il latte", "expect": "agent"},
     {"id": "slack-not-connected", "text": "Manda un messaggio su Slack a Luca", "expect": "notice"},
-    {"id": "tasks-from-memory", "text": "Quali task avevo segnato la settimana scorsa?", "expect": "memory"},
+    {"id": "tasks-from-memory", "text": "Di quali cose da fare avevo parlato la settimana scorsa?", "expect": "memory"},
     {"id": "notion-not-connected", "text": "Aggiungi una nota su Notion con le idee di oggi", "expect": "notice"},
     {"id": "english-memory", "text": "What did Ada say about the launch?", "expect": "memory"},
     {"id": "english-schedule", "text": "Schedule a meeting with Ada tomorrow at 10", "expect": "agent"},

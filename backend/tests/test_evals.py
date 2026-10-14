@@ -79,3 +79,17 @@ def test_case_files_are_well_formed(name):
         else:
             for spec in [*case.get("expect", []), *case.get("forbid", [])]:
                 assert set(spec["types"]) <= {"person", "task", "idea", "event", "note"}
+
+
+def test_answer_and_tool_cases_are_well_formed():
+    answers = json.loads((CASES / "answers.json").read_text(encoding="utf-8"))
+    assert answers["context"].strip()
+    for case in answers["cases"]:
+        assert case["language"] in {"it", "en"}
+        # Expected words are compared after normalization (lowercase, no accents)
+        for word in [*case.get("must", []), *case.get("forbid", [])]:
+            assert normalize_words(word) == [word]
+    tools = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
+    names = {"search_memory", *(tool["function"]["name"] for tool in tools["tools"])}
+    for case in tools["cases"]:
+        assert set(case["first"]) <= names

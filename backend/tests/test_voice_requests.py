@@ -478,6 +478,7 @@ def worker(monkeypatch):
     monkeypatch.setattr(vr, "async_session", lambda: _Factory())
     monkeypatch.setattr(vr, "get_action_provider", provider)
     monkeypatch.setattr(vr, "get_llm_query_service", lambda: env.llm)
+    monkeypatch.setattr(vr, "get_llm_intent_service", lambda: env.llm)
     monkeypatch.setattr(vr, "get_llm_analysis_service", lambda: env.llm)
     monkeypatch.setattr(vr, "get_embedding_service", lambda: None)
     monkeypatch.setattr(vr, "run_action_agent", fake_agent)

@@ -39,7 +39,11 @@ from app.routers.query import no_results_message, rag_system_prompt
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
-from app.services.llm_openai import get_llm_analysis_service, get_llm_query_service
+from app.services.llm_openai import (
+    get_llm_analysis_service,
+    get_llm_intent_service,
+    get_llm_query_service,
+)
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.temporal import extract_date_range
 from app.workers.lifecycle import sleep_or_shutdown
@@ -153,7 +157,7 @@ async def _answer(
         reachable = connected
     except ActionProviderError:
         logger.warning("[Voice] Action provider unreachable", exc_info=True)
-    route = await route_request(llm, command, history, reachable)
+    route = await route_request(get_llm_intent_service(), command, history, reachable)
     if route.kind == "notice":
         return route.notice, {"actions": True}
     if route.kind == "memory":

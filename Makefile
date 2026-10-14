@@ -45,7 +45,7 @@ test-all: ## Run all tests in the api container on the echo_test database
 
 eval-llm: ## Evaluate an LLM (real API calls): make eval-llm MODEL=gpt-6-luna EFFORT=none SUITE=all
 	docker compose exec -T api python -m evals.llm --model "$(MODEL)" --suite "$(or $(SUITE),all)" \
-		--reasoning-effort "$(EFFORT)"
+		--reasoning-effort "$(EFFORT)" --api "$(or $(API),chat)"
 
 eval-stt-collect: ## Save recent transcribed clips for the STT comparison (git-ignored)
 	docker compose exec -T api python -m evals.stt collect --limit "$(or $(LIMIT),50)"
