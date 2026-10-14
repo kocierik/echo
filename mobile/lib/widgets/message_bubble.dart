@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
 import 'action_card.dart';
+import 'photo_thumbnail.dart';
 
 final class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -14,10 +15,14 @@ final class MessageBubble extends StatelessWidget {
     this.onCancelAction,
     this.actionBusy = false,
     this.onOpenConversation,
+    this.loadPhoto,
     super.key,
   });
 
   final ChatMessage message;
+
+  /// Loads the photo an answer comes with (no photo is shown without it).
+  final PhotoSourceLoader? loadPhoto;
 
   /// Opens the conversation a source comes from.
   final ValueChanged<String>? onOpenConversation;
@@ -75,6 +80,8 @@ final class MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
+            if (!message.isUser && message.photoId != null && loadPhoto != null)
+              PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
             if (!message.isUser && message.pendingAction != null)
               ActionCard(
                 action: message.pendingAction!,

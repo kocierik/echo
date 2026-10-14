@@ -12,6 +12,7 @@ import 'device_controller.dart';
 import 'device_identity_store.dart';
 import 'network_policy.dart';
 import 'notification_service.dart';
+import 'photo_service.dart';
 import 'session_controller.dart';
 import 'voice_updates_service.dart';
 
@@ -26,6 +27,7 @@ final class AppLifecycleCoordinator {
     required this.networkPolicy,
     required this.preferences,
     required this.notificationService,
+    required this.photoService,
     required ApiService credentialApiService,
     required AppLifecycleBinding binding,
   })  : _credentialApiService = credentialApiService,
@@ -38,6 +40,7 @@ final class AppLifecycleCoordinator {
   final NetworkPolicy networkPolicy;
   final SharedPreferences preferences;
   final NotificationService notificationService;
+  final PhotoService photoService;
   final ApiService _credentialApiService;
   final AppLifecycleBinding _binding;
   bool _disposed = false;
@@ -108,6 +111,11 @@ final class AppLifecycleCoordinator {
     for (final payload in [launchPayload, earlyTap]) {
       if (payload != null) appController.handleNotificationPayload(payload);
     }
+    // Wearable camera: TAKE_PHOTO commands from the backend, JPEGs from the wearable
+    final photoService = PhotoService(api: credentialApiService, device: bleService);
+    bleService.photoUploader = photoService.uploadFromDevice;
+    bleService.onPhotoFailed = photoService.onDeviceFailure;
+    photoService.start();
     final voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
@@ -132,6 +140,7 @@ final class AppLifecycleCoordinator {
       networkPolicy: networkPolicy,
       preferences: preferences,
       notificationService: notificationService,
+      photoService: photoService,
       credentialApiService: credentialApiService,
       binding: binding,
     );
@@ -169,6 +178,7 @@ final class AppLifecycleCoordinator {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
+    photoService.stop();
     appController.dispose();
     await _binding.dispose();
     await sessionController.dispose();

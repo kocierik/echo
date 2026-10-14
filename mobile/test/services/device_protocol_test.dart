@@ -80,6 +80,31 @@ void main() {
       );
     });
 
+    test('reads the camera flag from protocol 3 and keeps 2 working', () {
+      final v3 = DeviceProtocol.parseStatus(_validStatus()
+        ..[1] = 0x03
+        ..[2] = 0x04);
+      expect(v3.cameraAvailable, isTrue);
+      expect(v3.muted, isFalse);
+      expect(DeviceProtocol.parseStatus(_validStatus()).cameraAvailable, isFalse);
+      expect(
+        () => DeviceProtocol.parseStatus(_validStatus()
+          ..[1] = 0x03
+          ..[2] = 0x08),
+        throwsA(isA<DeviceProtocolException>()),
+      );
+    });
+
+    test('encodes TAKE_PHOTO and decodes PHOTO_FAILED reasons', () {
+      expect(DeviceProtocol.takePhoto(), orderedEquals([0x18]));
+      expect(DeviceProtocol.parsePhotoFailed([0x22, 1]), 'muted');
+      expect(DeviceProtocol.parsePhotoFailed([0x22, 2]), 'capture_failed');
+      expect(DeviceProtocol.parsePhotoFailed([0x22, 3]), 'busy');
+      expect(DeviceProtocol.parsePhotoFailed([0x22, 4]), 'no_camera');
+      expect(DeviceProtocol.parsePhotoFailed([0x20, 1]), isNull);
+      expect(DeviceProtocol.parsePhotoFailed([0x22]), isNull);
+    });
+
     test('rejects invalid battery percent', () {
       expect(
         () => DeviceProtocol.parseStatus(_validStatus()..[3] = 101),

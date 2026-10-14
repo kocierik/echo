@@ -37,6 +37,7 @@ final class ChatSessionMessage {
     this.citations,
     this.sessionId,
     this.pendingAction,
+    this.photoId,
   });
 
   final String role;
@@ -45,6 +46,9 @@ final class ChatSessionMessage {
   final List<Map<String, dynamic>>? citations;
   final String? sessionId;
   final PendingAction? pendingAction;
+
+  /// A photo from the wearable camera (`GET /api/photos/{id}/image`).
+  final String? photoId;
 
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
@@ -60,6 +64,7 @@ final class ChatSessionMessage {
       sessionId:
           json['session_id'] is String ? json['session_id'] as String : null,
       pendingAction: _optionalPendingAction(json),
+      photoId: json['photo_id'] is String ? json['photo_id'] as String : null,
     );
   }
 }

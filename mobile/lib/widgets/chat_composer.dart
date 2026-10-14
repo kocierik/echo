@@ -10,6 +10,7 @@ final class ChatComposer extends StatelessWidget {
     required this.onChanged,
     required this.onSend,
     required this.onVoice,
+    this.onCamera,
     this.enabled = true,
     super.key,
   });
@@ -20,6 +21,10 @@ final class ChatComposer extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final VoidCallback onSend;
   final VoidCallback onVoice;
+
+  /// The wearable takes a photo; the text typed, if any, is the question about it.
+  /// No button without it.
+  final VoidCallback? onCamera;
   final bool enabled;
 
   @override
@@ -47,6 +52,16 @@ final class ChatComposer extends StatelessWidget {
               ),
             ),
           ),
+          if (onCamera != null)
+            SizedBox.square(
+              dimension: 44,
+              child: IconButton(
+                key: const Key('chat-camera'),
+                onPressed: enabled && !sending ? onCamera : null,
+                tooltip: 'Ask Echo about what you see',
+                icon: Icon(Icons.photo_camera_outlined, color: palette.text2),
+              ),
+            ),
           const SizedBox(width: 6),
           Expanded(
             child: TextField(

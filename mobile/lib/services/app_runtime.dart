@@ -11,6 +11,9 @@ abstract final class AppRuntime {
     return value;
   }
 
+  /// The coordinator, or null before [initialize] (tests build screens without one).
+  static AppLifecycleCoordinator? get maybeCoordinator => _coordinator;
+
   static void initialize(AppLifecycleCoordinator coordinator) {
     _coordinator = coordinator;
   }

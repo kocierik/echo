@@ -36,8 +36,10 @@ from app.services.photos import (
     FAILURE_REASONS,
     PHOTO_QUEUE,
     accepts_image,
+    append_message,
     fail_photo,
     is_jpeg,
+    lock_chat_session,
     request_photo,
     store_image,
     take_device_commands,
@@ -50,6 +52,8 @@ MAX_WAIT_S = 25
 
 class PhotoRequest(BaseModel):
     question: str | None = Field(default=None, max_length=500)
+    # The chat the photo is asked from; the "Voice requests" chat when omitted
+    chat_session_id: uuid.UUID | None = None
 
 
 class PhotoFailure(BaseModel):
@@ -92,12 +96,23 @@ async def create_photo_request(
 ):
     """The app's camera button: a request the app then sends to the wearable itself.
 
-    The answer arrives in the "Voice requests" chat, like a photo asked for by voice.
+    The question (or a camera mark) is added to the chat now; the answer follows with
+    the photo, in the chat it was asked from or in "Voice requests".
     """
-    session = await get_or_create_voice_session(db, user_id)
-    await db.flush()
+    if body.chat_session_id is not None:
+        session = await lock_chat_session(db, body.chat_session_id)
+        if session is None or session.user_id != user_id:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+    else:
+        session = await get_or_create_voice_session(db, user_id)
+        await db.flush()
     photo = request_photo(
         db, user_id, source="app", chat_session_id=session.id, question=body.question
+    )
+    await append_message(
+        db,
+        session.id,
+        {"role": "user", "content": photo.question or "📷", "photo_id": str(photo.id)},
     )
     await db.commit()
     return photo

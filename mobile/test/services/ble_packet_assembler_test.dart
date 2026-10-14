@@ -61,6 +61,61 @@ void main() {
       );
     });
 
+    test('assembles a photo from protocol 3 like a segment', () {
+      final jpeg = Uint8List.fromList([0xff, 0xd8, 0xff, 1, 2, 3]);
+      const photoId = 0x80000001;
+      final assembler = BlePacketAssembler();
+
+      expect(
+        assembler.add(_start(
+          segmentId: photoId,
+          totalLength: jpeg.length,
+          durationMs: 0,
+          totalChunks: 1,
+          crc: bleCrc32(jpeg),
+          type: 0x04,
+          version: 3,
+        )),
+        [isA<BleSegmentStarted>().having((e) => e.isPhoto, 'isPhoto', isTrue)],
+      );
+      assembler.add(_metadata(segmentId: photoId, recordedAt: recordedAt));
+      final events = assembler.add(_data(photoId, 0, jpeg));
+
+      expect(
+        events.last,
+        isA<BleSegmentCompleted>()
+            .having((e) => e.segment.isPhoto, 'isPhoto', isTrue)
+            .having((e) => e.segment.jpegBytes, 'jpeg', orderedEquals(jpeg))
+            .having((e) => e.segment.recordedAt, 'recordedAt', recordedAt),
+      );
+    });
+
+    test('takes audio from protocol 3 and refuses a photo from protocol 2', () {
+      final audio = Uint8List.fromList([1, 2]);
+      final assembler = BlePacketAssembler();
+      expect(
+        assembler.add(_start(
+          segmentId: segmentId,
+          totalLength: 2,
+          durationMs: 100,
+          totalChunks: 1,
+          crc: bleCrc32(audio),
+          version: 3,
+        )),
+        [isA<BleSegmentStarted>().having((e) => e.isPhoto, 'isPhoto', isFalse)],
+      );
+
+      final refused = BlePacketAssembler().add(_start(
+        segmentId: segmentId,
+        totalLength: 2,
+        durationMs: 0,
+        totalChunks: 1,
+        crc: 0,
+        type: 0x04,
+      ));
+      expect(refused, [isA<BleRestartRequired>()]);
+    });
+
     test('emits cumulative acknowledgements at 32 chunks and the final chunk', () {
       final audio = Uint8List.fromList(List<int>.generate(33, (index) => index));
       final assembler = BlePacketAssembler();
@@ -289,12 +344,14 @@ Uint8List _start({
   required int durationMs,
   required int totalChunks,
   required int crc,
+  int type = 0x01,
+  int version = 2,
 }) {
   final bytes = Uint8List(20);
   final data = ByteData.sublistView(bytes);
-  data.setUint8(0, 0x01);
+  data.setUint8(0, type);
   data.setUint32(1, segmentId, Endian.little);
-  data.setUint8(5, 2);
+  data.setUint8(5, version);
   data.setUint32(6, totalLength, Endian.little);
   data.setUint32(10, durationMs, Endian.little);
   data.setUint16(14, totalChunks, Endian.little);

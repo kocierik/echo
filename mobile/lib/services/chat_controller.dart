@@ -6,6 +6,7 @@ import '../models/chat_message.dart';
 import '../utils/formatting.dart';
 import 'api_exception.dart';
 import 'api_service.dart';
+import 'photo_service.dart';
 import 'request_id.dart';
 import 'voice_input.dart';
 
@@ -95,17 +96,23 @@ final class ChatController extends ChangeNotifier {
     required VoiceInput voiceInput,
     ChatClock? clock,
     String Function()? requestIdFactory,
+    PhotoTaker? photoTaker,
   })  : _api = api,
+        _photoTaker = photoTaker,
         _voiceInput = voiceInput,
         _clock = clock ?? DateTime.now,
         _newRequestId = requestIdFactory ?? newRequestId;
 
   final ChatApi _api;
+  final PhotoTaker? _photoTaker;
   final VoiceInput _voiceInput;
   final ChatClock _clock;
   final String Function() _newRequestId;
 
   ChatApi get api => _api;
+
+  /// Whether the camera button can be offered (the wearable may still be away).
+  bool get canTakePhotos => _photoTaker != null;
 
   ChatState _state = ChatState.initial();
   ChatState get state => _state;
@@ -247,6 +254,7 @@ final class ChatController extends ChangeNotifier {
           timestamp: message.timestamp,
           sources: _mapSources(message.citations ?? const []),
           pendingAction: message.pendingAction,
+          photoId: message.photoId,
         );
       }).toList();
       _emit(_state.copyWith(
@@ -263,6 +271,58 @@ final class ChatController extends ChangeNotifier {
         sessionId: notFound ? null : id,
         loadingSession: false,
         error: userMessage(error, 'Could not load this chat.'),
+      ));
+    }
+  }
+
+  /// The camera button: the wearable takes a photo; the text in the composer, if
+  /// any, is the question about it. The answer is loaded with the photo.
+  Future<void> takePhoto() async {
+    final taker = _photoTaker;
+    if (taker == null || _state.sending) return;
+    final generation = _generation;
+    final question = _state.composerText.trim();
+    _emit(_state.copyWith(
+      messages: [
+        ..._state.messages,
+        ChatMessage(
+          text: question.isEmpty ? '📷' : question,
+          isUser: true,
+          timestamp: _clock(),
+        ),
+      ],
+      composerText: '',
+      sending: true,
+      error: null,
+    ));
+
+    try {
+      final photo = await taker.takePhoto(
+        question: question.isEmpty ? null : question,
+        chatSessionId: _state.sessionId,
+      );
+      if (!_isCurrent(generation)) return;
+      final sessionId = photo.chatSessionId ?? _state.sessionId;
+      _emit(_state.copyWith(sessionId: sessionId));
+      await taker.waitForAnswer(photo.id);
+      if (!_isCurrent(generation)) return;
+      if (sessionId != null) {
+        // The answer, the photo and any failure text are in the stored chat
+        await loadSession(sessionId);
+      } else {
+        _emit(_state.copyWith(sending: false));
+      }
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final message = error is PhotoUnavailableException
+          ? error.message
+          : userMessage(error, 'Could not take the photo.');
+      final messages = [..._state.messages]..removeLast();
+      _emit(_state.copyWith(
+        messages: messages,
+        composerText: question,
+        sending: false,
+        error: message,
       ));
     }
   }

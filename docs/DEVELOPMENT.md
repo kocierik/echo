@@ -106,6 +106,11 @@ pio device monitor           # serial output
 The wearable talks only BLE to the phone ([ADR 0006](adr/0006-ble-relay-through-phone.md)); tunables
 such as `VAD_ENERGY_THRESHOLD` are in `src/config.h`.
 
+The camera (OV3660 or OV2640 on the Sense board) is optional: without one the firmware runs as
+before and tells the app it has none. Photo size and quality are `PHOTO_FRAME_SIZE` and
+`PHOTO_JPEG_QUALITY` in `src/config.h`; the serial monitor logs the sensor found at boot and each
+photo's size and capture time ([ADR 0007](adr/0007-camera-photos-on-request.md)).
+
 ## Running the backend outside Docker
 
 With only Postgres and Redis in Docker (`docker-compose-infra.yml`):

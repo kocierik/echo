@@ -11,6 +11,7 @@ import '../models/action_models.dart';
 import '../models/chat_session.dart';
 import '../models/memory.dart';
 import '../models/person.dart';
+import '../models/photo.dart';
 import '../models/segment.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
@@ -98,6 +99,25 @@ abstract interface class TranscriptMemoryApi {
     String speaker,
   );
   Future<void> deleteConversation(String conversationId);
+}
+
+/// The wearable camera: requests, the wearable's commands, uploads and images.
+abstract interface class PhotoApi {
+  /// The app's camera button; the question (if any) and the answer go to
+  /// [chatSessionId], or to "Voice requests".
+  Future<PhotoInfo> requestPhoto({String? question, String? chatSessionId});
+
+  Future<PhotoInfo> getPhoto(String id);
+
+  Future<void> uploadPhoto(String id, List<int> jpeg, DateTime capturedAt);
+
+  /// [reason]: "muted", "not_connected", "no_camera", "capture_failed" or "busy".
+  Future<void> reportPhotoFailure(String id, String reason);
+
+  /// Waits up to [wait] for a command (long poll).
+  Future<List<DeviceCommand>> getDeviceCommands({Duration wait});
+
+  Future<PhotoImageSource> photoImage(String id);
 }
 
 abstract interface class ApiCredentialStore {
@@ -208,7 +228,8 @@ class ApiService
         ChatApi,
         TodayApi,
         TranscriptMemoryApi,
-        VoiceUpdatesApi {
+        VoiceUpdatesApi,
+        PhotoApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -545,6 +566,115 @@ class ApiService
     return _parseDecoded(
       response.data,
       (data) => PersonDetail.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  // --- Wearable camera ---
+
+  @override
+  Future<PhotoInfo> requestPhoto({String? question, String? chatSessionId}) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final body = <String, dynamic>{};
+    final trimmed = question?.trim() ?? '';
+    if (trimmed.isNotEmpty) body['question'] = trimmed;
+    if (chatSessionId != null) body['chat_session_id'] = chatSessionId;
+    final response = await _send(
+      () => _client.post(
+        Uri.parse('$server/api/photos'),
+        headers: headers,
+        body: jsonEncode(body),
+      ),
+      expectedStatuses: const {201},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(
+      response.data,
+      (data) => PhotoInfo.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<PhotoInfo> getPhoto(String id) async {
+    final response = await _getJson('/api/photos/$id');
+    return _parseDecoded(
+      response.data,
+      (data) => PhotoInfo.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<void> uploadPhoto(String id, List<int> jpeg, DateTime capturedAt) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final request = http.MultipartRequest('PUT', Uri.parse('$server/api/photos/$id/image'))
+      ..headers['X-API-Key'] = headers['X-API-Key'] ?? ''
+      ..headers['X-Captured-At'] = capturedAt.toUtc().toIso8601String()
+      ..files.add(http.MultipartFile.fromBytes('image', jpeg, filename: 'photo.jpg'));
+    _UploadResponse response;
+    try {
+      response = await (() async {
+        final streamed = await _client.send(request);
+        return _UploadResponse(streamed.statusCode, await streamed.stream.bytesToString());
+      })()
+          .timeout(_uploadTimeout);
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw _statusException(response.statusCode, response.body);
+    }
+  }
+
+  @override
+  Future<void> reportPhotoFailure(String id, String reason) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.post(
+        Uri.parse('$server/api/photos/$id/failure'),
+        headers: headers,
+        body: jsonEncode({'reason': reason}),
+      ),
+      expectedStatuses: const {200},
+      decodeJson: false,
+    );
+  }
+
+  @override
+  Future<List<DeviceCommand>> getDeviceCommands({
+    Duration wait = const Duration(seconds: 20),
+  }) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(
+        Uri.parse('$server/api/device/commands?wait=${wait.inSeconds}'),
+        headers: headers,
+      ),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+      // The server holds the request open for up to `wait`
+      timeout: wait + _requestTimeout,
+    );
+    return _parseDecoded(response.data, (data) {
+      final commands = (data as Map<String, dynamic>)['commands'];
+      if (commands is! List<dynamic>) throw const FormatException('commands');
+      return commands.map(DeviceCommand.tryParse).whereType<DeviceCommand>().toList();
+    });
+  }
+
+  @override
+  Future<PhotoImageSource> photoImage(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    return PhotoImageSource(
+      url: Uri.parse('$server/api/photos/$id/image'),
+      headers: {'X-API-Key': headers['X-API-Key'] ?? ''},
     );
   }
 

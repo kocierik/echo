@@ -34,6 +34,7 @@ final class ChatMessage {
     this.isError = false,
     this.pendingAction,
     this.clientRequestId,
+    this.photoId,
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -48,6 +49,9 @@ final class ChatMessage {
 
   /// For a user message: the id sent as `client_request_id`, reused on retry.
   final String? clientRequestId;
+
+  /// A photo from the wearable camera this message answers (or asks for).
+  final String? photoId;
 
   ChatMessage copyWith({
     String? text,
@@ -75,6 +79,7 @@ final class ChatMessage {
           ? this.pendingAction
           : pendingAction as PendingAction?,
       clientRequestId: clientRequestId,
+      photoId: photoId,
     );
   }
 }
