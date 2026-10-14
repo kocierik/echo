@@ -299,6 +299,7 @@ final class _FakeChatApi implements ChatApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    void Function(String piece)? onToken,
   }) =>
       throw UnimplementedError();
 

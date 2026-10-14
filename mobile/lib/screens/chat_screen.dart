@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../services/chat_controller.dart';
 import '../services/voice_input.dart';
@@ -307,6 +308,14 @@ final class _ChatScreenState extends State<ChatScreen> {
           );
         }
         if (state.sending && index == state.messages.length) {
+          final partial = state.streamingText;
+          if (partial != null && partial.isNotEmpty) {
+            // The answer as Echo writes it; it becomes a full message when done
+            return MessageBubble(
+              key: const Key('chat-streaming'),
+              message: ChatMessage(text: partial, isUser: false),
+            );
+          }
           return const Padding(
             key: Key('chat-sending'),
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),

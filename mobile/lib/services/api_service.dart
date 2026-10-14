@@ -48,10 +48,13 @@ class QueryResponse {
 }
 
 abstract interface class ChatApi {
+  /// Asks Echo. With [onToken], a memory answer is passed on piece by piece while it
+  /// is written; the returned response always holds the whole answer.
   Future<QueryResponse> query(
     String question, {
     String? sessionId,
     String? clientRequestId,
+    void Function(String piece)? onToken,
   });
   Future<List<ChatSessionSummary>> getSessions();
   Future<ChatSessionDetail> getSessionDetail(String id);
@@ -257,12 +260,21 @@ class ApiService
     String question, {
     String? sessionId,
     String? clientRequestId,
+    void Function(String piece)? onToken,
   }) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
     final body = <String, dynamic>{'question': question, 'top_k': 5};
     if (sessionId != null) body['session_id'] = sessionId;
     if (clientRequestId != null) body['client_request_id'] = clientRequestId;
+    if (onToken != null) {
+      return _queryStream(
+        Uri.parse('$server/api/query/stream'),
+        headers,
+        jsonEncode(body),
+        onToken,
+      );
+    }
 
     final response = await _send(
       () => _client.post(
@@ -278,6 +290,63 @@ class ApiService
       response.data,
       (data) => QueryResponse.fromJson(data as Map<String, dynamic>),
     );
+  }
+
+  /// `POST /api/query/stream`: Server-Sent Events, `token` pieces then `done`.
+  Future<QueryResponse> _queryStream(
+    Uri uri,
+    Map<String, String> headers,
+    String body,
+    void Function(String piece) onToken,
+  ) async {
+    final request = http.Request('POST', uri)
+      ..headers.addAll(headers)
+      ..headers['Accept'] = 'text/event-stream'
+      ..body = body;
+    try {
+      final response = await _client.send(request).timeout(_requestTimeout);
+      if (response.statusCode != 200) {
+        throw _statusException(response.statusCode, await response.stream.bytesToString());
+      }
+      String? event;
+      final data = StringBuffer();
+      final lines = response.stream
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          // No new line for this long: the answer stalled
+          .timeout(_queryTimeout);
+      await for (final line in lines) {
+        if (line.startsWith('event:')) {
+          event = line.substring(6).trim();
+        } else if (line.startsWith('data:')) {
+          data.write(line.substring(5).trimLeft());
+        } else if (line.isEmpty && event != null) {
+          final payload = _decodeJson(data.toString(), expectedShape: _JsonShape.map)
+              as Map<String, dynamic>;
+          final kind = event;
+          event = null;
+          data.clear();
+          switch (kind) {
+            case 'token':
+              if (payload['text'] case final String piece) onToken(piece);
+            case 'done':
+              return _parseDecoded(payload, (data) => QueryResponse.fromJson(data as Map<String, dynamic>));
+            case 'error':
+              throw _statusException(
+                (payload['status'] as num?)?.toInt() ?? 500,
+                jsonEncode({'detail': payload['detail']}),
+              );
+          }
+        }
+      }
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+    throw _offlineException('the answer stopped before it was complete');
   }
 
   @override

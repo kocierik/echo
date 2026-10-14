@@ -259,6 +259,35 @@ void main() {
     expect(assistant.sources.single.url, isNull);
   });
 
+  test('a streamed answer grows, then becomes the message', () async {
+    final answer = Completer<QueryResponse>();
+    api
+      ..streamPieces = ['Marco ', 'suggested ', 'sushi.']
+      ..queryHandler = (_, __) => answer.future;
+
+    final sending = controller.send('What did Marco say?');
+    await pumpEventQueue();
+    expect(controller.state.sending, isTrue);
+    expect(controller.state.streamingText, 'Marco suggested sushi.');
+
+    answer.complete(_response(answer: 'Marco suggested sushi.'));
+    await sending;
+    expect(controller.state.streamingText, isNull);
+    expect(controller.state.messages.last.text, 'Marco suggested sushi.');
+    expect(controller.state.messages.last.isUser, isFalse);
+  });
+
+  test('a failure clears the partial answer', () async {
+    api
+      ..streamPieces = ['Half']
+      ..queryHandler = (_, __) => Future.error(Exception('offline'));
+
+    await controller.send('What did Marco say?');
+
+    expect(controller.state.streamingText, isNull);
+    expect(controller.state.messages.single.failed, isTrue);
+  });
+
   test('failure preserves and marks the user question for retry', () async {
     api.queryHandler = (_, __) => Future.error(Exception('offline'));
 
@@ -542,12 +571,17 @@ final class _FakeChatApi implements ChatApi {
   Future<ChatSessionDetail> Function(String id)? detailHandler;
   Future<void> Function()? feedbackHandler;
 
+  /// Pieces passed to onToken before the answer is returned.
+  List<String> streamPieces = const [];
+
   @override
   Future<QueryResponse> query(
     String question, {
     String? sessionId,
     String? clientRequestId,
+    void Function(String piece)? onToken,
   }) {
+    streamPieces.forEach(onToken ?? (_) {});
     queries.add(question);
     querySessionIds.add(sessionId);
     queryRequestIds.add(clientRequestId);

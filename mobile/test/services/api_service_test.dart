@@ -496,6 +496,79 @@ void main() {
     });
   });
 
+  group('streamed answers', () {
+    Future<http.StreamedResponse> sse(http.BaseRequest request, List<String> chunks) async {
+      return http.StreamedResponse(
+        Stream.fromIterable(chunks.map(utf8.encode)),
+        200,
+        request: request,
+        headers: const {'content-type': 'text/event-stream'},
+      );
+    }
+
+    const done = '{"answer":"Marco suggested sushi.","sources":[],'
+        '"session_id":"s1","date_filter":null,"pending_action":null}';
+
+    test('pieces arrive in order, even split across network chunks', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return sse(request, [
+          'event: token\ndata: {"text": "Marco "}\n\nevent: tok',
+          'en\ndata: {"text": "suggested sushi."}\n\n',
+          'event: done\ndata: $done\n\n',
+        ]);
+      });
+      final pieces = <String>[];
+
+      final response = await service.query('Marco?', clientRequestId: 'r1', onToken: pieces.add);
+
+      expect(captured.url.toString(), 'https://echo.test/api/query/stream');
+      expect(jsonDecode(captured.body), {
+        'question': 'Marco?',
+        'top_k': 5,
+        'client_request_id': 'r1',
+      });
+      expect(pieces, ['Marco ', 'suggested sushi.']);
+      expect(response.answer, 'Marco suggested sushi.');
+      expect(response.sessionId, 's1');
+    });
+
+    test('an error event is a typed ApiException', () async {
+      final service = _service((request) => sse(request, [
+            'event: token\ndata: {"text": "Half"}\n\n',
+            'event: error\ndata: {"status": 500, "detail": "Echo could not answer."}\n\n',
+          ]));
+
+      final error = await _expectApiException(
+        service.query('Marco?', onToken: (_) {}),
+        statusCode: 500,
+        code: 'server',
+      );
+      expect(error.message, 'Echo could not answer.');
+    });
+
+    test('a 409 before the stream is the usual conflict', () async {
+      final service = _service(
+        (request) => _jsonResponse(request, 409, {'detail': 'Still working on it'}),
+      );
+
+      await _expectApiException(
+        service.query('Marco?', onToken: (_) {}),
+        statusCode: 409,
+        code: 'conflict',
+      );
+    });
+
+    test('a stream that ends without the answer is offline', () async {
+      final service = _service((request) => sse(request, [
+            'event: token\ndata: {"text": "Half"}\n\n',
+          ]));
+
+      await _expectApiException(service.query('Marco?', onToken: (_) {}), code: 'offline');
+    });
+  });
+
   group('ApiService Composio actions', () {
     test('getToolkits sends the query and parses toolkits', () async {
       late http.Request captured;

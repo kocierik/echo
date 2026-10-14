@@ -42,6 +42,27 @@ void main() {
     expect(ask.value, isNull);
   });
 
+  testWidgets('the answer shows while Echo writes it', (tester) async {
+    final answer = Completer<QueryResponse>();
+    final harness = _Harness(queryHandler: (_, __) => answer.future);
+    harness.api.streamPieces = ['Marco suggested ', 'the sushi place.'];
+    await harness.pump(tester);
+
+    await tester.enterText(find.byType(TextField), 'What did Marco say?');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send question'));
+    await tester.pump();
+
+    expect(find.byKey(const Key('chat-streaming')), findsOneWidget);
+    expect(find.text('Marco suggested the sushi place.'), findsOneWidget);
+    expect(find.byKey(const Key('chat-sending')), findsNothing);
+
+    answer.complete(_response(answer: 'Marco suggested the sushi place.'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-streaming')), findsNothing);
+    expect(find.text('Marco suggested the sushi place.'), findsOneWidget);
+  });
+
   testWidgets('send shows loading then error and retry recovers',
       (tester) async {
     final pending = Completer<QueryResponse>();
@@ -274,12 +295,17 @@ final class _FakeChatApi implements ChatApi {
   final List<String> queries = [];
   final List<String> deletes = [];
 
+  /// Pieces passed to onToken before the answer is returned.
+  List<String> streamPieces = const [];
+
   @override
   Future<QueryResponse> query(
     String question, {
     String? sessionId,
     String? clientRequestId,
+    void Function(String piece)? onToken,
   }) {
+    streamPieces.forEach(onToken ?? (_) {});
     queries.add(question);
     return queryHandler?.call(question, sessionId) ?? Future.value(_response());
   }
