@@ -61,22 +61,30 @@ and which apps (by slug, from the lists above). A request about what was said, d
 or planned in the user's past conversations is answered from memory and needs no app, \
 even when it mentions an agenda, a meeting, an email or a task. A request for an app \
 that is NOT connected still needs that app: name it, and Echo will ask the user to \
-connect it. Use the recent conversation for follow-ups.
-Respond with ONLY a JSON object: {{"needs_apps": true, "apps": ["<slug>", ...]}} or \
-{{"needs_apps": false, "apps": []}}."""
+connect it. Use the recent conversation for follow-ups.{camera}
+Respond with ONLY a JSON object: {{{camera_key}"needs_apps": true, "apps": ["<slug>", ...]}} \
+or {{{camera_key}"needs_apps": false, "apps": []}}."""
+
+CAMERA_SECTION = """
+Echo also has a camera on the user's wearable. A request to take a photo, or a question \
+about what the user is looking at right now ("what is this?", "read this", "how much is \
+this?"), needs the camera: set "camera" to true. A question about the past never needs \
+it."""
 
 
 @dataclass
 class RequestIntent:
     needs_apps: bool = False
     apps: list[str] = field(default_factory=list)
+    # The wearable camera: take a photo now (voice requests only)
+    camera: bool = False
     # Names the model gave that match no known or connected app, as written
     unresolved: list[str] = field(default_factory=list)
 
 
 @dataclass
 class Route:
-    """`kind` is "memory", "notice" (answer with `notice`) or "agent"."""
+    """`kind`: "memory", "notice" (answer with `notice`), "agent", or "photo" (camera)."""
 
     kind: str
     notice: str | None = None
@@ -120,6 +128,8 @@ def _parse_intent(
 ) -> RequestIntent:
     if not isinstance(result, dict):
         return RequestIntent()
+    if result.get("camera") is True:
+        return RequestIntent(camera=True)
     needs, apps = result.get("needs_apps"), result.get("apps", [])
     if needs is not True or not isinstance(apps, list):
         return RequestIntent()
@@ -146,14 +156,20 @@ async def classify_request(
     history: list[dict],
     connected: list[str] | None,
     known_apps: dict[str, str],
+    camera: bool = False,
 ) -> RequestIntent:
-    """One LLM call: does the request need apps now, and which? Errors -> memory.
+    """One LLM call: does the request need apps (or, with `camera`, a photo) now, and
+    which? Errors -> memory.
 
     `connected` None means the connected list could not be fetched; the prompt then
     lists every known app.
     """
     try:
-        prompt = INTENT_PROMPT.format(apps=_apps_section(connected, known_apps))
+        prompt = INTENT_PROMPT.format(
+            apps=_apps_section(connected, known_apps),
+            camera=CAMERA_SECTION if camera else "",
+            camera_key='"camera": false, ' if camera else "",
+        )
         messages = [LLMMessage(role="system", content=prompt)]
         for msg in history[-HISTORY_MESSAGES:]:
             messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
@@ -180,7 +196,11 @@ def none_connected_answer(request: str) -> str:
 
 
 async def route_request(
-    llm, request: str, history: list[dict], connected: list[str] | None
+    llm,
+    request: str,
+    history: list[dict],
+    connected: list[str] | None,
+    camera: bool = False,
 ) -> Route:
     """Where a possible app request goes, from one intent check.
 
@@ -188,9 +208,12 @@ async def route_request(
     fetched. Not needed -> memory; unreachable and needed -> the "couldn't reach" text;
     a needed app that is not connected, or that matches no app Echo knows ->
     "{App} isn't connected" (never another app); needed with no app named and nothing
-    connected -> "No apps are connected yet"; otherwise the agent.
+    connected -> "No apps are connected yet"; otherwise the agent. With `camera` (voice
+    requests), a request to take a photo or about what the user is looking at -> photo.
     """
-    intent = await classify_request(llm, request, history, connected, APP_NAMES)
+    intent = await classify_request(llm, request, history, connected, APP_NAMES, camera)
+    if camera and intent.camera:
+        return Route("photo")
     if not intent.needs_apps:
         return Route("memory")
     if connected is None:

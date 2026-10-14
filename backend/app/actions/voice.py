@@ -194,13 +194,19 @@ async def collect_command(
 
 
 async def get_or_create_voice_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:
-    """The user's "Voice requests" chat session (created on first use, not committed)."""
+    """The user's "Voice requests" chat session (created on first use, not committed).
+
+    Locked until commit: voice answers, photos and action outcomes all rewrite its
+    message list, so they take turns instead of overwriting each other.
+    """
     result = await db.execute(
         select(ChatSession)
         .where(ChatSession.user_id == user_id)
         .where(ChatSession.kind == "voice")
         .order_by(ChatSession.updated_at.desc())
         .limit(1)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     session = result.scalars().first()
     if session is not None:

@@ -554,6 +554,24 @@ async def test_classify_request_errors_and_invalid_answers_mean_memory(answer):
 
 
 @pytest.mark.asyncio
+async def test_the_camera_is_offered_only_to_voice_requests():
+    from app.actions.availability import APP_NAMES, classify_request, route_request
+
+    chat = _LLM(intent={"camera": True, "needs_apps": False, "apps": []})
+    intent = await classify_request(chat, "cos'è questo?", [], ["gmail"], APP_NAMES)
+    assert "camera" not in chat.intent_checks[0][0].content
+    # A chat request never takes photos, even if the model says so
+    assert (await route_request(chat, "cos'è questo?", [], ["gmail"])).kind == "memory"
+    assert intent.camera is True  # parsed, but chat ignores it below
+
+    voice = _LLM(intent={"camera": True, "needs_apps": False, "apps": []})
+    route = await route_request(voice, "cos'è questo?", [], ["gmail"], camera=True)
+    assert route.kind == "photo"
+    prompt = voice.intent_checks[0][0].content
+    assert "camera on the user's wearable" in prompt and '"camera": false' in prompt
+
+
+@pytest.mark.asyncio
 async def test_classify_request_sets_apart_apps_it_does_not_know():
     from app.actions.availability import APP_NAMES, classify_request
 

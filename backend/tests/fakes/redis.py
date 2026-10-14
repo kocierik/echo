@@ -42,6 +42,21 @@ class InMemoryRedis:
         self.lists.setdefault(key, [])[:0] = reversed(values)
         return len(self.lists[key])
 
+    async def rpush(self, key, *values):
+        self.lists.setdefault(key, []).extend(values)
+        return len(self.lists[key])
+
+    async def lpop(self, key):
+        items = self.lists.get(key)
+        return items.pop(0) if items else None
+
+    async def blpop(self, keys, timeout=0):
+        """Never blocks: a test that waits on an empty list gets the timeout at once."""
+        for key in keys:
+            if self.lists.get(key):
+                return key, self.lists[key].pop(0)
+        return None
+
     async def llen(self, key):
         return len(self.lists.get(key, []))
 

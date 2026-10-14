@@ -47,7 +47,7 @@ class FakeDb:
             return _Result([self.action])
         return _Result(self.rows)
 
-    async def get(self, model, pk):
+    async def get(self, model, pk, **kwargs):
         if model is PendingAction:
             return self.action
         return self.sessions.get(pk)

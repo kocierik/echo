@@ -20,6 +20,7 @@ class ChatMessage(BaseModel):
     content: str
     timestamp: str | None = None
     pending_action: dict | None = None
+    photo_id: str | None = None  # a photo from the wearable camera: GET /photos/{id}/image
 
 
 class ChatSessionSummary(BaseModel):

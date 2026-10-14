@@ -271,3 +271,33 @@ def test_openai_llm_picks_the_api():
     assert type(openai_llm("gpt-test")) is OpenAILLMService
     with pytest.raises(ValueError):
         openai_llm("gpt-test", api="soap")
+
+
+@pytest.mark.asyncio
+async def test_images_go_as_content_parts_on_chat_completions():
+    completions = FakeCompletions(content='{"answer": "ok"}')
+    service = _service(completions)
+
+    await service.complete_json(
+        [LLMMessage(role="user", content="cos'è?", images=[b"\xff\xd8\xffJPEG"])]
+    )
+
+    [message] = completions.kwargs["messages"]
+    text, image = message["content"]
+    assert text == {"type": "text", "text": "cos'è?"}
+    assert image["type"] == "image_url"
+    assert image["image_url"]["url"].startswith("data:image/jpeg;base64,/9j/")
+
+
+@pytest.mark.asyncio
+async def test_images_go_as_input_images_on_the_responses_api():
+    responses = FakeResponses(output_text='{"answer": "ok"}')
+
+    await _responses_service(responses).complete_json(
+        [LLMMessage(role="user", content="cos'è?", images=[b"\xff\xd8\xffJPEG"])]
+    )
+
+    [item] = responses.kwargs["input"]
+    assert item["content"][0] == {"type": "input_text", "text": "cos'è?"}
+    assert item["content"][1]["type"] == "input_image"
+    assert item["content"][1]["image_url"].startswith("data:image/jpeg;base64,")

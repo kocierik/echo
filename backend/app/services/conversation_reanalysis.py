@@ -66,7 +66,12 @@ async def reanalyse_conversation(
             for transcription_id, _, recorded_at in rows
         }
 
-        await db.execute(delete(Chunk).where(Chunk.conversation_id == conversation_id))
+        # Photo descriptions are not rebuilt from transcripts: they stay
+        await db.execute(
+            delete(Chunk)
+            .where(Chunk.conversation_id == conversation_id)
+            .where(Chunk.photo_id.is_(None))
+        )
         # Entities also mentioned in other conversations survive (moved there)
         await release_conversation(db, conversation_id)
         await db.execute(delete(Entity).where(Entity.conversation_id == conversation_id))

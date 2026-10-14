@@ -18,6 +18,10 @@ class Chunk(UUIDPrimaryKey, TimestampMixin, Base):
     token_count: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding = mapped_column(Vector(1536), nullable=True)
+    # Set for the description of a photo: kept when the transcript chunks are rebuilt
+    photo_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("photos.id", ondelete="CASCADE"), nullable=True
+    )
 
     # Relationships
     conversation: Mapped["Conversation"] = relationship(back_populates="chunks")
