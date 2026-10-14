@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
+from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import availability_notice
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
@@ -32,7 +33,6 @@ from app.actions.voice import (
     strip_speaker_tag,
 )
 from app.core.database import async_session
-from app.models.action_log import ActionLog
 from app.models.segment import Segment
 from app.routers.query import no_results_message, rag_system_prompt
 from app.services.embedding_openai import get_embedding_service
@@ -71,47 +71,12 @@ FAILURE_TEXTS = {
     },
 }
 
-# ActionLog columns copied back after a rollback (the id is regenerated).
-_AUDIT_COLUMNS = (
-    "user_id", "source", "toolkit", "tool", "arguments_summary", "outcome", "error",
-    "created_at",
-)
-
-
 @dataclass
 class _Claim:
     claimed: bool = False
     # Set once the request is confirmed: a failure from then on is reported to the user.
     user_id: uuid.UUID | None = None
     command: str | None = None
-
-
-class _AuditRecorder:
-    """Session wrapper that remembers the audit rows added through it.
-
-    The agent adds an ActionLog row for every tool it executes and leaves the commit to
-    the caller; if answering fails afterwards, the rollback would erase the record of
-    actions that really happened. The recorder keeps them so they can be written again.
-    """
-
-    def __init__(self, db: AsyncSession):
-        self._db = db
-        self.audit_rows: list[ActionLog] = []
-
-    def add(self, obj, *args, **kwargs):
-        if isinstance(obj, ActionLog):
-            self.audit_rows.append(obj)
-        return self._db.add(obj, *args, **kwargs)
-
-    def snapshot_audit(self) -> list[dict]:
-        """Column values of the recorded rows (read before a rollback discards them)."""
-        return [
-            {column: getattr(row, column, None) for column in _AUDIT_COLUMNS}
-            for row in self.audit_rows
-        ]
-
-    def __getattr__(self, name):
-        return getattr(self._db, name)
 
 
 def _utcnow() -> datetime:
@@ -277,10 +242,7 @@ def _append_turn(voice_session, command: str, asked_at: str, answer: str, extra:
 
 async def _report_failure(db: AsyncSession, claim: _Claim, audit: list[dict]) -> None:
     """After a rollback: restore executed tools' audit rows and tell the user it failed."""
-    for values in audit:
-        if values.get("created_at") is None:
-            values = {k: v for k, v in values.items() if k != "created_at"}  # use the default
-        db.add(ActionLog(**values))
+    restore_audit(db, audit)
     texts = FAILURE_TEXTS[detect_language(claim.command)]
     reply = texts["failed_partial"] if audit else texts["failed"]
     voice_session = await get_or_create_voice_session(db, claim.user_id)
@@ -302,7 +264,7 @@ async def handle_voice_item(redis_client, raw) -> bool:
 
     claim = _Claim()
     async with async_session() as session:
-        db = _AuditRecorder(session)
+        db = AuditRecorder(session)
         try:
             return await _process(db, redis_client, segment_id, claim)
         except asyncio.CancelledError:

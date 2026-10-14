@@ -37,11 +37,20 @@ class _Db:
     def add(self, obj):
         self.added.append(obj)
 
+    async def flush(self):
+        pass
+
     async def commit(self):
         if self.commit_error is not None:
             raise self.commit_error
         self.commits += 1
         self.events.append("commit")
+        self.committed = list(self.added)
+
+    async def rollback(self):
+        # Objects added since the last commit are discarded
+        self.added = list(getattr(self, "committed", []))
+        self.events.append("rollback")
 
 
 class _Redis:
@@ -539,3 +548,60 @@ async def test_agent_failure_answer_is_in_the_question_language(env, monkeypatch
         await _ask(env, "Send a Slack message to the team", request_id="r-14")
     again = await _ask(env, "Send a Slack message to the team", request_id="r-14")
     assert again.answer == _UNFINISHED_EN
+
+
+# --- Fix round 1: executed tools stay audited when the chat agent fails -----------------
+
+
+def _agent_that_runs_a_tool_then_fails(env):
+    from app.actions.audit import log_action
+    from app.actions.provider import ToolResult
+
+    async def agent(db, user_id, request, history, **kw):
+        env.agent_calls.append((request, kw))
+        await log_action(
+            db, user_id, "chat", "TODOIST_CREATE_TASK", {"content": "milk"}, ToolResult(ok=True)
+        )
+        raise RuntimeError("llm down after the tool ran")
+
+    return agent
+
+
+def _committed_logs(env):
+    from app.models.action_log import ActionLog
+
+    return [o for o in getattr(env.db, "committed", []) if isinstance(o, ActionLog)]
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_after_a_tool_commits_its_audit_row(env, monkeypatch):
+    monkeypatch.setattr(q, "run_action_agent", _agent_that_runs_a_tool_then_fails(env))
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail", request_id="r-20")
+
+    (log,) = _committed_logs(env)
+    assert log.tool == "TODOIST_CREATE_TASK" and log.outcome == "ok"
+    assert log.source == "chat" and log.user_id == USER_ID
+    assert env.db.events[:2] == ["rollback", "commit"]  # rolled back, row added again
+    again = await _ask(env, "riassumimi le ultime mail", request_id="r-20")
+    assert again.answer == _UNFINISHED_IT
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_without_request_id_also_keeps_the_audit_row(env, monkeypatch):
+    monkeypatch.setattr(q, "run_action_agent", _agent_that_runs_a_tool_then_fails(env))
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail")
+    assert [log.tool for log in _committed_logs(env)] == ["TODOIST_CREATE_TASK"]
+
+
+@pytest.mark.asyncio
+async def test_agent_failure_without_executed_tools_commits_nothing(env, monkeypatch):
+    async def broken_agent(*a, **kw):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(q, "run_action_agent", broken_agent)
+    with pytest.raises(RuntimeError):
+        await _ask(env, "riassumimi le ultime mail", request_id="r-21")
+    assert env.db.commits == 0
