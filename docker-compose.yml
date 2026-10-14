@@ -4,7 +4,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      # This machine only: the tunnel reaches api over the compose network, and a port open
+      # to the LAN would let clients forge CF-Connecting-IP (used by the auth failure limit)
+      - "127.0.0.1:8000:8000"
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -59,7 +61,7 @@ services:
       POSTGRES_PASSWORD: echo
       POSTGRES_DB: echo
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"  # this machine only
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -72,7 +74,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"  # this machine only
     volumes:
       - redis_data:/data
     healthcheck:

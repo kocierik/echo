@@ -68,17 +68,20 @@ else
     exit 1
 fi
 
-# --- 6. Ensure the default API key exists for local development ---
-log "Ensuring default API key exists..."
-docker compose exec -T postgres psql -U echo -d echo -c "
-    INSERT INTO api_keys (user_id, key_hash, name)
-    VALUES (
-        'a0000000-0000-0000-0000-000000000001',
-        encode(sha256('my-secret-key'::bytea), 'hex'),
-        'default'
-    )
-    ON CONFLICT DO NOTHING;
-" > /dev/null 2>&1 || warn "Could not seed default API key - create it manually later"
+# --- 6. Check the API keys (never seed a well-known one) ---
+# The README's example key is public: a server reachable from the internet (Cloudflare
+# Tunnel) must not accept it, so the deploy only warns and never creates it.
+KEY_STATE=$(docker compose exec -T postgres psql -U echo -d echo -tAc "
+    SELECT count(*) || ' ' || count(*) FILTER (
+        WHERE key_hash = encode(sha256('my-secret-key'::bytea), 'hex'))
+    FROM api_keys;" 2>/dev/null | tr -d '\r')
+read -r KEY_COUNT DEFAULT_KEY_COUNT <<< "${KEY_STATE:-0 0}"
+if [ "${KEY_COUNT:-0}" = "0" ]; then
+    warn "No API key yet: run 'make create-key' and put the printed key in the app"
+elif [ "${DEFAULT_KEY_COUNT:-0}" != "0" ]; then
+    warn "The example API key 'my-secret-key' is active and publicly known:"
+    warn "run 'make create-key', update the app, then 'make revoke-example-key'"
+fi
 
 # --- 7. Restart services to pick up any code changes ---
 log "Restarting API and Worker..."
