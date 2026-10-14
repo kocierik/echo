@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/task_item.dart';
 import '../theme/app_theme.dart';
-import 'formatting.dart';
+import '../utils/formatting.dart';
 import 'memory_entity_row.dart';
 
 /// A task with its checkbox, due day and the sentence it came from. The menu

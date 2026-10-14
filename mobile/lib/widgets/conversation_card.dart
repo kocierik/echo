@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
 import '../theme/app_theme.dart';
-import 'formatting.dart';
+import '../utils/formatting.dart';
 
 /// One conversation in a list: emoji, title, two lines of summary, time and
 /// duration, people and tasks. Live and processing conversations say so.

@@ -96,6 +96,7 @@ async def test_a_memory_answer_streams_then_completes(client, auth_headers, db_s
     done = events[-1][1]
     assert done["answer"] == "".join(PIECES)
     assert done["sources"] and "Marco" in done["sources"][0]["text"]
+    assert "started_at" in done["sources"][0] and "title" in done["sources"][0]
 
     # The turn is saved like any chat
     sessions = (await client.get("/api/chat-sessions", headers=auth_headers)).json()["items"]

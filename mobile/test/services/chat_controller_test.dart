@@ -277,6 +277,35 @@ void main() {
     expect(controller.state.messages.last.isUser, isFalse);
   });
 
+  test('sources say their conversation and open it', () async {
+    api.queryHandler = (_, __) async => QueryResponse(
+          answer: 'Sushi.',
+          sessionId: 's1',
+          sources: const [
+            {
+              'conversation_id': 'c1',
+              'chunk_id': 'k1',
+              'text': 'Marco suggested sushi.',
+              'title': 'Lunch with Marco',
+              'started_at': '2026-10-01T12:30:00Z',
+            },
+            {'conversation_id': 'c2', 'chunk_id': 'k2', 'text': 'Untitled', 'started_at': '2026-10-02T09:00:00Z'},
+            {'chunk_id': 'k3', 'text': 'Old shape'},
+          ],
+        );
+
+    await controller.send('What did Marco suggest?');
+
+    final sources = controller.state.messages.last.sources;
+    expect(sources.map((s) => s.label), [
+      'Lunch with Marco · Yesterday',
+      'Conversation · Today',
+      'Source 3',
+    ]);
+    expect(sources.first.conversationId, 'c1');
+    expect(sources.last.conversationId, isNull);
+  });
+
   test('a failure clears the partial answer', () async {
     api
       ..streamPieces = ['Half']

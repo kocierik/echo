@@ -13,10 +13,14 @@ final class MessageBubble extends StatelessWidget {
     this.onConfirmAction,
     this.onCancelAction,
     this.actionBusy = false,
+    this.onOpenConversation,
     super.key,
   });
 
   final ChatMessage message;
+
+  /// Opens the conversation a source comes from.
+  final ValueChanged<String>? onOpenConversation;
   final ValueChanged<String>? onFeedback;
   final VoidCallback? onConfirmAction;
   final VoidCallback? onCancelAction;
@@ -89,7 +93,7 @@ final class MessageBubble extends StatelessWidget {
                 ),
               ),
             if (!message.isUser && message.sources.isNotEmpty)
-              _Sources(sources: message.sources),
+              _Sources(sources: message.sources, onOpenConversation: onOpenConversation),
             if (!message.isUser && onFeedback != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),
@@ -126,9 +130,13 @@ final class MessageBubble extends StatelessWidget {
 }
 
 final class _Sources extends StatelessWidget {
-  const _Sources({required this.sources});
+  const _Sources({required this.sources, this.onOpenConversation});
 
   final List<ChatSource> sources;
+  final ValueChanged<String>? onOpenConversation;
+
+  bool _opens(ChatSource source) =>
+      onOpenConversation != null && source.conversationId != null;
 
   @override
   Widget build(BuildContext context) {
@@ -163,7 +171,9 @@ final class _Sources extends StatelessWidget {
                       ),
                     ),
                     if (source.url != null)
-                      const Icon(Icons.open_in_new_rounded, size: 16),
+                      const Icon(Icons.open_in_new_rounded, size: 16)
+                    else if (_opens(source))
+                      Icon(Icons.chevron_right_rounded, size: 18, color: palette.text2),
                   ],
                 ),
                 if (source.text.isNotEmpty) ...[
@@ -173,6 +183,18 @@ final class _Sources extends StatelessWidget {
               ],
             ),
           );
+          final conversationId = source.conversationId;
+          if (source.url == null && _opens(source)) {
+            return Semantics(
+              button: true,
+              hint: 'Opens the conversation',
+              child: InkWell(
+                key: Key('chat-source-${source.chunkId ?? conversationId}'),
+                onTap: () => onOpenConversation!(conversationId!),
+                child: content,
+              ),
+            );
+          }
           if (source.url == null) return content;
           return InkWell(
             onTap: () => launchUrl(

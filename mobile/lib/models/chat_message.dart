@@ -9,12 +9,16 @@ final class ChatSource {
     required this.text,
     this.chunkId,
     this.url,
+    this.conversationId,
   });
 
   final String label;
   final String text;
   final String? chunkId;
   final Uri? url;
+
+  /// The conversation the passage comes from: tapping the source opens it.
+  final String? conversationId;
 }
 
 @immutable

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/chat_message.dart';
+import '../utils/formatting.dart';
 import 'api_exception.dart';
 import 'api_service.dart';
 import 'request_id.dart';
@@ -469,14 +470,24 @@ final class ChatController extends ChangeNotifier {
         chunkId:
             source['chunk_id'] is String ? source['chunk_id'] as String : null,
         url: url?.hasScheme == true ? url : null,
+        conversationId: source['conversation_id'] is String
+            ? source['conversation_id'] as String
+            : null,
       );
     });
   }
 
+  /// "Lunch with Ada · Yesterday": the conversation a passage comes from.
   String _sourceLabel(Map<String, dynamic> source, int index) {
     final label = source['label'];
     if (label is String && label.trim().isNotEmpty) return label.trim();
-    return 'Source ${index + 1}';
+    final title = source['title'];
+    final startedAt = source['started_at'] is String
+        ? DateTime.tryParse(source['started_at'] as String)
+        : null;
+    final name = title is String && title.trim().isNotEmpty ? title.trim() : null;
+    if (startedAt != null) return '${name ?? 'Conversation'} · ${dayLabel(startedAt, _clock())}';
+    return name ?? 'Source ${index + 1}';
   }
 
   bool _isCurrent(int generation) =>

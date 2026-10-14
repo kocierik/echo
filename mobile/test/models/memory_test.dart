@@ -1,7 +1,7 @@
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/task_item.dart';
-import 'package:echo_app/widgets/formatting.dart';
+import 'package:echo_app/utils/formatting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

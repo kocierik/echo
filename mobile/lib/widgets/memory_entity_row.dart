@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
 import '../theme/app_theme.dart';
-import 'formatting.dart';
+import '../utils/formatting.dart';
 
 IconData entityIcon(String type) => switch (type) {
       'person' => Icons.person_outline_rounded,
