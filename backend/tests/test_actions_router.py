@@ -361,3 +361,18 @@ async def test_provider_error_text_is_capped_at_200_chars():
     out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
     assert out["message"] == "That didn't work: " + "x" * 200
     assert s.messages[-1]["content"] == out["message"]
+
+
+async def test_confirm_with_an_unknown_tool_result_tells_the_user_to_check():
+    """R29: the provider returns (not raises) an unknown outcome, e.g. a non-dict result."""
+    db = FakeDb()
+    s = _session([{"role": "user", "content": "send an email to Ada"}])
+    a = await _pending(db, s)
+    unknown = ToolResult(ok=False, unknown=True, error="unexpected response from Composio")
+    p = FakeActionProvider(connected={"gmail"}, results={TOOL: unknown})
+    out = await r.confirm_action(a.id, user_id=USER, db=db, redis_client=None, provider=p)
+    assert out == {
+        "status": "unknown",
+        "message": "I couldn't confirm whether it went through — check Gmail before trying again.",
+    }
+    assert a.status == "unknown"

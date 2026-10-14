@@ -569,3 +569,20 @@ async def test_unknown_outcome_note_survives_a_successful_retry_of_the_same_tool
         "Added the dentist.\n"
         "I couldn't confirm whether it went through — check Google Calendar before trying again."
     )
+
+
+async def test_unknown_tool_result_from_the_provider_gets_the_check_note():
+    """R29: an unknown outcome returned as a ToolResult (non-dict Composio response)."""
+    db = FakeSession()
+    unknown = ToolResult(ok=False, unknown=True, error="unexpected response from Composio")
+    provider = _provider(
+        ["TODOIST_CREATE_TASK"], connected={"todoist"}, results={"TODOIST_CREATE_TASK": unknown}
+    )
+    llm = RecordingLLM([_calls(("TODOIST_CREATE_TASK", {"content": "milk"})), _text("")])
+
+    outcome = await _run(db, "Add a task to buy milk", provider, llm)
+
+    assert [log.outcome for log in db.of(ActionLog)] == ["unknown"]
+    assert outcome.answer == (
+        "I couldn't confirm whether it went through — check Todoist before trying again."
+    )
