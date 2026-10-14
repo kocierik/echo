@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
-from app.actions.availability import not_connected_answer, unreachable_answer
+from app.actions.availability import availability_notice
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
@@ -231,14 +231,13 @@ async def _answer_query(
             # Composio not configured on this server: memory answers only
             logger.info("Action provider not configured; using the memory path")
         if provider is not None:
-            notice = None
+            reachable: list[str] | None = None
             try:
                 connected = await provider.connected_toolkits(str(user_id))
+                reachable = connected
             except ActionProviderError:
                 logger.warning("Action provider unreachable", exc_info=True)
-                notice = unreachable_answer(body.question)
-            else:
-                notice = not_connected_answer(body.question, connected)
+            notice = await availability_notice(llm_service, body.question, history, reachable)
             if notice is not None:
                 await _record_turn(
                     redis_client, db, user_id, session_id, history, body.question,

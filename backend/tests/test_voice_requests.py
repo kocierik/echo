@@ -400,11 +400,18 @@ class _AnswerLLM(MockLLMService):
     def __init__(self, is_request=True, answer="Risposta dalla memoria"):
         super().__init__(default_response=answer)
         self.is_request = is_request
+        self.needs_app = True  # answer of the named-app check (G2)
+        self.app_checks = 0
         self.json_calls = 0
 
     async def complete_json(self, messages, temperature=0.1):
         self.json_calls += 1
         self.call_log.append(messages)
+        if '"needs_app"' in messages[0].content:
+            self.app_checks += 1
+            if self.needs_app == "error":
+                raise RuntimeError("llm down")
+            return {"needs_app": self.needs_app}
         return {"assistant_request": self.is_request}
 
 
@@ -939,3 +946,78 @@ async def test_worker_named_app_with_nothing_connected(worker):
     assert _voice_session(worker).messages[-1]["content"] == (
         "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
     )
+
+
+# --- G2: "{App} isn't connected" only when the request really needs the app -------------
+
+
+@pytest.mark.asyncio
+async def test_worker_agenda_question_without_calendar_is_answered_from_memory(worker):
+    worker.provider = FakeActionProvider(connected=set())
+    worker.llm.needs_app = False
+    wake = _seg("Echo, cosa c'era in agenda alla riunione di ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.llm.app_checks == 1
+    assert worker.agent_calls == [] and len(worker.rag_calls) == 1
+    assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"
+
+
+@pytest.mark.asyncio
+async def test_worker_agenda_question_with_other_apps_goes_on_to_the_agent(worker):
+    worker.provider = FakeActionProvider(connected={"gmail"})
+    worker.llm.needs_app = False
+    wake = _seg("Echo, cosa c'era in agenda alla riunione di ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.llm.app_checks == 1
+    assert len(worker.agent_calls) == 1  # voice runs the agent whenever an app is connected
+
+
+@pytest.mark.asyncio
+async def test_worker_calendar_request_without_calendar_says_so(worker):
+    worker.provider = FakeActionProvider(connected={"gmail"})
+    wake = _seg("Echo, aggiungi un evento domani alle 10")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == [] and worker.rag_calls == []
+    assert _voice_session(worker).messages[-1]["content"] == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+
+
+@pytest.mark.asyncio
+async def test_worker_app_check_error_means_memory_answer(worker):
+    worker.provider = FakeActionProvider(connected=set())
+    worker.llm.needs_app = "error"
+    wake = _seg("Echo, aggiungi un evento domani alle 10")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert len(worker.rag_calls) == 1
+    assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"
+
+
+@pytest.mark.asyncio
+async def test_worker_unreachable_apps_but_memory_question_uses_memory(worker):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("Composio request timed out")
+
+    worker.provider = Down()
+    worker.llm.needs_app = False
+    wake = _seg("Echo, cosa mi ha detto Marco ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.llm.app_checks == 1
+    assert worker.agent_calls == [] and len(worker.rag_calls) == 1
+    assert _voice_session(worker).messages[-1]["content"] == "Risposta dalla memoria"

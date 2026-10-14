@@ -56,12 +56,21 @@ class _Redis:
 
 
 class _LLM(MockLLMService):
-    def __init__(self, needs=True):
+    """`needs` answers the connected-tools check, `app` the named-app check (G2)."""
+
+    def __init__(self, needs=True, app=True):
         super().__init__()
         self.needs = needs
+        self.app = app
+        self.app_checks = []
 
     async def complete_json(self, messages, temperature=0.1):
         self.call_log.append(messages)
+        if '"needs_app"' in messages[0].content:
+            self.app_checks.append(messages)
+            if self.app == "error":
+                raise RuntimeError("boom")
+            return {"needs_app": self.app}
         if self.needs == "error":
             raise RuntimeError("boom")
         return {"needs_tools": self.needs}
@@ -354,3 +363,78 @@ async def test_named_app_with_nothing_connected(env):
         "Google Calendar isn't connected. Connect it in Settings → Automations → Integrations."
     )
     assert env.agent_calls == [] and env.rag_calls == []
+
+
+# --- G2: "{App} isn't connected" only when the request really needs the app -------------
+
+_AGENDA = "What was on the agenda of yesterday's meeting?"
+
+
+@pytest.mark.asyncio
+async def test_agenda_question_with_calendar_not_connected_is_answered_from_memory(env):
+    env.llm.app = False
+    env.llm.needs = False
+    res = await _ask(env, _AGENDA)
+    assert "isn't connected" not in res.answer
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+    check = env.llm.app_checks[0]
+    assert "Google Calendar" in check[0].content
+    assert check[-1].content == _AGENDA
+
+
+@pytest.mark.asyncio
+async def test_agenda_question_with_nothing_connected_is_answered_from_memory(env):
+    env.provider.connected.clear()
+    env.llm.app = False
+    res = await _ask(env, _AGENDA)
+    assert "isn't connected" not in res.answer
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+    assert len(env.llm.app_checks) == 1
+
+
+@pytest.mark.asyncio
+async def test_calendar_request_with_calendar_not_connected_says_so(env):
+    res = await _ask(env, "aggiungi un evento domani alle 10")
+    assert res.answer == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+    assert len(env.llm.app_checks) == 1
+
+
+@pytest.mark.asyncio
+async def test_app_check_error_means_memory_answer(env):
+    env.provider.connected.clear()
+    env.llm.app = "error"
+    res = await _ask(env, "aggiungi un evento domani alle 10")
+    assert "collegato" not in res.answer
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unreachable_apps_but_memory_question_is_answered_from_memory(env):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("Composio request timed out")
+
+    env.provider = Down()
+    env.llm.app = False
+    res = await _ask(env, _AGENDA)
+    assert "couldn't reach" not in res.answer
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+    assert len(env.llm.app_checks) == 1
+
+
+@pytest.mark.asyncio
+async def test_unreachable_apps_check_without_a_named_app_lists_the_apps(env):
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("boom")
+
+    env.provider = Down()
+    res = await _ask(env, "Send a Slack message to the team")
+    assert res.answer == "I couldn't reach your connected apps right now. Try again in a moment."
+    env.provider = Down()
+    res = await _ask(env, "crea una lista per il trasloco")
+    assert res.answer.startswith("Non riesco a raggiungere")
+    assert "Gmail" in env.llm.app_checks[-1][0].content
