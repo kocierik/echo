@@ -21,6 +21,9 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
 - **Voice requests.** Start a sentence with "Echo, …" (also "Eco", "Hey/Ehi Echo") while wearing the
   device: the answer appears in the **Voice requests** conversation of the app, with a notification the
   next time the app wakes up.
+- **Sees, when asked.** "Echo, che pianta è questa?" or the camera button in Ask: the wearable's camera
+  takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
+  the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
 
 ## Architecture
 
@@ -271,6 +274,15 @@ All `/api` endpoints require the `X-API-Key` header.
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
 
+### Camera
+- `POST /api/photos` (`{"question"?, "chat_session_id"?}`) — the app's camera button: a photo
+  request whose answer goes to that chat (or Voice requests). Voice requests create their own.
+- `GET /api/device/commands?wait=0..25` — long poll for the wearable's commands
+  (`{"commands": [{"type": "take_photo", "photo_id", "expires_at"}]}`), relayed by the app.
+- `PUT /api/photos/{id}/image` — the JPEG (multipart `image`, header `X-Captured-At`); idempotent.
+- `POST /api/photos/{id}/failure` (`{"reason": "muted|not_connected|no_camera|capture_failed|busy"}`).
+- `GET /api/photos/{id}` (status, answer), `GET /api/photos/{id}/image` (the JPEG).
+
 ### Operations
 - `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
 - `GET /health` (no auth), `GET /api/stats` (the caller's counts),
@@ -294,6 +306,8 @@ All `/api` endpoints require the `X-API-Key` header.
 | `LLM_INTENT_MODEL` | `gpt-6-luna` | Intent check: routes a chat or voice request to memory, an app, or "connect it first" |
 | `LLM_ANALYSIS_REASONING_EFFORT` / `LLM_QUERY_REASONING_EFFORT` / `LLM_INTENT_REASONING_EFFORT` | `low` / `low` / `none` | For reasoning models (gpt-5/6); empty for a non-reasoning model, which then gets a temperature. See [docs/MODEL-EVALUATION.md](docs/MODEL-EVALUATION.md) |
 | `LLM_ANALYSIS_API` / `LLM_QUERY_API` / `LLM_INTENT_API` | `chat` / `responses` / `chat` | OpenAI API per role: `responses` lets the agent's tools run with reasoning |
+| `LLM_VISION_MODEL` / `LLM_VISION_REASONING_EFFORT` / `LLM_VISION_API` | `gpt-6-luna` / `low` / `chat` | Answers about a photo from the wearable camera and describes it for memory |
+| `PHOTO_REQUEST_TIMEOUT_S` / `PHOTO_MAX_BYTES` | `90` / `1048576` | A photo the wearable has not sent by then fails (told in the chat); largest JPEG accepted |
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
@@ -327,6 +341,7 @@ See [docs/adr/](docs/adr/) for architectural decision records:
 - [0004 — Provider abstraction layer](docs/adr/0004-provider-abstraction-layer.md)
 - [0005 — Structured entities + vector search](docs/adr/0005-structured-entities-plus-vector-search.md)
 - [0006 — BLE relay through the phone](docs/adr/0006-ble-relay-through-phone.md)
+- [0007 — Camera photos on request](docs/adr/0007-camera-photos-on-request.md)
 
 Feature designs: [Composio actions](docs/superpowers/specs/2026-10-13-composio-actions-design.md),
 [core beta](docs/superpowers/specs/2026-10-01-core-beta-design.md).

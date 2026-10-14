@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_session.dart';
+import 'package:echo_app/models/photo.dart';
 import 'package:echo_app/services/api_exception.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:echo_app/services/chat_controller.dart';
+import 'package:echo_app/services/photo_service.dart';
 import 'package:echo_app/services/voice_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,6 +28,70 @@ void main() {
   });
 
   tearDown(() => controller.dispose());
+
+  group('photos', () {
+    late _FakePhotoTaker taker;
+
+    setUp(() {
+      taker = _FakePhotoTaker();
+      controller.dispose();
+      controller = ChatController(
+        api: api,
+        voiceInput: voice,
+        clock: () => DateTime.parse('2026-10-02T12:00:00Z'),
+        photoTaker: taker,
+      );
+    });
+
+    test('the typed text is the question, and the answer comes with the photo', () async {
+      api.details['voice'] = _detail(
+        id: 'voice',
+        title: 'Voice requests',
+        messages: const [
+          ChatSessionMessage(role: 'user', content: 'Che pianta è?', photoId: 'p1'),
+          ChatSessionMessage(role: 'assistant', content: 'È un ficus.', photoId: 'p1'),
+        ],
+      );
+      controller.setComposerText('Che pianta è?');
+
+      final taking = controller.takePhoto();
+      expect(controller.state.sending, isTrue);
+      expect(controller.state.messages.last.text, 'Che pianta è?');
+      expect(controller.state.composerText, isEmpty);
+      await taking;
+
+      expect(taker.questions, ['Che pianta è?']);
+      expect(controller.state.sessionId, 'voice');
+      expect(controller.state.messages.last.photoId, 'p1');
+      expect(controller.state.messages.last.text, 'È un ficus.');
+      expect(controller.state.sending, isFalse);
+    });
+
+    test('without text it is a plain photo', () async {
+      api.details['voice'] = _detail(id: 'voice', title: 'Voice requests', messages: const []);
+      await controller.takePhoto();
+      expect(taker.questions, [null]);
+    });
+
+    test('says why when the wearable cannot take it, and keeps the question', () async {
+      taker.error = const PhotoUnavailableException('muted');
+      controller.setComposerText('Cosa vedi?');
+
+      await controller.takePhoto();
+
+      expect(controller.state.error, contains('muted'));
+      expect(controller.state.messages, isEmpty);
+      expect(controller.state.composerText, 'Cosa vedi?');
+      expect(controller.state.sending, isFalse);
+    });
+
+    test('no camera button without a photo taker', () {
+      final plain = ChatController(api: api, voiceInput: voice);
+      expect(plain.canTakePhotos, isFalse);
+      expect(controller.canTakePhotos, isTrue);
+      plain.dispose();
+    });
+  });
 
   group('pending actions', () {
     const action = PendingAction(id: 'act-1', summary: 'Send email to Ann');
@@ -711,4 +777,20 @@ final class _FakeVoiceInput implements VoiceInput {
   void emitPartial(String text) => _onPartial?.call(text);
 
   void emitFinal(String text) => _onFinal?.call(text);
+}
+
+final class _FakePhotoTaker implements PhotoTaker {
+  final questions = <String?>[];
+  Object? error;
+
+  @override
+  Future<PhotoInfo> takePhoto({String? question, String? chatSessionId}) async {
+    if (error != null) throw error!;
+    questions.add(question);
+    return PhotoInfo(id: 'p1', status: 'requested', chatSessionId: chatSessionId ?? 'voice');
+  }
+
+  @override
+  Future<PhotoInfo> waitForAnswer(String photoId) async =>
+      PhotoInfo(id: photoId, status: 'done', answer: 'È un ficus.');
 }

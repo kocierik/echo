@@ -3,7 +3,9 @@ import 'dart:typed_data';
 const int _frameSegmentStart = 0x01;
 const int _frameSegmentMetadata = 0x02;
 const int _frameSegmentData = 0x03;
-const int _protocolVersion = 2;
+// Protocol 3: a photo transfer, otherwise like an audio segment
+const int _framePhotoStart = 0x04;
+const Set<int> _protocolVersions = {2, 3};
 const int _segmentStartSize = 20;
 const int _segmentMetadataSize = 19;
 const int _segmentDataHeaderSize = 7;
@@ -20,12 +22,14 @@ final class BleSegmentStarted extends BleAssemblerEvent {
     required this.totalBytes,
     required this.totalChunks,
     required this.durationMs,
+    this.isPhoto = false,
   });
 
   final int segmentId;
   final int totalBytes;
   final int totalChunks;
   final int durationMs;
+  final bool isPhoto;
 }
 
 final class BleTransferProgress extends BleAssemblerEvent {
@@ -75,11 +79,18 @@ final class BleCompletedSegment {
     required this.durationMs,
     required this.silenceBeforeMs,
     required this.averageEnergy,
+    this.isPhoto = false,
   }) : _adpcmBytes = Uint8List.fromList(adpcmBytes);
 
   final int id;
   final Uint8List _adpcmBytes;
+
+  /// The payload: ADPCM audio, or a JPEG when [isPhoto].
   Uint8List get adpcmBytes => Uint8List.fromList(_adpcmBytes);
+  Uint8List get jpegBytes => adpcmBytes;
+
+  /// A photo from the wearable camera (recordedAt is when it was taken).
+  final bool isPhoto;
   final DateTime recordedAt;
   final int durationMs;
   final int silenceBeforeMs;
@@ -88,6 +99,7 @@ final class BleCompletedSegment {
 
 class BlePacketAssembler {
   int? _segmentId;
+  bool _isPhoto = false;
   int _expectedLength = 0;
   int _durationMs = 0;
   int _totalChunks = 0;
@@ -106,7 +118,9 @@ class BlePacketAssembler {
     final packet = Uint8List.fromList(value);
     switch (packet[0]) {
       case _frameSegmentStart:
-        return _addStart(packet);
+        return _addStart(packet, isPhoto: false);
+      case _framePhotoStart:
+        return _addStart(packet, isPhoto: true);
       case _frameSegmentMetadata:
         return _addMetadata(packet);
       case _frameSegmentData:
@@ -118,6 +132,7 @@ class BlePacketAssembler {
 
   void reset() {
     _segmentId = null;
+    _isPhoto = false;
     _expectedLength = 0;
     _durationMs = 0;
     _totalChunks = 0;
@@ -129,7 +144,7 @@ class BlePacketAssembler {
     _bytes.clear();
   }
 
-  List<BleAssemblerEvent> _addStart(Uint8List packet) {
+  List<BleAssemblerEvent> _addStart(Uint8List packet, {required bool isPhoto}) {
     if (packet.length != _segmentStartSize) {
       return _restart('invalid segment-start length', packet: packet);
     }
@@ -139,7 +154,8 @@ class BlePacketAssembler {
     if (_segmentId != null) {
       return _restart('unexpected segment start', segmentId: segmentId);
     }
-    if (data.getUint8(5) != _protocolVersion) {
+    final version = data.getUint8(5);
+    if (!_protocolVersions.contains(version) || (isPhoto && version < 3)) {
       return _restart('unsupported protocol version', segmentId: segmentId);
     }
 
@@ -150,6 +166,7 @@ class BlePacketAssembler {
     }
 
     _segmentId = segmentId;
+    _isPhoto = isPhoto;
     _expectedLength = totalLength;
     _durationMs = data.getUint32(10, Endian.little);
     _totalChunks = totalChunks;
@@ -160,6 +177,7 @@ class BlePacketAssembler {
         totalBytes: totalLength,
         totalChunks: totalChunks,
         durationMs: _durationMs,
+        isPhoto: isPhoto,
       ),
     ];
   }
@@ -254,6 +272,7 @@ class BlePacketAssembler {
       durationMs: _durationMs,
       silenceBeforeMs: _silenceBeforeMs,
       averageEnergy: _averageEnergy,
+      isPhoto: _isPhoto,
     );
     final events = <BleAssemblerEvent>[
       progress,

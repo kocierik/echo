@@ -10,6 +10,7 @@ import 'ble_relay_controller.dart';
 import 'device_ble_port.dart';
 import 'device_protocol.dart';
 import 'network_policy.dart';
+import 'photo_service.dart';
 
 class EchoBleUuids {
   static const serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
@@ -37,7 +38,7 @@ class BleUiMessage {
       };
 }
 
-class BleService implements DeviceBlePort {
+class BleService implements DeviceBlePort, PhotoDevice {
   BleService({
     ApiService? api,
     NetworkAccess? networkAccess,
@@ -96,6 +97,25 @@ class BleService implements DeviceBlePort {
   bool _disposed = false;
   int _connectionGeneration = 0;
   int _consecutiveUploadFailures = 0;
+  DeviceTelemetry? _lastTelemetry;
+
+  /// Uploads a photo from the wearable (set by the app's photo service).
+  Future<bool> Function(Uint8List jpeg, DateTime capturedAt)? photoUploader;
+
+  /// The wearable could not take a photo (PHOTO_FAILED reason).
+  Future<void> Function(String reason)? onPhotoFailed;
+
+  @override
+  bool get connected => _phase == DeviceBlePhase.ready;
+
+  @override
+  bool get cameraReady => connected && (_lastTelemetry?.cameraAvailable ?? false);
+
+  @override
+  bool get muted => _lastTelemetry?.muted ?? false;
+
+  @override
+  Future<void> sendTakePhoto() => _writeControl(DeviceProtocol.takePhoto());
 
   BleConnectionState _state = BleConnectionState.disconnected;
   BleConnectionState get state => _state;
@@ -398,7 +418,9 @@ class BleService implements DeviceBlePort {
       switch (event) {
         case BleSegmentStarted():
           _publishMessage(
-            'Receiving segment ${event.segmentId}',
+            event.isPhoto
+                ? 'Receiving photo ${event.segmentId}'
+                : 'Receiving segment ${event.segmentId}',
             BleMessageKind.phase,
           );
         case BleTransferProgress():
@@ -437,12 +459,20 @@ class BleService implements DeviceBlePort {
       return;
     }
 
+    final photoFailure = DeviceProtocol.parsePhotoFailed(value);
+    if (photoFailure != null) {
+      _publishMessage('Photo not taken: $photoFailure', BleMessageKind.error);
+      final handler = onPhotoFailed;
+      if (handler != null) unawaited(handler(photoFailure));
+      return;
+    }
+
     try {
       switch (value.first) {
         case 0x20:
-          _telemetryController.add(
-            DeviceProtocol.parseStatus(Uint8List.fromList(value)),
-          );
+          final telemetry = DeviceProtocol.parseStatus(Uint8List.fromList(value));
+          _lastTelemetry = telemetry;
+          _telemetryController.add(telemetry);
         case 0x21:
           _deviceInfoController.add(
             DeviceProtocol.parseInfo(Uint8List.fromList(value)),
@@ -457,6 +487,7 @@ class BleService implements DeviceBlePort {
   }
 
   Future<bool> _uploadSegment(BleCompletedSegment segment) async {
+    if (segment.isPhoto) return _uploadPhoto(segment);
     try {
       final networkTypes = await _networkAccess.currentTypes();
       if (!_networkPolicy.canUpload(networkTypes)) {
@@ -481,6 +512,13 @@ class BleService implements DeviceBlePort {
       _recordUploadFailure();
       rethrow;
     }
+  }
+
+  /// Photos skip the Wi-Fi-only policy: the user asked for them and is waiting.
+  Future<bool> _uploadPhoto(BleCompletedSegment segment) async {
+    final upload = photoUploader;
+    if (upload == null) return false;
+    return upload(segment.jpegBytes, segment.recordedAt);
   }
 
   void _recordUploadFailure() {
@@ -581,6 +619,7 @@ class BleService implements DeviceBlePort {
     final cleanupGeneration = _connectionGeneration;
     _relay.setConnected(false);
     _assembler.reset();
+    _lastTelemetry = null;
     final audioSub = _audioSub;
     final controlSub = _controlSub;
     final connectionSub = _connectionSub;

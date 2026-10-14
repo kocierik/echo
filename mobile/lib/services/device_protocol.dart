@@ -8,6 +8,7 @@ final class DeviceTelemetry {
     required this.bufferCount,
     required this.bufferBytes,
     required this.droppedSegments,
+    this.cameraAvailable = false,
   });
 
   final bool muted;
@@ -16,6 +17,9 @@ final class DeviceTelemetry {
   final int bufferCount;
   final int bufferBytes;
   final int droppedSegments;
+
+  /// Protocol 3: a camera is connected and photos can be taken.
+  final bool cameraAvailable;
 }
 
 final class DeviceInfo {
@@ -42,10 +46,17 @@ final class DeviceProtocolException implements Exception {
 }
 
 abstract final class DeviceProtocol {
-  static const int _protocolVersion = 2;
+  /// 2: audio; 3: audio and photos. Both are accepted, so an app update never cuts
+  /// off a wearable that still runs the previous firmware.
+  static const Set<int> supportedVersions = {2, 3};
+  static const int photoVersion = 3;
   static const int _frameSetMuted = 0x15;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
+  static const int _frameTakePhoto = 0x18;
+  static const int frameDeviceStatus = 0x20;
+  static const int frameDeviceInfo = 0x21;
+  static const int framePhotoFailed = 0x22;
   static const int _frameDeviceStatus = 0x20;
   static const int _frameDeviceInfo = 0x21;
   static const int _deviceStatusSize = 14;
@@ -58,11 +69,13 @@ abstract final class DeviceProtocol {
     if (bytes[0] != _frameDeviceStatus) {
       throw const DeviceProtocolException('invalid device status type');
     }
-    if (bytes[1] != _protocolVersion) {
+    final version = bytes[1];
+    if (!supportedVersions.contains(version)) {
       throw const DeviceProtocolException('unsupported device status version');
     }
     final flags = bytes[2];
-    if ((flags & 0xfc) != 0) {
+    final reserved = version >= photoVersion ? 0xf8 : 0xfc;
+    if ((flags & reserved) != 0) {
       throw const DeviceProtocolException('reserved device status flags are set');
     }
     final battery = bytes[3];
@@ -78,6 +91,7 @@ abstract final class DeviceProtocol {
       bufferCount: data.getUint16(4, Endian.little),
       bufferBytes: data.getUint32(6, Endian.little),
       droppedSegments: data.getUint32(10, Endian.little),
+      cameraAvailable: (flags & 0x04) != 0,
     );
   }
 
@@ -88,7 +102,7 @@ abstract final class DeviceProtocol {
     if (bytes[0] != _frameDeviceInfo) {
       throw const DeviceProtocolException('invalid device info type');
     }
-    if (bytes[1] != _protocolVersion) {
+    if (!supportedVersions.contains(bytes[1])) {
       throw const DeviceProtocolException('unsupported device info version');
     }
     return DeviceInfo(
@@ -105,6 +119,21 @@ abstract final class DeviceProtocol {
   ]);
 
   static Uint8List forgetBond() => Uint8List.fromList([_frameForgetBond]);
+
+  static Uint8List takePhoto() => Uint8List.fromList([_frameTakePhoto]);
+
+  /// Why the wearable took no photo, as the backend names it; null when the frame
+  /// is not a PHOTO_FAILED.
+  static String? parsePhotoFailed(List<int> bytes) {
+    if (bytes.length != 2 || bytes.first != framePhotoFailed) return null;
+    return switch (bytes[1]) {
+      1 => 'muted',
+      2 => 'capture_failed',
+      3 => 'busy',
+      4 => 'no_camera',
+      _ => 'capture_failed',
+    };
+  }
 
   static bool isForgetBondOk(List<int> bytes) =>
       bytes.length == 1 && bytes.first == _frameForgetBondOk;

@@ -382,6 +382,7 @@ class MainShell extends StatelessWidget {
               ChatScreen(
                 openSessionRequest: appController.pendingChatSessionId,
                 askRequest: appController.pendingChatQuestion,
+                photoTaker: AppRuntime.maybeCoordinator?.photoService,
               ),
             ],
           ),

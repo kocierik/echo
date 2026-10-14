@@ -72,4 +72,8 @@ Findings:
   and opened a new connection. The LLM and embedding services are now built once per process:
   a memory answer takes ~1.5 s end to end once warm. The first requests after a restart still
   pay for the connection.
+- Vision (2026-10-14, one synthetic sign with text): `gpt-6-luna` reads the text verbatim and
+  answers in the language of the question with every setting tried; chat completions take ~2.5 s
+  per photo (the Responses API took longer on the first call). Default: low reasoning, chat
+  completions. Real photos from the wearable still have to be judged.
 - No STT comparison yet: the recordings on this server are older than the audio retention.

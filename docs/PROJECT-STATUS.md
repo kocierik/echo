@@ -50,6 +50,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Trasporto BLE a frame: finestre di ACK, restart segmento, `UPLOAD_OK` come unico dequeue, CRC32 ([ADR 0006](adr/0006-ble-relay-through-phone.md)).
 - BLE Secure Connections + bonding con un solo peer; `FORGET_BOND`; caratteristiche cifrate.
 - `SET_TIME` (ancora temporale dal telefono), `SET_MUTED` persistente in NVS, `DEVICE_STATUS` v2, `DEVICE_INFO`.
+- **Fotocamera** (protocollo 3, [ADR 0007](adr/0007-camera-photos-on-request.md)): `TAKE_PHOTO` dall'app, foto JPEG
+  (XGA) scattata in un task sul core 0 con il sensore acceso solo per lo scatto, tenuta in RAM fino a `UPLOAD_OK` e
+  inviata prima dell'audio; `PHOTO_FAILED` se in muto, occupato, senza fotocamera o se lo scatto fallisce; LED acceso
+  durante lo scatto. **Mai provato sull'hardware.**
 
 ### App mobile
 - Onboarding a 4 step (server/API key → permessi → pairing → fine): server e chiave precompilabili in build
@@ -74,6 +78,9 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).
 - Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano);
   il tocco apre la conversazione Voice requests.
+- **Foto:** pulsante 📷 in Ask (il testo scritto diventa la domanda), risposta nella chat con la miniatura (tocco =
+  schermo intero); i comandi "Echo, cos'è questo?" arrivano con un long poll e vengono inoltrati al dispositivo; le
+  foto si caricano anche con "solo Wi-Fi". Protocollo 2 e 3 accettati.
 - Tema chiaro/scuro, errori API tipizzati, logout.
 
 ### Backend
@@ -95,6 +102,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   - Registro di ogni chiamata eseguita (anche quando la richiesta fallisce a metà); timeout → esito "sconosciuto".
   - Retry sicuri con `client_request_id`; messaggi espliciti se l'app non è collegata o Composio non risponde.
   - Sostituiscono le vecchie integrazioni automatiche, le regole e il client Google Calendar scritto a mano (rimossi).
+- **Foto:** l'intento vocale ha l'opzione fotocamera; richieste in `photos`, comandi al dispositivo in Redis
+  (`GET /api/device/commands`, long poll), JPEG nel DB, worker che chiede al modello visivo (`gpt-6-luna`) la
+  risposta per la chat e la descrizione per la memoria (chunk con `photo_id`, mantenuto dalla rianalisi); richieste
+  senza risposta falliscono dopo 90 s con un messaggio. La sessione vocale è bloccata mentre viene riscritta.
 - Correzione trascrizione con audit + rianalisi in coda con lock distribuito, senza chiamate esterne.
 - Eliminazione conversazione a cascata; retention audio (completati 24 h, incompleti 7 giorni).
 - Digest giornaliero automatico (alle 4:00 locali, per il giorno appena finito), CRUD entità/task, merge entità,
@@ -247,6 +258,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 4. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
 5. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
 6. Test batteria 12 h quando arriva l'hardware.
+7. **Provare la fotocamera** (OV3660): caricare il firmware, controllare dal monitor seriale `[Camera] sensor PID`,
+   tempo e peso della foto (`[Camera] photo N bytes in M ms`), poi il pulsante 📷 in Ask e "Echo, cos'è questo?".
+   Misurare consumo e calore durante lo scatto; se il trasferimento è lento, `PHOTO_FRAME_SIZE` → `FRAMESIZE_SVGA`.
 
 **Per me**, se vuoi: Today senza dispositivo ("Pair Echo"), divisione di `mobile/lib/services/`, traduzione delle
 entità estratte.

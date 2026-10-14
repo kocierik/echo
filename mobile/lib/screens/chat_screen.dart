@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../services/api_service.dart';
 import '../services/chat_controller.dart';
+import '../services/photo_service.dart';
 import '../services/voice_input.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_composer.dart';
@@ -22,10 +23,14 @@ final class ChatScreen extends StatefulWidget {
     this.openSessionRequest,
     this.askRequest,
     this.memoryApi,
+    this.photoTaker,
     super.key,
   });
 
   final ChatController? controller;
+
+  /// The wearable camera; no camera button without it.
+  final PhotoTaker? photoTaker;
   final ChatApi? api;
   final VoiceInput? voiceInput;
 
@@ -69,6 +74,7 @@ final class _ChatScreenState extends State<ChatScreen> {
       _controller = ChatController(
         api: _api,
         voiceInput: widget.voiceInput ?? SpeechToTextVoiceInput(),
+        photoTaker: widget.photoTaker,
       );
       _ownsController = true;
     }
@@ -245,6 +251,9 @@ final class _ChatScreenState extends State<ChatScreen> {
                 onChanged: _controller.setComposerText,
                 onSend: _send,
                 onVoice: _toggleVoice,
+                onCamera: _controller.canTakePhotos
+                    ? () => unawaited(_controller.takePhoto())
+                    : null,
               ),
             ],
           ),
@@ -336,6 +345,7 @@ final class _ChatScreenState extends State<ChatScreen> {
                       _controller.sendFeedback(message.index!, rating),
                     ),
             onOpenConversation: _memoryApi == null ? null : _openConversation,
+            loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
           );
         }
         if (state.sending && index == state.messages.length) {

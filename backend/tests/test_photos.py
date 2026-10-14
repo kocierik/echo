@@ -343,3 +343,44 @@ async def test_reanalysis_keeps_the_photo_descriptions(db_session: AsyncSession,
     ).scalars().all()
     assert [c.photo_id for c in chunks if c.photo_id] == [photo.id]
     assert any(c.photo_id is None for c in chunks)  # the transcript was rebuilt too
+
+
+@pytest.mark.asyncio
+async def test_a_photo_asked_from_a_chat_is_answered_in_that_chat(
+    client, auth_headers, db_session
+):
+    session = ChatSession(
+        user_id=TEST_USER_ID,
+        title="Plants",
+        kind="chat",
+        messages=[],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(session)
+    await db_session.commit()
+
+    response = await client.post(
+        "/api/photos",
+        headers=auth_headers,
+        json={"question": "Che pianta è?", "chat_session_id": str(session.id)},
+    )
+
+    photo = response.json()
+    assert photo["chat_session_id"] == str(session.id)
+    await db_session.refresh(session)
+    assert session.messages[-1]["role"] == "user"
+    assert session.messages[-1]["content"] == "Che pianta è?"
+    assert session.messages[-1]["photo_id"] == photo["id"]
+
+    await _upload(client, auth_headers, photo["id"])
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), VisionLLM(), Embeddings()
+    )
+    await db_session.refresh(session)
+    assert session.messages[-1]["content"] == "È un ficus."
+
+    unknown = await client.post(
+        "/api/photos", headers=auth_headers, json={"chat_session_id": str(uuid.uuid4())}
+    )
+    assert unknown.status_code == 404
