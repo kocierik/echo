@@ -599,6 +599,33 @@ async def test_connected_calendar_in_any_spelling_goes_to_the_agent(env, name):
 
 
 @pytest.mark.asyncio
+async def test_partial_name_of_a_connected_app_goes_to_the_agent(env):
+    env.provider = FakeActionProvider(connected={"googlecalendar"})
+    env.llm.intent = {"needs_apps": True, "apps": ["calendar"]}
+    await _ask(env, "aggiungi il dentista al calendario")
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_partial_name_of_a_known_app_names_it_in_the_notice(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = {"needs_apps": True, "apps": ["calendar"]}
+    res = await _ask(env, "aggiungi il dentista al calendario")
+    assert res.answer.startswith("Google Calendar non è collegato.")
+    assert env.agent_calls == []
+
+
+@pytest.mark.asyncio
+async def test_partial_name_matching_two_apps_stays_unresolved():
+    from app.actions.availability import APP_NAMES, classify_request
+
+    llm = _LLM(intent={"needs_apps": True, "apps": ["google", "ai"]})
+    intent = await classify_request(llm, "x", [], ["googledrive"], APP_NAMES)
+    assert intent.apps == []
+    assert intent.unresolved == ["google", "ai"]  # ambiguous, or too short to guess
+
+
+@pytest.mark.asyncio
 async def test_needed_without_a_name_and_an_app_connected_goes_to_the_agent(env):
     env.provider = FakeActionProvider(connected={"todoist"})
     env.llm.intent = {"needs_apps": True, "apps": []}

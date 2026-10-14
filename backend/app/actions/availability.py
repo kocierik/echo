@@ -106,6 +106,14 @@ def _normalize(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+def _partial_match(name: str, lookup: dict[str, str]) -> str | None:
+    """"calendar" -> "googlecalendar" when exactly one app contains it (3+ chars)."""
+    if len(name) < 3:
+        return None
+    matches = {slug for key, slug in lookup.items() if name in key}
+    return matches.pop() if len(matches) == 1 else None
+
+
 def _parse_intent(
     result, connected: list[str] | None, known_apps: dict[str, str]
 ) -> RequestIntent:
@@ -122,7 +130,7 @@ def _parse_intent(
     for app in apps:
         if not isinstance(app, str) or not _normalize(app):
             continue
-        slug = lookup.get(_normalize(app))
+        slug = lookup.get(_normalize(app)) or _partial_match(_normalize(app), lookup)
         if slug is None:
             if app.strip() not in unresolved:
                 unresolved.append(app.strip())
