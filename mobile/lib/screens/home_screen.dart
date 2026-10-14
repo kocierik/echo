@@ -470,13 +470,17 @@ final class _TodayHeader extends StatelessWidget {
       children: [
         Text('Echo', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(width: 10),
-        Text(
-          'Today',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: palette.text2,
-              ),
+        // Takes the free space, and gives way to the date on narrow screens
+        Expanded(
+          child: Text(
+            'Today',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: palette.text2,
+                ),
+          ),
         ),
-        const Spacer(),
         Text(
           _formatDate(date),
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
@@ -498,9 +502,11 @@ final class _DeviceHero extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       label: '${visual.title}. ${visual.detail}',
-      child: SizedBox(
-        height: 148,
+      // A minimum, not a fixed height: large text sizes need more room
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 148),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(visual.icon, size: 48, color: visual.color),

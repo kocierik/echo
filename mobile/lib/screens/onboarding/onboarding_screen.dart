@@ -221,10 +221,16 @@ final class _OnboardingHeader extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text('Echo', style: Theme.of(context).textTheme.titleLarge),
-              const Spacer(),
-              Text(
-                'Step ${step.index + 1} of ${OnboardingStep.values.length}',
-                style: Theme.of(context).textTheme.bodySmall,
+              const SizedBox(width: 10),
+              // Takes the free space and shortens on narrow screens with large text
+              Expanded(
+                child: Text(
+                  'Step ${step.index + 1} of ${OnboardingStep.values.length}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
             ],
           ),
