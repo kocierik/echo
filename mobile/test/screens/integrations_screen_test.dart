@@ -26,6 +26,7 @@ final class _FakeApi extends ApiService {
   ];
   List<Toolkit> searchResults = [_toolkit('asana', 'Asana')];
   ApiException? error;
+  Exception? otherError;
   final queries = <String?>[];
   final connected = <String>[];
   final disconnected = <String>[];
@@ -34,6 +35,7 @@ final class _FakeApi extends ApiService {
   Future<List<Toolkit>> getToolkits({String? query}) async {
     queries.add(query);
     if (error != null) throw error!;
+    if (otherError != null) throw otherError!;
     return (query == null || query.isEmpty) ? initial : searchResults;
   }
 
@@ -209,5 +211,83 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Gmail'), findsOneWidget);
+  });
+
+  void resume(WidgetTester tester) {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+  }
+
+  testWidgets('a failed reload on resume keeps the list and shows a SnackBar',
+      (tester) async {
+    await pumpScreen(tester);
+    final loads = api.queries.length;
+
+    api.error = const ApiException(
+      statusCode: 500,
+      code: 'server',
+      message: 'Server exploded',
+      retryable: true,
+    );
+    resume(tester);
+    await tester.pumpAndSettle();
+
+    expect(api.queries.length, loads + 1);
+    expect(find.text("Couldn't refresh the list."), findsOneWidget);
+    expect(find.text('Gmail'), findsOneWidget);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('Server exploded'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('a failed reload after Connect keeps the list', (tester) async {
+    await pumpScreen(tester);
+
+    api.otherError = Exception('socket closed');
+    await tester.tap(find.widgetWithText(FilledButton, 'Connect').first);
+    await tester.pumpAndSettle();
+
+    expect(api.connected, ['googlecalendar']);
+    expect(find.text("Couldn't refresh the list."), findsOneWidget);
+    expect(find.text('Google Calendar'), findsOneWidget);
+    expect(find.text('Could not load integrations.'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets('an explicit load that fails still shows the error view',
+      (tester) async {
+    await pumpScreen(tester);
+
+    api.error = const ApiException(
+      statusCode: 500,
+      code: 'server',
+      message: 'Server exploded',
+      retryable: true,
+    );
+    await tester.enterText(find.byType(TextField), 'asa');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Server exploded'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text("Couldn't refresh the list."), findsNothing);
+  });
+
+  testWidgets('a failed silent reload over the error view keeps the error',
+      (tester) async {
+    api.error = const ApiException(
+      statusCode: 500,
+      code: 'server',
+      message: 'Server exploded',
+      retryable: true,
+    );
+    await pumpScreen(tester);
+
+    resume(tester);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Server exploded'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text("Couldn't refresh the list."), findsNothing);
   });
 }
