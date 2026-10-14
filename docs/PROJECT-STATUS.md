@@ -140,6 +140,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 | Due verifiche d'intento in serie e richieste per un'app non collegata finite su un'altra app: ora una sola verifica (chat e voce) che dice quali app servono; app non collegata o non riconosciuta → "{App} non è collegata", nessuna app collegata → invito a collegarne una | `c941d1b` + fix |
 | Database creato da `docs/schema.sql` + `stamp 001`: ora la migrazione 001 crea lo schema base e un'installazione nuova è solo `alembic upgrade head` (CI, `deploy.sh`, `make db-reset`, README); `schema.sql` resta come riferimento; 003 non più duplicata | `bbadc78` |
 | Rate limit per IP (dietro Cloudflare Tunnel tutti condividevano lo stesso limite): ora per API key (hash), IP solo senza chiave | `2a83625` |
+| Tentativi con API key sbagliata mai limitati: dopo 10 errori in 15 minuti lo stesso client riceve 429 (anche con la chiave giusta, così la risposta non rivela nulla); se Redis non risponde l'autenticazione continua a funzionare | vedi `git log` |
 
 ### Ancora aperti
 
@@ -169,7 +170,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - `uv.lock` rigenerato (era già disallineato da `pyproject.toml`; formato aggiornato da uv 0.9.5).
 - **L'app Flutter non è mai stata compilata né testata** dopo le modifiche del 13–14/10 (SDK non disponibile qui):
   il job CI `mobile` sarà il primo controllo e può far emergere errori di compilazione.
-- Backend: 450 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
+- Backend: 456 test passano senza database (resta solo `test_transcription_edit_is_registered`, che richiede il conftest);
   i test con Postgres girano solo in CI.
 
 ---
@@ -202,9 +203,11 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ## 5. Debito tecnico
 
-- **Richieste senza API key valida non limitate:** l'autenticazione fallisce prima del rate limit (come prima), quindi
-  i tentativi di indovinare una chiave non sono limitati.
-- Fatto il 14/10: schema creato solo da Alembic, rate limit per API key, verifica d'intento unica (vedi sopra).
+- **Limite sui tentativi con API key sbagliata:** il client è riconosciuto da `CF-Connecting-IP` (Cloudflare Tunnel),
+  intestazione che si può falsificare da chi raggiunge direttamente la porta 8000, che `docker-compose.yml` pubblica
+  sull'host. Conviene esporla solo su `127.0.0.1` se il tunnel gira sulla stessa macchina.
+- Fatto il 14/10: schema creato solo da Alembic, rate limit per API key, verifica d'intento unica, limite sui tentativi
+  con API key sbagliata (vedi sopra).
 - Fatto il 13/10: codice morto rimosso (firmware Wi-Fi/NTP, 7 file mobile, MessageBubble commentato), client delle
   integrazioni unificati, script del workaround aziendale rimossi, file generati da Flutter non più versionati,
   `uv.lock` rigenerato, README/ROADMAP/ADR/piani aggiornati.
@@ -224,5 +227,4 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
    account da Settings → Automations → Integrations, provare una richiesta in chat e una a voce ("Echo, …").
 6. Test batteria 12 h quando arriva l'hardware.
 
-**Per me**, se vuoi: rate limit anche sui tentativi con API key sbagliata, ed eventualmente la traduzione delle
-entità estratte.
+**Per me**, se vuoi: pubblicare la porta 8000 solo su `127.0.0.1`, ed eventualmente la traduzione delle entità estratte.

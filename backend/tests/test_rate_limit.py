@@ -19,6 +19,7 @@ from app.core.auth import get_current_user_id, hash_api_key
 from app.core.database import get_db
 from app.main import app
 from app.routers import query, segments
+from tests.fakes.redis import InMemoryRedis
 
 KEY_A = "key-a-very-secret"
 KEY_B = "key-b-very-secret"
@@ -69,7 +70,12 @@ def _app_client(monkeypatch):
     rate_limit.limiter.reset()
     try:
         with TestClient(app) as c:
-            yield c
+            real_redis = app.state.redis  # no Redis server here: the auth limit uses a fake
+            app.state.redis = InMemoryRedis()
+            try:
+                yield c
+            finally:
+                app.state.redis = real_redis
     finally:
         app.dependency_overrides.clear()
         app.dependency_overrides.update(previous)
@@ -152,3 +158,12 @@ def test_raw_key_is_never_logged(client, caplog):
     for _ in range(21):
         _ask(client, KEY_A)
     assert KEY_A not in caplog.text
+
+
+def test_guessing_keys_is_blocked_after_ten_failures(client):
+    # Each wrong key would get its own limiter budget: the auth failure limit is per client
+    for i in range(10):
+        assert _ask(client, f"guess-{i}").status_code == 401
+    res = _ask(client, KEY_A)
+    assert res.status_code == 429
+    assert res.json()["detail"] == "Too many invalid API key attempts. Try again later."
