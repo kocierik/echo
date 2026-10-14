@@ -26,6 +26,7 @@ final class ChatState {
     required this.composerText,
     required this.listening,
     Set<String> busyActionIds = const {},
+    this.streamingText,
   })  : busyActionIds = Set<String>.unmodifiable(busyActionIds),
         messages = List<ChatMessage>.unmodifiable(messages);
 
@@ -50,6 +51,9 @@ final class ChatState {
   final bool listening;
   final Set<String> busyActionIds;
 
+  /// The answer so far while Echo is writing it (null until the first piece).
+  final String? streamingText;
+
   bool get canRetry => messages.any(
         (message) => message.isUser && message.failed,
       );
@@ -64,6 +68,7 @@ final class ChatState {
     String? composerText,
     bool? listening,
     Set<String>? busyActionIds,
+    Object? streamingText = _unset,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -76,6 +81,9 @@ final class ChatState {
       composerText: composerText ?? this.composerText,
       listening: listening ?? this.listening,
       busyActionIds: busyActionIds ?? this.busyActionIds,
+      streamingText: identical(streamingText, _unset)
+          ? this.streamingText
+          : streamingText as String?,
     );
   }
 }
@@ -161,6 +169,10 @@ final class ChatController extends ChangeNotifier {
         question,
         sessionId: _state.sessionId,
         clientRequestId: _state.messages[userIndex].clientRequestId,
+        onToken: (piece) {
+          if (!_isCurrent(generation)) return;
+          _emit(_state.copyWith(streamingText: (_state.streamingText ?? '') + piece));
+        },
       );
       if (!_isCurrent(generation)) return;
       final assistantIndex = _state.messages
@@ -182,6 +194,7 @@ final class ChatController extends ChangeNotifier {
         sessionId: response.sessionId,
         sending: false,
         error: null,
+        streamingText: null,
       ));
     } catch (error) {
       if (!_isCurrent(generation)) return;
@@ -195,6 +208,7 @@ final class ChatController extends ChangeNotifier {
       _emit(_state.copyWith(
         messages: messages,
         sending: false,
+        streamingText: null,
         error: stillWorking
             ? stillWorkingMessage
             : userMessage(error, 'Could not send your question.'),
