@@ -301,6 +301,9 @@ class ComposioActionProvider:
             dangerously_skip_version_check=True,
             _executes=True,
         )
+        if not isinstance(result, dict):
+            logger.warning("Composio execute returned %s", type(result).__name__)
+            return ToolResult(ok=False, error="unexpected response from Composio")
         if result.get("successful"):
             return ToolResult(ok=True, data=result.get("data"))
         return ToolResult(ok=False, error=str(result.get("error") or "Tool failed"))
