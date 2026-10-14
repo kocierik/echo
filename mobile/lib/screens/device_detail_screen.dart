@@ -92,6 +92,12 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
     }
   }
 
+  /// Reopens the onboarding at its pairing step, over the whole app.
+  void _pair() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onRequireOnboarding?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder(
@@ -165,6 +171,22 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                     label: Text(
                       _reconnecting ? 'Starting reconnect...' : 'Reconnect',
                     ),
+                  ),
+                ),
+              ),
+            ],
+            if (status.connectionState == DeviceConnectionState.unpaired &&
+                widget.onRequireOnboarding != null) ...[
+              const SettingsSection('PAIRING'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    key: const Key('device-pair'),
+                    onPressed: _pair,
+                    icon: const Icon(Icons.bluetooth_searching_rounded),
+                    label: const Text('Pair Echo'),
                   ),
                 ),
               ),

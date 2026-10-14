@@ -72,6 +72,11 @@ final class PairingStep extends StatelessWidget {
           icon: Icons.lock_outline_rounded,
           text: 'The saved device identity enables secure reconnects.',
         ),
+        const SizedBox(height: 12),
+        const _PairingNote(
+          icon: Icons.schedule_rounded,
+          text: 'No Echo with you? Skip for now and pair it later in Settings > Device.',
+        ),
       ],
     );
   }
