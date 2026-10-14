@@ -7,9 +7,10 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends gcc libpq-dev gosu && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install Python dependencies (with the dev extras, so `make test-all` and `make lint`
+# run inside the api container)
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir ".[dev]"
 
 # Copy application code
 COPY . .

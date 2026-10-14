@@ -81,14 +81,16 @@ echo/
 ## Running tests
 
 ```bash
-cd backend
+# All tests, in the api container on the echo_test database (created and migrated if missing)
+make test-all
 
-# Unit tests (no DB required)
-pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py -v --noconftest
-
-# Integration tests (requires running PostgreSQL)
-pytest tests/ -v
+# Unit tests only (no DB required)
+make test
 ```
+
+The tests delete conversations, segments and entities, so `conftest.py` refuses any database
+whose name does not end in `_test`. To run them outside docker, point `DATABASE_URL` at such a
+database and run `alembic upgrade head` on it first.
 
 ## Operazioni comuni
 
