@@ -17,6 +17,9 @@ Future<bool> _defaultLauncher(Uri uri) =>
 /// Detail of the backend's 503 when COMPOSIO_API_KEY is missing.
 const notConfiguredDetail = 'Composio is not configured';
 
+/// SnackBar when a background reload fails while a list is shown.
+const refreshFailedMessage = "Couldn't refresh the list.";
+
 class IntegrationsScreen extends StatefulWidget {
   const IntegrationsScreen({this.api, this.launcher, super.key});
 
@@ -63,6 +66,20 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
     if (state == AppLifecycleState.resumed) _load(silent: true);
   }
 
+  /// A list (not the spinner, an error or the setup text) is on screen.
+  bool get _showingList => !_loading && _error == null && !_unavailable;
+
+  /// A failed silent reload (after connect/disconnect, on resume) keeps the
+  /// list on screen and says so in a SnackBar; true when it handled it.
+  bool _keptListAfterFailure(bool silent) {
+    if (!silent || !_showingList) return false;
+    _showMessage(refreshFailedMessage);
+    return true;
+  }
+
+  /// Loads the toolkits. A [silent] reload shows no spinner and, if it fails
+  /// while a list is shown, keeps that list; only the initial or an explicit
+  /// load (Retry, search) replaces it with the error view.
   Future<void> _load({bool silent = false}) async {
     final id = ++_requestId;
     if (!silent) {
@@ -84,6 +101,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
       });
     } on ApiException catch (error) {
       if (!mounted || id != _requestId) return;
+      if (_keptListAfterFailure(silent)) return;
       setState(() {
         _loading = false;
         // Only the server's "no API key" 503 is a setup state; other 503s
@@ -94,6 +112,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
       });
     } catch (_) {
       if (!mounted || id != _requestId) return;
+      if (_keptListAfterFailure(silent)) return;
       setState(() {
         _loading = false;
         _unavailable = false;
