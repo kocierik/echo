@@ -14,6 +14,7 @@ from app.actions.provider import ActionProviderError, ToolResult
 from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.segment import Segment
+from app.services.transcription_enhancer import STTContext
 from app.workers import main as worker_main
 from app.workers import voice_requests as vr
 from tests.fakes.action_provider import FakeActionProvider
@@ -870,8 +871,8 @@ async def _run_stt(monkeypatch, text):
     async def claim(_db, _redis, _segment_id):
         return segment, b""
 
-    async def prompt(_db, _user_id):
-        return ""
+    async def context(_db, _user_id):
+        return STTContext(prompt="", keyterms=[])
 
     async def retry(func, *args, **kwargs):
         return SimpleNamespace(text=text, language="it", confidence=0.9)
@@ -879,11 +880,15 @@ async def _run_stt(monkeypatch, text):
     async def classify(_db, _user_id, _energy):
         return "self"
 
-    monkeypatch.setattr(worker_main, "get_stt_service", lambda: SimpleNamespace(transcribe=None))
+    monkeypatch.setattr(
+        worker_main,
+        "get_stt_service",
+        lambda: SimpleNamespace(transcribe=None, provider="openai", model="gpt-4o-transcribe"),
+    )
     monkeypatch.setattr(worker_main, "async_session", lambda: _Factory())
     monkeypatch.setattr(worker_main, "_claim_stt_audio", claim)
     monkeypatch.setattr(worker_main, "adpcm_to_wav", lambda data: data)
-    monkeypatch.setattr(worker_main, "build_stt_prompt", prompt)
+    monkeypatch.setattr(worker_main, "build_stt_context", context)
     monkeypatch.setattr(worker_main, "retry_with_backoff", retry)
     monkeypatch.setattr(worker_main, "classify_segment", classify)
 

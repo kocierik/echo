@@ -14,36 +14,50 @@ from app.services.stt_base import STTResult, STTService
 DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
 
 
+# Deepgram's keyterm limit is 500 tokens per request; it advises 20-50 terms
+MAX_KEYTERMS = 50
+
+
 class DeepgramSTTService(STTService):
     """Deepgram Nova STT implementation."""
 
-    def __init__(self):
+    provider = "deepgram"
+
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None):
         self.api_key = settings.deepgram_api_key
         self.model = settings.deepgram_model
+        self._transport = transport  # tests only
 
     async def transcribe(
-        self, audio_data: bytes, language: str = "it", prompt: str | None = None
+        self,
+        audio_data: bytes,
+        language: str = "it",
+        prompt: str | None = None,
+        keyterms: list[str] | None = None,
     ) -> STTResult:
         """Transcribe audio via Deepgram REST API.
 
         Args:
             audio_data: WAV audio bytes.
             language: Language code.
-            prompt: Not used by Deepgram (no prompt support), ignored.
+            prompt: Not supported by Deepgram, ignored.
+            keyterms: Sent as Nova-3 keyterm prompting (one `keyterm` parameter each).
         """
-        params = {
-            "model": self.model,
-            "language": language,
-            "punctuate": "true",
-            "smart_format": "true",
-        }
+        params: list[tuple[str, str]] = [
+            ("model", self.model),
+            ("language", language),
+            ("punctuate", "true"),
+            ("smart_format", "true"),
+        ]
+        if self.model.startswith("nova-3"):
+            params += [("keyterm", term) for term in (keyterms or [])[:MAX_KEYTERMS]]
 
         headers = {
             "Authorization": f"Token {self.api_key}",
             "Content-Type": "audio/wav",
         }
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=60.0, transport=self._transport) as client:
             response = await client.post(
                 DEEPGRAM_API_URL,
                 params=params,

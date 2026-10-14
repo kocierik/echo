@@ -9,12 +9,18 @@ from app.services.stt_base import STTResult, STTService
 class OpenAISTTService(STTService):
     """OpenAI Whisper STT implementation."""
 
+    provider = "openai"
+
     def __init__(self):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = settings.stt_model
 
     async def transcribe(
-        self, audio_data: bytes, language: str = "it", prompt: str | None = None
+        self,
+        audio_data: bytes,
+        language: str = "it",
+        prompt: str | None = None,
+        keyterms: list[str] | None = None,
     ) -> STTResult:
         """Transcribe PCM audio via OpenAI Whisper API.
 
