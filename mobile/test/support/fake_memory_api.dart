@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/services/api_exception.dart';
@@ -24,6 +25,9 @@ final class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   List<TaskItem> doneTasks;
   MemorySearchResults searchResults =
       const MemorySearchResults(conversations: [], entities: []);
+  List<PersonSummary> people = [];
+  Map<String, PersonDetail> personDetails = {};
+  Object? peopleError;
 
   /// Set to make the next calls of that kind fail.
   Object? listError;
@@ -100,6 +104,31 @@ final class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   Future<void> deleteConversation(String conversationId) async {
     calls.add('delete conversation $conversationId');
     await _wait();
+  }
+
+  @override
+  Future<List<PersonSummary>> listPeople() async {
+    calls.add('people');
+    await _wait();
+    if (peopleError case final error?) throw error;
+    return List.of(people);
+  }
+
+  @override
+  Future<PersonDetail> getPerson(String id) async {
+    calls.add('person $id');
+    await _wait();
+    if (peopleError case final error?) throw error;
+    final detail = personDetails[id];
+    if (detail == null) {
+      throw const ApiException(
+        statusCode: 404,
+        code: 'not_found',
+        message: 'Person not found',
+        retryable: false,
+      );
+    }
+    return detail;
   }
 
   @override

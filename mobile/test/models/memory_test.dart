@@ -1,4 +1,5 @@
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/widgets/formatting.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -137,6 +138,54 @@ void main() {
       expect(speakerName('self'), 'You');
       expect(speakerName('other'), 'Other');
       expect(speakerName(null), 'Unknown');
+    });
+  });
+
+  group('people', () {
+    test('initials and optional fields', () {
+      final marco = PersonSummary.fromJson(const {
+        'id': 'p1',
+        'name': 'Marco Rossi',
+        'role': ' designer ',
+        'about': '',
+        'last_seen': '2026-10-14T09:30:00Z',
+        'conversation_count': 3,
+        'open_task_count': 1,
+      });
+      expect(marco.initials, 'MR');
+      expect(marco.role, 'designer');
+      expect(marco.about, isNull);
+      expect(marco.conversationCount, 3);
+      expect(const PersonSummary(id: 'a', name: 'ada').initials, 'A');
+      expect(const PersonSummary(id: 'x', name: '').initials, '?');
+    });
+
+    test('a person detail parses conversations, tasks and events', () {
+      final detail = PersonDetail.fromJson(const {
+        'id': 'p1',
+        'name': 'Ada',
+        'last_seen': null,
+        'conversations': [
+          {'id': 'c1', 'started_at': '2026-10-14T09:30:00Z', 'title': 'Lunch'},
+        ],
+        'tasks': [
+          {
+            'id': 't1',
+            'name': 'Call Ada',
+            'metadata_': {'due_date': '2026-10-15'},
+            'source_text': '[Tu] Chiamo Ada.',
+            'conversation_id': 'c1',
+            'created_at': '2026-10-14T09:30:00Z',
+          },
+        ],
+        'events': [
+          {'id': 'e1', 'entity_type': 'event', 'name': 'Dinner with Ada', 'metadata_': {}},
+        ],
+      });
+      expect(detail.person.lastSeen, isNull);
+      expect(detail.conversations.single.title, 'Lunch');
+      expect(detail.tasks.single.dueDate, DateTime(2026, 10, 15));
+      expect(detail.events.single.name, 'Dinner with Ada');
     });
   });
 }

@@ -53,7 +53,7 @@ void main() {
     );
   }
 
-  Future<void> pump(WidgetTester tester, FakeMemoryApi api) async {
+  Future<void> pump(WidgetTester tester, FakeMemoryApi api, {List<String>? asked}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(375, 900);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -69,6 +69,7 @@ void main() {
                   builder: (_) => ConversationDetailScreen(
                     conversationId: 'c1',
                     api: api,
+                    onAsk: asked?.add,
                     clock: () => now,
                   ),
                 ),
@@ -98,6 +99,18 @@ void main() {
     expect(find.text('Fri, Oct 16 at 15:00'), findsOneWidget);
     expect(find.text('Ideas & notes'), findsOneWidget);
     expect(find.text('For the team'), findsOneWidget);
+  });
+
+  testWidgets('Ask about this conversation goes back and asks', (tester) async {
+    final asked = <String>[];
+    await pump(tester, FakeMemoryApi(details: {'c1': detail()}), asked: asked);
+
+    await tester.tap(find.byKey(const Key('conversation-ask')));
+    await tester.pumpAndSettle();
+
+    expect(asked.single, contains('"Lunch with Ada"'));
+    expect(asked.single, contains('Today, 12:30'));
+    expect(find.text('open'), findsOneWidget);
   });
 
   testWidgets('a task is completed in place, and a failure undoes it', (tester) async {

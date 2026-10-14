@@ -13,6 +13,8 @@ import '../widgets/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
+import 'navigation.dart';
+import 'task_editing.dart';
 import 'transcript_detail_screen.dart';
 
 enum _DetailTab { summary, transcript }
@@ -23,28 +25,30 @@ final class ConversationDetailScreen extends StatefulWidget {
   const ConversationDetailScreen({
     required this.conversationId,
     required this.api,
+    this.onAsk,
     this.clock = DateTime.now,
     super.key,
   });
 
   final String conversationId;
   final MemoryApi api;
+  final AskCallback? onAsk;
   final DateTime Function() clock;
 
   @override
   State<ConversationDetailScreen> createState() => _ConversationDetailScreenState();
 }
 
-final class _ConversationDetailScreenState extends State<ConversationDetailScreen> {
+final class _ConversationDetailScreenState extends State<ConversationDetailScreen>
+    with TaskEditing {
+  @override
+  MemoryApi get taskApi => widget.api;
+
   ConversationDetail? _detail;
   String? _error;
   bool _loading = true;
   bool _deleting = false;
   _DetailTab _tab = _DetailTab.summary;
-
-  /// Tasks as changed here (done, removed), by id, over the loaded detail.
-  final Map<String, TaskItem?> _taskOverrides = {};
-  final Set<String> _busyTasks = {};
 
   @override
   void initState() {
@@ -63,7 +67,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
       setState(() {
         _detail = detail;
         _loading = false;
-        _taskOverrides.clear();
+        resetTaskEdits();
       });
     } catch (error) {
       if (!mounted) return;
@@ -77,55 +81,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   List<TaskItem> get _tasks {
     final detail = _detail;
     if (detail == null) return const [];
-    final tasks = <TaskItem>[];
-    for (final entity in detail.ofType('task')) {
-      if (!_taskOverrides.containsKey(entity.id)) {
-        tasks.add(TaskItem.fromEntity(entity));
-      } else if (_taskOverrides[entity.id] case final changed?) {
-        tasks.add(changed); // removed ("Not a task") when null
-      }
-    }
-    return tasks;
-  }
-
-  Future<void> _toggleTask(TaskItem task) async {
-    await _changeTask(
-      task,
-      optimistic: task.copyWithDone(!task.done),
-      call: () => widget.api.setTaskDone(task, !task.done),
-      failure: 'Could not update the task.',
-    );
-  }
-
-  Future<void> _dismissTask(TaskItem task) async {
-    await _changeTask(
-      task,
-      optimistic: null,
-      call: () => widget.api.deleteEntity(task.id),
-      failure: 'Could not remove the task.',
-    );
-  }
-
-  Future<void> _changeTask(
-    TaskItem task, {
-    required TaskItem? optimistic,
-    required Future<void> Function() call,
-    required String failure,
-  }) async {
-    if (_busyTasks.contains(task.id)) return;
-    setState(() {
-      _busyTasks.add(task.id);
-      _taskOverrides[task.id] = optimistic;
-    });
-    try {
-      await call();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _taskOverrides[task.id] = task);
-      _showMessage(userMessage(error, failure));
-    } finally {
-      if (mounted) setState(() => _busyTasks.remove(task.id));
-    }
+    return editedTasks(detail.ofType('task').map(TaskItem.fromEntity));
   }
 
   Future<void> _openLine(TranscriptLine line) async {
@@ -247,6 +203,22 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         padding: const EdgeInsets.only(bottom: 48),
         children: [
           _Header(card: detail.card, people: _people(detail), now: widget.clock()),
+          if (widget.onAsk case final ask?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: OutlinedButton.icon(
+                key: const Key('conversation-ask'),
+                onPressed: () => askFromAnywhere(
+                  context,
+                  ask,
+                  'What did we say in "${conversationTitle(detail.card)}" '
+                  '(${dayLabel(detail.card.startedAt, widget.clock())}, '
+                  '${formatTime(detail.card.startedAt)}), and what did I agree to do?',
+                ),
+                icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                label: const Text('Ask about this conversation'),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
             child: SegmentedButton<_DetailTab>(
@@ -306,10 +278,10 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         for (final task in tasks)
           TaskTile(
             task: task,
-            busy: _busyTasks.contains(task.id),
+            busy: isTaskBusy(task),
             now: now,
-            onToggle: () => unawaited(_toggleTask(task)),
-            onDismiss: () => unawaited(_dismissTask(task)),
+            onToggle: () => unawaited(toggleTask(task)),
+            onDismiss: () => unawaited(dismissTask(task)),
           ),
       ],
       if (events.isNotEmpty) ...[

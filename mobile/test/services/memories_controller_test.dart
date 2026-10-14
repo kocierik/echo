@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/person.dart';
 import 'package:echo_app/services/memories_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -59,6 +60,28 @@ void main() {
     await pumpEventQueue();
 
     expect(api.calls.where((c) => c.startsWith('list')).length, 2);
+  });
+
+  test('people load on demand and refresh with the list', () async {
+    final api = FakeMemoryApi(conversations: cards(1))
+      ..people = [const PersonSummary(id: 'p1', name: 'Ada')];
+    final controller = MemoriesController(api: api);
+    addTearDown(controller.dispose);
+    await controller.initialize();
+    expect(api.calls.contains('people'), isFalse);
+    expect(controller.state.peopleLoaded, isFalse);
+
+    await controller.loadPeople();
+    expect(controller.state.people.single.name, 'Ada');
+
+    await controller.refresh();
+    await pumpEventQueue();
+    expect(api.calls.where((c) => c == 'people').length, 2);
+
+    api.peopleError = serverError('No people');
+    await controller.loadPeople();
+    expect(controller.state.peopleError, 'No people');
+    expect(controller.state.people.single.name, 'Ada'); // kept on screen
   });
 
   group('search', () {

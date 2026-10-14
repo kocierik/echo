@@ -24,6 +24,24 @@ void main() {
     expect(find.text('A grounded answer'), findsOneWidget);
   });
 
+  testWidgets('an Ask request sends the question in a new chat', (tester) async {
+    final harness = _Harness();
+    final ask = ValueNotifier<String?>('What did I talk about with Ada recently?');
+    addTearDown(ask.dispose);
+
+    await harness.pump(tester, askRequest: ask);
+    await tester.pumpAndSettle();
+
+    expect(harness.api.queries, ['What did I talk about with Ada recently?']);
+    expect(ask.value, isNull);
+    expect(find.text('A grounded answer'), findsOneWidget);
+
+    ask.value = 'And with Marco?';
+    await tester.pumpAndSettle();
+    expect(harness.api.queries.last, 'And with Marco?');
+    expect(ask.value, isNull);
+  });
+
   testWidgets('send shows loading then error and retry recovers',
       (tester) async {
     final pending = Completer<QueryResponse>();
@@ -199,9 +217,10 @@ final class _Harness {
   Future<void> pump(
     WidgetTester tester, {
     MediaQueryData? mediaQuery,
+    ValueNotifier<String?>? askRequest,
   }) async {
     addTearDown(controller.dispose);
-    Widget child = ChatScreen(controller: controller);
+    Widget child = ChatScreen(controller: controller, askRequest: askRequest);
     if (mediaQuery != null) {
       child = MediaQuery(data: mediaQuery, child: child);
     }

@@ -9,7 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
 import 'conversation_detail_screen.dart';
-import 'memories_screen.dart';
+import 'navigation.dart';
 
 /// The Tasks tab: open tasks by due day, done tasks below.
 final class TasksScreen extends StatefulWidget {
@@ -18,6 +18,7 @@ final class TasksScreen extends StatefulWidget {
     this.controller,
     this.segmentUploadedStream,
     this.openConversation,
+    this.onAsk,
     this.clock = DateTime.now,
     super.key,
   });
@@ -26,6 +27,7 @@ final class TasksScreen extends StatefulWidget {
   final TasksController? controller;
   final Stream<Object?>? segmentUploadedStream;
   final ConversationOpener? openConversation;
+  final AskCallback? onAsk;
   final DateTime Function() clock;
 
   @override
@@ -108,7 +110,12 @@ final class _TasksScreenState extends State<TasksScreen> {
     } else {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => ConversationDetailScreen(conversationId: id, api: _api),
+          builder: (_) => ConversationDetailScreen(
+            conversationId: id,
+            api: _api,
+            onAsk: widget.onAsk,
+            clock: widget.clock,
+          ),
         ),
       );
     }

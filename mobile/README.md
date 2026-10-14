@@ -48,6 +48,9 @@ Settings → Device → **Pair Echo**.
   Echo is still listening); search across titles, summaries, transcripts and extracted entities.
   The detail has a Summary (tasks with the sentence they came from, events, ideas) and the
   Transcript, each line correctable; delete a conversation from its menu.
+- **People:** everyone Echo heard about (Memories → People), by last seen; a person's page has
+  their role and what Echo knows, open tasks and events naming them, the conversations they came
+  up in, and **Ask about** them (a new chat with the question already sent).
 - **Tasks:** open tasks by due day (Overdue, Today, Tomorrow, This week, Later, No date), complete
   with Undo, **Not a task** to drop a wrong one, open the conversation it came from; Done below.
 - **Ask:** chat with your memory (text or voice), follow-ups, resumable history, feedback;

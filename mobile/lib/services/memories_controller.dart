@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/memory.dart';
+import '../models/person.dart';
 import 'api_exception.dart';
 import 'api_service.dart';
 
@@ -23,6 +24,10 @@ final class MemoriesState {
     this.searching = false,
     this.results,
     this.searchError,
+    this.people = const [],
+    this.peopleLoaded = false,
+    this.peopleLoading = false,
+    this.peopleError,
   });
 
   final List<ConversationCard> conversations;
@@ -39,6 +44,13 @@ final class MemoriesState {
   final MemorySearchResults? results;
   final String? searchError;
 
+  final List<PersonSummary> people;
+
+  /// People were asked for at least once (they load when first shown).
+  final bool peopleLoaded;
+  final bool peopleLoading;
+  final String? peopleError;
+
   bool get isSearching => query.isNotEmpty;
 
   MemoriesState copyWith({
@@ -51,6 +63,10 @@ final class MemoriesState {
     bool? searching,
     MemorySearchResults? Function()? results,
     String? Function()? searchError,
+    List<PersonSummary>? people,
+    bool? peopleLoaded,
+    bool? peopleLoading,
+    String? Function()? peopleError,
   }) {
     return MemoriesState(
       conversations: conversations ?? this.conversations,
@@ -62,6 +78,10 @@ final class MemoriesState {
       searching: searching ?? this.searching,
       results: results == null ? this.results : results(),
       searchError: searchError == null ? this.searchError : searchError(),
+      people: people ?? this.people,
+      peopleLoaded: peopleLoaded ?? this.peopleLoaded,
+      peopleLoading: peopleLoading ?? this.peopleLoading,
+      peopleError: peopleError == null ? this.peopleError : peopleError(),
     );
   }
 }
@@ -94,6 +114,7 @@ final class MemoriesController extends ChangeNotifier {
   void Function()? _cancelSearch;
   int _loadGeneration = 0;
   int _searchGeneration = 0;
+  int _peopleGeneration = 0;
   bool _initialized = false;
   bool _disposed = false;
 
@@ -127,6 +148,28 @@ final class MemoriesController extends ChangeNotifier {
       ));
     }
     if (_state.isSearching) unawaited(_search(_state.query, ++_searchGeneration));
+    if (_state.peopleLoaded) unawaited(loadPeople());
+  }
+
+  /// Loads everyone Echo heard about; called when People is first shown.
+  Future<void> loadPeople() async {
+    final generation = ++_peopleGeneration;
+    _emit(_state.copyWith(
+      peopleLoaded: true,
+      peopleLoading: _state.people.isEmpty,
+      peopleError: () => null,
+    ));
+    try {
+      final people = await _api.listPeople();
+      if (_disposed || generation != _peopleGeneration) return;
+      _emit(_state.copyWith(people: people, peopleLoading: false));
+    } catch (error) {
+      if (_disposed || generation != _peopleGeneration) return;
+      _emit(_state.copyWith(
+        peopleLoading: false,
+        peopleError: () => userMessage(error, 'Could not load people.'),
+      ));
+    }
   }
 
   Future<void> loadMore() async {
