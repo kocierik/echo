@@ -82,6 +82,8 @@ final class _TranscriptTimelineRow extends StatelessWidget {
       button: _canOpen,
       onTap: _canOpen ? () => onOpen(segment) : null,
       label: semanticsParts.join(', '),
+      // The label already reads the whole row: keep the texts below from being read again
+      excludeSemantics: true,
       child: Padding(
         key: Key('transcript-row-${segment.id}'),
         padding: const EdgeInsets.fromLTRB(20, 12, 8, 12),
