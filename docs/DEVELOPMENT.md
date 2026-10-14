@@ -16,8 +16,6 @@ cp .env.example .env
 # Add your OPENAI_API_KEY to .env
 
 docker compose up --build -d
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp 001
 docker compose exec api python -m alembic upgrade head
 docker compose exec postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
@@ -37,12 +35,8 @@ Useful when Docker networking has issues (corporate firewalls, Podman on Windows
 # Start only DB and Redis
 docker compose -f docker-compose-infra.yml up -d
 
-# Apply schema
-docker compose -f docker-compose-infra.yml exec -T postgres psql -U echo -d echo < docs/schema.sql
-
-# Stamp the schema.sql baseline (001), then apply the missing migrations
+# Create the database (Alembic creates extensions, tables and indexes)
 cd backend
-python -m alembic stamp 001
 python -m alembic upgrade head
 
 docker compose -f docker-compose-infra.yml exec postgres psql -U echo -d echo -c "
@@ -108,14 +102,10 @@ cp .env.example .env
 # 2. Avvia tutti i servizi
 docker compose up --build -d
 
-# 3. Crea lo schema del database
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-
-# 4. Baseline Alembic (001) e migrazioni mancanti (schema.sql non è aggiornato a head)
-docker compose exec api python -m alembic stamp 001
+# 3. Crea il database con le migrazioni (Alembic crea estensioni, tabelle e indici)
 docker compose exec api python -m alembic upgrade head
 
-# 5. Crea una API key
+# 4. Crea una API key
 docker compose exec -T postgres psql -U echo -d echo -c "
 INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'a0000000-0000-0000-0000-000000000001',
@@ -123,7 +113,7 @@ INSERT INTO api_keys (user_id, key_hash, name) VALUES (
     'default'
 );"
 
-# 6. Verifica che tutto funzioni
+# 5. Verifica che tutto funzioni
 curl http://localhost:8000/health
 ```
 
@@ -147,8 +137,6 @@ curl http://localhost:8000/health
 
 ```bash
 docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-docker compose exec api python -m alembic stamp 001
 docker compose exec api python -m alembic upgrade head
 
 # Ricrea API key
@@ -211,13 +199,15 @@ docker compose exec api python -m alembic current
 ### Fresh database setup
 
 ```bash
-# Apply SQL schema (creates tables)
-docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-
-# Stamp the schema.sql baseline (001), then apply the missing migrations
-docker compose exec api python -m alembic stamp 001
+# On an empty database, the migrations create everything: 001 creates the extensions
+# (uuid-ossp, vector) and the baseline tables, 002+ the rest
 docker compose exec api python -m alembic upgrade head
 ```
+
+`docs/schema.sql` is a reference only (the schema at the latest migration): never apply it.
+Every migration skips what already exists, so a database created earlier from `schema.sql`
+is migrated by the same `alembic upgrade head`. CI runs `alembic upgrade head` on an empty
+database before the integration tests.
 
 ## Firmware development
 

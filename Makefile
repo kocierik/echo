@@ -48,8 +48,6 @@ deploy: ## Full deploy: build, migrate, restart (idempotent, always safe)
 
 db-reset: ## Drop and recreate database schema (DESTRUCTIVE)
 	docker compose exec -T postgres psql -U echo -d echo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-	docker compose exec -T postgres psql -U echo -d echo < docs/schema.sql
-	docker compose exec api python -m alembic stamp 001
 	docker compose exec api python -m alembic upgrade head
 
 db-migrate: ## Run pending Alembic migrations (idempotent)

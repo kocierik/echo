@@ -58,11 +58,15 @@ jobs:
           cd backend
           pytest tests/test_adpcm_decoder.py tests/test_temporal.py tests/test_chunking.py tests/test_circuit_breaker.py -v --noconftest
 
-      - name: Apply database schema
+      - name: Create the database with Alembic (empty database -> head)
         run: |
-          PGPASSWORD=echo psql -h localhost -U echo -d echo < docs/schema.sql
+          cd backend
+          alembic upgrade head
         env:
-          PGPASSWORD: echo
+          DATABASE_URL: "postgresql+asyncpg://echo:echo@localhost:5432/echo"
+          REDIS_URL: "redis://localhost:6379/0"
+          OPENAI_API_KEY: "sk-test-not-real"
+          AUDIO_STORAGE_PATH: "/tmp/echo_audio"
 
       - name: Integration tests (with DB + Redis)
         run: |

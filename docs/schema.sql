@@ -1,6 +1,8 @@
+-- Reference only: the database is created by Alembic (`alembic upgrade head`).
+-- Do not apply this file: it shows the schema at the head revision (008) for reading.
+--
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
--- Includes all migrations (001-004)
 
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -14,8 +16,9 @@ CREATE TABLE segments (
     received_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_at TIMESTAMPTZ NOT NULL,
     duration_ms INTEGER NOT NULL,
-    audio_path TEXT NOT NULL,
-    audio_size_bytes INTEGER NOT NULL,
+    -- Migration 006: NULL once the audio file is deleted by retention
+    audio_path TEXT,
+    audio_size_bytes INTEGER,
     silence_before_ms INTEGER,
     transcription_status TEXT NOT NULL DEFAULT 'pending',
     conversation_id UUID,
@@ -38,6 +41,8 @@ CREATE TABLE transcriptions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     segment_id UUID NOT NULL REFERENCES segments(id) ON DELETE CASCADE,
     text TEXT NOT NULL,
+    -- Migration 006: speaker detected by STT diarization
+    speaker_label VARCHAR(10),
     language TEXT NOT NULL DEFAULT 'it',
     confidence REAL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -46,6 +51,25 @@ CREATE TABLE transcriptions (
 );
 
 CREATE INDEX idx_transcriptions_segment ON transcriptions (segment_id);
+
+-- ============================================================
+-- TRANSCRIPTION EDITS: audit of manual corrections (Migration 006)
+-- ============================================================
+CREATE TABLE transcription_edits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    transcription_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    old_text TEXT NOT NULL,
+    new_text TEXT NOT NULL,
+    old_speaker_label VARCHAR(10),
+    new_speaker_label VARCHAR(10),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT fk_transcription_edits_transcription_id_transcriptions
+        FOREIGN KEY (transcription_id) REFERENCES transcriptions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_transcription_edits_transcription_id ON transcription_edits (transcription_id);
+CREATE INDEX ix_transcription_edits_user_id ON transcription_edits (user_id);
 
 -- ============================================================
 -- CONVERSATIONS: logical grouping of segments
@@ -63,9 +87,9 @@ CREATE TABLE conversations (
 
 CREATE INDEX idx_conversations_user_time ON conversations (user_id, started_at DESC);
 
--- FK from segments to conversations
-ALTER TABLE segments ADD CONSTRAINT fk_segments_conversation
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id);
+-- FK from segments to conversations (Migration 006: deleting a conversation deletes its segments)
+ALTER TABLE segments ADD CONSTRAINT fk_segments_conversation_id_conversations
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE;
 
 -- ============================================================
 -- CHUNKS: fixed-size text chunks for RAG embedding
@@ -95,7 +119,9 @@ CREATE TABLE entities (
     metadata JSONB NOT NULL DEFAULT '{}',
     embedding vector(1536),
     source_transcription_id UUID REFERENCES transcriptions(id) ON DELETE SET NULL,
-    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    -- Migration 006: deleting a conversation deletes its entities
+    conversation_id UUID CONSTRAINT fk_entities_conversation_id_conversations
+        REFERENCES conversations(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -130,6 +156,7 @@ CREATE TABLE chat_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
     title TEXT,
+    kind VARCHAR(10) NOT NULL DEFAULT 'chat',  -- Migration 007: chat | voice
     messages JSONB NOT NULL DEFAULT '[]',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -169,11 +196,10 @@ CREATE INDEX idx_feedback_user ON query_feedback (user_id, created_at);
 CREATE INDEX idx_feedback_chunks ON query_feedback USING gin (source_chunk_ids);
 
 -- ============================================================
--- ACTIONS: pending confirmations, audit log, chat session kind (Migration 007)
+-- ACTIONS: pending confirmations and audit log (Migration 007)
+-- (Migration 008 dropped the old rules and integrations tables.)
 -- ============================================================
-ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'chat';
-
-CREATE TABLE IF NOT EXISTS pending_actions (
+CREATE TABLE pending_actions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     session_id UUID,
@@ -187,9 +213,9 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     resolved_at TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS ix_pending_actions_user_status ON pending_actions (user_id, status);
+CREATE INDEX ix_pending_actions_user_status ON pending_actions (user_id, status);
 
-CREATE TABLE IF NOT EXISTS action_log (
+CREATE TABLE action_log (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL,
     source VARCHAR(10) NOT NULL,            -- chat | voice
@@ -201,4 +227,4 @@ CREATE TABLE IF NOT EXISTS action_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS ix_action_log_user_created ON action_log (user_id, created_at);
+CREATE INDEX ix_action_log_user_created ON action_log (user_id, created_at);
