@@ -553,12 +553,94 @@ async def test_classify_request_errors_and_invalid_answers_mean_memory(answer):
 
 
 @pytest.mark.asyncio
-async def test_classify_request_drops_apps_it_does_not_know():
+async def test_classify_request_sets_apart_apps_it_does_not_know():
     from app.actions.availability import APP_NAMES, classify_request
 
     llm = _LLM(intent={"needs_apps": True, "apps": ["gmail", "myspace", 3, "asana", "gmail"]})
     intent = await classify_request(llm, "x", [], ["asana"], APP_NAMES)
     assert intent.apps == ["gmail", "asana"]
+    assert intent.unresolved == ["myspace"]  # kept apart: never silently dropped
+
+
+# --- Fix round 1 (I1, M5): app names in any spelling, unresolved apps, nothing connected -
+
+
+@pytest.mark.asyncio
+async def test_calendar_spelled_google_calendar_with_only_todoist_is_a_notice(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = {"needs_apps": True, "apps": ["google_calendar"]}
+    res = await _ask(env, "aggiungi il dentista al calendario")
+    assert res.answer == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_app_with_another_app_connected_is_a_notice_not_the_agent(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = {"needs_apps": True, "apps": ["trello"]}
+    res = await _ask(env, "aggiungi una card su Trello")
+    assert res.answer == (
+        "Trello non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name", ["Google Calendar", "google_calendar", "google-calendar", "GOOGLECALENDAR"]
+)
+async def test_connected_calendar_in_any_spelling_goes_to_the_agent(env, name):
+    env.provider = FakeActionProvider(connected={"googlecalendar"})
+    env.llm.intent = {"needs_apps": True, "apps": [name]}
+    await _ask(env, "aggiungi il dentista al calendario")
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_needed_without_a_name_and_an_app_connected_goes_to_the_agent(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = {"needs_apps": True, "apps": []}
+    await _ask(env, "aggiungi qualcosa")
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("question", "answer"),
+    [
+        (
+            "manda un messaggio a Marco",
+            "Nessuna app è ancora collegata. Collegane una in Impostazioni → Automazioni → "
+            "Integrazioni.",
+        ),
+        (
+            "Send a message to Marco",
+            "No apps are connected yet. Connect one in Settings → Automations → Integrations.",
+        ),
+    ],
+)
+async def test_needed_without_a_name_and_nothing_connected_gives_a_hint(env, question, answer):
+    env.provider.connected.clear()
+    env.llm.intent = {"needs_apps": True, "apps": []}
+    res = await _ask(env, question)
+    assert res.answer == answer
+    assert env.agent_calls == [] and env.rag_calls == []
+    assert env.db.added[0].messages[1]["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_classify_request_resolves_display_names_and_keeps_unresolved_names():
+    from app.actions.availability import APP_NAMES, classify_request
+
+    llm = _LLM(intent={
+        "needs_apps": True,
+        "apps": ["Google Calendar", "GMAIL", "google-sheets", " Trello ", "", 7],
+    })
+    intent = await classify_request(llm, "x", [], ["googlesheets"], APP_NAMES)
+    assert intent.apps == ["googlecalendar", "gmail", "googlesheets"]
+    assert intent.unresolved == ["Trello"]
 
 
 def test_old_two_step_checks_are_gone():
