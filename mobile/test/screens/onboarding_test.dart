@@ -1,5 +1,6 @@
 import 'package:echo_app/screens/onboarding/onboarding_screen.dart';
 import 'package:echo_app/services/app_preferences.dart';
+import 'package:echo_app/services/build_defaults.dart';
 import 'package:echo_app/services/onboarding_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -261,6 +262,19 @@ void main() {
 
     expect(completed, isTrue);
     expect(fixture.controller.value.completed, isTrue);
+  });
+
+  testWidgets('prefills the backend URL from the build defaults',
+      (tester) async {
+    final fixture = _Fixture();
+
+    await _pumpOnboarding(tester, fixture.controller);
+
+    expect(
+      find.widgetWithText(TextField, BuildDefaults.serverUrl),
+      findsOneWidget,
+    );
+    expect(BuildDefaults.serverUrl, 'https://echo.man.ovh');
   });
 
   testWidgets('fits a 320 wide screen at 1.3 text scale', (tester) async {
