@@ -73,25 +73,42 @@ class _Redis:
             self.store.pop(key, None)
 
 
-class _LLM(MockLLMService):
-    """`needs` answers the connected-tools check, `app` the named-app check (G2)."""
+# Words a model would read as a request on that app (only for the fake below).
+_APP_WORDS = (
+    ("gmail", ("mail",)),
+    ("googlecalendar", ("calendar", "calendario", "agenda", "evento")),
+    ("slack", ("slack",)),
+    ("todoist", ("todoist", "task")),
+)
 
-    def __init__(self, needs=True, app=True):
+
+class _LLM(MockLLMService):
+    """Answers the single intent check (H1).
+
+    `intent` is the JSON returned; "error" raises; None answers like a model would for a
+    clear request: the apps whose words appear in the message, needs_apps when any does.
+    """
+
+    def __init__(self, intent=None):
         super().__init__()
-        self.needs = needs
-        self.app = app
-        self.app_checks = []
+        self.intent = intent
+        self.intent_checks = []
 
     async def complete_json(self, messages, temperature=0.1):
         self.call_log.append(messages)
-        if '"needs_app"' in messages[0].content:
-            self.app_checks.append(messages)
-            if self.app == "error":
-                raise RuntimeError("boom")
-            return {"needs_app": self.app}
-        if self.needs == "error":
+        assert '"needs_apps"' in messages[0].content, "only the intent check uses JSON"
+        self.intent_checks.append(messages)
+        if self.intent == "error":
             raise RuntimeError("boom")
-        return {"needs_tools": self.needs}
+        if self.intent is not None:
+            return self.intent
+        text = messages[-1].content.lower()
+        apps = [slug for slug, words in _APP_WORDS if any(w in text for w in words)]
+        return {"needs_apps": bool(apps), "apps": apps}
+
+
+_NEEDS_GMAIL = {"needs_apps": True, "apps": ["gmail"]}
+_NOT_NEEDED = {"needs_apps": False, "apps": []}
 
 
 def _request(redis):
@@ -142,20 +159,6 @@ def test_might_need_tools_keywords_and_followup():
     hist = [{"role": "assistant", "content": "ok", "actions": True}]
     assert q.might_need_tools("sì, quello", hist)
     assert not q.might_need_tools("sì, quello", [{"role": "assistant", "content": "ok"}])
-
-
-@pytest.mark.asyncio
-async def test_needs_tools_no_connected_skips_llm():
-    llm = _LLM()
-    assert await q.needs_tools(llm, "mail?", [], []) is False
-    assert llm.call_log == []
-
-
-@pytest.mark.asyncio
-async def test_needs_tools_json_and_errors():
-    assert await q.needs_tools(_LLM(True), "mail?", [], ["gmail"]) is True
-    assert await q.needs_tools(_LLM(False), "mail?", [], ["gmail"]) is False
-    assert await q.needs_tools(_LLM("error"), "mail?", [], ["gmail"]) is False
 
 
 @pytest.mark.asyncio
@@ -221,7 +224,7 @@ async def test_provider_not_configured_runs_rag(env, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_intent_says_memory_runs_rag(env):
-    env.llm.needs = False
+    env.llm.intent = _NOT_NEEDED
     await _ask(env, "riassumimi le ultime mail")
     assert env.agent_calls == [] and len(env.rag_calls) == 1
 
@@ -230,8 +233,10 @@ async def test_intent_says_memory_runs_rag(env):
 async def test_followup_after_agent_answer_uses_agent(env):
     sid = str(uuid.uuid4())
     await _ask(env, "riassumimi le ultime mail", sid)
+    env.llm.intent = _NEEDS_GMAIL  # the check reads the follow-up with its history
     await _ask(env, "sì, quello di Bob", sid)
     assert len(env.agent_calls) == 2
+    assert env.llm.intent_checks[-1][-2].content == "Ecco le mail"
 
 
 @pytest.mark.asyncio
@@ -384,50 +389,91 @@ async def test_named_app_with_nothing_connected(env):
     assert env.agent_calls == [] and env.rag_calls == []
 
 
-# --- G2: "{App} isn't connected" only when the request really needs the app -------------
+# --- H1: one intent check decides memory / not connected / unreachable / agent ----------
 
 _AGENDA = "What was on the agenda of yesterday's meeting?"
 
 
 @pytest.mark.asyncio
-async def test_agenda_question_with_calendar_not_connected_is_answered_from_memory(env):
-    env.llm.app = False
-    env.llm.needs = False
-    res = await _ask(env, _AGENDA)
-    assert "isn't connected" not in res.answer
+async def test_memory_question_with_an_app_word_is_one_check_then_rag(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = _NOT_NEEDED
+    res = await _ask(env, "cosa c'era in agenda ieri?")
+    assert "collegato" not in res.answer
     assert env.agent_calls == [] and len(env.rag_calls) == 1
-    check = env.llm.app_checks[0]
-    assert "Google Calendar" in check[0].content
-    assert check[-1].content == _AGENDA
+    assert len(env.llm.intent_checks) == 1  # one classifier call, nothing else in series
+
+
+@pytest.mark.asyncio
+async def test_calendar_request_with_only_todoist_connected_never_goes_to_todoist(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    res = await _ask(env, "aggiungi il dentista al calendario")
+    assert res.answer == (
+        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+    )
+    assert env.agent_calls == [] and env.rag_calls == []
+    assert len(env.llm.intent_checks) == 1
+    assert env.db.added[0].messages[1]["actions"] is True
+
+
+@pytest.mark.asyncio
+async def test_check_says_not_needed_even_with_the_app_missing_means_memory(env):
+    env.provider = FakeActionProvider(connected={"todoist"})
+    env.llm.intent = _NOT_NEEDED
+    await _ask(env, "aggiungi il dentista al calendario")
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_missing_app_among_the_needed_ones_is_named(env):
+    env.llm.intent = {"needs_apps": True, "apps": ["gmail", "googlecalendar"]}
+    res = await _ask(env, "Turn Bob's email into a calendar event")
+    assert res.answer == (
+        "Google Calendar isn't connected. Connect it in Settings → Automations → Integrations."
+    )
+    assert env.agent_calls == []
+
+
+@pytest.mark.asyncio
+async def test_gmail_request_with_gmail_connected_goes_to_the_agent(env):
+    res = await _ask(env, "riassumimi le ultime mail")
+    assert res.answer == "Ecco le mail" and env.rag_calls == []
+    assert len(env.llm.intent_checks) == 1
+    assert env.llm.intent_checks[0][-1].content == "riassumimi le ultime mail"
+
+
+@pytest.mark.asyncio
+async def test_needed_app_outside_the_initial_set_goes_to_the_agent(env):
+    env.provider = FakeActionProvider(connected={"gmail", "asana"})
+    env.llm.intent = {"needs_apps": True, "apps": ["asana"]}
+    await _ask(env, "crea un task su asana")
+    assert len(env.agent_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_intent_check_error_means_memory_answer(env):
+    env.provider.connected.clear()
+    env.llm.intent = "error"
+    res = await _ask(env, "aggiungi un evento domani alle 10")
+    assert "collegato" not in res.answer
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_intent_check_error_with_the_app_connected_is_also_memory(env):
+    env.llm.intent = "error"
+    await _ask(env, "riassumimi le ultime mail")
+    assert env.agent_calls == [] and len(env.rag_calls) == 1
 
 
 @pytest.mark.asyncio
 async def test_agenda_question_with_nothing_connected_is_answered_from_memory(env):
     env.provider.connected.clear()
-    env.llm.app = False
+    env.llm.intent = _NOT_NEEDED
     res = await _ask(env, _AGENDA)
     assert "isn't connected" not in res.answer
     assert env.agent_calls == [] and len(env.rag_calls) == 1
-    assert len(env.llm.app_checks) == 1
-
-
-@pytest.mark.asyncio
-async def test_calendar_request_with_calendar_not_connected_says_so(env):
-    res = await _ask(env, "aggiungi un evento domani alle 10")
-    assert res.answer == (
-        "Google Calendar non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
-    )
-    assert env.agent_calls == [] and env.rag_calls == []
-    assert len(env.llm.app_checks) == 1
-
-
-@pytest.mark.asyncio
-async def test_app_check_error_means_memory_answer(env):
-    env.provider.connected.clear()
-    env.llm.app = "error"
-    res = await _ask(env, "aggiungi un evento domani alle 10")
-    assert "collegato" not in res.answer
-    assert env.agent_calls == [] and len(env.rag_calls) == 1
+    assert len(env.llm.intent_checks) == 1
 
 
 @pytest.mark.asyncio
@@ -437,26 +483,90 @@ async def test_unreachable_apps_but_memory_question_is_answered_from_memory(env)
             raise ActionProviderError("Composio request timed out")
 
     env.provider = Down()
-    env.llm.app = False
+    env.llm.intent = _NOT_NEEDED
     res = await _ask(env, _AGENDA)
     assert "couldn't reach" not in res.answer
     assert env.agent_calls == [] and len(env.rag_calls) == 1
-    assert len(env.llm.app_checks) == 1
+    assert len(env.llm.intent_checks) == 1
 
 
 @pytest.mark.asyncio
-async def test_unreachable_apps_check_without_a_named_app_lists_the_apps(env):
+async def test_unreachable_apps_and_an_app_needed_without_a_name(env):
     class Down(FakeActionProvider):
         async def connected_toolkits(self, user_id):
             raise ActionProviderError("boom")
 
     env.provider = Down()
-    res = await _ask(env, "Send a Slack message to the team")
-    assert res.answer == "I couldn't reach your connected apps right now. Try again in a moment."
-    env.provider = Down()
+    env.llm.intent = {"needs_apps": True, "apps": []}
     res = await _ask(env, "crea una lista per il trasloco")
     assert res.answer.startswith("Non riesco a raggiungere")
-    assert "Gmail" in env.llm.app_checks[-1][0].content
+    assert env.agent_calls == [] and env.rag_calls == []
+
+
+# --- H1: classify_request ----------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_classify_request_prompt_lists_connected_and_missing_initial_apps():
+    from app.actions.availability import APP_NAMES, classify_request
+
+    llm = _LLM(intent={"needs_apps": True, "apps": ["Gmail ", "googlecalendar"]})
+    history = [{"role": "user", "content": "ciao"}, {"role": "assistant", "content": "ehi"}]
+    intent = await classify_request(llm, "manda una mail", history, ["gmail", "asana"], APP_NAMES)
+    assert intent.needs_apps is True and intent.apps == ["gmail", "googlecalendar"]
+    (messages,) = llm.intent_checks
+    system = messages[0].content
+    connected_part, missing_part = system.split("NOT connected", 1)
+    assert "gmail (Gmail)" in connected_part and "asana" in connected_part
+    assert "googlecalendar (Google Calendar)" in missing_part
+    assert "gmail (Gmail)" not in missing_part
+    assert [m.content for m in messages[1:]] == ["ciao", "ehi", "manda una mail"]
+
+
+@pytest.mark.asyncio
+async def test_classify_request_with_unknown_connections_lists_every_app():
+    from app.actions.availability import APP_NAMES, classify_request
+
+    llm = _LLM(intent=_NEEDS_GMAIL)
+    intent = await classify_request(llm, "mail?", [], None, APP_NAMES)
+    assert intent.needs_apps is True
+    assert all(slug in llm.intent_checks[0][0].content for slug in APP_NAMES)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "error",
+        ["not", "a", "dict"],
+        {"needs_apps": "yes", "apps": ["gmail"]},
+        {"needs_apps": True, "apps": "gmail"},
+        {"apps": ["gmail"]},
+        _NOT_NEEDED,
+    ],
+)
+async def test_classify_request_errors_and_invalid_answers_mean_memory(answer):
+    from app.actions.availability import APP_NAMES, classify_request
+
+    intent = await classify_request(_LLM(intent=answer), "mail?", [], ["gmail"], APP_NAMES)
+    assert intent.needs_apps is False and intent.apps == []
+
+
+@pytest.mark.asyncio
+async def test_classify_request_drops_apps_it_does_not_know():
+    from app.actions.availability import APP_NAMES, classify_request
+
+    llm = _LLM(intent={"needs_apps": True, "apps": ["gmail", "myspace", 3, "asana", "gmail"]})
+    intent = await classify_request(llm, "x", [], ["asana"], APP_NAMES)
+    assert intent.apps == ["gmail", "asana"]
+
+
+def test_old_two_step_checks_are_gone():
+    from app.actions import availability
+
+    assert not hasattr(q, "needs_tools") and not hasattr(q, "NEEDS_TOOLS_PROMPT")
+    assert not hasattr(availability, "needs_app")
+    assert not hasattr(availability, "availability_notice")
 
 
 # --- G3: retry safety of client_request_id -----------------------------------------------

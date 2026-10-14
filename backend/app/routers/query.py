@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.agent import run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
-from app.actions.availability import availability_notice
+from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
@@ -102,6 +102,7 @@ class QueryResponse(BaseModel):
 
 # Words that may introduce a request on a connected tool (prefix match, IT + EN).
 # Messages without them skip the provider and the intent check and go straight to RAG.
+# With them, one intent check (app.actions.availability.route_request) decides.
 _TOOL_HINT = re.compile(
     r"\b(calendar|calendario|agenda|event|appuntament|appointment|riunion|meeting|"
     r"call\b|impegn|programma|schedul|fiss|prenot|organizz|segna|crea|aggiung|add\b|"
@@ -112,42 +113,14 @@ _TOOL_HINT = re.compile(
     re.IGNORECASE,
 )
 
-NEEDS_TOOLS_PROMPT = """You route requests for a personal assistant. The user has these
-connected tools: {toolkits}. Decide whether the request needs one of those tools
-(read or change something in them) or can be answered from Echo's memory of the user's
-recorded conversations only. Use the recent conversation for follow-ups.
-Respond with ONLY a JSON object: {{"needs_tools": true}} or {{"needs_tools": false}}."""
-
-
 def might_need_tools(question: str, history: list[dict]) -> bool:
-    """Cheap pre-check before spending a provider call and an LLM call."""
+    """Cheap pre-check before spending a provider call and the intent check."""
     if _TOOL_HINT.search(question):
         return True
     last_assistant = next(
         (m for m in reversed(history) if m.get("role") == "assistant"), None
     )
     return bool(last_assistant and last_assistant.get("actions"))
-
-
-async def needs_tools(llm, question: str, history: list[dict], connected: list[str]) -> bool:
-    """Ask the LLM whether the request needs a connected toolkit. Any error -> False."""
-    if not connected:
-        return False
-    try:
-        messages = [
-            LLMMessage(
-                role="system",
-                content=NEEDS_TOOLS_PROMPT.format(toolkits=", ".join(connected)),
-            )
-        ]
-        for msg in history[-6:]:
-            messages.append(LLMMessage(role=msg["role"], content=msg["content"]))
-        messages.append(LLMMessage(role="user", content=question))
-        result = await llm.complete_json(messages, temperature=0.0)
-        return result.get("needs_tools") is True
-    except Exception:
-        logger.warning("Tool intent check failed; using the memory path", exc_info=True)
-        return False
 
 
 async def _get_session_history(
@@ -297,6 +270,7 @@ async def _answer_query(
     if might_need_tools(body.question, history):
         provider = None
         connected: list[str] = []
+        use_agent = False
         try:
             provider = get_action_provider()
         except ActionProviderError:
@@ -309,16 +283,17 @@ async def _answer_query(
                 reachable = connected
             except ActionProviderError:
                 logger.warning("Action provider unreachable", exc_info=True)
-            notice = await availability_notice(llm_service, body.question, history, reachable)
-            if notice is not None:
+            route = await route_request(llm_service, body.question, history, reachable)
+            if route.kind == "notice":
                 await _record_turn(
                     redis_client, db, user_id, session_id, history, body.question,
-                    notice, {"actions": True},
+                    route.notice, {"actions": True},
                 )
                 return QueryResponse(
-                    answer=notice, sources=[], session_id=session_id, date_filter=None
+                    answer=route.notice, sources=[], session_id=session_id, date_filter=None
                 )
-        if connected and await needs_tools(llm_service, body.question, history, connected):
+            use_agent = route.kind == "agent"
+        if use_agent:
             progress.agent_started = True
             outcome = await run_action_agent(
                 db,
