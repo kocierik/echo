@@ -11,7 +11,7 @@ Il vertical slice end-to-end è implementato:
 - [x] Backend FastAPI (ingest audio + STT + entity extraction + RAG query)
 - [x] Database PostgreSQL + pgvector (schema completo)
 - [x] Background worker (STT → analisi → chunking → embeddings)
-- [x] Web UI (chat + sidebar conversazioni + dettaglio entità)
+- [x] Web UI (chat + sidebar conversazioni + dettaglio entità; rimossa il 14/10, sostituita dall'app)
 - [x] Deduplicazione entità
 - [x] Retention audio (oggi 24 h dopo la trascrizione, 7 giorni per gli incompleti)
 - [x] Provider abstraction (STT, LLM, Embeddings)
@@ -66,7 +66,7 @@ Obiettivo: il "secondo cervello" diventa realmente utile.
 ### 3.3 — UX
 - [ ] Notifiche task estratti (push notification)
 - [x] Feedback utente sulla qualità delle risposte
-- [x] Cronologia query nella web UI
+- [x] Cronologia delle domande (oggi nello storico chat dell'app)
 - [x] Dark/light mode toggle
 - [ ] Export conversazioni (markdown, PDF)
 

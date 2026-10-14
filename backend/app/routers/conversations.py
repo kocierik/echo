@@ -1,14 +1,16 @@
 """Conversations API: list and detail endpoints."""
 
 import uuid
-from datetime import datetime
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -21,6 +23,7 @@ from app.services.conversation_deleter import (
     delete_conversation,
     get_conversation_storage,
 )
+from app.services.temporal import conversation_overlaps
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -32,10 +35,17 @@ class ConversationListItem(BaseModel):
     id: uuid.UUID
     title: str | None
     summary: str | None
+    emoji: str | None
     started_at: datetime
     ended_at: datetime | None
+    duration_s: int
     segment_count: int
     analysis_status: str
+    # Still capturing: a new segment within the silence timeout would join it
+    is_open: bool
+    # Up to three people mentioned, in order of appearance
+    people: list[str]
+    task_count: int
 
     model_config = {"from_attributes": True}
 
@@ -51,12 +61,18 @@ class EntityOut(BaseModel):
     name: str
     content: str | None
     metadata_: dict
+    # The transcript sentence the entity was extracted from, when known
+    source_text: str | None = None
 
     model_config = {"from_attributes": True}
 
 
 class TranscriptionOut(BaseModel):
-    text: str
+    segment_id: uuid.UUID
+    # None while the segment is still pending or failed
+    text: str | None
+    speaker_label: str | None
+    status: str
     recorded_at: datetime
 
     model_config = {"from_attributes": True}
@@ -66,8 +82,11 @@ class ConversationDetail(BaseModel):
     id: uuid.UUID
     title: str | None
     summary: str | None
+    emoji: str | None
     started_at: datetime
     ended_at: datetime | None
+    duration_s: int
+    is_open: bool
     analysis_status: str
     transcriptions: list[TranscriptionOut]
     entities: list[EntityOut]
@@ -75,55 +94,98 @@ class ConversationDetail(BaseModel):
     model_config = {"from_attributes": True}
 
 
+MAX_LISTED_PEOPLE = 3
+
+
+def _duration_s(conversation: Conversation) -> int:
+    end = conversation.ended_at or conversation.started_at
+    return max(0, int((end - conversation.started_at).total_seconds()))
+
+
+def _is_open(conversation: Conversation, now: datetime) -> bool:
+    last = conversation.ended_at or conversation.started_at
+    return last >= now - timedelta(milliseconds=settings.silence_timeout_ms)
+
+
+async def _people_and_tasks(
+    db: AsyncSession, conversation_ids: list[uuid.UUID]
+) -> tuple[dict[uuid.UUID, list[str]], dict[uuid.UUID, int]]:
+    people: dict[uuid.UUID, list[str]] = defaultdict(list)
+    tasks: dict[uuid.UUID, int] = defaultdict(int)
+    if not conversation_ids:
+        return people, tasks
+    rows = await db.execute(
+        select(Entity.conversation_id, Entity.entity_type, Entity.name)
+        .where(Entity.conversation_id.in_(conversation_ids))
+        .where(Entity.entity_type.in_(("person", "task")))
+        .order_by(Entity.created_at)
+    )
+    for conversation_id, entity_type, name in rows.all():
+        if entity_type == "task":
+            tasks[conversation_id] += 1
+        elif name not in people[conversation_id]:
+            people[conversation_id].append(name)
+    return people, tasks
+
+
+def with_segment_counts(*conditions):
+    """Conversations matching `conditions` with their segment count, newest first."""
+    return (
+        select(Conversation, func.count(Segment.id).label("segment_count"))
+        .outerjoin(Segment, Segment.conversation_id == Conversation.id)
+        .where(*conditions)
+        .group_by(Conversation.id)
+        .order_by(Conversation.started_at.desc())
+    )
+
+
+async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
+    """List items for (conversation, segment_count) rows, with their people and task counts."""
+    people, tasks = await _people_and_tasks(db, [conv.id for conv, _ in rows])
+    now = datetime.now(timezone.utc)
+    return [
+        ConversationListItem(
+            id=conv.id,
+            title=conv.title,
+            summary=conv.summary,
+            emoji=conv.emoji,
+            started_at=conv.started_at,
+            ended_at=conv.ended_at,
+            duration_s=_duration_s(conv),
+            segment_count=segment_count,
+            analysis_status=conv.analysis_status,
+            is_open=_is_open(conv, now),
+            people=people[conv.id][:MAX_LISTED_PEOPLE],
+            task_count=tasks[conv.id],
+        )
+        for conv, segment_count in rows
+    ]
+
+
 # --- Endpoints ---
 
 
 @router.get("", response_model=ConversationListResponse)
 async def list_conversations(
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all conversations for the current user, most recent first."""
-    # Count total
-    count_query = (
-        select(func.count(Conversation.id))
-        .where(Conversation.user_id == user_id)
-    )
-    total = (await db.execute(count_query)).scalar() or 0
-
-    # Fetch conversations with segment count
-    query = (
-        select(
-            Conversation,
-            func.count(Segment.id).label("segment_count"),
-        )
-        .outerjoin(Segment, Segment.conversation_id == Conversation.id)
-        .where(Conversation.user_id == user_id)
-        .group_by(Conversation.id)
-        .order_by(Conversation.started_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
-
-    result = await db.execute(query)
-    rows = result.all()
-
-    items = [
-        ConversationListItem(
-            id=conv.id,
-            title=conv.title,
-            summary=conv.summary,
-            started_at=conv.started_at,
-            ended_at=conv.ended_at,
-            segment_count=seg_count,
-            analysis_status=conv.analysis_status,
-        )
-        for conv, seg_count in rows
+    """List the user's conversations, most recent first; optionally those overlapping a period."""
+    conditions = [
+        Conversation.user_id == user_id,
+        *conversation_overlaps(date_from, date_to),
     ]
+    total = (
+        await db.execute(select(func.count(Conversation.id)).where(*conditions))
+    ).scalar() or 0
 
-    return ConversationListResponse(conversations=items, total=total)
+    query = with_segment_counts(*conditions).offset(offset).limit(limit)
+    rows = (await db.execute(query)).all()
+    return ConversationListResponse(conversations=await list_items(db, rows), total=total)
 
 
 @router.get("/{conversation_id}", response_model=ConversationDetail)
@@ -132,39 +194,46 @@ async def get_conversation(
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get details of a specific conversation including transcriptions and entities."""
-    # Fetch conversation
-    query = (
-        select(Conversation)
-        .where(Conversation.id == conversation_id)
-        .where(Conversation.user_id == user_id)
-    )
-    result = await db.execute(query)
-    conversation = result.scalar_one_or_none()
-
+    """A conversation with its segments (pending ones too) and the entities extracted from it."""
+    conversation = (
+        await db.execute(
+            select(Conversation)
+            .where(Conversation.id == conversation_id)
+            .where(Conversation.user_id == user_id)
+        )
+    ).scalar_one_or_none()
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Fetch transcriptions in order
-    trans_query = (
-        select(Transcription.text, Segment.recorded_at)
-        .join(Segment, Segment.id == Transcription.segment_id)
+    segment_rows = await db.execute(
+        select(
+            Segment.id,
+            Segment.recorded_at,
+            Segment.transcription_status,
+            Transcription.text,
+            Transcription.speaker_label,
+        )
+        .outerjoin(Transcription, Transcription.segment_id == Segment.id)
         .where(Segment.conversation_id == conversation_id)
         .order_by(Segment.recorded_at)
     )
-    trans_result = await db.execute(trans_query)
     transcriptions = [
-        TranscriptionOut(text=row.text, recorded_at=row.recorded_at)
-        for row in trans_result.all()
+        TranscriptionOut(
+            segment_id=row.id,
+            text=row.text,
+            speaker_label=row.speaker_label,
+            status=row.transcription_status,
+            recorded_at=row.recorded_at,
+        )
+        for row in segment_rows.all()
     ]
 
-    # Fetch entities
-    ent_query = (
-        select(Entity)
+    entity_rows = await db.execute(
+        select(Entity, Transcription.text)
+        .outerjoin(Transcription, Transcription.id == Entity.source_transcription_id)
         .where(Entity.conversation_id == conversation_id)
         .order_by(Entity.created_at)
     )
-    ent_result = await db.execute(ent_query)
     entities = [
         EntityOut(
             id=e.id,
@@ -172,16 +241,20 @@ async def get_conversation(
             name=e.name,
             content=e.content,
             metadata_=e.metadata_,
+            source_text=source_text,
         )
-        for e in ent_result.scalars().all()
+        for e, source_text in entity_rows.all()
     ]
 
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
         summary=conversation.summary,
+        emoji=conversation.emoji,
         started_at=conversation.started_at,
         ended_at=conversation.ended_at,
+        duration_s=_duration_s(conversation),
+        is_open=_is_open(conversation, datetime.now(timezone.utc)),
         analysis_status=conversation.analysis_status,
         transcriptions=transcriptions,
         entities=entities,

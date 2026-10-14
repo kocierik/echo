@@ -32,7 +32,6 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
 | `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 8 suite Unity native, 79 test (protocollo, stato transfer, bond, mute, overflow, ring buffer) |
 | `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 319 test (servizi + widget), `flutter analyze` pulito |
 | `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio | 502 test pytest (unitari + integrazione con Postgres), ruff pulito |
-| `backend/static/` | Web UI vanilla (chat + admin) | — |
 | `simulator/` | Python, simula il device via HTTP | — |
 
 Fase attuale: **Core Beta** ([spec](superpowers/specs/2026-10-01-core-beta-design.md)): un utente, un iPhone,

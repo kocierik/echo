@@ -325,15 +325,32 @@ async def extract_entities(
 UNTITLED_CONVERSATION = "Untitled conversation"
 
 
-async def generate_conversation_summary(llm_service, full_text: str) -> tuple[str, str]:
-    """Generate a short title and summary for a conversation using LLM.
+@dataclass(frozen=True)
+class ConversationSummary:
+    title: str
+    summary: str
+    emoji: str | None  # None when the model gave none or something that is not one emoji
+
+
+# An emoji is at most a few code points (flags, skin tones, ZWJ sequences); words are not
+_MAX_EMOJI_CHARS = 8
+
+
+def _clean_emoji(value) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or len(value) > _MAX_EMOJI_CHARS or any(c.isalnum() for c in value):
+        return None
+    return value
+
+
+async def generate_conversation_summary(llm_service, full_text: str) -> ConversationSummary:
+    """Generate a short title, a summary and one emoji for a conversation using LLM.
 
     Args:
         llm_service: LLM service instance.
         full_text: Full concatenated transcription text of the conversation.
-
-    Returns:
-        Tuple of (title, summary).
     """
     # Truncate if too long (save tokens)
     max_chars = 3000
@@ -346,17 +363,20 @@ async def generate_conversation_summary(llm_service, full_text: str) -> tuple[st
                 "You organize the user's conversations. "
                 "Given the transcript of a conversation (often in Italian), write:\n"
                 "1. A short title (max 60 characters) naming the main topic\n"
-                "2. A 2-3 sentence summary of the key points\n\n"
-                "Write both in English. Keep names of people and places as spoken.\n"
+                "2. A 2-3 sentence summary of the key points\n"
+                "3. One emoji for the topic (e.g. 💼 work, 🍝 food, 🏥 health)\n\n"
+                "Write the title and summary in English. Keep names of people and places as "
+                "spoken.\n"
                 "Answer in JSON with the format:\n"
-                '{"title": "...", "summary": "..."}'
+                '{"title": "...", "summary": "...", "emoji": "..."}'
             ),
         ),
         LLMMessage(role="user", content=f"Conversation:\n\n{text_for_summary}"),
     ]
 
     result = await llm_service.complete_json(messages)
-    title = result.get("title") or UNTITLED_CONVERSATION
-    summary = result.get("summary", "")
-
-    return title, summary
+    return ConversationSummary(
+        title=result.get("title") or UNTITLED_CONVERSATION,
+        summary=result.get("summary", ""),
+        emoji=_clean_emoji(result.get("emoji")),
+    )

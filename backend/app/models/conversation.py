@@ -14,6 +14,8 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # One emoji for the topic, written with the title and summary (None until then)
+    emoji: Mapped[str | None] = mapped_column(String(16), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     analysis_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")

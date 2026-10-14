@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.entity import Entity
+from app.models.transcription import Transcription
 from app.services.deduplication import deduplicate_entities
 from app.services.llm_openai import get_llm_analysis_service
 
@@ -28,6 +29,8 @@ class EntityOut(BaseModel):
     metadata_: dict
     conversation_id: uuid.UUID | None
     created_at: datetime
+    # The transcript sentence the entity was extracted from (filled for tasks)
+    source_text: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -168,15 +171,18 @@ async def list_tasks(
     )
 
     if done is not None:
-        # Filter by metadata_.done field
-        base = base.where(Entity.metadata_["done"].as_boolean() == done)
+        # A task without metadata.done (as extracted) is open
+        base = base.where(func.coalesce(Entity.metadata_["done"].as_boolean(), False) == done)
 
     count_query = select(func.count()).select_from(base.subquery())
     total = (await db.execute(count_query)).scalar() or 0
 
-    query = base.order_by(Entity.created_at.desc()).limit(limit)
-    result = await db.execute(query)
-    entities = result.scalars().all()
+    rows = await db.execute(
+        base.add_columns(Transcription.text)
+        .outerjoin(Transcription, Transcription.id == Entity.source_transcription_id)
+        .order_by(Entity.created_at.desc())
+        .limit(limit)
+    )
 
     return EntityListResponse(
         entities=[
@@ -184,8 +190,9 @@ async def list_tasks(
                 id=e.id, entity_type=e.entity_type, name=e.name,
                 content=e.content, metadata_=e.metadata_,
                 conversation_id=e.conversation_id, created_at=e.created_at,
+                source_text=source_text,
             )
-            for e in entities
+            for e, source_text in rows.all()
         ],
         total=total,
     )

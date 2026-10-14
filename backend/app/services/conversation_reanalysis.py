@@ -71,6 +71,7 @@ async def reanalyse_conversation(
 
         conversation.title = None
         conversation.summary = None
+        conversation.emoji = None
 
         if not transcriptions:
             conversation.analysis_status = "completed"
@@ -143,14 +144,15 @@ async def reanalyse_conversation(
                 )
 
         if len(full_text.split()) > 10:
-            title, summary = await retry_with_backoff(
+            result = await retry_with_backoff(
                 generate_conversation_summary,
                 llm_service,
                 full_text,
                 operation_name=f"Reanalysis summary {conversation_id}",
             )
-            conversation.title = title
-            conversation.summary = summary
+            conversation.title = result.title
+            conversation.summary = result.summary
+            conversation.emoji = result.emoji
 
         conversation.analysis_status = "completed"
         await db.commit()

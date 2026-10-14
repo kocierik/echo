@@ -76,7 +76,7 @@ async def summarize_closed_conversations(
                 continue
 
             try:
-                title, summary = await retry_with_backoff(
+                result = await retry_with_backoff(
                     generate_conversation_summary,
                     llm,
                     full_text,
@@ -91,8 +91,9 @@ async def summarize_closed_conversations(
                 )
                 continue
 
-            conversation.title = title
-            conversation.summary = summary
+            conversation.title = result.title
+            conversation.summary = result.summary
+            conversation.emoji = result.emoji
             summarized += 1
 
         await db.commit()

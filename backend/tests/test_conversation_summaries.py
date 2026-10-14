@@ -57,11 +57,15 @@ class _FakeLLM:
 
     async def complete_json(self, _messages):
         self.calls += 1
-        return {"title": "Pranzo con Ada", "summary": "Ada propone il progetto Atlas."}
+        return {
+            "title": "Pranzo con Ada",
+            "summary": "Ada propone il progetto Atlas.",
+            "emoji": "🍝",
+        }
 
 
 def _conversation():
-    return SimpleNamespace(id=uuid.uuid4(), title=None, summary=None)
+    return SimpleNamespace(id=uuid.uuid4(), title=None, summary=None, emoji=None)
 
 
 def _patch_direct_retry(monkeypatch):
@@ -94,6 +98,7 @@ async def test_long_closed_conversation_gets_title_and_summary(monkeypatch):
     assert count == 1
     assert conversation.title == "Pranzo con Ada"
     assert conversation.summary == "Ada propone il progetto Atlas."
+    assert conversation.emoji == "🍝"
     assert session.committed
 
 
