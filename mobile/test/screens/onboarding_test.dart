@@ -201,7 +201,7 @@ void main() {
       expect(fixture.controller.value.completed, isFalse);
     });
 
-    test('missing identity overrides later persisted progress', () async {
+    test('completed onboarding without a device resumes as complete', () async {
       final fixture = _Fixture(
         configured: true,
         hasIdentity: false,
@@ -210,6 +210,54 @@ void main() {
       );
 
       await fixture.controller.initialize();
+
+      expect(fixture.controller.value.step, OnboardingStep.privacy);
+      expect(fixture.controller.value.completed, isTrue);
+      expect(fixture.controller.value.paired, isFalse);
+    });
+
+    test('skipping pairing finishes setup without a device', () async {
+      final fixture = _Fixture(
+        configured: true,
+        highestStep: OnboardingStep.permissions.index,
+      );
+      await fixture.controller.initialize();
+      expect(fixture.controller.value.step, OnboardingStep.pairing);
+
+      await fixture.controller.skipPairing();
+
+      expect(fixture.controller.value.step, OnboardingStep.privacy);
+      expect(fixture.controller.value.paired, isFalse);
+      expect(fixture.pairing.pairCalls, 0);
+      expect(
+        fixture.preferences.getInt(OnboardingController.highestStepKey),
+        OnboardingStep.pairing.index,
+      );
+
+      await fixture.controller.complete();
+      expect(fixture.controller.value.completed, isTrue);
+    });
+
+    test('skipped pairing is not asked again on the next launch', () async {
+      final fixture = _Fixture(
+        configured: true,
+        highestStep: OnboardingStep.pairing.index,
+      );
+
+      await fixture.controller.initialize();
+
+      expect(fixture.controller.value.step, OnboardingStep.privacy);
+      expect(fixture.controller.value.paired, isFalse);
+    });
+
+    test('pairing later from Settings reopens the pairing step', () async {
+      final fixture = _Fixture(
+        configured: true,
+        highestStep: OnboardingStep.privacy.index,
+        completed: true,
+      );
+
+      await fixture.controller.initialize(resumePairingIfConfigured: true);
 
       expect(fixture.controller.value.step, OnboardingStep.pairing);
       expect(fixture.controller.value.completed, isFalse);
@@ -262,6 +310,21 @@ void main() {
 
     expect(completed, isTrue);
     expect(fixture.controller.value.completed, isTrue);
+  });
+
+  testWidgets('pairing can be skipped without a device', (tester) async {
+    final fixture = _Fixture(
+      configured: true,
+      highestStep: OnboardingStep.permissions.index,
+    );
+
+    await _pumpOnboarding(tester, fixture.controller);
+    await tester.tap(find.byKey(const Key('onboarding-skip-pairing')));
+    await tester.pumpAndSettle();
+
+    expect(fixture.controller.value.step, OnboardingStep.privacy);
+    expect(find.text('Start using Echo'), findsOneWidget);
+    expect(find.byKey(const Key('onboarding-skip-pairing')), findsNothing);
   });
 
   testWidgets('prefills the backend URL from the build defaults',

@@ -90,6 +90,35 @@ void main() {
     expect(fixture.scheduler.schedules, schedulesBefore + 1);
   });
 
+  testWidgets('an unpaired app offers pairing, which reopens the onboarding',
+      (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.unpaired,
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    await tester.tap(find.byKey(const Key('device-pair')));
+    await tester.pump();
+
+    expect(fixture.onboardingCallbacks, 1);
+    expect(fixture.forgotCallbacks, 0);
+    expect(
+      fixture.preferences.getBool(OnboardingController.completedKey),
+      isTrue,
+    );
+  });
+
+  testWidgets('a paired device offers no pairing action', (tester) async {
+    final fixture = await _Fixture.create();
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.byKey(const Key('device-pair')), findsNothing);
+  });
+
   testWidgets('forget cancel leaves identity and callbacks untouched',
       (tester) async {
     final fixture = await _Fixture.create();

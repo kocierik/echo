@@ -174,6 +174,15 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
                   : Text(_primaryLabel(state.step)),
             ),
           ),
+          if (state.step == OnboardingStep.pairing && !state.paired)
+            SizedBox(
+              height: 44,
+              child: TextButton(
+                key: const Key('onboarding-skip-pairing'),
+                onPressed: state.busy ? null : widget.controller.skipPairing,
+                child: const Text('Skip for now'),
+              ),
+            ),
           if (state.step != OnboardingStep.backend)
             SizedBox(
               height: 44,

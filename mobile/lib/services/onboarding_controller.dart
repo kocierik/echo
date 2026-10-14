@@ -151,7 +151,9 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
 
       final hasIdentity = await _pairing.hasIdentity();
       if (_disposed) return;
-      if (!hasIdentity) {
+      // Past the pairing step without an identity means pairing was skipped:
+      // the app opens without a device, which is paired later from Settings.
+      if (!hasIdentity && effectiveHighest < OnboardingStep.pairing.index) {
         _setReady(OnboardingStep.pairing);
         return;
       }
@@ -168,12 +170,12 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
           busy: false,
           initialized: true,
           completed: true,
-          paired: true,
+          paired: hasIdentity,
           error: null,
         );
         return;
       }
-      _setReady(OnboardingStep.privacy, paired: true);
+      _setReady(OnboardingStep.privacy, paired: hasIdentity);
     } catch (_) {
       if (_disposed) return;
       value = value.copyWith(
@@ -292,6 +294,25 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
             ? 'No Echo was found. Keep it nearby and try again.'
             : detail,
       );
+    }
+  }
+
+  /// Leaves pairing for later: setup finishes without a device.
+  Future<void> skipPairing() async {
+    if (value.busy || _disposed || value.step != OnboardingStep.pairing) return;
+    _setBusy();
+    try {
+      await _persistHighest(OnboardingStep.pairing);
+      if (_disposed) return;
+      value = value.copyWith(
+        step: OnboardingStep.privacy,
+        busy: false,
+        completed: false,
+        paired: false,
+        error: null,
+      );
+    } catch (_) {
+      _setError('Echo could not save setup progress. Try again.');
     }
   }
 
