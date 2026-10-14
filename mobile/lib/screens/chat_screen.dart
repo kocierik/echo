@@ -11,6 +11,7 @@ import '../widgets/chat_composer.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import 'chat_history_screen.dart';
+import 'conversation_detail_screen.dart';
 
 final class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -19,6 +20,7 @@ final class ChatScreen extends StatefulWidget {
     this.voiceInput,
     this.openSessionRequest,
     this.askRequest,
+    this.memoryApi,
     super.key,
   });
 
@@ -32,6 +34,9 @@ final class ChatScreen extends StatefulWidget {
 
   /// A question to send in a new chat, consumed (set to null) once sent.
   final ValueNotifier<String?>? askRequest;
+
+  /// Opens the conversations sources come from (defaults to the chat's api).
+  final MemoryApi? memoryApi;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -154,6 +159,20 @@ final class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  MemoryApi? get _memoryApi {
+    final api = _api;
+    return widget.memoryApi ?? (api is MemoryApi ? api as MemoryApi : null);
+  }
+
+  void _openConversation(String id) {
+    unawaited(Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConversationDetailScreen(conversationId: id, api: _memoryApi!),
+      ),
+    ));
   }
 
   void _send() {
@@ -305,6 +324,7 @@ final class _ChatScreenState extends State<ChatScreen> {
                 : (rating) => unawaited(
                       _controller.sendFeedback(message.index!, rating),
                     ),
+            onOpenConversation: _memoryApi == null ? null : _openConversation,
           );
         }
         if (state.sending && index == state.messages.length) {

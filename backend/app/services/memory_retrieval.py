@@ -49,6 +49,8 @@ async def retrieve_memory_context(
             Chunk.conversation_id,
             Chunk.text,
             (1 - Chunk.embedding.cosine_distance(question_embedding)).label("similarity"),
+            Conversation.title.label("conversation_title"),
+            Conversation.started_at.label("conversation_started_at"),
         )
         .join(Conversation, Conversation.id == Chunk.conversation_id)
         .where(Conversation.user_id == user_id)
@@ -130,6 +132,9 @@ async def retrieve_memory_context(
                 "chunk_id": row.id,
                 "text": row.text[:200],
                 "similarity": round(float(row.similarity), 4),
+                # For the app to say where a passage comes from
+                "title": row.conversation_title,
+                "started_at": row.conversation_started_at,
             }
         )
 

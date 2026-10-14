@@ -7,7 +7,7 @@ import '../models/today_insights.dart';
 import '../theme/app_theme.dart';
 import 'action_card.dart';
 import 'conversation_card.dart';
-import 'formatting.dart';
+import '../utils/formatting.dart';
 import 'sections.dart';
 import 'task_tile.dart';
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_session.dart';
+import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/screens/chat_screen.dart';
 import 'package:echo_app/services/api_service.dart';
 import 'package:echo_app/services/chat_controller.dart';
@@ -10,6 +11,8 @@ import 'package:echo_app/theme/app_theme.dart';
 import 'package:echo_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/fake_memory_api.dart';
 
 void main() {
   testWidgets('suggestion sends a useful literal prompt', (tester) async {
@@ -61,6 +64,40 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('chat-streaming')), findsNothing);
     expect(find.text('Marco suggested the sushi place.'), findsOneWidget);
+  });
+
+  testWidgets('a source opens the conversation it comes from', (tester) async {
+    final harness = _Harness(
+      queryHandler: (_, __) async => QueryResponse(
+        answer: 'Sushi.',
+        sessionId: 'session-1',
+        sources: const [
+          {'conversation_id': 'c1', 'chunk_id': 'k1', 'text': 'Marco suggested sushi.',
+           'title': 'Lunch with Marco', 'started_at': '2026-10-01T12:30:00Z'},
+        ],
+      ),
+    );
+    final memory = FakeMemoryApi(details: {
+      'c1': ConversationDetail(
+        card: card('c1', startedAt: DateTime(2026, 10, 1, 12, 30), title: 'Lunch with Marco'),
+        lines: const [],
+        entities: const [],
+      ),
+    });
+    await harness.pump(tester, memoryApi: memory);
+
+    await tester.enterText(find.byType(TextField), 'What did Marco suggest?');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send question'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('chat-sources')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Lunch with Marco · '), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('chat-source-k1')));
+    await tester.pumpAndSettle();
+    expect(memory.calls, ['detail c1']);
+    expect(find.text('Lunch with Marco'), findsOneWidget);
   });
 
   testWidgets('send shows loading then error and retry recovers',
@@ -239,9 +276,14 @@ final class _Harness {
     WidgetTester tester, {
     MediaQueryData? mediaQuery,
     ValueNotifier<String?>? askRequest,
+    MemoryApi? memoryApi,
   }) async {
     addTearDown(controller.dispose);
-    Widget child = ChatScreen(controller: controller, askRequest: askRequest);
+    Widget child = ChatScreen(
+      controller: controller,
+      askRequest: askRequest,
+      memoryApi: memoryApi,
+    );
     if (mediaQuery != null) {
       child = MediaQuery(data: mediaQuery, child: child);
     }

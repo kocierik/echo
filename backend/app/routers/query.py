@@ -85,6 +85,9 @@ class SourceChunk(BaseModel):
     chunk_id: uuid.UUID
     text: str
     similarity: float
+    # The conversation's title and start, to label the source
+    title: str | None = None
+    started_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

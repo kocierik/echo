@@ -9,7 +9,7 @@ import '../services/api_exception.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
-import '../widgets/formatting.dart';
+import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';

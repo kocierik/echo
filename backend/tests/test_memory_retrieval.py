@@ -39,6 +39,8 @@ def _chunk_row():
         conversation_id=uuid.uuid4(),
         text="We agreed to ship the demo on Friday.",
         similarity=0.87654321,
+        conversation_title="Planning",
+        conversation_started_at=datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc),
     )
 
 
@@ -78,6 +80,8 @@ async def test_context_has_summary_entities_chunk_and_sources():
             "chunk_id": row.id,
             "text": row.text[:200],
             "similarity": 0.8765,
+            "title": "Planning",
+            "started_at": datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc),
         }
     ]
 
