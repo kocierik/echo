@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/action_models.dart';
 import '../models/chat_session.dart';
 import '../models/memory.dart';
+import '../models/person.dart';
 import '../models/segment.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
@@ -74,6 +75,8 @@ abstract interface class MemoryApi {
   Future<void> setTaskDone(TaskItem task, bool done);
   Future<void> deleteEntity(String id);
   Future<void> deleteConversation(String conversationId);
+  Future<List<PersonSummary>> listPeople();
+  Future<PersonDetail> getPerson(String id);
 }
 
 abstract interface class TranscriptMemoryApi {
@@ -422,6 +425,32 @@ class ApiService
       ),
       expectedStatuses: const {204},
       decodeJson: false,
+    );
+  }
+
+  @override
+  Future<List<PersonSummary>> listPeople() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server/api/people'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.list,
+    );
+    return _parseDecoded(response.data, (data) {
+      return (data as List<dynamic>)
+          .map((item) => PersonSummary.fromJson(item as Map<String, dynamic>))
+          .where((person) => person.name.isNotEmpty)
+          .toList();
+    });
+  }
+
+  @override
+  Future<PersonDetail> getPerson(String id) async {
+    final response = await _getJson('/api/people/${Uri.encodeComponent(id)}');
+    return _parseDecoded(
+      response.data,
+      (data) => PersonDetail.fromJson(data as Map<String, dynamic>),
     );
   }
 

@@ -11,17 +11,21 @@ import '../widgets/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import 'conversation_detail_screen.dart';
+import 'navigation.dart';
+import 'person_screen.dart';
 
-/// Opens a conversation; returns once the detail is closed.
-typedef ConversationOpener = Future<void> Function(BuildContext context, String id);
+enum _MemoriesView { conversations, people }
 
-/// The Memories tab: every conversation by day, and search across the memory.
+/// The Memories tab: every conversation by day with search across the memory,
+/// and the people Echo heard about.
 final class MemoriesScreen extends StatefulWidget {
   const MemoriesScreen({
     this.api,
     this.controller,
     this.segmentUploadedStream,
     this.openConversation,
+    this.openPerson,
+    this.onAsk,
     this.clock = DateTime.now,
     super.key,
   });
@@ -30,6 +34,10 @@ final class MemoriesScreen extends StatefulWidget {
   final MemoriesController? controller;
   final Stream<Object?>? segmentUploadedStream;
   final ConversationOpener? openConversation;
+
+  /// Opens a person; returns once their page is closed.
+  final ConversationOpener? openPerson;
+  final AskCallback? onAsk;
   final DateTime Function() clock;
 
   @override
@@ -42,6 +50,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
   late final MemoryApi _api;
   ApiService? _ownedApi;
   final _searchController = TextEditingController();
+  _MemoriesView _view = _MemoriesView.conversations;
 
   @override
   void initState() {
@@ -76,11 +85,43 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     } else {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
-          builder: (_) => ConversationDetailScreen(conversationId: id, api: _api),
+          builder: (_) => ConversationDetailScreen(
+            conversationId: id,
+            api: _api,
+            onAsk: widget.onAsk,
+            clock: widget.clock,
+          ),
         ),
       );
     }
     if (mounted) await _controller.refresh();
+  }
+
+  Future<void> _openPerson(String id) async {
+    final opener = widget.openPerson;
+    if (opener != null) {
+      await opener(context, id);
+    } else {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => PersonScreen(
+            personId: id,
+            api: _api,
+            onAsk: widget.onAsk,
+            clock: widget.clock,
+          ),
+        ),
+      );
+    }
+    if (mounted) await _controller.loadPeople();
+  }
+
+  void _showView(_MemoriesView view) {
+    setState(() => _view = view);
+    _clearSearch();
+    if (view == _MemoriesView.people && !_controller.state.peopleLoaded) {
+      unawaited(_controller.loadPeople());
+    }
   }
 
   void _clearSearch() {
@@ -106,16 +147,46 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: SegmentedButton<_MemoriesView>(
+                key: const Key('memories-view'),
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: _MemoriesView.conversations,
+                    label: Text('Conversations'),
+                  ),
+                  ButtonSegment(value: _MemoriesView.people, label: Text('People')),
+                ],
+                selected: {_view},
+                onSelectionChanged: (selection) => _showView(selection.single),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: _SearchField(
                 controller: _searchController,
-                searching: _controller.state.searching,
-                onChanged: _controller.setQuery,
+                hint: _view == _MemoriesView.people
+                    ? 'Search people'
+                    : 'Search conversations, people, tasks',
+                searching: _view == _MemoriesView.conversations &&
+                    _controller.state.searching,
+                onChanged: (text) {
+                  if (_view == _MemoriesView.conversations) {
+                    _controller.setQuery(text);
+                  } else {
+                    setState(() {}); // people are filtered here, by name
+                  }
+                },
                 onClear: _clearSearch,
               ),
             ),
             Divider(height: 1, color: palette.border),
             Expanded(
-              child: _controller.state.isSearching ? _buildSearch() : _buildList(),
+              child: _view == _MemoriesView.people
+                  ? _buildPeople()
+                  : _controller.state.isSearching
+                      ? _buildSearch()
+                      : _buildList(),
             ),
           ],
         ),
@@ -199,6 +270,58 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     );
   }
 
+  Widget _buildPeople() {
+    final state = _controller.state;
+    if (state.peopleLoading || !state.peopleLoaded) {
+      return const Center(child: CircularProgressIndicator(key: Key('people-loading')));
+    }
+    if (state.people.isEmpty) {
+      if (state.peopleError != null) {
+        return FullScreenMessage(
+          icon: Icons.cloud_off_rounded,
+          title: 'Could not load people',
+          message: state.peopleError!,
+          actionKey: const Key('people-retry'),
+          actionLabel: 'Retry',
+          onAction: _controller.loadPeople,
+          onRefresh: _controller.loadPeople,
+        );
+      }
+      return FullScreenMessage(
+        icon: Icons.people_outline_rounded,
+        title: 'No people yet',
+        message: 'People you talk with or about show up here.',
+        onRefresh: _controller.loadPeople,
+      );
+    }
+    final query = _searchController.text.trim().toLowerCase();
+    final people = query.isEmpty
+        ? state.people
+        : state.people.where((p) => p.name.toLowerCase().contains(query)).toList();
+    if (people.isEmpty) {
+      return FullScreenMessage(
+        icon: Icons.search_off_rounded,
+        title: 'No one matches',
+        message: 'Nobody named "${_searchController.text.trim()}" yet.',
+      );
+    }
+    final now = widget.clock();
+    return RefreshIndicator(
+      onRefresh: _controller.loadPeople,
+      child: ListView.builder(
+        key: const Key('people-list'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 4, bottom: 96),
+        itemCount: people.length,
+        itemBuilder: (context, index) => PersonTile(
+          person: people[index],
+          now: now,
+          onTap: () => unawaited(_openPerson(people[index].id)),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSearch() {
     final state = _controller.state;
     final results = state.results;
@@ -234,6 +357,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
           for (final conversation in results.conversations)
             ConversationCardTile(
               conversation: conversation,
+              dayFrom: widget.clock(),
               onTap: () => unawaited(_open(conversation.id)),
             ),
         ],
@@ -304,12 +428,14 @@ final class _DayHeader extends StatelessWidget {
 final class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
+    required this.hint,
     required this.searching,
     required this.onChanged,
     required this.onClear,
   });
 
   final TextEditingController controller;
+  final String hint;
   final bool searching;
   final ValueChanged<String> onChanged;
   final VoidCallback onClear;
@@ -326,7 +452,7 @@ final class _SearchField extends StatelessWidget {
           textInputAction: TextInputAction.search,
           decoration: InputDecoration(
             isDense: true,
-            hintText: 'Search conversations, people, tasks',
+            hintText: hint,
             prefixIcon: const Icon(Icons.search_rounded, size: 20),
             suffixIcon: value.text.isEmpty
                 ? null

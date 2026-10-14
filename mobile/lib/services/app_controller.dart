@@ -39,6 +39,10 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// The chat screen loads it and sets it back to null.
   final ValueNotifier<String?> pendingChatSessionId = ValueNotifier(null);
 
+  /// A question the Ask tab should send in a new chat ("Ask about Marco").
+  /// The chat screen sends it and sets it back to null.
+  final ValueNotifier<String?> pendingChatQuestion = ValueNotifier(null);
+
   final Stream<DeviceStatus> _deviceStates;
   final Stream<SessionState> _sessionStates;
   final AppPreferences _preferences;
@@ -104,6 +108,14 @@ final class AppController extends ValueNotifier<AppViewState> {
     unawaited(setSelectedTab(askTab));
   }
 
+  /// Selects the Ask tab and asks it to send [question] in a new chat.
+  void requestAsk(String question) {
+    final text = question.trim();
+    if (_disposed || text.isEmpty) return;
+    pendingChatQuestion.value = text;
+    unawaited(setSelectedTab(askTab));
+  }
+
   /// Routes a tapped notification: "voice:<sessionId>" opens that session in
   /// Ask ("voice:" alone only selects Ask); other payloads are ignored.
   void handleNotificationPayload(String payload) {
@@ -153,6 +165,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     unawaited(_deviceSubscription?.cancel());
     unawaited(_sessionSubscription?.cancel());
     pendingChatSessionId.dispose();
+    pendingChatQuestion.dispose();
     super.dispose();
   }
 }

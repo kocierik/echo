@@ -17,6 +17,7 @@ final class ChatScreen extends StatefulWidget {
     this.api,
     this.voiceInput,
     this.openSessionRequest,
+    this.askRequest,
     super.key,
   });
 
@@ -27,6 +28,9 @@ final class ChatScreen extends StatefulWidget {
   /// A session id to open (set e.g. by a notification tap); the screen loads
   /// it and sets the notifier back to null.
   final ValueNotifier<String?>? openSessionRequest;
+
+  /// A question to send in a new chat, consumed (set to null) once sent.
+  final ValueNotifier<String?>? askRequest;
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -69,8 +73,12 @@ final class _ChatScreenState extends State<ChatScreen> {
     _messageCount = _controller.state.messages.length;
     _controller.addListener(_onControllerChanged);
     widget.openSessionRequest?.addListener(_onOpenSessionRequest);
+    widget.askRequest?.addListener(_onAskRequest);
     // A request made before this screen existed (cold start from a tap)
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onOpenSessionRequest());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onOpenSessionRequest();
+      _onAskRequest();
+    });
   }
 
   @override
@@ -81,6 +89,22 @@ final class _ChatScreenState extends State<ChatScreen> {
       widget.openSessionRequest?.addListener(_onOpenSessionRequest);
       _onOpenSessionRequest();
     }
+    if (oldWidget.askRequest != widget.askRequest) {
+      oldWidget.askRequest?.removeListener(_onAskRequest);
+      widget.askRequest?.addListener(_onAskRequest);
+      _onAskRequest();
+    }
+  }
+
+  void _onAskRequest() {
+    final request = widget.askRequest;
+    if (!mounted || request == null) return;
+    final question = request.value;
+    if (question == null) return;
+    request.value = null;
+    _controller.newChat();
+    _controller.setComposerText(question);
+    unawaited(_controller.send(question));
   }
 
   void _onOpenSessionRequest() {
@@ -152,6 +176,7 @@ final class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _controller.removeListener(_onControllerChanged);
     widget.openSessionRequest?.removeListener(_onOpenSessionRequest);
+    widget.askRequest?.removeListener(_onAskRequest);
     _textController.dispose();
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();

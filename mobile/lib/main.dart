@@ -371,10 +371,17 @@ class MainShell extends StatelessWidget {
                 },
                 segmentUploadedStream: segmentUploadedStream,
               ),
-              MemoriesScreen(segmentUploadedStream: segmentUploadedStream),
-              TasksScreen(segmentUploadedStream: segmentUploadedStream),
+              MemoriesScreen(
+                segmentUploadedStream: segmentUploadedStream,
+                onAsk: appController.requestAsk,
+              ),
+              TasksScreen(
+                segmentUploadedStream: segmentUploadedStream,
+                onAsk: appController.requestAsk,
+              ),
               ChatScreen(
                 openSessionRequest: appController.pendingChatSessionId,
+                askRequest: appController.pendingChatQuestion,
               ),
             ],
           ),

@@ -7,10 +7,18 @@ import 'formatting.dart';
 /// One conversation in a list: emoji, title, two lines of summary, time and
 /// duration, people and tasks. Live and processing conversations say so.
 final class ConversationCardTile extends StatelessWidget {
-  const ConversationCardTile({required this.conversation, required this.onTap, super.key});
+  const ConversationCardTile({
+    required this.conversation,
+    required this.onTap,
+    this.dayFrom,
+    super.key,
+  });
 
   final ConversationCard conversation;
   final VoidCallback onTap;
+
+  /// Outside a day-grouped list: "now", to say the day too ("Yesterday · 10:00").
+  final DateTime? dayFrom;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +27,7 @@ final class ConversationCardTile extends StatelessWidget {
     final c = conversation;
     final title = conversationTitle(c);
     final summary = c.summary;
-    final meta = _meta(c);
+    final meta = _meta(c, dayFrom);
 
     return Semantics(
       button: true,
@@ -88,8 +96,10 @@ final class ConversationCardTile extends StatelessWidget {
     );
   }
 
-  static String _meta(ConversationCard c) {
-    final time = formatTime(c.startedAt);
+  static String _meta(ConversationCard c, DateTime? now) {
+    final time = now == null
+        ? formatTime(c.startedAt)
+        : '${dayLabel(c.startedAt, now)} · ${formatTime(c.startedAt)}';
     return c.duration.inSeconds < 60 ? time : '$time · ${formatDuration(c.duration)}';
   }
 

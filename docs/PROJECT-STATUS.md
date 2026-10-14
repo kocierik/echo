@@ -58,6 +58,9 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Memories:** conversazioni per giorno (emoji, titolo, riassunto, persone, task, "Live"), ricerca sul server,
   dettaglio con Summary (task con la frase d'origine, eventi, idee) e Transcript correggibile.
 - **Tasks:** task aperti per scadenza, completamento con Annulla, "Not a task", conversazione d'origine.
+- **People** (in Memories): persone per ultima volta viste; la pagina di una persona ha ruolo e note, task ed
+  eventi che la nominano, conversazioni in cui compare e "Ask about" (nuova chat con la domanda già inviata).
+  Anche una conversazione ha "Ask about this conversation".
 - **Today:** stato wearable, ultima trascrizione, **task aperti (completabili)**, **riassunto del giorno**, pausa/ripresa.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).

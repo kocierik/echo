@@ -1,7 +1,9 @@
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/person.dart';
 import 'package:echo_app/screens/memories_screen.dart';
 import 'package:echo_app/services/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/sections.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -15,6 +17,7 @@ void main() {
     FakeMemoryApi api, {
     MemoriesController? controller,
     List<String>? opened,
+    List<String>? openedPeople,
     ThemeData? theme,
     Size size = const Size(375, 812),
     double textScale = 1,
@@ -33,6 +36,7 @@ void main() {
             controller: controller,
             clock: () => now,
             openConversation: (context, id) async => opened?.add(id),
+            openPerson: (context, id) async => openedPeople?.add(id),
           ),
         ),
       ),
@@ -125,9 +129,9 @@ void main() {
     runSearch();
     await tester.pumpAndSettle();
 
-    expect(find.text('Conversations'), findsOneWidget);
+    expect(find.widgetWithText(SectionHeader, 'Conversations'), findsOneWidget);
     expect(find.text('Atlas kickoff'), findsOneWidget);
-    expect(find.text('Mentions'), findsOneWidget);
+    expect(find.widgetWithText(SectionHeader, 'Mentions'), findsOneWidget);
     expect(find.text('Atlas dashboard'), findsOneWidget);
     expect(find.text('“Facciamo una dashboard per Atlas.”'), findsOneWidget);
     await tester.tap(find.text('Atlas dashboard'));
@@ -144,6 +148,54 @@ void main() {
     await tester.tap(find.byKey(const Key('memories-search-clear')));
     await tester.pumpAndSettle();
     expect(find.text('Lunch with Ada'), findsOneWidget);
+  });
+
+  testWidgets('People lists everyone, filters by name and opens a person', (tester) async {
+    final openedPeople = <String>[];
+    final api = FakeMemoryApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
+      ..people = [
+        PersonSummary(
+          id: 'p1',
+          name: 'Marco Rossi',
+          role: 'designer',
+          lastSeen: DateTime(2026, 10, 14, 9),
+          conversationCount: 3,
+          openTaskCount: 2,
+        ),
+        const PersonSummary(id: 'p2', name: 'Ada', conversationCount: 1),
+      ];
+    await pump(tester, api, openedPeople: openedPeople);
+    expect(api.calls.contains('people'), isFalse); // only when shown
+
+    await tester.tap(find.text('People'));
+    await tester.pumpAndSettle();
+    expect(find.text('Marco Rossi'), findsOneWidget);
+    expect(find.text('designer · Seen today'), findsOneWidget);
+    expect(find.text('3 conversations · 2 open tasks'), findsOneWidget);
+    expect(find.text('1 conversation'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('memories-search')), 'ad');
+    await tester.pumpAndSettle();
+    expect(find.text('Marco Rossi'), findsNothing);
+    expect(find.text('Ada'), findsOneWidget);
+    expect(api.calls.any((c) => c.startsWith('search')), isFalse);
+
+    await tester.tap(find.text('Ada'));
+    await tester.pumpAndSettle();
+    expect(openedPeople, ['p2']);
+  });
+
+  testWidgets('People empty and error states', (tester) async {
+    final api = FakeMemoryApi()..peopleError = serverError('Offline');
+    await pump(tester, api);
+    await tester.tap(find.text('People'));
+    await tester.pumpAndSettle();
+    expect(find.text('Could not load people'), findsOneWidget);
+
+    api.peopleError = null;
+    await tester.tap(find.byKey(const Key('people-retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('No people yet'), findsOneWidget);
   });
 
   testWidgets('fits 320 wide at 1.3 text scale in light and dark', (tester) async {

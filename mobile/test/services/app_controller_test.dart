@@ -144,6 +144,20 @@ void main() {
       expect(controller.value.selectedTab, AppController.askTab);
     });
 
+    test('requestAsk selects Ask with the question, ignoring blank ones', () async {
+      controller = await createController();
+
+      controller.requestAsk('   ');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.pendingChatQuestion.value, isNull);
+      expect(controller.value.selectedTab, AppController.todayTab);
+
+      controller.requestAsk(' What about Ada? ');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.pendingChatQuestion.value, 'What about Ada?');
+      expect(controller.value.selectedTab, AppController.askTab);
+    });
+
     test('other payloads are ignored', () async {
       controller = await createController();
 
