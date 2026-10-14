@@ -21,7 +21,7 @@ def _foreign_key_ondelete(model, column_name: str) -> str | None:
 def test_transcription_edit_is_registered() -> None:
     table = Base.metadata.tables["transcription_edits"]
 
-    assert set(table.columns) == {
+    assert set(table.columns.keys()) == {
         "id",
         "transcription_id",
         "user_id",
