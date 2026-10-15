@@ -9,9 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import PendingAction
 from tests.conftest import TEST_USER_ID
 
-NOW = datetime.now(timezone.utc)
-
-
 def _pending(
     summary: str,
     *,
@@ -30,8 +27,9 @@ def _pending(
         arguments={"to": "marco@example.com"},
         summary=summary,
         status=status,
-        created_at=NOW - age,
-        expires_at=NOW + expires_in,
+        # Now, not when the module was imported: a long run would expire them
+        created_at=datetime.now(timezone.utc) - age,
+        expires_at=datetime.now(timezone.utc) + expires_in,
     )
 
 

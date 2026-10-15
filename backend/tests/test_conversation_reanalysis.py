@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Chunk, Conversation, Entity, Segment, Transcription
 from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.llm_base import LLMResponse
-from app.workers import main as worker_main
+from app.workers import reanalysis as reanalysis_worker
 from tests.conftest import TEST_USER_ID
 
 
@@ -303,17 +303,17 @@ class QueueRedis:
 
     async def eval(self, script, key_count, *args):
         self.eval_calls.append((script, key_count, args))
-        if script == worker_main._RENEW_LOCK_SCRIPT:
+        if script == reanalysis_worker._RENEW_LOCK_SCRIPT:
             renewed = self.renewal_results.pop(0) if self.renewal_results else 1
             if not renewed:
                 self.lock_value = None
             return renewed
-        if script == worker_main._RELEASE_LOCK_SCRIPT:
-            if worker_main._decode_redis_token(self.lock_value) == args[1]:
+        if script == reanalysis_worker._RELEASE_LOCK_SCRIPT:
+            if reanalysis_worker._decode_redis_token(self.lock_value) == args[1]:
                 self.lock_value = None
                 return 1
             return 0
-        if script == worker_main._DELETE_LATEST_IF_UNCHANGED_SCRIPT:
+        if script == reanalysis_worker._DELETE_LATEST_IF_UNCHANGED_SCRIPT:
             if self.marker_before_compare_delete is not _UNCHANGED:
                 self.latest_marker = self.marker_before_compare_delete
                 self.marker_before_compare_delete = _UNCHANGED
@@ -328,7 +328,7 @@ class QueueRedis:
 async def test_reanalysis_worker_dead_letters_malformed_payload() -> None:
     redis = QueueRedis()
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, b"not-json", RecordingLLM(), RecordingEmbeddings()
     )
 
@@ -342,13 +342,13 @@ async def test_reanalysis_worker_requeues_lock_contention_with_bounded_backoff(
 ) -> None:
     redis = QueueRedis(lock_acquired=False)
     sleep = AsyncMock()
-    monkeypatch.setattr(worker_main.asyncio, "sleep", sleep)
+    monkeypatch.setattr(reanalysis_worker.asyncio, "sleep", sleep)
     payload = {
         "conversation_id": str(uuid.uuid4()),
         "requested_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, json.dumps(payload), RecordingLLM(), RecordingEmbeddings()
     )
 
@@ -359,7 +359,7 @@ async def test_reanalysis_worker_requeues_lock_contention_with_bounded_backoff(
 
     redis.pushes.clear()
     payload["attempts"] = 4
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, json.dumps(payload), RecordingLLM(), RecordingEmbeddings()
     )
     assert redis.pushes[0][0] == "queue:dead-letter"
@@ -373,13 +373,13 @@ async def test_reanalysis_worker_repeats_for_newer_marker_and_releases_lock(
     newer_at = requested_at + timedelta(seconds=1)
     redis = QueueRedis(marker=newer_at.isoformat())
     reanalyse = AsyncMock(return_value=type("Result", (), {"found": True})())
-    monkeypatch.setattr(worker_main, "reanalyse_conversation", reanalyse)
+    monkeypatch.setattr(reanalysis_worker, "reanalyse_conversation", reanalyse)
 
     @asynccontextmanager
     async def fake_session():
         yield object()
 
-    monkeypatch.setattr(worker_main, "async_session", fake_session)
+    monkeypatch.setattr(reanalysis_worker, "async_session", fake_session)
     payload = json.dumps(
         {
             "conversation_id": str(uuid.uuid4()),
@@ -387,7 +387,7 @@ async def test_reanalysis_worker_repeats_for_newer_marker_and_releases_lock(
         }
     )
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, payload, RecordingLLM(), RecordingEmbeddings()
     )
 
@@ -395,7 +395,7 @@ async def test_reanalysis_worker_repeats_for_newer_marker_and_releases_lock(
     assert redis.lock_gets == 4
     assert redis.latest_marker is None
     assert any(
-        script == worker_main._DELETE_LATEST_IF_UNCHANGED_SCRIPT
+        script == reanalysis_worker._DELETE_LATEST_IF_UNCHANGED_SCRIPT
         for script, _, _ in redis.eval_calls
     )
 
@@ -406,13 +406,13 @@ async def test_reanalysis_worker_accepts_missing_marker_after_success(
 ) -> None:
     redis = QueueRedis()
     reanalyse = AsyncMock(return_value=type("Result", (), {"found": True})())
-    monkeypatch.setattr(worker_main, "reanalyse_conversation", reanalyse)
+    monkeypatch.setattr(reanalysis_worker, "reanalyse_conversation", reanalyse)
 
     @asynccontextmanager
     async def fake_session():
         yield object()
 
-    monkeypatch.setattr(worker_main, "async_session", fake_session)
+    monkeypatch.setattr(reanalysis_worker, "async_session", fake_session)
     payload = json.dumps(
         {
             "conversation_id": str(uuid.uuid4()),
@@ -420,13 +420,13 @@ async def test_reanalysis_worker_accepts_missing_marker_after_success(
         }
     )
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, payload, RecordingLLM(), RecordingEmbeddings()
     )
 
     reanalyse.assert_awaited_once()
     assert not any(
-        script == worker_main._DELETE_LATEST_IF_UNCHANGED_SCRIPT
+        script == reanalysis_worker._DELETE_LATEST_IF_UNCHANGED_SCRIPT
         for script, _, _ in redis.eval_calls
     )
 
@@ -442,7 +442,7 @@ async def test_reanalysis_worker_does_not_delete_marker_replaced_after_get(
         marker_before_compare_delete=replacement,
     )
     monkeypatch.setattr(
-        worker_main,
+        reanalysis_worker,
         "reanalyse_conversation",
         AsyncMock(return_value=type("Result", (), {"found": True})()),
     )
@@ -451,7 +451,7 @@ async def test_reanalysis_worker_does_not_delete_marker_replaced_after_get(
     async def fake_session():
         yield object()
 
-    monkeypatch.setattr(worker_main, "async_session", fake_session)
+    monkeypatch.setattr(reanalysis_worker, "async_session", fake_session)
     payload = json.dumps(
         {
             "conversation_id": str(uuid.uuid4()),
@@ -459,7 +459,7 @@ async def test_reanalysis_worker_does_not_delete_marker_replaced_after_get(
         }
     )
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis, payload, RecordingLLM(), RecordingEmbeddings()
     )
 
@@ -482,20 +482,20 @@ async def test_reanalysis_worker_requeues_when_lock_renewal_is_lost(
 
     redis = QueueRedis(renewal_results=[0])
     reanalyse = AsyncMock(side_effect=reanalyse_once)
-    monkeypatch.setattr(worker_main.asyncio, "sleep", yield_once)
-    monkeypatch.setattr(worker_main, "reanalyse_conversation", reanalyse)
+    monkeypatch.setattr(reanalysis_worker.asyncio, "sleep", yield_once)
+    monkeypatch.setattr(reanalysis_worker, "reanalyse_conversation", reanalyse)
 
     @asynccontextmanager
     async def fake_session():
         yield object()
 
-    monkeypatch.setattr(worker_main, "async_session", fake_session)
+    monkeypatch.setattr(reanalysis_worker, "async_session", fake_session)
     payload_data = {
         "conversation_id": str(uuid.uuid4()),
         "requested_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    await worker_main._process_reanalysis_payload(
+    await reanalysis_worker._process_reanalysis_payload(
         redis,
         json.dumps(payload_data),
         RecordingLLM(),
@@ -518,7 +518,7 @@ async def test_reanalysis_worker_cancellation_requeues_and_releases_lock(
 ) -> None:
     redis = QueueRedis()
     monkeypatch.setattr(
-        worker_main,
+        reanalysis_worker,
         "reanalyse_conversation",
         AsyncMock(side_effect=asyncio.CancelledError),
     )
@@ -527,14 +527,14 @@ async def test_reanalysis_worker_cancellation_requeues_and_releases_lock(
     async def fake_session():
         yield object()
 
-    monkeypatch.setattr(worker_main, "async_session", fake_session)
+    monkeypatch.setattr(reanalysis_worker, "async_session", fake_session)
     payload_data = {
         "conversation_id": str(uuid.uuid4()),
         "requested_at": datetime.now(timezone.utc).isoformat(),
     }
 
     with pytest.raises(asyncio.CancelledError):
-        await worker_main._process_reanalysis_payload(
+        await reanalysis_worker._process_reanalysis_payload(
             redis,
             json.dumps(payload_data),
             RecordingLLM(),

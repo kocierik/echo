@@ -16,7 +16,9 @@ NOW = datetime.now(timezone.utc)
 async def test_list_has_emoji_duration_people_tasks_and_open_state(
     client, auth_headers, db_session: AsyncSession
 ):
-    closed, _ = await make_conversation(db_session, started_at=NOW - timedelta(hours=3), minutes=12)
+    # "Open" is relative to the request: the module's NOW is minutes old in a full run
+    now = datetime.now(timezone.utc)
+    closed, _ = await make_conversation(db_session, started_at=now - timedelta(hours=3), minutes=12)
     db_session.add_all(
         [
             make_entity(closed, "person", "Ada"),
@@ -29,7 +31,7 @@ async def test_list_has_emoji_duration_people_tasks_and_open_state(
         ]
     )
     live, _ = await make_conversation(
-        db_session, started_at=NOW - timedelta(seconds=30), minutes=0, title=None, emoji=None
+        db_session, started_at=now - timedelta(seconds=30), minutes=0, title=None, emoji=None
     )
     await db_session.commit()
 

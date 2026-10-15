@@ -17,6 +17,7 @@ from app.models.chat_session import ChatSession
 from app.models.segment import Segment
 from app.services.transcription_enhancer import STTContext
 from app.workers import main as worker_main
+from app.workers import stt as stt_worker
 from app.workers import voice_requests as vr
 from tests.fakes.action_provider import FakeActionProvider
 from tests.mocks import MockLLMService
@@ -847,14 +848,15 @@ async def test_queue_loop_sleeps_when_empty_and_exits_on_shutdown(worker, monkey
 
 
 class _SttLoopRedis:
-    def __init__(self, segment_id):
+    def __init__(self, segment_id, shutdown: asyncio.Event):
         self.items = [str(segment_id).encode()]
         self.pushes = []
+        self.shutdown = shutdown
 
     async def brpop(self, queue, timeout=0):
         if self.items:
             return queue, self.items.pop()
-        worker_main.shutdown_event.set()
+        self.shutdown.set()
         return None
 
     async def lpush(self, queue, payload):
@@ -895,23 +897,20 @@ async def _run_stt(monkeypatch, text):
         return "self"
 
     monkeypatch.setattr(
-        worker_main,
+        stt_worker,
         "get_stt_service",
         lambda: SimpleNamespace(transcribe=None, provider="openai", model="gpt-4o-transcribe"),
     )
-    monkeypatch.setattr(worker_main, "async_session", lambda: _Factory())
-    monkeypatch.setattr(worker_main, "_claim_stt_audio", claim)
-    monkeypatch.setattr(worker_main, "adpcm_to_wav", lambda data: data)
-    monkeypatch.setattr(worker_main, "build_stt_context", context)
-    monkeypatch.setattr(worker_main, "retry_with_backoff", retry)
-    monkeypatch.setattr(worker_main, "classify_segment", classify)
+    monkeypatch.setattr(stt_worker, "async_session", lambda: _Factory())
+    monkeypatch.setattr(stt_worker, "_claim_stt_audio", claim)
+    monkeypatch.setattr(stt_worker, "adpcm_to_wav", lambda data: data)
+    monkeypatch.setattr(stt_worker, "build_stt_context", context)
+    monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
+    monkeypatch.setattr(stt_worker, "classify_segment", classify)
 
-    redis = _SttLoopRedis(segment_id)
-    worker_main.shutdown_event.clear()
-    try:
-        await asyncio.wait_for(worker_main.process_stt(redis), timeout=2)
-    finally:
-        worker_main.shutdown_event.clear()
+    shutdown = asyncio.Event()
+    redis = _SttLoopRedis(segment_id, shutdown)
+    await asyncio.wait_for(stt_worker.process_stt(redis, shutdown), timeout=2)
     return segment_id, redis.pushes
 
 
