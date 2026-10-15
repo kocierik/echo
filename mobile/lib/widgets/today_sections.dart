@@ -269,6 +269,65 @@ final class _DigestSectionState extends State<DigestSection> {
   }
 }
 
+/// The latest weekly summary: what the week was about, its highlights, who came up.
+final class WeeklySummarySection extends StatefulWidget {
+  const WeeklySummarySection({required this.week, super.key});
+
+  final WeeklySummary week;
+
+  @override
+  State<WeeklySummarySection> createState() => _WeeklySummarySectionState();
+}
+
+final class _WeeklySummarySectionState extends State<WeeklySummarySection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final week = widget.week;
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      key: const Key('weekly-summary'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionHeader(title: 'Week of ${shortDate(week.weekStart)}'),
+        InkWell(
+          key: const Key('weekly-summary-content'),
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  week.summary,
+                  maxLines: _expanded ? null : 4,
+                  overflow: _expanded ? null : TextOverflow.ellipsis,
+                  style: textTheme.bodyMedium,
+                ),
+                if (_expanded)
+                  for (final highlight in week.highlights)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text('• $highlight', style: textTheme.bodyMedium),
+                    ),
+                if (week.people.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'With ${week.people.take(4).join(', ')}',
+                      style: textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 final class _HeaderWithLink extends StatelessWidget {
   const _HeaderWithLink({required this.title, required this.linkKey, required this.onTap});
 

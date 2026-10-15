@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (011) for reading.
+-- Do not apply this file: it shows the schema at the head revision (012) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -266,3 +266,19 @@ CREATE TABLE entity_mentions (                -- Migration 010
 );
 CREATE INDEX ix_entity_mentions_entity_id ON entity_mentions (entity_id);
 CREATE INDEX ix_entity_mentions_conversation_id ON entity_mentions (conversation_id);
+
+-- Migration 012: weekly summaries (Monday to Sunday, user's timezone)
+CREATE TABLE weekly_digests (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    week_start DATE NOT NULL,                         -- a Monday
+    summary TEXT NOT NULL,
+    highlights JSONB NOT NULL DEFAULT '[]',
+    people JSONB NOT NULL DEFAULT '[]',               -- [{"name", "conversations"}]
+    conversation_count INTEGER NOT NULL DEFAULT 0,
+    tasks_created INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, week_start)
+);
+
+CREATE INDEX ix_weekly_digests_user_id ON weekly_digests (user_id);

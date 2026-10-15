@@ -13,7 +13,8 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
   it over BLE, the backend transcribes it, groups it into conversations, extracts people, tasks, ideas,
   events and notes, and writes a daily digest.
 - **Answers.** Ask in the app's chat — typed or dictated — "What did Marco say about the offer?"; Echo
-  searches the memory (RAG) and answers in the language of the question.
+  searches the memory (RAG), first in the conversations of the people the question names, and answers
+  in the language of the question. Each day and each week get a summary on Today.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev). Reading and creating run
   right away; sending to other people, modifying and deleting wait for a **Confirm** tap in the app.
@@ -270,6 +271,8 @@ All `/api` endpoints require the `X-API-Key` header.
   `/api/entities/tasks?done=` (with `source_text`),
   `PATCH|DELETE /api/entities/{id}`, `POST /api/entities/{id}/merge`, `POST /api/entities/deduplicate`.
 - `GET /api/digest?days=7`, `GET /api/digest/{date}`, `POST /api/digest/{date}` — daily digests.
+- `GET /api/digest/weekly?weeks=4`, `POST /api/digest/weekly/{monday}` — weekly summaries (summary,
+  highlights, people who came up most), written on Monday at the digest hour for the week before.
 
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.

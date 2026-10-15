@@ -92,6 +92,12 @@ abstract interface class TodayApi implements MemoryApi {
   Future<void> cancelPendingAction(String id);
 }
 
+/// Weekly summaries (optional for a Today api: no section without it).
+abstract interface class WeeklySummaryApi {
+  /// The latest weekly summary of the last two weeks, or null.
+  Future<WeeklySummary?> getLatestWeeklySummary();
+}
+
 abstract interface class TranscriptMemoryApi {
   Future<TranscriptionCorrectionResult> correctTranscription(
     String segmentId,
@@ -229,7 +235,8 @@ class ApiService
         TodayApi,
         TranscriptMemoryApi,
         VoiceUpdatesApi,
-        PhotoApi {
+        PhotoApi,
+        WeeklySummaryApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -755,6 +762,19 @@ class ApiService
           .where((digest) => digest.summary.isNotEmpty)
           .toList();
       return summaries.isEmpty ? null : summaries.first;
+    });
+  }
+
+  @override
+  Future<WeeklySummary?> getLatestWeeklySummary() async {
+    final response = await _getJson('/api/digest/weekly?weeks=2');
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
+      final weeks = items
+          .map((item) => WeeklySummary.fromJson(item as Map<String, dynamic>))
+          .where((week) => week.summary.isNotEmpty)
+          .toList();
+      return weeks.isEmpty ? null : weeks.first;
     });
   }
 

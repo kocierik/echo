@@ -12,3 +12,38 @@ final class DailySummary {
   final DateTime date;
   final String summary;
 }
+
+/// The summary of a week (Monday to Sunday), written on the Monday after.
+final class WeeklySummary {
+  const WeeklySummary({
+    required this.weekStart,
+    required this.summary,
+    this.highlights = const [],
+    this.people = const [],
+    this.conversationCount = 0,
+  });
+
+  factory WeeklySummary.fromJson(Map<String, dynamic> json) {
+    return WeeklySummary(
+      weekStart: DateTime.parse(json['week_start'] as String),
+      summary: (json['summary'] as String? ?? '').trim(),
+      highlights: [
+        for (final item in json['highlights'] as List<dynamic>? ?? const [])
+          if (item is String && item.trim().isNotEmpty) item.trim(),
+      ],
+      people: [
+        for (final item in json['people'] as List<dynamic>? ?? const [])
+          if (item is Map<String, dynamic> && item['name'] is String) item['name'] as String,
+      ],
+      conversationCount: json['conversation_count'] as int? ?? 0,
+    );
+  }
+
+  final DateTime weekStart;
+  final String summary;
+  final List<String> highlights;
+
+  /// Who came up most, most present first.
+  final List<String> people;
+  final int conversationCount;
+}

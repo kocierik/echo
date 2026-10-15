@@ -70,6 +70,8 @@ async def setup_database():
         # Clean up test data (but keep schema for next test)
         await conn.execute(text("DELETE FROM pending_actions"))
         await conn.execute(text("DELETE FROM photos"))
+        await conn.execute(text("DELETE FROM weekly_digests"))
+        await conn.execute(text("DELETE FROM digests"))
         await conn.execute(text("DELETE FROM entities"))
         await conn.execute(text("DELETE FROM chunks"))
         await conn.execute(text("DELETE FROM transcription_edits"))

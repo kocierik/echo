@@ -12,6 +12,9 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.core.timezone import to_user_local_date
 from app.models.digest import Digest
+from app.models.weekly_digest import WeeklyDigest
+from app.services.llm_openai import get_llm_analysis_service
+from app.services.weekly_digest import generate_weekly_digest, week_start_of
 from app.workers.digest import generate_digest_for_date
 
 router = APIRouter(prefix="/digest", tags=["digest"])
@@ -58,6 +61,64 @@ async def list_digests(
         items=[DigestResponse.model_validate(d) for d in digests],
         count=len(digests),
     )
+
+
+class WeeklyDigestResponse(BaseModel):
+    id: uuid.UUID
+    week_start: date
+    summary: str
+    highlights: list[str]
+    people: list[dict]
+    conversation_count: int
+    tasks_created: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WeeklyDigestListResponse(BaseModel):
+    items: list[WeeklyDigestResponse]
+    count: int
+
+
+# Before "/{target_date}": "weekly" is not a date
+@router.get("/weekly", response_model=WeeklyDigestListResponse)
+async def list_weekly_digests(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    weeks: int = Query(default=4, ge=1, le=52, description="Number of weeks to look back"),
+):
+    """Recent weekly summaries, newest first."""
+    this_week = week_start_of(to_user_local_date(datetime.now(timezone.utc)))
+    result = await db.execute(
+        select(WeeklyDigest)
+        .where(WeeklyDigest.user_id == user_id)
+        .where(WeeklyDigest.week_start >= this_week - timedelta(weeks=weeks))
+        .order_by(WeeklyDigest.week_start.desc())
+    )
+    items = result.scalars().all()
+    return WeeklyDigestListResponse(
+        items=[WeeklyDigestResponse.model_validate(w) for w in items], count=len(items)
+    )
+
+
+@router.post("/weekly/{week_start}", response_model=WeeklyDigestResponse)
+async def generate_weekly(
+    week_start: date,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Write (or rewrite) the summary of a week; the current week so far is allowed."""
+    if week_start.weekday() != 0:
+        raise HTTPException(status_code=422, detail="week_start must be a Monday")
+    if week_start > to_user_local_date(datetime.now(timezone.utc)):
+        raise HTTPException(status_code=400, detail="Cannot summarize a future week")
+    weekly = await generate_weekly_digest(
+        db, user_id, week_start, get_llm_analysis_service(), replace=True
+    )
+    if weekly is None:
+        raise HTTPException(status_code=404, detail="No conversations that week")
+    return WeeklyDigestResponse.model_validate(weekly)
 
 
 @router.get("/{target_date}", response_model=DigestResponse)
