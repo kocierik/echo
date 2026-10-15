@@ -1,5 +1,11 @@
 #pragma once
 
+// The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
+// raise it for every release, or the app will not offer the update
+#define FIRMWARE_VERSION_MAJOR 0
+#define FIRMWARE_VERSION_MINOR 5
+#define FIRMWARE_VERSION_PATCH 0
+
 // ============================================================
 // Audio Configuration
 // ============================================================
@@ -56,6 +62,8 @@
 #define BLE_SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define BLE_AUDIO_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 #define BLE_CONTROL_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a9"
+// Firmware updates: [offset u32, bytes] written with response, in order (ota_receiver.h)
+#define BLE_OTA_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26aa"
 #define BLE_PREFERRED_MTU 247
 #define BLE_STATUS_ERROR_NONE 0
 #define BLE_STATUS_ERROR_BUFFER_FULL 1
@@ -104,6 +112,14 @@
 #define BATTERY_DIVIDER_RATIO 2.0f         // Vbat / Vpin
 #define BATTERY_SAMPLES 16                 // averaged per reading
 #define BATTERY_SAMPLE_INTERVAL_MS 30000
+
+// ============================================================
+// Firmware updates over BLE
+// ============================================================
+#define OTA_MIN_BATTERY_PERCENT 20                  // when the battery level is known
+#define OTA_IDLE_TIMEOUT_MS 30000                   // no chunk for this long: transfer dropped
+#define OTA_RESTART_DELAY_MS 500                    // after DONE is sent, before restarting
+#define OTA_CONFIRM_TIMEOUT_MS (5UL * 60UL * 1000UL)  // new firmware without the app: roll back
 
 // ============================================================
 // Hardware Pins

@@ -21,6 +21,7 @@ dependencies:
   flutter_markdown: ^0.7.4+3
   # Wall-clock time the widget tests can advance (already in the lock through flutter)
   clock: ^1.1.1
+  crypto: ^3.0.3
   # The offline copy of the last responses (already in the lock through other plugins)
   path_provider: ^2.1.5
   # The iOS share sheet: a conversation as text, the data export as a file

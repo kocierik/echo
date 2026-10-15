@@ -8,6 +8,7 @@ import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
+import '../services/device/firmware_update.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
@@ -36,6 +37,8 @@ final class HomeScreen extends StatefulWidget {
     this.onMuteAcknowledged,
     this.openConversation,
     this.onOpenChat,
+    this.firmwareUpdate,
+    this.onOpenSettings,
     this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
     super.key,
@@ -57,6 +60,10 @@ final class HomeScreen extends StatefulWidget {
 
   /// Opens the chat an answer goes to (null: the Voice requests chat).
   final void Function(String? sessionId)? onOpenChat;
+
+  /// A newer wearable firmware is announced once per version, with the way to Settings.
+  final FirmwareUpdateController? firmwareUpdate;
+  final VoidCallback? onOpenSettings;
 
   /// How often "Echo is working on it" is checked while something is working.
   final Duration workingPollInterval;
@@ -523,6 +530,26 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                       'Record your voice once, so Echo knows when you are the one speaking.',
                   actionLabel: 'Record my voice',
                   onAction: () => unawaited(_recordVoice()),
+                ),
+              if (widget.firmwareUpdate != null)
+                ValueListenableBuilder<FirmwareUpdateState>(
+                  valueListenable: widget.firmwareUpdate!,
+                  builder: (context, update, _) {
+                    final release = update.release;
+                    if (update.phase != FirmwareUpdatePhase.available ||
+                        release == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return TipCard(
+                      key: ValueKey('firmware-tip-${release.version}'),
+                      tipKey: 'firmware_${release.version}',
+                      text:
+                          'A new firmware for Echo (${release.version}) is ready. '
+                          'Installing it takes about a minute.',
+                      actionLabel: 'Open Settings',
+                      onAction: widget.onOpenSettings,
+                    );
+                  },
                 ),
               WorkingSection(
                 items: _working,

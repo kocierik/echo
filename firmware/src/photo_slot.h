@@ -41,6 +41,9 @@ public:
 
     bool isReady() const { return _state.load() == READY; }
 
+    /** No photo being taken or waiting to be sent. */
+    bool isEmpty() const { return _state.load() == EMPTY; }
+
     /** The failure to report, once; the slot is free again. */
     bool takeFailure(uint8_t& reason) {
         uint8_t expected = FAILED;

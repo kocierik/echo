@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace EchoBleProtocol {
 
@@ -19,16 +20,40 @@ constexpr uint8_t FRAME_SET_MUTED = 0x15;
 constexpr uint8_t FRAME_FORGET_BOND = 0x16;
 constexpr uint8_t FRAME_FORGET_BOND_OK = 0x17;
 constexpr uint8_t FRAME_TAKE_PHOTO = 0x18;   // v3, app -> wearable
+// v4, app -> wearable: [type, image size u32, image SHA-256 x32]; the image follows on
+// the OTA characteristic as [offset u32, bytes], in order
+constexpr uint8_t FRAME_OTA_BEGIN = 0x19;
+constexpr uint8_t FRAME_OTA_ABORT = 0x1A;    // v4, app -> wearable
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
 constexpr uint8_t FRAME_DEVICE_INFO = 0x21;
 constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reason]
+// v4, wearable -> app: [type, state, error, bytes received u32]
+constexpr uint8_t FRAME_OTA_STATUS = 0x23;
 // 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
-constexpr uint8_t PROTOCOL_VERSION = 3;
+// 4: firmware updates over BLE (OTA_*), DEVICE_INFO sent after READY
+constexpr uint8_t PROTOCOL_VERSION = 4;
 
 constexpr uint8_t PHOTO_FAILED_MUTED = 1;
 constexpr uint8_t PHOTO_FAILED_CAPTURE = 2;
 constexpr uint8_t PHOTO_FAILED_BUSY = 3;
 constexpr uint8_t PHOTO_FAILED_NO_CAMERA = 4;
+constexpr uint8_t OTA_STATE_RECEIVING = 1;  // ready for the bytes from `received` on
+constexpr uint8_t OTA_STATE_DONE = 2;       // complete and checked: restarting into it
+constexpr uint8_t OTA_STATE_FAILED = 3;
+
+constexpr uint8_t OTA_ERROR_NONE = 0;
+constexpr uint8_t OTA_ERROR_BUSY = 1;           // audio or a photo still to send
+constexpr uint8_t OTA_ERROR_TOO_LARGE = 2;
+constexpr uint8_t OTA_ERROR_LOW_BATTERY = 3;
+constexpr uint8_t OTA_ERROR_FLASH = 4;
+constexpr uint8_t OTA_ERROR_OUT_OF_ORDER = 5;
+constexpr uint8_t OTA_ERROR_HASH_MISMATCH = 6;
+constexpr uint8_t OTA_ERROR_INVALID_IMAGE = 7;  // not an image this chip can boot
+constexpr uint8_t OTA_ERROR_NOT_STARTED = 8;
+constexpr uint8_t OTA_ERROR_TIMEOUT = 9;
+
+constexpr size_t SHA256_SIZE = 32;
+
 // Photo transfers use ids with the high bit set, apart from audio segment ids
 constexpr uint32_t PHOTO_SEGMENT_ID_FLAG = 0x80000000U;
 
@@ -46,7 +71,11 @@ constexpr size_t TAKE_PHOTO_SIZE = 1;
 constexpr size_t PHOTO_FAILED_SIZE = 2;
 constexpr size_t DEVICE_STATUS_SIZE = 14;
 constexpr size_t DEVICE_INFO_SIZE = 5;
-constexpr size_t MAX_CONTROL_FRAME_SIZE = SET_TIME_SIZE;
+constexpr size_t OTA_BEGIN_SIZE = 1 + 4 + SHA256_SIZE;
+constexpr size_t OTA_ABORT_SIZE = 1;
+constexpr size_t OTA_STATUS_SIZE = 7;
+constexpr size_t OTA_DATA_HEADER_SIZE = 4;
+constexpr size_t MAX_CONTROL_FRAME_SIZE = OTA_BEGIN_SIZE;
 constexpr size_t ATT_NOTIFICATION_OVERHEAD = 3;
 constexpr size_t NIMBLE_CHARACTERISTIC_MAX_LENGTH = 512;
 constexpr uint32_t CRC32_INITIAL_VALUE = 0xFFFFFFFFU;
@@ -196,6 +225,8 @@ struct ControlFrame {
     uint64_t unixMilliseconds;
     int16_t timezoneOffsetMinutes;
     bool muted;
+    uint32_t otaSize;
+    uint8_t otaSha256[SHA256_SIZE];
 };
 
 inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, size_t capacity,
@@ -323,6 +354,27 @@ inline size_t encodePhotoFailed(uint8_t reason, uint8_t* output, size_t capacity
     return PHOTO_FAILED_SIZE;
 }
 
+inline size_t encodeOtaStatus(uint8_t state, uint8_t error, uint32_t received,
+                              uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < OTA_STATUS_SIZE ||
+        state < OTA_STATE_RECEIVING || state > OTA_STATE_FAILED) return 0;
+    output[0] = FRAME_OTA_STATUS;
+    output[1] = state;
+    output[2] = error;
+    writeU32(output + 3, received);
+    return OTA_STATUS_SIZE;
+}
+
+/** A chunk of a firmware image: [offset u32, bytes]; false without any bytes. */
+inline bool decodeOtaData(const uint8_t* input, size_t length, uint32_t& offset,
+                          const uint8_t*& data, size_t& dataLength) {
+    if (input == nullptr || length <= OTA_DATA_HEADER_SIZE) return false;
+    offset = readU32(input);
+    data = input + OTA_DATA_HEADER_SIZE;
+    dataLength = length - OTA_DATA_HEADER_SIZE;
+    return true;
+}
+
 inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame& frame) {
     if (input == nullptr || length == 0) return false;
     frame = {};
@@ -353,6 +405,13 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
             return length == FORGET_BOND_SIZE;
         case FRAME_TAKE_PHOTO:
             return length == TAKE_PHOTO_SIZE;
+        case FRAME_OTA_BEGIN:
+            if (length != OTA_BEGIN_SIZE) return false;
+            frame.otaSize = readU32(input + 1);
+            memcpy(frame.otaSha256, input + 5, SHA256_SIZE);
+            return true;
+        case FRAME_OTA_ABORT:
+            return length == OTA_ABORT_SIZE;
         default:
             return false;
     }

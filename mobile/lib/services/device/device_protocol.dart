@@ -45,15 +45,35 @@ final class DeviceProtocolException implements Exception {
   String toString() => 'DeviceProtocolException: $message';
 }
 
+/// Where a firmware update stands on the wearable (OTA_STATUS).
+enum OtaState { receiving, done, failed }
+
+final class OtaStatus {
+  const OtaStatus(this.state, this.error, this.received);
+
+  final OtaState state;
+
+  /// Why it failed, as [DeviceProtocol.otaErrorMessage] explains; 0 otherwise.
+  final int error;
+
+  /// Bytes the wearable has written.
+  final int received;
+}
+
 abstract final class DeviceProtocol {
-  /// 2: audio; 3: audio and photos. Both are accepted, so an app update never cuts
-  /// off a wearable that still runs the previous firmware.
-  static const Set<int> supportedVersions = {2, 3};
+  /// 2: audio; 3: audio and photos; 4: firmware updates over BLE. All are accepted, so an
+  /// app update never cuts off a wearable that still runs a previous firmware.
+  static const Set<int> supportedVersions = {2, 3, 4};
   static const int photoVersion = 3;
+  static const int otaVersion = 4;
   static const int _frameSetMuted = 0x15;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
   static const int _frameTakePhoto = 0x18;
+  static const int _frameOtaBegin = 0x19;
+  static const int _frameOtaAbort = 0x1A;
+  static const int frameOtaStatus = 0x23;
+  static const int otaDataHeaderSize = 4;
   static const int frameDeviceStatus = 0x20;
   static const int frameDeviceInfo = 0x21;
   static const int framePhotoFailed = 0x22;
@@ -134,6 +154,53 @@ abstract final class DeviceProtocol {
       _ => 'capture_failed',
     };
   }
+
+  /// OTA_BEGIN: the image size and its SHA-256, checked by the wearable at the end.
+  static Uint8List otaBegin(int size, List<int> sha256) {
+    if (sha256.length != 32) throw ArgumentError('SHA-256 must be 32 bytes');
+    final frame = Uint8List(37);
+    frame[0] = _frameOtaBegin;
+    ByteData.sublistView(frame).setUint32(1, size, Endian.little);
+    frame.setRange(5, 37, sha256);
+    return frame;
+  }
+
+  static Uint8List otaAbort() => Uint8List.fromList([_frameOtaAbort]);
+
+  /// A chunk of the image for the OTA characteristic: [offset u32, bytes].
+  static Uint8List otaChunk(int offset, List<int> bytes) {
+    final frame = Uint8List(otaDataHeaderSize + bytes.length);
+    ByteData.sublistView(frame).setUint32(0, offset, Endian.little);
+    frame.setRange(otaDataHeaderSize, frame.length, bytes);
+    return frame;
+  }
+
+  /// OTA_STATUS, or null for any other frame.
+  static OtaStatus? parseOtaStatus(List<int> bytes) {
+    if (bytes.length != 7 || bytes.first != frameOtaStatus) return null;
+    final state = switch (bytes[1]) {
+      1 => OtaState.receiving,
+      2 => OtaState.done,
+      3 => OtaState.failed,
+      _ => null,
+    };
+    if (state == null) return null;
+    final received = ByteData.sublistView(Uint8List.fromList(bytes))
+        .getUint32(3, Endian.little);
+    return OtaStatus(state, bytes[2], received);
+  }
+
+  /// What an OTA_STATUS error means for the user.
+  static String otaErrorMessage(int error) => switch (error) {
+        1 => 'Echo still has audio or a photo to send. Try again in a minute.',
+        2 => 'This firmware is too large for Echo.',
+        3 => 'Echo\'s battery is too low. Charge it and try again.',
+        4 => 'Echo could not write the update. Try again.',
+        5 || 9 => 'The transfer was interrupted. Try again.',
+        6 => 'The firmware arrived damaged. Try again.',
+        7 => 'This is not a firmware Echo can run.',
+        _ => 'The update did not go through. Try again.',
+      };
 
   static bool isForgetBondOk(List<int> bytes) =>
       bytes.length == 1 && bytes.first == _frameForgetBondOk;

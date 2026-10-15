@@ -20,6 +20,7 @@ import '../../models/today_insights.dart';
 import 'api_exception.dart';
 import 'response_cache.dart';
 import '../chat/voice_updates_service.dart';
+import '../device/firmware_update.dart';
 
 class QueryResponse {
   final String answer;
@@ -278,7 +279,8 @@ class ApiService
         WeeklySummaryApi,
         VoiceApi,
         NotificationsApi,
-        VoiceWorkingApi {
+        VoiceWorkingApi,
+        FirmwareApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -845,6 +847,50 @@ class ApiService
       final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
       return items.map((i) => WorkingItem.fromJson(i as Map<String, dynamic>)).toList();
     });
+  }
+
+  // --- Wearable firmware ---
+
+  /// Not cached: an offer read offline could be one the server no longer makes.
+  @override
+  Future<FirmwareRelease?> latestFirmware() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server/api/firmware/latest'),
+          headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final firmware = (data as Map<String, dynamic>)['firmware'];
+      return firmware == null
+          ? null
+          : FirmwareRelease.fromJson(firmware as Map<String, dynamic>);
+    });
+  }
+
+  @override
+  Future<Uint8List> downloadFirmware(String version) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final path = '/api/firmware/${Uri.encodeComponent(version)}/image';
+    late final http.Response response;
+    try {
+      response = await _client
+          .get(Uri.parse('$server$path'), headers: headers)
+          .timeout(_queryTimeout);
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+    if (response.statusCode != 200) {
+      throw _statusException(response.statusCode, response.body);
+    }
+    return response.bodyBytes;
   }
 
   /// Everything the server keeps about the user, as the JSON file to save.

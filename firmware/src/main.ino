@@ -11,7 +11,11 @@
  * 6. Keep capture active while BLE advances incrementally
  * 7. On TAKE_PHOTO from the app, take a photo (camera task, core 0) and relay it
  *    before the audio; it stays in RAM only until the app confirms the upload
+ * 8. On OTA_BEGIN, pause capture and write the new firmware to the other app slot;
+ *    after the restart it is kept only once the app talks to it (ota_health.h)
  */
+
+#include <esp_ota_ops.h>
 
 #include "config.h"
 #include "audio_capture.h"
@@ -26,6 +30,7 @@
 #include "camera_capture.h"
 #include "battery_monitor.h"
 #include "button_gesture.h"
+#include "ota_health.h"
 
 // ============================================================
 // Global instances
@@ -41,6 +46,7 @@ PhotoSlot photoSlot;
 CameraCapture camera;
 BatteryMonitor battery;
 ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS);
+OtaHealthCheck otaHealth(OTA_CONFIRM_TIMEOUT_MS);
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
     [](bool muted) { return devicePreferences.saveMuted(muted); });
@@ -77,8 +83,24 @@ uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 void discardInProgressCapture();
 void dropPhotoForPrivacy();
 
+// The Arduino core would accept a new firmware as soon as it boots; Echo waits for the app.
+// The core defines the weak default in C (esp32-hal-misc.c): C linkage, or it is ignored
+extern "C" bool verifyRollbackLater() { return true; }
+
+/** Cannot run: a firmware on trial goes back to the previous one, otherwise wait. */
+void fatal(const char* message) {
+    Serial.println(message);
+    if (otaHealth.onTrial()) {
+        Serial.println("[OTA] new firmware failed to start: rolling back");
+        esp_ota_mark_app_invalid_rollback_and_reboot();
+    }
+    while (true) { delay(1000); }
+}
+
 void handleTakePhoto(void*) {
-    if (muteState.isMuted()) {
+    if (bleTransport.otaInProgress()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_BUSY);
+    } else if (muteState.isMuted()) {
         bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_MUTED);
     } else if (!camera.isAvailable()) {
         bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_NO_CAMERA);
@@ -112,7 +134,15 @@ void handleMuteCommand(bool muted, void*) {
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    Serial.println("\n=== Echo — Second Brain Wearable ===");
+    Serial.printf("\n=== Echo — Second Brain Wearable %d.%d.%d ===\n",
+                  FIRMWARE_VERSION_MAJOR, FIRMWARE_VERSION_MINOR, FIRMWARE_VERSION_PATCH);
+
+    esp_ota_img_states_t otaState;
+    const bool onTrial =
+        esp_ota_get_state_partition(esp_ota_get_running_partition(), &otaState) == ESP_OK &&
+        otaState == ESP_OTA_IMG_PENDING_VERIFY;
+    otaHealth.begin(onTrial, millis());
+    if (onTrial) Serial.println("[OTA] new firmware: waiting for the app to confirm it");
 
     // Initialize indicators first (for visual feedback during boot)
     indicators.begin();
@@ -132,20 +162,14 @@ void setup() {
 
     // Allocate segment accumulation buffer on PSRAM
     segmentBuffer = (uint8_t*)ps_malloc(SEGMENT_MAX_SIZE);
-    if (!segmentBuffer) {
-        Serial.println("[FATAL] Failed to allocate segment buffer");
-        while (true) { delay(1000); }
-    }
+    if (!segmentBuffer) fatal("[FATAL] Failed to allocate segment buffer");
 
     // The JPEG slot before the speech buffer, which takes most of what is left
     uint8_t* photoBuffer = (uint8_t*)ps_malloc(PHOTO_MAX_BYTES);
     if (photoBuffer != nullptr) photoSlot.attach(photoBuffer, PHOTO_MAX_BYTES);
 
     // Initialize PSRAM buffer
-    if (!buffer.begin()) {
-        Serial.println("[FATAL] PSRAM buffer init failed");
-        while (true) { delay(1000); }
-    }
+    if (!buffer.begin()) fatal("[FATAL] PSRAM buffer init failed");
 
     // Camera (optional): no camera, no photos
     const bool cameraAvailable = camera.begin(photoSlot);
@@ -156,16 +180,10 @@ void setup() {
     bleTransport.setBatteryPercent(battery.percent());
     bleTransport.setTakePhotoCallback(handleTakePhoto, nullptr);
 
-    if (!bleTransport.begin()) {
-        Serial.println("[FATAL] BLE transport init failed");
-        while (true) { delay(1000); }
-    }
+    if (!bleTransport.begin()) fatal("[FATAL] BLE transport init failed");
 
     // Initialize audio capture
-    if (!audio.begin()) {
-        Serial.println("[FATAL] Audio capture init failed");
-        while (true) { delay(1000); }
-    }
+    if (!audio.begin()) fatal("[FATAL] Audio capture init failed");
 
     // Reset encoder and VAD
     encoder.reset();
@@ -181,6 +199,24 @@ void setup() {
 void loop() {
     indicators.update();
     bleTransport.update(buffer);
+
+    switch (otaHealth.update(bleTransport.appTalking(), millis())) {
+        case OtaHealthCheck::Decision::KEEP:
+            esp_ota_mark_app_valid_cancel_rollback();
+            Serial.println("[OTA] new firmware confirmed by the app");
+            break;
+        case OtaHealthCheck::Decision::ROLL_BACK:
+            Serial.println("[OTA] the app never came back: rolling back");
+            esp_ota_mark_app_invalid_rollback_and_reboot();
+            break;
+        case OtaHealthCheck::Decision::NONE:
+            break;
+    }
+    if (bleTransport.otaRestartDue(millis())) {
+        Serial.println("[OTA] restarting into the new firmware");
+        Serial.flush();
+        ESP.restart();
+    }
 
     uint8_t photoFailure = 0;
     if (photoSlot.takeFailure(photoFailure)) bleTransport.reportPhotoFailed(photoFailure);
@@ -201,6 +237,15 @@ void loop() {
     }
 
 
+
+    // While a new firmware arrives the microphone pauses (the mute setting is unchanged)
+    if (bleTransport.otaInProgress()) {
+        if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {
+            discardInProgressCapture();
+        }
+        delay(5);
+        return;
+    }
 
     if (muteState.isMuted()) {
         if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {

@@ -106,6 +106,9 @@ void test_nimble_callbacks_avoid_serial_io_on_the_host_task() {
     // host long enough to miss the supervision timeout window; log elsewhere.
     TEST_ASSERT_TRUE(serverCallbacksBody.find("Serial.") == std::string::npos);
     TEST_ASSERT_TRUE(controlCallbacksBody.find("Serial.") == std::string::npos);
+    // The firmware update's chunks are written on the host task too
+    TEST_ASSERT_TRUE(controlCallbacksBody.find("class OtaCallbacks") != std::string::npos);
+    TEST_ASSERT_TRUE(controlCallbacksBody.find("void onOtaData(") != std::string::npos);
 }
 
 void test_security_is_configured_before_server_creation() {
@@ -292,8 +295,8 @@ void test_transport_gates_each_notification_at_the_deadline() {
     TEST_ASSERT_TRUE(source.find("notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs)") !=
                      std::string::npos);
     TEST_ASSERT_EQUAL_UINT32(1, countOccurrences(source, "_audioCharacteristic->notify("));
-    // FORGET_BOND_OK, DEVICE_STATUS and PHOTO_FAILED
-    TEST_ASSERT_EQUAL_UINT32(3, countOccurrences(source, "_controlCharacteristic->notify("));
+    // FORGET_BOND_OK, DEVICE_STATUS, PHOTO_FAILED, OTA_STATUS and DEVICE_INFO
+    TEST_ASSERT_EQUAL_UINT32(5, countOccurrences(source, "_controlCharacteristic->notify("));
     TEST_ASSERT_TRUE(source.find(
         "if (!beforeBurstDeadline(deadlineUs)) return false;\n"
         "        const bool ok = _audioCharacteristic->notify") != std::string::npos);

@@ -17,6 +17,7 @@ import '../device/photo_service.dart';
 import 'session_controller.dart';
 import '../chat/voice_updates_service.dart';
 import '../api/response_cache.dart';
+import '../device/firmware_update.dart';
 import '../device/live_activity_service.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
@@ -33,10 +34,13 @@ final class AppLifecycleCoordinator {
     required this.photoService,
     required this.notificationScheduler,
     required this.liveActivity,
+    required this.firmwareUpdate,
     required ApiService credentialApiService,
     required AppLifecycleBinding binding,
+    required StreamSubscription<DeviceStatus> firmwareSubscription,
   })  : _credentialApiService = credentialApiService,
-        _binding = binding;
+        _binding = binding,
+        _firmwareSubscription = firmwareSubscription;
 
   final BleService bleService;
   final DeviceController deviceController;
@@ -52,6 +56,10 @@ final class AppLifecycleCoordinator {
 
   /// The wearable on the Lock Screen (iOS 16.1+).
   final LiveActivityService liveActivity;
+
+  /// New wearable firmware from the server, installed over Bluetooth when the user asks.
+  final FirmwareUpdateController firmwareUpdate;
+  final StreamSubscription<DeviceStatus> _firmwareSubscription;
   final ApiService _credentialApiService;
   final AppLifecycleBinding _binding;
   bool _disposed = false;
@@ -142,6 +150,14 @@ final class AppLifecycleCoordinator {
       statuses: deviceController.stateStream,
       enabled: () => notificationChoices.liveActivity,
     )..start();
+    final firmwareUpdate = FirmwareUpdateController(
+      api: credentialApiService,
+      link: bleService,
+      device: () => deviceController.state,
+    );
+    final firmwareSubscription = deviceController.stateStream
+        .listen((_) => firmwareUpdate.deviceChanged());
+    unawaited(firmwareUpdate.check());
     final voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
@@ -159,6 +175,7 @@ final class AppLifecycleCoordinator {
       onWake: () async {
         await voiceUpdates.check();
         await notificationScheduler.refresh();
+        await firmwareUpdate.check();
       },
     );
     return AppLifecycleCoordinator._(
@@ -172,8 +189,10 @@ final class AppLifecycleCoordinator {
       photoService: photoService,
       notificationScheduler: notificationScheduler,
       liveActivity: liveActivity,
+      firmwareUpdate: firmwareUpdate,
       credentialApiService: credentialApiService,
       binding: binding,
+      firmwareSubscription: firmwareSubscription,
     );
   }
 
@@ -211,6 +230,8 @@ final class AppLifecycleCoordinator {
     _disposed = true;
     photoService.stop();
     await liveActivity.dispose();
+    await _firmwareSubscription.cancel();
+    firmwareUpdate.dispose();
     appController.dispose();
     await _binding.dispose();
     await sessionController.dispose();

@@ -43,12 +43,10 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       batteria e minuti in attesa di sync; aggiornata dall'app, senza push. Spegnibile in Settings → Notifications
 - [x] Condividere una conversazione (testo/Markdown); export di tutti i dati in JSON (Settings → Privacy)
 
-### Fase 5 — La privacy come vantaggio
-- [ ] Modalità consenso basata sulla voce: testo completo solo per te e per le persone registrate,
-      un riassunto anonimo (o niente) per le voci sconosciute
-
 ### Fase 6 — Piattaforma
-- [ ] Aggiornamento del firmware senza cavo (OTA) e microSD
+- [x] Aggiornamento del firmware senza cavo: `make firmware-release` → server → app → Bluetooth, con
+      controllo SHA-256 e ritorno automatico alla versione precedente ([ADR 0009](adr/0009-firmware-updates-over-ble.md))
+- [ ] microSD (solo se il buffer attuale risulta corto nell'uso reale)
 - [ ] Promemoria e Calendario Apple nativi (senza passare da Composio)
 - [ ] Test di 2 ore della core beta su iPhone ([checklist](BETA-GATE-CHECKLIST.md)) e test batteria di 12 ore
 
@@ -76,4 +74,6 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - Memoria: filtro per tipo di entità ("i miei task aperti con Marco"), raggruppamento per argomento.
 - Provider alternativi e locali: Whisper/LLM/embedding self-hosted, Claude, Gemini.
 - Deploy: Compose di produzione (TLS, backup), script per VPS.
+- Modalità consenso basata sulla voce (testo completo solo per te e per le voci registrate): utile
+  quando Echo avrà altri utenti o con le voci collaudate nell'uso reale.
 - Multi-utente: registrazione, isolamento dei dati, più dispositivi, plugin di terze parti.
