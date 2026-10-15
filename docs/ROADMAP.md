@@ -47,7 +47,9 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Aggiornamento del firmware senza cavo: `make firmware-release` → server → app → Bluetooth, con
       controllo SHA-256 e ritorno automatico alla versione precedente ([ADR 0009](adr/0009-firmware-updates-over-ble.md))
 - [ ] microSD (solo se il buffer attuale risulta corto nell'uso reale)
-- [ ] Promemoria e Calendario Apple nativi (senza passare da Composio)
+- [x] Promemoria e Calendario dell'iPhone (senza Composio): Echo crea e legge promemoria ed eventi,
+      e i promemoria prima delle riunioni usano anche il calendario dell'iPhone
+      ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md))
 - [ ] Test di 2 ore della core beta su iPhone ([checklist](BETA-GATE-CHECKLIST.md)) e test batteria di 12 ore
 
 ## Già fatto

@@ -66,6 +66,9 @@ Settings → Device → **Pair Echo**.
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
   (shown the next time the app wakes up).
+- **On this iPhone** (Settings → Automations): Echo creates and reads reminders and events in
+  the iPhone's Reminders and Calendar when asked (EventKit, `ios/Runner/EventKit`), and the
+  calendar's next meetings get briefings ([ADR 0010](../docs/adr/0010-iphone-reminders-and-calendar.md)).
 - **Firmware updates** over Bluetooth (Settings → Device, protocol 4): the latest firmware
   published on the server, checked by SHA-256 on the phone and on the wearable
   ([ADR 0009](../docs/adr/0009-firmware-updates-over-ble.md)).

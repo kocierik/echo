@@ -61,7 +61,8 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
           icon: Icons.event_note_outlined,
           title: 'Before a meeting',
           subtitle: '10 minutes before, when you have tasks, a promise or a recent '
-              'conversation with someone there. Needs Google Calendar connected.',
+              'conversation with someone there. From Google Calendar, or from the '
+              "iPhone's calendar (Automations → On this iPhone).",
           value: _choices.briefings,
         ),
         _row(

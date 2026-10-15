@@ -22,6 +22,7 @@ from app.routers import (
     admin,
     chat_sessions,
     conversations,
+    device,
     digest,
     entities,
     export,
@@ -116,6 +117,7 @@ app.include_router(people.router, prefix=settings.api_prefix)
 app.include_router(photos.router, prefix=settings.api_prefix)
 app.include_router(voices.router, prefix=settings.api_prefix)
 app.include_router(firmware.router, prefix=settings.api_prefix)
+app.include_router(device.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

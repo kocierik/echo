@@ -17,7 +17,10 @@ import '../device/photo_service.dart';
 import 'session_controller.dart';
 import '../chat/voice_updates_service.dart';
 import '../api/response_cache.dart';
+import '../device/device_command_loop.dart';
 import '../device/firmware_update.dart';
+import '../phone/phone_actions.dart';
+import '../phone/phone_calendar.dart';
 import '../device/live_activity_service.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
@@ -32,6 +35,8 @@ final class AppLifecycleCoordinator {
     required this.preferences,
     required this.notificationService,
     required this.photoService,
+    required this.phoneActions,
+    required DeviceCommandLoop commandLoop,
     required this.notificationScheduler,
     required this.liveActivity,
     required this.firmwareUpdate,
@@ -39,6 +44,7 @@ final class AppLifecycleCoordinator {
     required AppLifecycleBinding binding,
     required StreamSubscription<DeviceStatus> firmwareSubscription,
   })  : _credentialApiService = credentialApiService,
+        _commandLoop = commandLoop,
         _binding = binding,
         _firmwareSubscription = firmwareSubscription;
 
@@ -50,6 +56,10 @@ final class AppLifecycleCoordinator {
   final SharedPreferences preferences;
   final NotificationService notificationService;
   final PhotoService photoService;
+
+  /// Reminders and Calendar on this iPhone (Settings → Automations → On this iPhone).
+  final PhoneActionsService phoneActions;
+  final DeviceCommandLoop _commandLoop;
 
   /// Briefings, promises and the evening recap, scheduled on the phone.
   final NotificationScheduler notificationScheduler;
@@ -133,15 +143,29 @@ final class AppLifecycleCoordinator {
     for (final payload in [launchPayload, earlyTap]) {
       if (payload != null) appController.handleNotificationPayload(payload);
     }
-    // Wearable camera: TAKE_PHOTO commands from the backend, JPEGs from the wearable
+    // Wearable camera: JPEGs from the wearable (TAKE_PHOTO comes with the commands)
     final photoService = PhotoService(api: credentialApiService, device: bleService);
     bleService.photoUploader = photoService.uploadFromDevice;
     bleService.onPhotoFailed = photoService.onDeviceFailure;
-    photoService.start();
+    // Reminders and Calendar on this iPhone, when the user turned them on
+    final phoneActions = PhoneActionsService(
+      calendar: EventKitPhoneCalendar(),
+      choices: PhoneAppChoices(preferences),
+      commands: credentialApiService,
+      server: credentialApiService,
+    );
+    unawaited(phoneActions.report(force: true));
+    // The server's commands: photos for the wearable, actions for this iPhone
+    final commandLoop = DeviceCommandLoop(
+      api: credentialApiService,
+      onTakePhoto: photoService.handleTakePhoto,
+      onPhoneAction: phoneActions.handle,
+    )..start();
     final notificationScheduler = NotificationScheduler(
       api: credentialApiService,
       notifications: notificationService,
       preferences: NotificationPreferences(preferences),
+      phoneEvents: phoneActions.upcomingEvents,
     );
     unawaited(notificationScheduler.refresh(force: true));
     final notificationChoices = NotificationPreferences(preferences);
@@ -176,6 +200,7 @@ final class AppLifecycleCoordinator {
         await voiceUpdates.check();
         await notificationScheduler.refresh();
         await firmwareUpdate.check();
+        await phoneActions.report();
       },
     );
     return AppLifecycleCoordinator._(
@@ -187,6 +212,8 @@ final class AppLifecycleCoordinator {
       preferences: preferences,
       notificationService: notificationService,
       photoService: photoService,
+      phoneActions: phoneActions,
+      commandLoop: commandLoop,
       notificationScheduler: notificationScheduler,
       liveActivity: liveActivity,
       firmwareUpdate: firmwareUpdate,
@@ -228,7 +255,8 @@ final class AppLifecycleCoordinator {
   Future<void> dispose() async {
     if (_disposed) return;
     _disposed = true;
-    photoService.stop();
+    _commandLoop.stop();
+    photoService.dispose();
     await liveActivity.dispose();
     await _firmwareSubscription.cancel();
     firmwareUpdate.dispose();

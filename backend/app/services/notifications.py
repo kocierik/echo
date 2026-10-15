@@ -1,7 +1,9 @@
 """The few notifications worth sending, computed here and scheduled by the phone.
 
 The app has no push (no paid Apple account): each time it wakes (the wearable keeps it
-awake through the day) it asks for what is coming and schedules it locally. Rules:
+awake through the day) it asks for what is coming and schedules it locally. Meetings come
+from Google Calendar (Composio) and from the iPhone's calendar, whose next events the app
+sends along. Rules:
 
 - only when there is something to do: a briefing only for a meeting with someone you
   have open tasks, a promise or a recent conversation with; promises only on their day;
@@ -151,6 +153,32 @@ async def _calendar_events(provider, user_id: uuid.UUID, now: datetime, until: d
     return events
 
 
+def phone_event(event: dict) -> dict:
+    """An iPhone calendar event as sent by the app, shaped like a Google Calendar one."""
+    start = event.get("start")
+    start = start if isinstance(start, datetime) else None
+    return {
+        "id": f"phone:{event.get('id')}",
+        "summary": event.get("title") or "",
+        "description": event.get("notes"),
+        "start": {"date": start.date().isoformat()}
+        if event.get("all_day") and start
+        else {"dateTime": start.isoformat() if start else None},
+        "attendees": [
+            {"displayName": a.get("name"), "email": a.get("email")}
+            for a in event.get("attendees") or []
+            if isinstance(a, dict)
+        ],
+    }
+
+
+def _same_event(a: dict, b: dict) -> bool:
+    """The same meeting seen twice (a Google calendar also shown on the iPhone)."""
+    return (a.get("summary") or "").casefold() == (b.get("summary") or "").casefold() and (
+        _event_start(a) == _event_start(b)
+    )
+
+
 def _event_start(event: dict) -> datetime | None:
     raw = (event.get("start") or {}).get("dateTime")  # all-day events have only a date
     try:
@@ -224,8 +252,13 @@ async def briefing_notices(
     now: datetime,
     until: datetime,
     promises: list[Entity],
+    phone_events: list[dict] | None = None,
 ) -> list[Notice]:
-    events = await _calendar_events(provider, user_id, now, until)
+    # A copy: the Google events are cached for the next requests
+    events = list(await _calendar_events(provider, user_id, now, until)) if provider else []
+    for event in phone_events or []:
+        if not any(_same_event(event, known) for known in events):
+            events.append(event)
     if not events:
         return []
     people = list(
@@ -308,8 +341,12 @@ async def upcoming_notices(
     promises: bool = True,
     evening: bool = False,
     provider=None,
+    phone_events: list[dict] | None = None,
 ) -> list[Notice]:
-    """What to schedule for the next `hours`, already filtered by the rules above."""
+    """What to schedule for the next `hours`, already filtered by the rules above.
+
+    `phone_events`: the iPhone calendar's next events, already shaped by `phone_event`.
+    """
     now = now or datetime.now(timezone.utc)
     until = now + timedelta(hours=hours)
     today = now.astimezone(user_zone()).date()
@@ -317,8 +354,10 @@ async def upcoming_notices(
     notices: list[Notice] = []
     if promises:
         notices += promise_notices(open_ones, today, days=hours // 24 + 1)
-    if briefings and provider is not None:
-        notices += await briefing_notices(db, user_id, provider, now, until, open_ones)
+    if briefings and (provider is not None or phone_events):
+        notices += await briefing_notices(
+            db, user_id, provider, now, until, open_ones, phone_events
+        )
     if evening:
         notices += await evening_notice(db, user_id, now)
     return select_notices(notices, now, until)

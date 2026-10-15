@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:echo_app/models/action_models.dart';
+import 'package:echo_app/models/device_command.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/services/api/api_exception.dart';
@@ -1029,6 +1030,90 @@ void main() {
     await service.clearConfiguration();
 
     expect(store.clearCalls, 1);
+  });
+
+  group('the phone', () {
+    test('commands: photos for the wearable and actions for this iPhone', () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _jsonResponse(request, 200, {
+          'commands': [
+            {'type': 'take_photo', 'photo_id': 'p1', 'expires_at': 'x'},
+            {
+              'type': 'phone_action',
+              'id': 'c1',
+              'tool': 'APPLEREMINDERS_CREATE_REMINDER',
+              'arguments': {'title': 'Latte'},
+              'expires_at': 'x',
+            },
+            {'type': 'something_newer', 'expires_at': 'x'},
+          ],
+        });
+      });
+
+      final commands = await service.getDeviceCommands(wait: const Duration(seconds: 5));
+
+      expect(captured.url.path, '/api/device/commands');
+      expect(captured.url.queryParameters, {'wait': '5'});
+      expect(commands, [isA<TakePhotoCommand>(), isA<PhoneActionCommand>()]);
+    });
+
+    test('a result goes back to its command, accepted on 204', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _response(request, 204);
+      });
+
+      await service.sendCommandResult('c1', {'ok': true, 'data': {'id': 'r1'}});
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/device/commands/c1/result');
+      expect(jsonDecode(captured.body), {'ok': true, 'data': {'id': 'r1'}});
+    });
+
+    test('which iPhone apps are on', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'reminders': true, 'calendar': false});
+      });
+
+      await service.reportPhoneApps(reminders: true, calendar: false);
+
+      expect(captured.method, 'PUT');
+      expect(captured.url.path, '/api/device/phone-apps');
+      expect(jsonDecode(captured.body), {'reminders': true, 'calendar': false});
+    });
+
+    test('notifications are asked with the iPhone calendar events', () async {
+      late http.Request captured;
+      final service = _service((request) {
+        captured = request as http.Request;
+        return _jsonResponse(request, 200, {'notifications': <Object?>[]});
+      });
+
+      await service.getUpcomingNotifications(
+        briefings: true,
+        promises: false,
+        evening: false,
+        phoneEvents: [
+          {'id': 'e1', 'title': 'Call'},
+        ],
+      );
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/notifications/upcoming');
+      expect(jsonDecode(captured.body), {
+        'briefings': true,
+        'promises': false,
+        'evening': false,
+        'phone_events': [
+          {'id': 'e1', 'title': 'Call'},
+        ],
+      });
+    });
   });
 }
 

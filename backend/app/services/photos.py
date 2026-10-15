@@ -11,7 +11,6 @@ conversation when none was going on.
 """
 
 import hashlib
-import json
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -32,6 +31,7 @@ from app.services.analysis_pipeline import (
     known_people_names,
     save_entities,
 )
+from app.services.device_commands import push_device_command
 from app.services.entity_mentions import record_mentions
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
@@ -39,7 +39,6 @@ from app.services.llm_base import LLMMessage, LLMService
 logger = logging.getLogger(__name__)
 
 PHOTO_QUEUE = "queue:photos"
-DEVICE_COMMANDS_KEY = "device:commands:{user_id}"
 JPEG_MAGIC = b"\xff\xd8\xff"
 
 # Why the wearable could not take a photo, as reported by the app
@@ -158,40 +157,12 @@ def request_photo(
 
 async def send_take_photo(redis_client, photo: Photo) -> None:
     """Queue TAKE_PHOTO for the app to relay to the wearable (after the commit)."""
-    key = DEVICE_COMMANDS_KEY.format(user_id=photo.user_id)
-    expires_at = _utcnow() + timedelta(seconds=settings.photo_request_timeout_s)
-    command = {
-        "type": "take_photo",
-        "photo_id": str(photo.id),
-        "expires_at": expires_at.isoformat(),
-    }
-    await redis_client.rpush(key, json.dumps(command))
-    await redis_client.expire(key, settings.photo_request_timeout_s)
-
-
-async def take_device_commands(redis_client, user_id: uuid.UUID, wait_s: int) -> list[dict]:
-    """Pending commands for the wearable, waiting up to `wait_s` for the first one."""
-    key = DEVICE_COMMANDS_KEY.format(user_id=user_id)
-    raw: list = []
-    if wait_s > 0:
-        first = await redis_client.blpop([key], timeout=wait_s)
-        if first is not None:
-            raw.append(first[1])
-    while (item := await redis_client.lpop(key)) is not None:
-        raw.append(item)
-
-    now = _utcnow()
-    commands = []
-    for item in raw:
-        try:
-            command = json.loads(item)
-            expires_at = datetime.fromisoformat(command["expires_at"])
-        except (ValueError, KeyError, TypeError):
-            logger.warning("Dropping an invalid device command")
-            continue
-        if expires_at > now:
-            commands.append(command)
-    return commands
+    await push_device_command(
+        redis_client,
+        photo.user_id,
+        {"type": "take_photo", "photo_id": str(photo.id)},
+        settings.photo_request_timeout_s,
+    )
 
 
 def is_jpeg(data: bytes) -> bool:

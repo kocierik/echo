@@ -1,21 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../../services/app/app_runtime.dart';
+import '../../services/phone/phone_actions.dart';
 import '../action_log_screen.dart';
 import '../integrations_screen.dart';
+import 'phone_apps_screen.dart';
 import 'settings_components.dart';
 
 class AutomationsSettingsScreen extends StatelessWidget {
   const AutomationsSettingsScreen({
     this.activityBuilder,
     this.integrationsBuilder,
+    this.phoneActions,
     super.key,
   });
 
   final WidgetBuilder? activityBuilder;
   final WidgetBuilder? integrationsBuilder;
 
+  /// The app's, unless injected; without one (tests) the row is hidden.
+  final PhoneActionsService? phoneActions;
+
   @override
   Widget build(BuildContext context) {
+    final phoneActions =
+        this.phoneActions ?? AppRuntime.maybeCoordinator?.phoneActions;
     return SettingsPageScaffold(
       title: 'Automations',
       children: [
@@ -32,6 +41,18 @@ class AutomationsSettingsScreen extends StatelessWidget {
             ),
           ),
         ),
+        if (phoneActions != null)
+          SettingsRow(
+            icon: Icons.phone_iphone_rounded,
+            title: 'On this iPhone',
+            subtitle: 'Reminders and Calendar, for Echo to use.',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => PhoneAppsScreen(phoneActions: phoneActions),
+              ),
+            ),
+          ),
         SettingsRow(
           icon: Icons.history_rounded,
           title: 'Activity',

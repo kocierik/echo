@@ -195,3 +195,86 @@ async def test_the_endpoint_returns_what_to_schedule(client, auth_headers, db_se
     assert item["key"] == f"promises:{tomorrow.isoformat()}"
     off = await client.get("/api/notifications/upcoming?promises=false", headers=auth_headers)
     assert off.json()["notifications"] == []
+
+
+def _phone_event(title, start, attendees=None, event_id="E1"):
+    return n.phone_event(
+        {"id": event_id, "title": title, "start": start, "attendees": attendees or []}
+    )
+
+
+@pytest.mark.asyncio
+async def test_meetings_in_the_iphone_calendar_get_briefings_too(db_session: AsyncSession):
+    now = at(TODAY, 8)
+    conversation, _ = await make_conversation(
+        db_session, started_at=now - timedelta(days=1), title="Preventivo", texts=()
+    )
+    marco = make_entity(conversation, "person", "Marco Rossi")
+    db_session.add(marco)
+    await db_session.commit()
+    await record_mentions(db_session, [marco])
+    await db_session.commit()
+
+    notices = await n.upcoming_notices(
+        db_session, TEST_USER_ID, now=now, promises=False,
+        phone_events=[_phone_event("Call con Marco", at(TODAY, 11))],
+    )
+
+    [briefing] = notices
+    assert briefing.key == "briefing:phone:E1"
+    assert briefing.fire_at == at(TODAY, 10, 50)
+    assert briefing.target == f"person:{marco.id}"
+
+
+@pytest.mark.asyncio
+async def test_a_meeting_in_both_calendars_is_briefed_once(db_session: AsyncSession):
+    now = at(TODAY, 8)
+    conversation, _ = await make_conversation(
+        db_session, started_at=now - timedelta(days=1), title="Preventivo", texts=()
+    )
+    marco = make_entity(conversation, "person", "Marco Rossi")
+    db_session.add(marco)
+    await db_session.commit()
+    await record_mentions(db_session, [marco])
+    await db_session.commit()
+    google = FakeCalendar([_event("Call con Marco", at(TODAY, 11), event_id="g1")])
+
+    notices = await n.upcoming_notices(
+        db_session, TEST_USER_ID, now=now, provider=google, promises=False,
+        phone_events=[_phone_event("call con marco", at(TODAY, 11))],
+    )
+
+    assert [x.key for x in notices] == ["briefing:g1"]
+    # The cached Google events are not changed by the iPhone's
+    assert n._calendar_cache[str(TEST_USER_ID)][1] == google.events
+
+
+def test_an_all_day_iphone_event_has_no_time_to_brief_before():
+    event = n.phone_event({"id": "A", "title": "Ferie", "start": at(TODAY, 0), "all_day": True})
+    assert event["start"] == {"date": TODAY.isoformat()}
+    assert n._event_start(event) is None
+
+
+@pytest.mark.asyncio
+async def test_the_app_posts_the_iphone_events(client, auth_headers):
+    tomorrow = datetime.now(user_zone()).replace(hour=11, minute=0, second=0, microsecond=0)
+    tomorrow += timedelta(days=1)
+    response = await client.post(
+        "/api/notifications/upcoming",
+        headers=auth_headers,
+        json={
+            "promises": False,
+            "phone_events": [
+                {"id": "E1", "title": "Call", "start": tomorrow.isoformat(), "attendees": []}
+            ],
+        },
+    )
+    # Nobody known is in the meeting: nothing to brief, but the events were read
+    assert response.status_code == 200
+    assert response.json() == {"notifications": []}
+    too_many = await client.post(
+        "/api/notifications/upcoming",
+        headers=auth_headers,
+        json={"phone_events": [{"id": str(i), "start": tomorrow.isoformat()} for i in range(301)]},
+    )
+    assert too_many.status_code == 422

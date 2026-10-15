@@ -1,6 +1,7 @@
 import 'actions_api.dart';
 import 'api_client.dart';
 import 'chat_api.dart';
+import 'device_api.dart';
 import 'memory_api.dart';
 import 'notifications_api.dart';
 import 'photo_api.dart';
@@ -11,6 +12,7 @@ export 'actions_api.dart';
 export 'api_client.dart' show JsonShape;
 export 'api_credentials.dart';
 export 'chat_api.dart';
+export 'device_api.dart';
 export 'memory_api.dart';
 export 'notifications_api.dart';
 export 'photo_api.dart';
@@ -24,6 +26,7 @@ class ApiService extends ApiClient
         MemoryEndpoints,
         ActionEndpoints,
         PhotoEndpoints,
+        DeviceEndpoints,
         VoiceEndpoints,
         NotificationEndpoints,
         WearableEndpoints

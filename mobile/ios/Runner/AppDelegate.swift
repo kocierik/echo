@@ -4,6 +4,7 @@ import UIKit
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var liveActivity: LiveActivityBridge?
+  private var eventKit: EventKitBridge?
 
   override func application(
     _ application: UIApplication,
@@ -16,6 +17,9 @@ import UIKit
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoLiveActivity") {
       liveActivity = LiveActivityBridge(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoEventKit") {
+      eventKit = EventKitBridge(messenger: registrar.messenger())
     }
   }
 }

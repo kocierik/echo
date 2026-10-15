@@ -32,16 +32,21 @@ final class NotificationScheduler {
     required NotificationsApi api,
     required NotificationService notifications,
     required NotificationPreferences preferences,
+    Future<List<Map<String, Object?>>> Function()? phoneEvents,
     DateTime Function()? clock,
     this.minInterval = const Duration(minutes: 30),
   })  : _api = api,
         _notifications = notifications,
         _preferences = preferences,
+        _phoneEvents = phoneEvents,
         _clock = clock ?? DateTime.now;
 
   final NotificationsApi _api;
   final NotificationService _notifications;
   final NotificationPreferences _preferences;
+
+  /// The iPhone calendar's next events (empty when it is off), for briefings.
+  final Future<List<Map<String, Object?>>> Function()? _phoneEvents;
   final DateTime Function() _clock;
   final Duration minInterval;
 
@@ -59,10 +64,13 @@ final class NotificationScheduler {
 
   Future<void> _run() async {
     try {
+      final briefings = _preferences.briefings;
+      final phoneEvents = briefings ? await _phoneEvents?.call() : null;
       final items = await _api.getUpcomingNotifications(
-        briefings: _preferences.briefings,
+        briefings: briefings,
         promises: _preferences.promises,
         evening: _preferences.evening,
+        phoneEvents: phoneEvents ?? const [],
       );
       await _notifications.replaceUpcoming(items, _clock());
       _lastRefresh = _clock();

@@ -1,6 +1,6 @@
-import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:echo_app/models/device_command.dart';
 import 'package:echo_app/models/photo.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/device/photo_service.dart';
@@ -21,7 +21,7 @@ void main() {
     );
   });
 
-  tearDown(() => service.stop());
+  tearDown(() => service.dispose());
 
   group('the camera button', () {
     test('asks the backend, then the wearable', () async {
@@ -123,36 +123,29 @@ void main() {
     });
   });
 
-  group('commands from the backend', () {
-    test('a voice request becomes a TAKE_PHOTO', () async {
-      api.commandBatches
-          .add([const DeviceCommand(type: 'take_photo', photoId: 'v1')]);
-      service.start();
-      await api.polledTwice.future;
+  group('a voice request (TAKE_PHOTO from the commands)', () {
+    test('goes to the wearable', () async {
+      await service.handleTakePhoto(const TakePhotoCommand('v1'));
 
       expect(device.takePhotos, 1);
       expect(service.pendingPhotoId, 'v1');
     });
 
-    test('a request the wearable cannot take is reported at once', () async {
+    test('is reported at once when the wearable cannot take it', () async {
       device.connected = false;
-      api.commandBatches
-          .add([const DeviceCommand(type: 'take_photo', photoId: 'v1')]);
-      service.start();
-      await api.polledTwice.future;
+
+      await service.handleTakePhoto(const TakePhotoCommand('v1'));
 
       expect(device.takePhotos, 0);
       expect(api.failures, [('v1', 'not_connected')]);
     });
 
-    test('keeps polling after errors', () async {
-      api.commandErrors = 2;
-      api.commandBatches
-          .add([const DeviceCommand(type: 'take_photo', photoId: 'v1')]);
-      service.start();
-      await api.polledTwice.future;
+    test('waits for the photo already being taken', () async {
+      await service.handleTakePhoto(const TakePhotoCommand('v1'));
+      await service.handleTakePhoto(const TakePhotoCommand('v2'));
 
       expect(device.takePhotos, 1);
+      expect(api.failures, [('v2', 'busy')]);
     });
   });
 }
@@ -179,12 +172,8 @@ final class _FakePhotoApi implements PhotoApi {
   final buttonRequests = <bool>[];
   final uploads = <(String, int, DateTime)>[];
   final failures = <(String, String)>[];
-  final commandBatches = <List<DeviceCommand>>[];
-  final polledTwice = Completer<void>();
   List<String> statuses = ['done'];
   int gets = 0;
-  int commandErrors = 0;
-  int _polls = 0;
   Object? uploadError;
 
   @override
@@ -218,24 +207,6 @@ final class _FakePhotoApi implements PhotoApi {
   @override
   Future<void> reportPhotoFailure(String id, String reason) async {
     failures.add((id, reason));
-  }
-
-  @override
-  Future<List<DeviceCommand>> getDeviceCommands(
-      {Duration wait = Duration.zero}) async {
-    _polls++;
-    if (commandErrors > 0) {
-      commandErrors--;
-      throw Exception('offline');
-    }
-    final batch =
-        commandBatches.isEmpty ? <DeviceCommand>[] : commandBatches.removeAt(0);
-    if (batch.isEmpty && _polls >= 2 && !polledTwice.isCompleted) {
-      polledTwice.complete();
-    }
-    // Like the long poll: the loop never spins freely
-    await Future<void>.delayed(Duration.zero);
-    return batch;
   }
 
   @override
