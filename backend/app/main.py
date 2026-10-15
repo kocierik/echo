@@ -30,6 +30,7 @@ from app.routers import (
     query,
     search,
     segments,
+    voices,
 )
 
 # Configure structured JSON logging on import
@@ -108,6 +109,7 @@ app.include_router(actions.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(people.router, prefix=settings.api_prefix)
 app.include_router(photos.router, prefix=settings.api_prefix)
+app.include_router(voices.router, prefix=settings.api_prefix)
 
 
 @app.get("/health")

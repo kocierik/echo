@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (012) for reading.
+-- Do not apply this file: it shows the schema at the head revision (013) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -282,3 +282,23 @@ CREATE TABLE weekly_digests (
 );
 
 CREATE INDEX ix_weekly_digests_user_id ON weekly_digests (user_id);
+
+-- Migration 013: voice fingerprints (biometric: made only by the user, deletable)
+CREATE TABLE voice_profiles (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    is_self BOOLEAN NOT NULL DEFAULT false,
+    person_id UUID REFERENCES entities(id) ON DELETE SET NULL,
+    embedding vector(256) NOT NULL,                   -- normalized mean of confirmed segments
+    sample_count INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX ix_voice_profiles_user_id ON voice_profiles (user_id);
+CREATE UNIQUE INDEX uq_voice_profiles_self ON voice_profiles (user_id) WHERE is_self;
+ALTER TABLE segments ADD COLUMN voice_embedding vector(256);
+ALTER TABLE segments ADD COLUMN voice_profile_id UUID REFERENCES voice_profiles(id) ON DELETE SET NULL;
+ALTER TABLE segments ADD COLUMN voice_similarity FLOAT;
+ALTER TABLE segments ADD COLUMN voice_match VARCHAR(10);      -- auto | suggested | confirmed

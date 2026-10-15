@@ -18,6 +18,7 @@ from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
 from app.models.segment import Segment
 from app.models.transcription import Transcription
+from app.models.voice_profile import VoiceProfile
 from app.services.conversation_deleter import (
     ConversationNotFoundError,
     ConversationStorage,
@@ -76,6 +77,9 @@ class TranscriptionOut(BaseModel):
     speaker_label: str | None
     status: str
     recorded_at: datetime
+    # The recognised voice: its name, and "auto", "suggested" (ask) or "confirmed"
+    speaker_name: str | None = None
+    voice_match: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -256,8 +260,11 @@ async def get_conversation(
             Segment.transcription_status,
             Transcription.text,
             Transcription.speaker_label,
+            Segment.voice_match,
+            VoiceProfile.name.label("speaker_name"),
         )
         .outerjoin(Transcription, Transcription.segment_id == Segment.id)
+        .outerjoin(VoiceProfile, VoiceProfile.id == Segment.voice_profile_id)
         .where(Segment.conversation_id == conversation_id)
         .order_by(Segment.recorded_at)
     )
@@ -268,6 +275,8 @@ async def get_conversation(
             speaker_label=row.speaker_label,
             status=row.transcription_status,
             recorded_at=row.recorded_at,
+            speaker_name=row.speaker_name,
+            voice_match=row.voice_match if row.speaker_name else None,
         )
         for row in segment_rows.all()
     ]

@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from app.models.base import Base, UUIDPrimaryKey
 
@@ -35,6 +36,15 @@ class Segment(UUIDPrimaryKey, Base):
         ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=True,
     )
+    # Voice fingerprint of the segment (computed while the audio exists) and the voice
+    # profile it was matched to: "auto" (sure), "suggested" (asked in the transcript)
+    # or "confirmed" (by the user)
+    voice_embedding = deferred(mapped_column(Vector(256), nullable=True))
+    voice_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("voice_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    voice_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    voice_match: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
     # Relationships
     transcription: Mapped["Transcription | None"] = relationship(
