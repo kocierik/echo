@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../widgets/panel.dart';
 import '../services/device/ble_service.dart';
 
 class DeviceMessagesScreen extends StatefulWidget {
@@ -66,17 +67,17 @@ class _DeviceMessagesScreenState extends State<DeviceMessagesScreen> {
                     style: TextStyle(color: palette.text2),
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _messages.length,
-                  separatorBuilder: (_, __) => Divider(color: palette.border),
-                  itemBuilder: (context, i) {
-                    final msg = _messages[i];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(msg, style: TextStyle(color: palette.text)),
-                    );
-                  },
+                  itemBuilder: (context, i) => PanelListRow(
+                    index: i,
+                    count: _messages.length,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Text(_messages[i], style: TextStyle(color: palette.text)),
+                    ),
+                  ),
                 ),
         ),
       ),

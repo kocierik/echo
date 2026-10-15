@@ -228,15 +228,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
               _load();
             },
             textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               hintText: 'Search other apps',
-              prefixIcon: const Icon(Icons.search_rounded),
-              filled: true,
-              fillColor: palette.surface,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
+              prefixIcon: Icon(Icons.search_rounded),
             ),
           ),
         ),
@@ -339,11 +333,10 @@ class _ToolkitRow extends StatelessWidget {
     }
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(16, 12, 0, 12),
+      padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.border),
+        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
       ),
       child: Row(
         children: [
@@ -355,7 +348,7 @@ class _ToolkitRow extends StatelessWidget {
                   toolkit.name,
                   style: TextStyle(
                     fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                     color: palette.text,
                   ),
                 ),

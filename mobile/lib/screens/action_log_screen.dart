@@ -4,6 +4,7 @@ import '../models/action_models.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/panel.dart';
 
 class ActionLogScreen extends StatefulWidget {
   const ActionLogScreen({this.api, super.key});
@@ -85,11 +86,14 @@ class _ActionLogScreenState extends State<ActionLogScreen> {
         child: Text('No actions yet.', style: TextStyle(color: palette.text2)),
       );
     }
-    return ListView.separated(
+    return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: _entries.length,
-      separatorBuilder: (_, __) => Divider(height: 1, color: palette.border),
-      itemBuilder: (_, i) => _EntryTile(entry: _entries[i]),
+      itemBuilder: (_, i) => PanelListRow(
+        index: i,
+        count: _entries.length,
+        child: _EntryTile(entry: _entries[i]),
+      ),
     );
   }
 }
@@ -108,7 +112,7 @@ class _EntryTile extends StatelessWidget {
     final stamp = '${loc.formatShortDate(local)} '
         '${loc.formatTimeOfDay(TimeOfDay.fromDateTime(local))}';
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
