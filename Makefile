@@ -65,6 +65,9 @@ fmt: ## Auto-format code with ruff in the api container
 deploy: ## Full deploy: build, migrate, restart (idempotent, always safe)
 	bash scripts/deploy.sh
 
+firmware-release: ## Build the wearable firmware and publish it for the app: make firmware-release NOTES="..."
+	bash scripts/firmware-release.sh "$(NOTES)"
+
 # --- Database ---
 
 db-reset: ## Drop and recreate database schema (DESTRUCTIVE)

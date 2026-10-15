@@ -10,12 +10,15 @@ import 'ble_relay_controller.dart';
 import 'device_ble_port.dart';
 import 'device_protocol.dart';
 import '../app/network_policy.dart';
+import 'firmware_update.dart';
 import 'photo_service.dart';
 
 class EchoBleUuids {
   static const serviceUuid = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
   static const audioCharUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
   static const controlCharUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
+  // Protocol 4: firmware updates, [offset u32, bytes] written with response
+  static const otaCharUuid = 'beb5483e-36e1-4688-b7f5-ea07361b26aa';
 }
 
 enum BleConnectionState { disconnected, scanning, connecting, connected }
@@ -38,7 +41,7 @@ class BleUiMessage {
       };
 }
 
-class BleService implements DeviceBlePort, PhotoDevice {
+class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   BleService({
     ApiService? api,
     NetworkAccess? networkAccess,
@@ -116,6 +119,46 @@ class BleService implements DeviceBlePort, PhotoDevice {
 
   @override
   Future<void> sendTakePhoto() => _writeControl(DeviceProtocol.takePhoto());
+
+  BluetoothCharacteristic? _otaChar;
+  final _otaStatusController = StreamController<OtaStatus>.broadcast();
+
+  @override
+  bool get canUpdateFirmware => connected && _otaChar != null;
+
+  /// One write with response carries MTU - 3 bytes; 4 of them are the offset.
+  @override
+  int get firmwareChunkSize {
+    final mtu = _device?.mtuNow ?? 23;
+    final value =
+        (mtu > 515 ? 515 : mtu) - 3 - DeviceProtocol.otaDataHeaderSize;
+    return value < 16 ? 16 : value;
+  }
+
+  @override
+  Stream<OtaStatus> get otaStatusStream => _otaStatusController.stream;
+
+  @override
+  Future<void> beginFirmwareUpdate(int size, List<int> sha256) =>
+      _writeControl(DeviceProtocol.otaBegin(size, sha256));
+
+  @override
+  Future<void> writeFirmwareChunk(int offset, List<int> bytes) async {
+    final characteristic = _otaChar;
+    if (characteristic == null) {
+      throw StateError('Firmware updates unavailable');
+    }
+    // With response: the wearable has written the chunk to flash when this returns
+    await characteristic.write(
+      DeviceProtocol.otaChunk(offset, bytes),
+      withoutResponse: false,
+      timeout: 15,
+    );
+  }
+
+  @override
+  Future<void> abortFirmwareUpdate() =>
+      _writeControl(DeviceProtocol.otaAbort());
 
   BleConnectionState _state = BleConnectionState.disconnected;
   BleConnectionState get state => _state;
@@ -371,6 +414,10 @@ class BleService implements DeviceBlePort, PhotoDevice {
             characteristic.uuid == Guid(EchoBleUuids.controlCharUuid),
         orElse: () => throw StateError('Control characteristic not found'),
       );
+      // Absent before protocol 4: no updates over Bluetooth
+      _otaChar = echoService.characteristics
+          .where((c) => c.uuid == Guid(EchoBleUuids.otaCharUuid))
+          .firstOrNull;
 
       _audioSub = _audioChar!.onValueReceived.listen(
         (value) => unawaited(_onAudioPacket(value)),
@@ -456,6 +503,12 @@ class BleService implements DeviceBlePort, PhotoDevice {
       if (acknowledgement != null && !acknowledgement.isCompleted) {
         acknowledgement.complete();
       }
+      return;
+    }
+
+    final otaStatus = DeviceProtocol.parseOtaStatus(value);
+    if (otaStatus != null) {
+      _otaStatusController.add(otaStatus);
       return;
     }
 
@@ -631,6 +684,7 @@ class BleService implements DeviceBlePort, PhotoDevice {
     _device = null;
     _audioChar = null;
     _controlChar = null;
+    _otaChar = null;
     if (pendingConnection != null && !pendingConnection.isCompleted) {
       pendingConnection.complete();
     }
@@ -757,6 +811,7 @@ class BleService implements DeviceBlePort, PhotoDevice {
     await _phaseController.close();
     await _telemetryController.close();
     await _deviceInfoController.close();
+    await _otaStatusController.close();
     await _messageController.close();
     await _uiMessageController.close();
     await _segmentUploadedController.close();

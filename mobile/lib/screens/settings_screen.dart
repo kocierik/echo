@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api/api_service.dart';
 import '../services/app/app_controller.dart';
 import '../services/app/app_runtime.dart';
+import '../services/device/firmware_update.dart';
 import '../services/device/device_controller.dart';
 import '../services/app/network_policy.dart';
 import '../services/onboarding/onboarding_controller.dart';
@@ -102,15 +103,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         padding: const EdgeInsets.only(bottom: 32),
         children: [
           const SettingsSection('DEVICE'),
-          SettingsRow(
-            icon: Icons.watch_outlined,
-            title: 'Device',
-            subtitle: 'Status, storage, software, and pairing.',
+          _DeviceRow(
+            firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
             onTap: () => _push(DeviceDetailScreen(
               appController: _appController,
               deviceController: _deviceController,
               resetOnboarding: _clearOnboardingProgress,
               onRequireOnboarding: widget.onRequireOnboarding,
+              firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
             )),
           ),
           SettingsRow(
@@ -194,6 +194,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The Device row, which also says when a new firmware is ready.
+class _DeviceRow extends StatelessWidget {
+  const _DeviceRow({required this.firmwareUpdate, required this.onTap});
+
+  final FirmwareUpdateController? firmwareUpdate;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(FirmwareUpdateState? update) => SettingsRow(
+          icon: Icons.watch_outlined,
+          title: 'Device',
+          subtitle: update?.phase == FirmwareUpdatePhase.available
+              ? 'Firmware ${update!.release!.version} is ready to install.'
+              : 'Status, storage, software, and pairing.',
+          onTap: onTap,
+        );
+    final controller = firmwareUpdate;
+    if (controller == null) return row(null);
+    return ValueListenableBuilder<FirmwareUpdateState>(
+      valueListenable: controller,
+      builder: (context, update, _) => row(update),
     );
   }
 }

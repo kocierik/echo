@@ -3,12 +3,15 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "ble_protocol.h"
 #include "bond_policy.h"
 #include "ble_transport_events.h"
 #include "ble_transfer_state.h"
 #include "config.h"
+#include "ota_flash_esp.h"
+#include "ota_receiver.h"
 #include "photo_slot.h"
 #include "psram_buffer.h"
 
@@ -18,7 +21,7 @@ public:
     typedef void (*TakePhotoCallback)(void* context);
 
     BleTransport()
-        : _serverCallbacks(*this), _controlCallbacks(*this) {}
+        : _serverCallbacks(*this), _controlCallbacks(*this), _otaCallbacks(*this) {}
 
     void setMuteCommandCallback(MuteCommandCallback callback, void* context) {
         _muteCommandCallback = callback;
@@ -65,6 +68,8 @@ public:
 
     bool begin() {
         Serial.println("[BLE] init");
+        _otaMutex = xSemaphoreCreateMutex();
+        if (_otaMutex == nullptr) return false;
         NimBLEDevice::init(BLE_DEVICE_NAME);
         NimBLEDevice::setSecurityAuth(true, false, true);
         NimBLEDevice::setSecurityIOCap(BLE_HS_IO_NO_INPUT_OUTPUT);
@@ -91,9 +96,16 @@ public:
             NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC |
             NIMBLE_PROPERTY::NOTIFY,
             EchoBleProtocol::NIMBLE_CHARACTERISTIC_MAX_LENGTH);
-        if (_audioCharacteristic == nullptr || _controlCharacteristic == nullptr) return false;
+        // Encrypted writes only: a new firmware comes from the bonded phone and nobody else
+        _otaCharacteristic = service->createCharacteristic(
+            BLE_OTA_CHARACTERISTIC_UUID,
+            NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_ENC,
+            EchoBleProtocol::NIMBLE_CHARACTERISTIC_MAX_LENGTH);
+        if (_audioCharacteristic == nullptr || _controlCharacteristic == nullptr ||
+            _otaCharacteristic == nullptr) return false;
 
         _controlCharacteristic->setCallbacks(&_controlCallbacks);
+        _otaCharacteristic->setCallbacks(&_otaCallbacks);
         service->start();
 
         NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
@@ -116,6 +128,7 @@ public:
         if (takeEventOverflow()) restartActive();
         if (!beforeBurstDeadline(deadlineUs)) return;
         if (processPendingForgetBond(deadlineUs)) return;
+        const bool updating = processOta(deadlineUs);
 
         if (_pendingStatus.shouldNotify(_connected, _state.isReady())) {
             const bool notified = notifyBufferStatus(buffer, deadlineUs);
@@ -123,6 +136,11 @@ public:
             if (notified) ++notificationsSent;
             if (!notified || !beforeBurstDeadline(deadlineUs)) return;
         }
+        if (_infoPending && _connected && _state.isReady()) {
+            if (!notifyDeviceInfo(deadlineUs)) return;
+        }
+        // The update has the link to itself: audio and photos wait
+        if (updating) return;
         if (_pendingPhotoFailure != 0 && _connected) {
             if (!notifyPhotoFailed(deadlineUs)) return;
         }
@@ -183,6 +201,22 @@ public:
     }
 
     bool isConnected() const { return _connected; }
+
+    /** The app is connected and has set the time: what confirms a new firmware. */
+    bool appTalking() const { return _connected && _timeAnchor.isValid(); }
+
+    /** A new firmware is arriving or about to start: capture and transfers pause. */
+    bool otaInProgress() {
+        lockOta();
+        const OtaReceiver::State state = _ota.state();
+        unlockOta();
+        return state == OtaReceiver::State::RECEIVING || state == OtaReceiver::State::DONE;
+    }
+
+    /** The new firmware is written and the app was told: time to restart into it. */
+    bool otaRestartDue(uint32_t nowMs) const {
+        return _otaRestartAtMs != 0 && static_cast<int32_t>(nowMs - _otaRestartAtMs) >= 0;
+    }
 
     void requestBufferStatus() {
         Serial.println("[BLE] requestBufferStatus");
@@ -261,6 +295,60 @@ private:
         BleTransport& _owner;
     };
 
+    // Runs on the NimBLE host task: the flash write happens here, before the write is
+    // acknowledged, so the app never gets ahead of the flash.
+    class OtaCallbacks : public NimBLECharacteristicCallbacks {
+    public:
+        explicit OtaCallbacks(BleTransport& owner) : _owner(owner) {}
+
+        void onWrite(NimBLECharacteristic* characteristic, NimBLEConnInfo&) override {
+            const NimBLEAttValue& value = characteristic->getValue();
+            _owner.onOtaData(value.data(), value.size());
+        }
+
+    private:
+        BleTransport& _owner;
+    };
+
+    struct OtaNotice {
+        uint32_t sequence;
+        bool pending;
+        uint8_t state;
+        uint8_t error;
+        uint32_t received;
+    };
+
+    void lockOta() { xSemaphoreTake(_otaMutex, portMAX_DELAY); }
+    void unlockOta() { xSemaphoreGive(_otaMutex); }
+
+    /** With the OTA lock held: the status the app hears next. */
+    void noteOta(uint8_t state, uint8_t error) {
+        _otaNotice.sequence++;
+        _otaNotice.pending = true;
+        _otaNotice.state = state;
+        _otaNotice.error = error;
+        _otaNotice.received = _ota.received();
+    }
+
+    void onOtaData(const uint8_t* value, size_t length) {
+        uint32_t offset = 0;
+        const uint8_t* data = nullptr;
+        size_t dataLength = 0;
+        EchoBleProtocol::decodeOtaData(value, length, offset, data, dataLength);
+        lockOta();
+        if (_ota.state() == OtaReceiver::State::RECEIVING) {
+            _otaLastActivityMs = millis();
+            // An undecodable chunk has no bytes: the receiver fails it as out of order
+            const uint8_t error = _ota.write(offset, data, dataLength);
+            if (error != EchoBleProtocol::OTA_ERROR_NONE) {
+                noteOta(EchoBleProtocol::OTA_STATE_FAILED, error);
+            } else if (_ota.state() == OtaReceiver::State::DONE) {
+                noteOta(EchoBleProtocol::OTA_STATE_DONE, EchoBleProtocol::OTA_ERROR_NONE);
+            }
+        }
+        unlockOta();
+    }
+
     void restoreBondPolicy() {
         if (NimBLEDevice::getNumBonds() == 0) return;
 
@@ -275,6 +363,81 @@ private:
         const uint16_t mtu = _negotiatedMtu >= 23 ? _negotiatedMtu : 23;
         const uint16_t effectiveMtu = mtu > 247 ? 247 : mtu;
         return EchoBleProtocol::segmentDataPayloadSizeForMtu(effectiveMtu);
+    }
+
+    // --- Firmware update, Arduino loop side ------------------------------------
+
+    void beginOta(const EchoBleProtocol::ControlFrame& frame, const PSRAMBuffer& buffer) {
+        uint8_t error = EchoBleProtocol::OTA_ERROR_NONE;
+        // The app sends everything first: a restart would lose what is still in RAM
+        if (_active || buffer.count() > 0 || (_photoSlot != nullptr && !_photoSlot->isEmpty())) {
+            error = EchoBleProtocol::OTA_ERROR_BUSY;
+        } else if (_batteryPercent != 255 && _batteryPercent < OTA_MIN_BATTERY_PERCENT) {
+            error = EchoBleProtocol::OTA_ERROR_LOW_BATTERY;
+        }
+        lockOta();
+        // A finished image is already set to boot: never write over it before the restart
+        if (_ota.state() == OtaReceiver::State::DONE) error = EchoBleProtocol::OTA_ERROR_BUSY;
+        if (error == EchoBleProtocol::OTA_ERROR_NONE) {
+            error = _ota.begin(frame.otaSize, frame.otaSha256);
+        }
+        _otaLastActivityMs = millis();
+        noteOta(error == EchoBleProtocol::OTA_ERROR_NONE ? EchoBleProtocol::OTA_STATE_RECEIVING
+                                                         : EchoBleProtocol::OTA_STATE_FAILED,
+                error);
+        unlockOta();
+        Serial.printf("[OTA] begin size=%u error=%u\n", frame.otaSize, error);
+    }
+
+    /** OTA status to the app and the idle timeout; true while an update holds the link. */
+    bool processOta(uint32_t deadlineUs) {
+        lockOta();
+        if (_ota.state() == OtaReceiver::State::RECEIVING &&
+            millis() - _otaLastActivityMs >= OTA_IDLE_TIMEOUT_MS) {
+            _ota.abort();
+            noteOta(EchoBleProtocol::OTA_STATE_FAILED, EchoBleProtocol::OTA_ERROR_TIMEOUT);
+            Serial.println("[OTA] no data: transfer dropped");
+        }
+        const OtaNotice notice = _otaNotice;
+        const OtaReceiver::State state = _ota.state();
+        unlockOta();
+
+        // Restart even if the app cannot hear DONE: the new image is already set to boot
+        if (state == OtaReceiver::State::DONE && _otaRestartAtMs == 0) {
+            _otaRestartAtMs = millis() + OTA_RESTART_DELAY_MS;
+        }
+        if (notice.pending && _connected && _controlCharacteristic != nullptr &&
+            beforeBurstDeadline(deadlineUs)) {
+            uint8_t frame[EchoBleProtocol::OTA_STATUS_SIZE] = {};
+            EchoBleProtocol::encodeOtaStatus(
+                notice.state, notice.error, notice.received, frame, sizeof(frame));
+            if (_controlCharacteristic->notify(frame, sizeof(frame))) {
+                Serial.printf("[OTA] status state=%u error=%u received=%u\n",
+                              notice.state, notice.error, notice.received);
+                lockOta();
+                if (_otaNotice.sequence == notice.sequence) _otaNotice.pending = false;
+                // A failure was told: back to idle, audio resumes
+                if (_ota.state() == OtaReceiver::State::FAILED) _ota.abort();
+                unlockOta();
+            }
+        }
+        return state == OtaReceiver::State::RECEIVING || state == OtaReceiver::State::DONE;
+    }
+
+    bool notifyDeviceInfo(uint32_t deadlineUs) {
+        if (_controlCharacteristic == nullptr) return false;
+        uint8_t frame[EchoBleProtocol::DEVICE_INFO_SIZE] = {};
+        const EchoBleProtocol::DeviceInfo info = {
+            EchoBleProtocol::PROTOCOL_VERSION,
+            FIRMWARE_VERSION_MAJOR,
+            FIRMWARE_VERSION_MINOR,
+            FIRMWARE_VERSION_PATCH,
+        };
+        EchoBleProtocol::encodeDeviceInfo(info, frame, sizeof(frame));
+        if (!beforeBurstDeadline(deadlineUs)) return false;
+        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return false;
+        _infoPending = false;
+        return true;
     }
 
     bool notifyAudio(const uint8_t* data, size_t length, uint32_t deadlineUs) {
@@ -460,8 +623,14 @@ private:
         _connectionHandle = UINT16_MAX;
         _negotiatedMtu = 23;
         _forgetBondPending = false;
+        _infoPending = false;
         _active = false;
         _activeIsPhoto = false;  // a photo stays in its slot: sent again on reconnect
+        lockOta();
+        // A transfer cut short is dropped; a finished one still restarts into the new image
+        if (_ota.state() != OtaReceiver::State::DONE) _ota.abort();
+        _otaNotice.pending = false;
+        unlockOta();
         _segmentData = nullptr;
         _state.onDisconnected();
         NimBLEDevice::startAdvertising();
@@ -531,6 +700,7 @@ private:
             case EchoBleProtocol::FRAME_READY:
                 Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
+                _infoPending = true;  // the app listens now: tell it which firmware this is
                 break;
             case EchoBleProtocol::FRAME_ACK_WINDOW:
                 Serial.printf("[BLE] control FRAME_ACK_WINDOW seg=%u highest=%u\n",
@@ -555,6 +725,16 @@ private:
                 Serial.println("[BLE] control FRAME_TAKE_PHOTO");
                 if (_takePhotoCallback != nullptr) _takePhotoCallback(_takePhotoContext);
                 else reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_NO_CAMERA);
+                break;
+            case EchoBleProtocol::FRAME_OTA_BEGIN:
+                beginOta(frame, buffer);
+                break;
+            case EchoBleProtocol::FRAME_OTA_ABORT:
+                Serial.println("[OTA] aborted by the app");
+                lockOta();
+                if (_ota.state() != OtaReceiver::State::DONE) _ota.abort();
+                _otaNotice.pending = false;
+                unlockOta();
                 break;
             default:
                 Serial.printf("[BLE] control unknown type=%u\n", frame.type);
@@ -601,8 +781,18 @@ private:
     NimBLEServer* _server = nullptr;
     NimBLECharacteristic* _audioCharacteristic = nullptr;
     NimBLECharacteristic* _controlCharacteristic = nullptr;
+    NimBLECharacteristic* _otaCharacteristic = nullptr;
     ServerCallbacks _serverCallbacks;
     ControlCallbacks _controlCallbacks;
+    OtaCallbacks _otaCallbacks;
+    // Guards the receiver and the notice: the host task writes, the Arduino loop reads
+    SemaphoreHandle_t _otaMutex = nullptr;
+    EspOtaFlash _otaFlash;
+    OtaReceiver _ota{_otaFlash};
+    OtaNotice _otaNotice = {};
+    uint32_t _otaLastActivityMs = 0;
+    uint32_t _otaRestartAtMs = 0;
+    bool _infoPending = false;
     BondPolicy _bondPolicy;
     BleTransferState _state;
     BleTransportEventQueue _events;

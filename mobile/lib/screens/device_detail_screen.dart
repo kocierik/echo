@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../models/device_status.dart';
 import '../services/app/app_controller.dart';
 import '../services/device/device_controller.dart';
+import '../services/device/firmware_update.dart';
 import '../widgets/device_card.dart';
+import '../widgets/firmware_update_section.dart';
 import 'settings/settings_components.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
@@ -13,6 +15,7 @@ class DeviceDetailScreen extends StatefulWidget {
     required this.resetOnboarding,
     this.onForgot,
     this.onRequireOnboarding,
+    this.firmwareUpdate,
     super.key,
   });
 
@@ -21,6 +24,9 @@ class DeviceDetailScreen extends StatefulWidget {
   final Future<void> Function() resetOnboarding;
   final VoidCallback? onForgot;
   final VoidCallback? onRequireOnboarding;
+
+  /// Null in tests that do not exercise updates.
+  final FirmwareUpdateController? firmwareUpdate;
 
   @override
   State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
@@ -108,7 +114,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         final reconnectAvailable = switch (status.connectionState) {
           DeviceConnectionState.bluetoothOff ||
           DeviceConnectionState.offline ||
-          DeviceConnectionState.error => true,
+          DeviceConnectionState.error =>
+            true,
           _ => false,
         };
         return SettingsPageScaffold(
@@ -141,6 +148,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
                 title: 'Firmware',
                 value: status.firmwareVersion,
               ),
+            if (widget.firmwareUpdate != null)
+              FirmwareUpdateSection(controller: widget.firmwareUpdate!),
             const SettingsSection('BUFFER'),
             SettingsRow(
               icon: Icons.inventory_2_outlined,
@@ -243,7 +252,8 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
       DeviceConnectionState.muted => Icons.mic_off_outlined,
       DeviceConnectionState.offline ||
       DeviceConnectionState.error ||
-      DeviceConnectionState.bluetoothOff => Icons.bluetooth_disabled_rounded,
+      DeviceConnectionState.bluetoothOff =>
+        Icons.bluetooth_disabled_rounded,
       _ => Icons.bluetooth_searching_rounded,
     };
   }

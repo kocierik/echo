@@ -106,6 +106,18 @@ pio device monitor           # serial output
 The wearable talks only BLE to the phone ([ADR 0006](adr/0006-ble-relay-through-phone.md)); tunables
 such as `VAD_ENERGY_THRESHOLD` are in `src/config.h`.
 
+Updates without the cable ([ADR 0009](adr/0009-firmware-updates-over-ble.md)): raise
+`FIRMWARE_VERSION_*` in `src/config.h`, then from the repository root
+
+```bash
+ECHO_API_KEY=... make firmware-release NOTES="what changed"   # ECHO_URL defaults to localhost:8000
+```
+
+builds the firmware and publishes it to the server. The app shows "Update Echo" in
+Settings → Device; the wearable keeps the new firmware only once the app reconnects to it, and
+goes back to the previous one otherwise. The first firmware with updates (0.5.0) is flashed with
+the cable.
+
 The camera (OV3660 or OV2640 on the Sense board) is optional: without one the firmware runs as
 before and tells the app it has none. Photo size and quality are `PHOTO_FRAME_SIZE` and
 `PHOTO_JPEG_QUALITY` in `src/config.h`; the serial monitor logs the sensor found at boot and each

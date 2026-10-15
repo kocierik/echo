@@ -383,6 +383,8 @@ class MainShell extends StatelessWidget {
                         appController.setSelectedTab(AppController.tasksTab));
                   },
                   segmentUploadedStream: segmentUploadedStream,
+                  firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
+                  onOpenSettings: () => _openSettings(context),
                 ),
                 MemoriesScreen(
                   segmentUploadedStream: segmentUploadedStream,

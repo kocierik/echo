@@ -134,6 +134,45 @@ void main() {
         throwsA(isA<DeviceProtocolException>()),
       );
     });
+
+    test('protocol 4 status and info are read like protocol 3', () {
+      final status = DeviceProtocol.parseStatus(_validStatus()..[1] = 4);
+      expect(status.bufferCount, 1);
+      final info = DeviceProtocol.parseInfo(
+        Uint8List.fromList([0x21, 0x04, 0x00, 0x05, 0x00]),
+      );
+      expect(info.protocolVersion, DeviceProtocol.otaVersion);
+      expect(info.firmwareMinor, 5);
+    });
+
+    test('encodes the firmware update frames', () {
+      final sha = List<int>.generate(32, (i) => i);
+      final begin = DeviceProtocol.otaBegin(0x00091000, sha);
+      expect(begin.sublist(0, 5), orderedEquals([0x19, 0x00, 0x10, 0x09, 0x00]));
+      expect(begin.sublist(5), orderedEquals(sha));
+      expect(() => DeviceProtocol.otaBegin(10, [1, 2]), throwsArgumentError);
+      expect(DeviceProtocol.otaAbort(), orderedEquals([0x1A]));
+      expect(
+        DeviceProtocol.otaChunk(0x10, [0xAA, 0xBB]),
+        orderedEquals([0x10, 0x00, 0x00, 0x00, 0xAA, 0xBB]),
+      );
+    });
+
+    test('parses OTA_STATUS and ignores other frames', () {
+      final failed = DeviceProtocol.parseOtaStatus(
+        [0x23, 0x03, 0x06, 0x78, 0x56, 0x34, 0x12],
+      )!;
+      expect(failed.state, OtaState.failed);
+      expect(failed.error, 6);
+      expect(failed.received, 0x12345678);
+      expect(
+        DeviceProtocol.parseOtaStatus([0x23, 0x02, 0, 0, 0, 0, 0])!.state,
+        OtaState.done,
+      );
+      expect(DeviceProtocol.parseOtaStatus([0x23, 0x09, 0, 0, 0, 0, 0]), isNull);
+      expect(DeviceProtocol.parseOtaStatus([0x22, 0x01]), isNull);
+      expect(DeviceProtocol.otaErrorMessage(6), contains('damaged'));
+    });
   });
 }
 
