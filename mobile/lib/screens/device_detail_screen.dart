@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/device_status.dart';
 import '../services/app_controller.dart';
 import '../services/device_controller.dart';
+import '../widgets/device_card.dart';
 import 'settings/settings_components.dart';
 
 class DeviceDetailScreen extends StatefulWidget {
@@ -119,12 +120,15 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
               title: 'Connection',
               value: _stateLabel(status.connectionState),
             ),
-            if (status.batteryPercent != null)
-              SettingsRow(
-                icon: Icons.battery_5_bar_outlined,
-                title: 'Battery',
-                value: '${status.batteryPercent}%',
-              ),
+            SettingsRow(
+              icon: status.batteryPercent == null
+                  ? Icons.battery_unknown_outlined
+                  : batteryIcon(status.batteryPercent!),
+              title: 'Battery',
+              value: status.batteryPercent == null
+                  ? 'Not measured'
+                  : '${status.batteryPercent}%',
+            ),
             if (status.protocolVersion != null)
               SettingsRow(
                 icon: Icons.hub_outlined,

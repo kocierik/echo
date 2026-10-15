@@ -33,12 +33,14 @@ void main() {
     }
   });
 
-  testWidgets('omits unknown battery and shows known battery', (tester) async {
+  testWidgets('says an unknown battery is not measured and shows a known one',
+      (tester) async {
     final fixture = await _Fixture.create();
     addTearDown(fixture.dispose);
     await fixture.pump(tester);
 
-    expect(find.text('Battery'), findsNothing);
+    expect(find.text('Battery'), findsOneWidget);
+    expect(find.text('Not measured'), findsOneWidget);
     expect(find.textContaining('%'), findsNothing);
 
     fixture.emit(const DeviceStatus(

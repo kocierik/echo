@@ -30,6 +30,12 @@ public:
         _pendingStatus.request();
     }
 
+    /** 0-100, or BatteryLevel::UNKNOWN (255); sent with the next DEVICE_STATUS. */
+    void setBatteryPercent(uint8_t percent) {
+        _batteryPercent = percent;
+        _pendingStatus.request();
+    }
+
     /** Photos: sent before audio (the user is waiting for them), freed on UPLOAD_OK. */
     void setPhotoSlot(PhotoSlot* slot, bool cameraAvailable) {
         _photoSlot = slot;
@@ -320,7 +326,7 @@ private:
         const EchoBleProtocol::DeviceStatus status = {
             _muted,
             _overflowSinceLastStatus,
-            255,
+            _batteryPercent,
             buffer.count(),
             static_cast<uint32_t>(buffer.bytesUsed()),
             buffer.droppedSegmentCount(),
@@ -612,6 +618,7 @@ private:
     bool _connected = false;
     bool _active = false;
     bool _activeIsPhoto = false;
+    uint8_t _batteryPercent = 255;
     bool _cameraAvailable = false;
     uint8_t _pendingPhotoFailure = 0;
     PhotoSlot* _photoSlot = nullptr;

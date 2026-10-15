@@ -381,6 +381,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 busy: _privacyBusy,
                 error: _privacyError,
                 announcement: _announcement,
+                batteryPercent: widget.deviceStatus.batteryPercent,
               ),
               const SizedBox(height: 12),
               NeedsYouSection(

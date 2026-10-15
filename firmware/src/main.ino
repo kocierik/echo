@@ -24,6 +24,7 @@
 #include "mute_state.h"
 #include "photo_slot.h"
 #include "camera_capture.h"
+#include "battery_monitor.h"
 
 // ============================================================
 // Global instances
@@ -37,6 +38,7 @@ Indicators indicators;
 DevicePreferences devicePreferences;
 PhotoSlot photoSlot;
 CameraCapture camera;
+BatteryMonitor battery;
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
     [](bool muted) { return devicePreferences.saveMuted(muted); });
@@ -144,6 +146,9 @@ void setup() {
     const bool cameraAvailable = camera.begin(photoSlot);
     Serial.printf("[Camera] %s\n", cameraAvailable ? "ready" : "not available");
     bleTransport.setPhotoSlot(&photoSlot, cameraAvailable);
+
+    battery.begin();
+    bleTransport.setBatteryPercent(battery.percent());
     bleTransport.setTakePhotoCallback(handleTakePhoto, nullptr);
 
     if (!bleTransport.begin()) {
@@ -174,6 +179,7 @@ void loop() {
 
     uint8_t photoFailure = 0;
     if (photoSlot.takeFailure(photoFailure)) bleTransport.reportPhotoFailed(photoFailure);
+    if (battery.update()) bleTransport.setBatteryPercent(battery.percent());
 
 
 
