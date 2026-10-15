@@ -128,8 +128,13 @@ abstract interface class TranscriptMemoryApi {
 /// The wearable camera: requests, the wearable's commands, uploads and images.
 abstract interface class PhotoApi {
   /// The app's camera button; the question (if any) and the answer go to
-  /// [chatSessionId], or to "Voice requests".
-  Future<PhotoInfo> requestPhoto({String? question, String? chatSessionId});
+  /// [chatSessionId], or to "Voice requests". [fromWearableButton]: taken with the
+  /// wearable's own button, so the answer is notified.
+  Future<PhotoInfo> requestPhoto({
+    String? question,
+    String? chatSessionId,
+    bool fromWearableButton = false,
+  });
 
   Future<PhotoInfo> getPhoto(String id);
 
@@ -598,10 +603,14 @@ class ApiService
   // --- Wearable camera ---
 
   @override
-  Future<PhotoInfo> requestPhoto({String? question, String? chatSessionId}) async {
+  Future<PhotoInfo> requestPhoto({
+    String? question,
+    String? chatSessionId,
+    bool fromWearableButton = false,
+  }) async {
     final server = await _credentialStore.serverUrl;
     final headers = await _credentialStore.headers;
-    final body = <String, dynamic>{};
+    final body = <String, dynamic>{if (fromWearableButton) 'source': 'button'};
     final trimmed = question?.trim() ?? '';
     if (trimmed.isNotEmpty) body['question'] = trimmed;
     if (chatSessionId != null) body['chat_session_id'] = chatSessionId;

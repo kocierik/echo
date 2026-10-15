@@ -384,3 +384,20 @@ async def test_a_photo_asked_from_a_chat_is_answered_in_that_chat(
         "/api/photos", headers=auth_headers, json={"chat_session_id": str(uuid.uuid4())}
     )
     assert unknown.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_a_photo_from_the_wearable_button_is_notified(client, auth_headers, db_session):
+    response = await client.post("/api/photos", headers=auth_headers, json={"source": "button"})
+    photo = response.json()
+    assert photo["source"] == "button"
+    await _upload(client, auth_headers, photo["id"])
+
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), VisionLLM(), Embeddings()
+    )
+
+    message = await _last_voice_message(db_session)
+    assert message["photo_id"] == photo["id"] and message["notify"] is True
+    bad = await client.post("/api/photos", headers=auth_headers, json={"source": "voice"})
+    assert bad.status_code == 422

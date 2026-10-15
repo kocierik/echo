@@ -25,6 +25,7 @@
 #include "photo_slot.h"
 #include "camera_capture.h"
 #include "battery_monitor.h"
+#include "button_gesture.h"
 
 // ============================================================
 // Global instances
@@ -39,6 +40,7 @@ DevicePreferences devicePreferences;
 PhotoSlot photoSlot;
 CameraCapture camera;
 BatteryMonitor battery;
+ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS);
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
     [](bool muted) { return devicePreferences.saveMuted(muted); });
@@ -114,6 +116,7 @@ void setup() {
 
     // Initialize indicators first (for visual feedback during boot)
     indicators.begin();
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
     indicators.setBlinking(true);
 
     bleTransport.setMuteCommandCallback(handleMuteCommand, nullptr);
@@ -182,6 +185,20 @@ void loop() {
     uint8_t photoFailure = 0;
     if (photoSlot.takeFailure(photoFailure)) bleTransport.reportPhotoFailed(photoFailure);
     if (battery.update()) bleTransport.setBatteryPercent(battery.percent());
+
+    // The button works muted too: a long press is also how listening resumes
+    switch (button.update(digitalRead(BUTTON_PIN) == LOW, millis())) {
+        case ButtonGesture::SHORT_PRESS:
+            Serial.println("[Button] short press: photo");
+            handleTakePhoto(nullptr);
+            break;
+        case ButtonGesture::LONG_PRESS:
+            Serial.println("[Button] long press: mute toggle");
+            handleMuteCommand(!muteState.isMuted(), nullptr);
+            break;
+        case ButtonGesture::NONE:
+            break;
+    }
 
 
 

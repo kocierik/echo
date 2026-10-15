@@ -111,6 +111,10 @@ before and tells the app it has none. Photo size and quality are `PHOTO_FRAME_SI
 `PHOTO_JPEG_QUALITY` in `src/config.h`; the serial monitor logs the sensor found at boot and each
 photo's size and capture time ([ADR 0007](adr/0007-camera-photos-on-request.md)).
 
+Button: a push button between D1 (GPIO2) and GND (the internal pull-up is on). A short press
+takes a photo (the answer arrives in Voice requests with a notification); holding it for 1.5 s
+mutes, or resumes listening, and the app follows. It works muted too.
+
 Battery: the XIAO ESP32-S3 has no battery sense of its own. Solder two 200 kΩ resistors in series
 between BAT+ and GND, with the middle point on A0 (GPIO1), then set `BATTERY_DIVIDER_FITTED 1` in
 `src/config.h` and flash. The firmware averages a reading every 30 s, converts it with a LiPo

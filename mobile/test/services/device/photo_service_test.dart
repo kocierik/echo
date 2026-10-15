@@ -81,11 +81,13 @@ void main() {
       expect(service.pendingPhotoId, isNull);
     });
 
-    test('a photo nobody is waiting for still reaches the chat', () async {
+    test('a photo from the wearable button (nobody waiting) reaches the chat',
+        () async {
       await service.uploadFromDevice(
           Uint8List.fromList([1]), DateTime.utc(2026));
 
       expect(api.requests, [(null, null)]);
+      expect(api.buttonRequests, [true]); // notified: the phone is not in view
       expect(api.uploads.single.$1, 'p1');
     });
 
@@ -174,6 +176,7 @@ final class _FakeDevice implements PhotoDevice {
 
 final class _FakePhotoApi implements PhotoApi {
   final requests = <(String?, String?)>[];
+  final buttonRequests = <bool>[];
   final uploads = <(String, int, DateTime)>[];
   final failures = <(String, String)>[];
   final commandBatches = <List<DeviceCommand>>[];
@@ -185,8 +188,12 @@ final class _FakePhotoApi implements PhotoApi {
   Object? uploadError;
 
   @override
-  Future<PhotoInfo> requestPhoto(
-      {String? question, String? chatSessionId}) async {
+  Future<PhotoInfo> requestPhoto({
+    String? question,
+    String? chatSessionId,
+    bool fromWearableButton = false,
+  }) async {
+    buttonRequests.add(fromWearableButton);
     requests.add((question, chatSessionId));
     return PhotoInfo(
         id: 'p${requests.length}',

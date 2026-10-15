@@ -22,7 +22,7 @@ class Photo(UUIDPrimaryKey, TimestampMixin, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="requested")
-    # "voice" or "app"
+    # "voice", "app" (camera button in Ask) or "button" (the wearable's button)
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     # What the user asked ("Echo, what plant is this?"); None for a plain photo
     question: Mapped[str | None] = mapped_column(Text, nullable=True)
