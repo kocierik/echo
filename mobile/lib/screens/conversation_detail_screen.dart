@@ -21,6 +21,8 @@ import '../utils/calendar_request.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
 import 'transcript_detail_screen.dart';
+import '../services/app/sharing.dart';
+import '../utils/conversation_text.dart';
 
 enum _DetailTab { summary, transcript }
 
@@ -32,11 +34,13 @@ final class ConversationDetailScreen extends StatefulWidget {
     required this.api,
     this.onAsk,
     this.clock = DateTime.now,
+    this.sharing = const SystemSharing(),
     super.key,
   });
 
   final String conversationId;
   final MemoryApi api;
+  final Sharing sharing;
   final AskCallback? onAsk;
   final DateTime Function() clock;
 
@@ -212,6 +216,16 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     return Scaffold(
       appBar: AppBar(
         actions: [
+          if (detail != null)
+            IconButton(
+              key: const Key('conversation-share'),
+              tooltip: 'Share conversation',
+              icon: const Icon(Icons.ios_share_rounded),
+              onPressed: () => unawaited(widget.sharing.shareText(
+                conversationAsText(detail, widget.clock()),
+                subject: detail.card.title ?? 'Conversation',
+              )),
+            ),
           if (detail != null)
             PopupMenuButton<String>(
               key: const Key('conversation-menu'),

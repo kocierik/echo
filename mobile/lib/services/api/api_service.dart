@@ -847,6 +847,26 @@ class ApiService
     });
   }
 
+  /// Everything the server keeps about the user, as the JSON file to save.
+  Future<List<int>> exportData() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    late final http.Response response;
+    try {
+      response = await _client
+          .get(Uri.parse('$server/api/export'), headers: headers)
+          .timeout(_queryTimeout);
+    } on TimeoutException {
+      throw _timeoutException();
+    } on http.ClientException catch (error) {
+      throw _offlineException(error);
+    } on IOException catch (error) {
+      throw _offlineException(error);
+    }
+    if (response.statusCode != 200) throw _statusException(response.statusCode, response.body);
+    return response.bodyBytes;
+  }
+
   // --- Voices ---
 
   @override
