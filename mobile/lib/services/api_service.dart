@@ -12,6 +12,7 @@ import '../models/chat_session.dart';
 import '../models/memory.dart';
 import '../models/person.dart';
 import '../models/photo.dart';
+import '../models/voice.dart';
 import '../models/segment.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
@@ -90,6 +91,23 @@ abstract interface class TodayApi implements MemoryApi {
   Future<List<PendingAction>> listPendingActions();
   Future<ConfirmResult> confirmPendingAction(String id);
   Future<void> cancelPendingAction(String id);
+}
+
+/// Known voices: the user's own (recorded for it) and people named in transcripts.
+abstract interface class VoiceApi {
+  Future<VoiceProfiles> getVoiceProfiles();
+
+  /// The segments recorded between the two times are the user's voice.
+  Future<VoiceEnrollment> enrollOwnVoice(DateTime startedAt, DateTime endedAt);
+
+  Future<void> deleteVoiceProfile(String id);
+
+  /// Whose voice a segment is: the user's, a person of theirs, or a new name. Returns
+  /// how many other segments of the conversation were labelled with it.
+  Future<int> nameVoice(String segmentId, {bool isSelf, String? personId, String? name});
+
+  /// Not the suggested person.
+  Future<void> rejectVoice(String segmentId);
 }
 
 /// Weekly summaries (optional for a Today api: no section without it).
@@ -236,7 +254,8 @@ class ApiService
         TranscriptMemoryApi,
         VoiceUpdatesApi,
         PhotoApi,
-        WeeklySummaryApi {
+        WeeklySummaryApi,
+        VoiceApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -763,6 +782,82 @@ class ApiService
           .toList();
       return summaries.isEmpty ? null : summaries.first;
     });
+  }
+
+  // --- Voices ---
+
+  @override
+  Future<VoiceProfiles> getVoiceProfiles() async {
+    final response = await _getJson('/api/voice-profiles');
+    return _parseDecoded(
+      response.data,
+      (data) => VoiceProfiles.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<VoiceEnrollment> enrollOwnVoice(DateTime startedAt, DateTime endedAt) async {
+    final response = await _postJson('/api/voice-profiles/self/enroll', {
+      'started_at': startedAt.toUtc().toIso8601String(),
+      'ended_at': endedAt.toUtc().toIso8601String(),
+    });
+    return _parseDecoded(
+      response.data,
+      (data) => VoiceEnrollment.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<void> deleteVoiceProfile(String id) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.delete(Uri.parse('$server/api/voice-profiles/$id'), headers: headers),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
+  }
+
+  @override
+  Future<int> nameVoice(
+    String segmentId, {
+    bool isSelf = false,
+    String? personId,
+    String? name,
+  }) async {
+    final response = await _postJson('/api/segments/$segmentId/voice', {
+      'is_self': isSelf,
+      if (personId != null) 'person_id': personId,
+      if (name != null) 'name': name,
+    });
+    return _parseDecoded(
+      response.data,
+      (data) => (data as Map<String, dynamic>)['relabelled'] as int,
+    );
+  }
+
+  @override
+  Future<void> rejectVoice(String segmentId) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    await _send(
+      () => _client.post(
+        Uri.parse('$server/api/segments/$segmentId/voice/reject'),
+        headers: headers,
+      ),
+      expectedStatuses: const {204},
+      decodeJson: false,
+    );
+  }
+
+  Future<_ApiResponse> _postJson(String path, Map<String, dynamic> body) async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    return _send(
+      () => _client.post(Uri.parse('$server$path'), headers: headers, body: jsonEncode(body)),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
   }
 
   @override

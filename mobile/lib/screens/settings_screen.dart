@@ -15,6 +15,7 @@ import 'settings/about_settings_screen.dart';
 import 'settings/automations_settings_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/privacy_settings_screen.dart';
+import 'settings/voice_settings_screen.dart';
 import 'settings/settings_components.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -138,6 +139,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               activityBuilder: widget.activityBuilder,
               integrationsBuilder: widget.integrationsBuilder,
             )),
+          ),
+          SettingsRow(
+            icon: Icons.record_voice_over_outlined,
+            title: 'Voices',
+            subtitle: 'Your voice, and the people Echo recognises.',
+            onTap: () => _push(const VoiceSettingsScreen()),
           ),
           SettingsRow(
             icon: Icons.monitor_heart_outlined,

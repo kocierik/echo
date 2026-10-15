@@ -187,7 +187,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 - **La chiave di esempio `my-secret-key` è l'unica API key del DB di sviluppo**, esposto su internet dal tunnel:
   vedi §6, primo punto.
-- **Speaker (#11):** la soglia è configurabile ma va calibrata su registrazioni reali.
+- **Speaker (#11):** con il profilo vocale registrato decidono le impronte; senza, la soglia di energia (da calibrare).
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
@@ -224,7 +224,8 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ### Dalla roadmap (ancora aperti)
 - **Hardware reale:** calibrazione VAD (soglia fissa a 500, nessuna adattiva), misura consumi, range BLE.
-- **Memoria:** diarization vera (oggi solo energia; impronte vocali in corso), raggruppamento conversazioni per argomento.
+- **Memoria:** raggruppamento conversazioni per argomento. Impronte vocali fatte ([ADR 0008](adr/0008-voice-fingerprints.md)):
+  soglie da calibrare su registrazioni reali; un segmento con più voci prende quella prevalente.
 - **Query:** filtro per tipo di entità nel RAG (la ricerca per persona c'è: prima le conversazioni in cui compare).
 - **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), storage offline su microSD. La lettura della batteria
   c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.

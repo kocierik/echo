@@ -149,6 +149,8 @@ void main() {
   testWidgets('appearance persists system light and dark selections',
       (tester) async {
     await pumpSettings(tester);
+    await tester.ensureVisible(find.text('About'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Appearance'));
@@ -206,6 +208,8 @@ void main() {
       (tester) async {
     var resets = 0;
     await pumpSettings(tester, onRequireOnboarding: () => resets++);
+    await tester.ensureVisible(find.text('About'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
 
@@ -228,6 +232,8 @@ void main() {
       (tester) async {
     session.failCacheOnce = true;
     await pumpSettings(tester);
+    await tester.ensureVisible(find.text('About'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Log out'));
