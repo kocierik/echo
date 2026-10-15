@@ -58,18 +58,19 @@ void main() {
 
     await pump(tester, api, opened: opened);
 
-    expect(find.text('TODAY'), findsOneWidget);
-    expect(find.text('YESTERDAY'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
     expect(find.text('Conversation in progress'), findsOneWidget);
     expect(find.text('Live'), findsOneWidget);
     expect(find.text('Lunch with Ada'), findsOneWidget);
-    expect(find.text('🍝'), findsWidgets);
+    expect(find.text('12:30'), findsOneWidget);
     expect(find.text('Ada, Marco'), findsOneWidget);
     expect(find.text('2 tasks'), findsOneWidget);
+    expect(find.text('12 min'), findsWidgets);
     expect(find.text('Standup'), findsOneWidget);
     expect(
-      tester.getTopLeft(find.text('TODAY')).dy,
-      lessThan(tester.getTopLeft(find.text('YESTERDAY')).dy),
+      tester.getTopLeft(find.text('Today')).dy,
+      lessThan(tester.getTopLeft(find.text('Yesterday')).dy),
     );
 
     await tester.tap(find.text('Lunch with Ada'));
@@ -92,11 +93,11 @@ void main() {
 
     expect(find.text('Yesterday'), findsOneWidget);
     expect(find.text('Met Ada about Atlas.'), findsOneWidget);
-    expect(find.text('Week of Oct 5'), findsOneWidget);
+    expect(find.text('Last week'), findsOneWidget);
     expect(find.text('With Marco, Ada'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('Met Ada about Atlas.')).dy,
-      lessThan(tester.getTopLeft(find.text('TODAY')).dy),
+      lessThan(tester.getTopLeft(find.text('Today')).dy),
     );
 
     expect(find.text('• Demo moved to Friday'), findsNothing);
@@ -187,7 +188,8 @@ void main() {
     expect(find.text('Lunch with Ada'), findsOneWidget);
   });
 
-  testWidgets('People lists everyone, filters by name and opens a person', (tester) async {
+  testWidgets('People shows the four seen last; All lists and filters everyone',
+      (tester) async {
     final openedPeople = <String>[];
     final api = FakeMemoryApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
       ..people = [
@@ -200,18 +202,29 @@ void main() {
           openTaskCount: 2,
         ),
         const PersonSummary(id: 'p2', name: 'Ada', conversationCount: 1),
+        for (var i = 3; i <= 6; i++)
+          PersonSummary(id: 'p$i', name: 'Person $i', lastSeen: DateTime(2026, 10, i)),
       ];
     await pump(tester, api, openedPeople: openedPeople);
-    expect(api.calls.contains('people'), isFalse); // only when shown
 
-    await tester.tap(find.text('People'));
+    // On the panel: first names, the most recently seen first
+    Finder onPanel(String text) =>
+        find.descendant(of: find.byKey(const Key('people-panel')), matching: find.text(text));
+    expect(onPanel('Marco'), findsOneWidget);
+    expect(onPanel('Person'), findsNWidgets(3));
+    expect(onPanel('Ada'), findsNothing);
+    await tester.tap(find.byKey(const Key('person-p1')));
+    await tester.pumpAndSettle();
+    expect(openedPeople, ['p1']);
+
+    await tester.tap(find.text('All 6'));
     await tester.pumpAndSettle();
     expect(find.text('Marco Rossi'), findsOneWidget);
     expect(find.text('designer · Seen today'), findsOneWidget);
     expect(find.text('3 conversations · 2 open tasks'), findsOneWidget);
     expect(find.text('1 conversation'), findsOneWidget);
 
-    await tester.enterText(find.byKey(const Key('memories-search')), 'ad');
+    await tester.enterText(find.byKey(const Key('people-filter')), 'ad');
     await tester.pumpAndSettle();
     expect(find.text('Marco Rossi'), findsNothing);
     expect(find.text('Ada'), findsOneWidget);
@@ -219,20 +232,16 @@ void main() {
 
     await tester.tap(find.text('Ada'));
     await tester.pumpAndSettle();
-    expect(openedPeople, ['p2']);
+    expect(openedPeople, ['p1', 'p2']);
   });
 
-  testWidgets('People empty and error states', (tester) async {
-    final api = FakeMemoryApi()..peopleError = serverError('Offline');
+  testWidgets('no People panel without people, or when they fail to load',
+      (tester) async {
+    final api = FakeMemoryApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
+      ..peopleError = serverError('Offline');
     await pump(tester, api);
-    await tester.tap(find.text('People'));
-    await tester.pumpAndSettle();
-    expect(find.text('Could not load people'), findsOneWidget);
-
-    api.peopleError = null;
-    await tester.tap(find.byKey(const Key('people-retry')));
-    await tester.pumpAndSettle();
-    expect(find.text('No people yet'), findsOneWidget);
+    expect(find.byKey(const Key('people-panel')), findsNothing);
+    expect(find.text('Lunch with Ada'), findsOneWidget);
   });
 
   testWidgets('fits 320 wide at 1.3 text scale in light and dark', (tester) async {
@@ -243,7 +252,11 @@ void main() {
           people: const ['Alessandro', 'Margherita', 'Bartolomeo'],
           taskCount: 12, duration: const Duration(hours: 69, minutes: 50)),
       card('live', startedAt: DateTime(2026, 10, 14, 17), isOpen: true),
-    ]);
+    ])
+      ..people = [
+        const PersonSummary(id: 'p1', name: 'Bartolomeo Alessandrini'),
+        const PersonSummary(id: 'p2', name: 'Margherita'),
+      ];
     for (final theme in [AppTheme.light, AppTheme.dark]) {
       await pump(tester, api, theme: theme, size: const Size(320, 640), textScale: 1.3);
       expect(tester.takeException(), isNull);

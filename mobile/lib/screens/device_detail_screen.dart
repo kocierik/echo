@@ -4,7 +4,7 @@ import '../models/device_status.dart';
 import '../services/app/app_controller.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/firmware_update.dart';
-import '../widgets/device_card.dart';
+import '../widgets/device_readings.dart';
 import '../widgets/firmware_update_section.dart';
 import 'settings/settings_components.dart';
 

@@ -9,11 +9,17 @@ import '../services/device/device_controller.dart';
 import '../services/app/network_policy.dart';
 import '../services/onboarding/onboarding_controller.dart';
 import '../services/app/session_controller.dart';
+import '../models/app_view_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/device_instrument.dart';
+import '../widgets/screen_header.dart';
 import 'device_detail_screen.dart';
 import 'device_messages_screen.dart';
 import 'settings/about_settings_screen.dart';
-import 'settings/automations_settings_screen.dart';
+import 'action_log_screen.dart';
+import 'integrations_screen.dart';
+import 'settings/appearance_settings_screen.dart';
+import 'settings/phone_apps_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
@@ -93,133 +99,215 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => page));
   }
 
+  bool _muteBusy = false;
+
+  /// Mute Echo or let it listen again; the panel changes once Echo confirms.
+  Future<void> _setMuted(bool muted) async {
+    setState(() => _muteBusy = true);
+    try {
+      await _deviceController.setMuted(muted);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)
+          ?..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text('Echo could not update the microphone.')));
+      }
+    } finally {
+      if (mounted) setState(() => _muteBusy = false);
+    }
+  }
+
+  void _openDevice() => _push(DeviceDetailScreen(
+        appController: _appController,
+        deviceController: _deviceController,
+        resetOnboarding: _clearOnboardingProgress,
+        onRequireOnboarding: widget.onRequireOnboarding,
+        firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
+      ));
+
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
+    final phoneActions = AppRuntime.maybeCoordinator?.phoneActions;
+    final firmwareUpdate = AppRuntime.maybeCoordinator?.firmwareUpdate;
     return Scaffold(
       backgroundColor: palette.background,
-      appBar: AppBar(title: const Text('Settings')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
-        children: [
-          const SettingsSection('DEVICE'),
-          _DeviceRow(
-            firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
-            onTap: () => _push(DeviceDetailScreen(
-              appController: _appController,
-              deviceController: _deviceController,
-              resetOnboarding: _clearOnboardingProgress,
-              onRequireOnboarding: widget.onRequireOnboarding,
-              firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
-            )),
-          ),
-          SettingsRow(
-            icon: Icons.wifi_rounded,
-            title: 'Connection',
-            subtitle: 'Backend server and upload network.',
-            onTap: () => _push(ConnectionSettingsScreen(
-              networkPolicy: _networkPolicy,
-              preferences: _preferences,
-              apiServiceFactory: widget.apiServiceFactory,
-            )),
-          ),
-          SettingsRow(
-            icon: Icons.shield_outlined,
-            title: 'Privacy',
-            subtitle: 'Retention, microphone, and transcripts.',
-            onTap: () => _push(PrivacySettingsScreen(
-              appController: _appController,
-              onOpenTranscripts: widget.onOpenTranscripts,
-            )),
-          ),
-          const SettingsSection('ECHO'),
-          SettingsRow(
-            icon: Icons.auto_awesome_motion_outlined,
-            title: 'What Echo can do',
-            subtitle: 'Examples to try, by chat and by voice.',
-            onTap: () => _push(CapabilitiesScreen(
-              onAsk: _appController.requestAsk,
-              onOpenVoices: () => _push(const VoiceSettingsScreen()),
-            )),
-          ),
-          SettingsRow(
-            icon: Icons.auto_awesome_outlined,
-            title: 'Automations',
-            subtitle: 'Connected apps and what Echo did with them.',
-            onTap: () => _push(AutomationsSettingsScreen(
-              activityBuilder: widget.activityBuilder,
-              integrationsBuilder: widget.integrationsBuilder,
-            )),
-          ),
-          SettingsRow(
-            icon: Icons.notifications_none_rounded,
-            title: 'Notifications',
-            subtitle: 'Before meetings and for promises, only when needed.',
-            onTap: () => _push(NotificationSettingsScreen(
-              preferences: _preferences,
-              onChanged: () {
-                final coordinator = AppRuntime.maybeCoordinator;
-                coordinator?.notificationScheduler.refresh(force: true);
-                coordinator?.liveActivity.refresh();
-              },
-            )),
-          ),
-          SettingsRow(
-            icon: Icons.record_voice_over_outlined,
-            title: 'Voices',
-            subtitle: 'Your voice, and the people Echo recognises.',
-            onTap: () => _push(const VoiceSettingsScreen()),
-          ),
-          SettingsRow(
-            icon: Icons.monitor_heart_outlined,
-            title: 'Diagnostics',
-            subtitle: 'BLE transfer and upload messages.',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: widget.diagnosticsBuilder ??
-                    (_) => const DeviceMessagesScreen(),
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: 32),
+          children: [
+            ScreenHeader(
+              title: 'Settings',
+              actions: [
+                if (Navigator.canPop(context))
+                  TextButton(
+                    key: const Key('settings-done'),
+                    onPressed: () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      backgroundColor: palette.surface,
+                      foregroundColor: palette.text,
+                      minimumSize: const Size(44, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      shape: const StadiumBorder(),
+                    ),
+                    child: const Text('Done'),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: ValueListenableBuilder(
+                valueListenable: _appController,
+                builder: (context, state, _) => _firmwareAware(
+                  firmwareUpdate,
+                  (update) => DeviceInstrumentPanel(
+                    status: state.device,
+                    busy: _muteBusy,
+                    onMute: (muted) => _setMuted(muted),
+                    onReconnect: () => _deviceController.reconnect(),
+                    onPair: widget.onRequireOnboarding,
+                    onDetails: _openDevice,
+                    firmwareLine: update?.phase == FirmwareUpdatePhase.available
+                        ? 'Firmware ${update!.release!.version} is ready to install, in Device details.'
+                        : state.device.firmwareVersion == null
+                            ? null
+                            : 'Firmware ${state.device.firmwareVersion}',
+                  ),
+                ),
               ),
             ),
-          ),
-          SettingsRow(
-            icon: Icons.info_outline_rounded,
-            title: 'About',
-            subtitle: 'Appearance, version, licenses, and account.',
-            onTap: () => _push(AboutSettingsScreen(
-              appController: _appController,
-              sessionController: _sessionController,
-              onLoggedOut: widget.onRequireOnboarding ?? () {},
-            )),
-          ),
-        ],
+            SettingsGroup(children: [
+              SettingsRow(
+                icon: Icons.extension_outlined,
+                title: 'Apps',
+                subtitle: 'Connect the apps Echo can act in.',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: widget.integrationsBuilder ?? (_) => const IntegrationsScreen(),
+                  ),
+                ),
+              ),
+              if (phoneActions != null)
+                SettingsRow(
+                  icon: Icons.phone_iphone_rounded,
+                  title: 'On this iPhone',
+                  subtitle: 'Reminders and Calendar, for Echo to use.',
+                  onTap: () => _push(PhoneAppsScreen(phoneActions: phoneActions)),
+                ),
+              SettingsRow(
+                icon: Icons.history_rounded,
+                title: 'Activity',
+                subtitle: 'What Echo did in your apps.',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: widget.activityBuilder ?? (_) => const ActionLogScreen(),
+                  ),
+                ),
+              ),
+            ]),
+            SettingsGroup(children: [
+              SettingsRow(
+                icon: Icons.notifications_none_rounded,
+                title: 'Notifications',
+                subtitle: 'Before meetings and for promises, only when needed.',
+                onTap: () => _push(NotificationSettingsScreen(
+                  preferences: _preferences,
+                  onChanged: () {
+                    final coordinator = AppRuntime.maybeCoordinator;
+                    coordinator?.notificationScheduler.refresh(force: true);
+                    coordinator?.liveActivity.refresh();
+                  },
+                )),
+              ),
+              SettingsRow(
+                icon: Icons.record_voice_over_outlined,
+                title: 'Voices',
+                subtitle: 'Your voice, and the people Echo recognises.',
+                onTap: () => _push(const VoiceSettingsScreen()),
+              ),
+              ValueListenableBuilder(
+                valueListenable: _appController,
+                builder: (context, state, _) => SettingsRow(
+                  icon: Icons.contrast_rounded,
+                  title: 'Appearance',
+                  subtitle: switch (state.themePreference) {
+                    ThemePreference.system => 'System: light by day, dark at night',
+                    ThemePreference.light => 'Light',
+                    ThemePreference.dark => 'Dark',
+                  },
+                  onTap: () => _push(AppearanceSettingsScreen(appController: _appController)),
+                ),
+              ),
+              SettingsRow(
+                icon: Icons.shield_outlined,
+                title: 'Privacy',
+                subtitle: 'What Echo keeps, and for how long.',
+                onTap: () => _push(PrivacySettingsScreen(
+                  appController: _appController,
+                  onOpenTranscripts: widget.onOpenTranscripts,
+                )),
+              ),
+            ]),
+            SettingsGroup(children: [
+              SettingsRow(
+                icon: Icons.auto_awesome_outlined,
+                title: 'What Echo can do',
+                subtitle: 'Examples to try, by chat and by voice.',
+                onTap: () => _push(CapabilitiesScreen(
+                  onAsk: _appController.requestAsk,
+                  onOpenVoices: () => _push(const VoiceSettingsScreen()),
+                )),
+              ),
+              SettingsRow(
+                icon: Icons.dns_outlined,
+                title: 'Server connection',
+                subtitle: 'The Echo server, and uploads over mobile data.',
+                onTap: () => _push(ConnectionSettingsScreen(
+                  networkPolicy: _networkPolicy,
+                  preferences: _preferences,
+                  apiServiceFactory: widget.apiServiceFactory,
+                )),
+              ),
+              SettingsRow(
+                icon: Icons.monitor_heart_outlined,
+                title: 'Diagnostics',
+                subtitle: 'Bluetooth transfers and upload messages.',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: widget.diagnosticsBuilder ?? (_) => const DeviceMessagesScreen(),
+                  ),
+                ),
+              ),
+              SettingsRow(
+                icon: Icons.info_outline_rounded,
+                title: 'About',
+                subtitle: 'Version, licenses and your account.',
+                onTap: () => _push(AboutSettingsScreen(
+                  appController: _appController,
+                  sessionController: _sessionController,
+                  onLoggedOut: widget.onRequireOnboarding ?? () {},
+                )),
+              ),
+            ]),
+          ],
+        ),
       ),
     );
   }
 }
 
-/// The Device row, which also says when a new firmware is ready.
-class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({required this.firmwareUpdate, required this.onTap});
-
-  final FirmwareUpdateController? firmwareUpdate;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget row(FirmwareUpdateState? update) => SettingsRow(
-          icon: Icons.watch_outlined,
-          title: 'Device',
-          subtitle: update?.phase == FirmwareUpdatePhase.available
-              ? 'Firmware ${update!.release!.version} is ready to install.'
-              : 'Status, storage, software, and pairing.',
-          onTap: onTap,
-        );
-    final controller = firmwareUpdate;
-    if (controller == null) return row(null);
-    return ValueListenableBuilder<FirmwareUpdateState>(
-      valueListenable: controller,
-      builder: (context, update, _) => row(update),
-    );
-  }
+/// Builds with the firmware update's state, or without one (tests, no server).
+Widget _firmwareAware(
+  FirmwareUpdateController? controller,
+  Widget Function(FirmwareUpdateState? update) builder,
+) {
+  if (controller == null) return builder(null);
+  return ValueListenableBuilder<FirmwareUpdateState>(
+    valueListenable: controller,
+    builder: (context, update, _) => builder(update),
+  );
 }

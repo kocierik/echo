@@ -22,6 +22,7 @@ void main() {
   late _SessionFixture session;
   late NetworkPolicy networkPolicy;
   late _FakeApiService api;
+  late _FakeBlePort ble;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({
@@ -39,7 +40,7 @@ void main() {
     );
     await appController.initialize();
     deviceController = DeviceController(
-      ble: _FakeBlePort(),
+      ble: ble = _FakeBlePort(),
       identityStore: _FakeIdentityStore(),
     );
     session = _SessionFixture();
@@ -84,20 +85,22 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows exact hierarchical headers and row order without placeholders',
+  testWidgets('shows the device, then the groups in order, without placeholders',
       (tester) async {
     await pumpSettings(tester);
 
     const labels = [
-      'DEVICE',
-      'Device',
-      'Connection',
-      'Privacy',
-      'ECHO',
-      'What Echo can do',
-      'Automations',
+      'Settings',
+      'Listening',
+      'Mute Echo',
+      'Apps',
+      'Activity',
       'Notifications',
       'Voices',
+      'Appearance',
+      'Privacy',
+      'What Echo can do',
+      'Server connection',
       'Diagnostics',
       'About',
     ];
@@ -115,7 +118,7 @@ void main() {
       (tester) async {
     await pumpSettings(tester);
 
-    await tester.tap(find.text('Device'));
+    await tester.tap(find.text('Device details'));
     await tester.pumpAndSettle();
     expect(find.text('Buffered segments'), findsOneWidget);
     Navigator.of(tester.element(find.text('Buffered segments'))).pop();
@@ -136,33 +139,32 @@ void main() {
     Navigator.of(tester.element(find.text('Diagnostics route'))).pop();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Automations'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Activity'));
     await tester.pumpAndSettle();
     expect(find.text('Activity route'), findsOneWidget);
-  });
-
-  testWidgets('automations exposes both real destinations', (tester) async {
-    await pumpSettings(tester);
-    await tester.tap(find.text('Automations'));
+    Navigator.of(tester.element(find.text('Activity route'))).pop();
     await tester.pumpAndSettle();
 
-    expect(find.text('Rules'), findsNothing);
-    expect(find.text('Activity'), findsOneWidget);
-    expect(find.text('Integrations'), findsOneWidget);
-    await tester.tap(find.text('Integrations'));
+    await tester.tap(find.text('Apps'));
     await tester.pumpAndSettle();
     expect(find.text('Integrations route'), findsOneWidget);
+  });
+
+  testWidgets('Mute Echo asks the wearable, which then confirms', (tester) async {
+    await pumpSettings(tester);
+    expect(find.text('Mute Echo'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('device-instrument-action')));
+    await tester.pumpAndSettle();
+    expect(ble.mutes, [true]);
+    // Still "Listening" until the wearable says it is muted
+    expect(find.text('Listening'), findsOneWidget);
   });
 
   testWidgets('appearance persists system light and dark selections',
       (tester) async {
     await pumpSettings(tester);
-    await tester.ensureVisible(find.text('About'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('About'));
-    await tester.pumpAndSettle();
+    expect(find.text('System: light by day, dark at night'), findsOneWidget);
     await tester.tap(find.text('Appearance'));
     await tester.pumpAndSettle();
 
@@ -183,7 +185,7 @@ void main() {
   testWidgets('cellular toggle mutates the shared policy and persists',
       (tester) async {
     await pumpSettings(tester);
-    await tester.tap(find.text('Connection'));
+    await tester.tap(find.text('Server connection'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('allow-cellular-switch')));
@@ -199,7 +201,7 @@ void main() {
   testWidgets('backend rejects an invalid URL before calling the API',
       (tester) async {
     await pumpSettings(tester);
-    await tester.tap(find.text('Connection'));
+    await tester.tap(find.text('Server connection'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -351,6 +353,8 @@ final class _FakeBlePort implements DeviceBlePort {
   Future<void> forgetBond() async {}
   @override
   Future<String> pair() async => 'echo';
+  final mutes = <bool>[];
+
   @override
-  Future<void> setMuted(bool muted) async {}
+  Future<void> setMuted(bool muted) async => mutes.add(muted);
 }

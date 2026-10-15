@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
+import '../models/person.dart';
 import '../models/today_insights.dart';
 import '../services/api/api_service.dart';
 import '../services/memory/memories_controller.dart';
@@ -12,16 +13,17 @@ import '../widgets/echo_nav_bar.dart';
 import '../widgets/screen_header.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
+import '../widgets/panel.dart';
+import '../widgets/person_avatar.dart';
 import '../widgets/sections.dart';
 import '../widgets/summary_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'navigation.dart';
+import 'people_screen.dart';
 import 'person_screen.dart';
 
-enum _MemoriesView { conversations, people }
-
-/// The Memories tab: every conversation by day with search across the memory,
-/// and the people Echo heard about.
+/// The Memories tab: search across the memory, the latest week and day, the
+/// people Echo heard about, and every conversation by day.
 final class MemoriesScreen extends StatefulWidget {
   const MemoriesScreen({
     this.api,
@@ -58,7 +60,6 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
   late final MemoryApi _api;
   ApiService? _ownedApi;
   final _searchController = TextEditingController();
-  _MemoriesView _view = _MemoriesView.conversations;
 
   /// The latest daily and weekly summaries, above the conversations.
   DailySummary? _digest;
@@ -75,6 +76,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
         MemoriesController(api: api, uploadStream: widget.segmentUploadedStream);
     _controller.addListener(_onChanged);
     unawaited(_controller.initialize());
+    unawaited(_controller.loadPeople());
     unawaited(_loadSummaries());
   }
 
@@ -96,7 +98,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
   }
 
   Future<void> _refresh() async {
-    await Future.wait([_controller.refresh(), _loadSummaries()]);
+    await Future.wait([_controller.refresh(), _controller.loadPeople(), _loadSummaries()]);
   }
 
   @override
@@ -150,12 +152,14 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     if (mounted) await _controller.loadPeople();
   }
 
-  void _showView(_MemoriesView view) {
-    setState(() => _view = view);
-    _clearSearch();
-    if (view == _MemoriesView.people && !_controller.state.peopleLoaded) {
-      unawaited(_controller.loadPeople());
-    }
+  Future<void> _openPeople() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => PeopleScreen(
+        controller: _controller,
+        onOpenPerson: _openPerson,
+        now: widget.clock(),
+      ),
+    ));
   }
 
   void _clearSearch() {
@@ -180,47 +184,17 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
               actions: [if (widget.headerAction != null) widget.headerAction!],
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: SegmentedButton<_MemoriesView>(
-                key: const Key('memories-view'),
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment(
-                    value: _MemoriesView.conversations,
-                    label: Text('Conversations'),
-                  ),
-                  ButtonSegment(value: _MemoriesView.people, label: Text('People')),
-                ],
-                selected: {_view},
-                onSelectionChanged: (selection) => _showView(selection.single),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: _SearchField(
                 controller: _searchController,
-                hint: _view == _MemoriesView.people
-                    ? 'Search people'
-                    : 'Search conversations, people, tasks',
-                searching: _view == _MemoriesView.conversations &&
-                    _controller.state.searching,
-                onChanged: (text) {
-                  if (_view == _MemoriesView.conversations) {
-                    _controller.setQuery(text);
-                  } else {
-                    setState(() {}); // people are filtered here, by name
-                  }
-                },
+                hint: 'Search conversations, people, tasks',
+                searching: _controller.state.searching,
+                onChanged: _controller.setQuery,
                 onClear: _clearSearch,
               ),
             ),
-            Divider(height: 1, color: palette.border),
             Expanded(
-              child: _view == _MemoriesView.people
-                  ? _buildPeople()
-                  : _controller.state.isSearching
-                      ? _buildSearch()
-                      : _buildList(),
+              child: _controller.state.isSearching ? _buildSearch() : _buildList(),
             ),
           ],
         ),
@@ -254,10 +228,11 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     }
 
     final now = widget.clock();
-    final rows = _rowsByDay(state.conversations, now);
+    final days = _byDay(state.conversations);
     final footer = state.loadingMore || state.hasMore || state.error != null;
+    final people = _topPeople(state.people);
     final summaries = [
-      if (_week case final week?) WeeklySummarySection(week: week),
+      if (_week case final week?) WeeklySummarySection(week: week, now: now),
       if (_digest case final digest?)
         DigestSection(
           loading: false,
@@ -265,6 +240,13 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
           error: null,
           onRetry: () {},
           now: now,
+        ),
+      if (people.isNotEmpty)
+        _PeoplePanel(
+          people: people,
+          total: state.people.length,
+          onOpen: (id) => unawaited(_openPerson(id)),
+          onAll: () => unawaited(_openPeople()),
         ),
     ];
     final first = summaries.isEmpty ? 0 : 1;
@@ -279,11 +261,11 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
           key: const Key('memories-list'),
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.only(bottom: 16 + EchoShellInsets.bottomOf(context)),
-          itemCount: first + rows.length + (footer ? 1 : 0),
+          itemCount: first + days.length + (footer ? 1 : 0),
           itemBuilder: (context, index) {
             if (index < first) {
               return Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Column(
                   children: [
                     for (final summary in summaries)
@@ -293,14 +275,13 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
               );
             }
             index -= first;
-            if (index == rows.length) return _footer(state);
-            final row = rows[index];
-            return row.day != null
-                ? _DayHeader(label: row.day!)
-                : ConversationCardTile(
-                    conversation: row.conversation!,
-                    onTap: () => unawaited(_open(row.conversation!.id)),
-                  );
+            if (index == days.length) return _footer(state);
+            final day = days[index];
+            return _DayPanel(
+              label: dayLabel(day.first.startedAt, now),
+              conversations: day,
+              onOpen: (id) => unawaited(_open(id)),
+            );
           },
         ),
       ),
@@ -324,58 +305,6 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
         child: SizedBox.square(
           dimension: 24,
           child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPeople() {
-    final state = _controller.state;
-    if (state.peopleLoading || !state.peopleLoaded) {
-      return const Center(child: CircularProgressIndicator(key: Key('people-loading')));
-    }
-    if (state.people.isEmpty) {
-      if (state.peopleError != null) {
-        return FullScreenMessage(
-          icon: Icons.cloud_off_rounded,
-          title: 'Could not load people',
-          message: state.peopleError!,
-          actionKey: const Key('people-retry'),
-          actionLabel: 'Retry',
-          onAction: _controller.loadPeople,
-          onRefresh: _controller.loadPeople,
-        );
-      }
-      return FullScreenMessage(
-        icon: Icons.people_outline_rounded,
-        title: 'No people yet',
-        message: 'People you talk with or about show up here.',
-        onRefresh: _controller.loadPeople,
-      );
-    }
-    final query = _searchController.text.trim().toLowerCase();
-    final people = query.isEmpty
-        ? state.people
-        : state.people.where((p) => p.name.toLowerCase().contains(query)).toList();
-    if (people.isEmpty) {
-      return FullScreenMessage(
-        icon: Icons.search_off_rounded,
-        title: 'No one matches',
-        message: 'Nobody named "${_searchController.text.trim()}" yet.',
-      );
-    }
-    final now = widget.clock();
-    return RefreshIndicator(
-      onRefresh: _controller.loadPeople,
-      child: ListView.builder(
-        key: const Key('people-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.only(top: 4, bottom: 16 + EchoShellInsets.bottomOf(context)),
-        itemCount: people.length,
-        itemBuilder: (context, index) => PersonTile(
-          person: people[index],
-          now: now,
-          onTap: () => unawaited(_openPerson(people[index].id)),
         ),
       ),
     );
@@ -438,47 +367,145 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
   }
 }
 
-final class _Row {
-  const _Row.day(this.day) : conversation = null;
-  const _Row.conversation(this.conversation) : day = null;
-
-  final String? day;
-  final ConversationCard? conversation;
-}
-
-/// Day headers interleaved with the conversations of that day (local time).
-List<_Row> _rowsByDay(List<ConversationCard> conversations, DateTime now) {
-  final rows = <_Row>[];
+/// The conversations split by day (local time), keeping their order.
+List<List<ConversationCard>> _byDay(List<ConversationCard> conversations) {
+  final days = <List<ConversationCard>>[];
   DateTime? current;
   for (final conversation in conversations) {
     final day = dayOf(conversation.startedAt);
     if (day != current) {
       current = day;
-      rows.add(_Row.day(dayLabel(day, now)));
+      days.add([]);
     }
-    rows.add(_Row.conversation(conversation));
+    days.last.add(conversation);
   }
-  return rows;
+  return days;
 }
 
-final class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.label});
+/// The four people seen most recently (then the most talked about).
+List<PersonSummary> _topPeople(List<PersonSummary> people) {
+  final sorted = [...people]..sort((a, b) {
+      final seen = (b.lastSeen ?? DateTime(0)).compareTo(a.lastSeen ?? DateTime(0));
+      return seen != 0 ? seen : b.conversationCount.compareTo(a.conversationCount);
+    });
+  return sorted.take(4).toList();
+}
+
+/// A day: its name, then its conversations in one panel.
+final class _DayPanel extends StatelessWidget {
+  const _DayPanel({required this.label, required this.conversations, required this.onOpen});
 
   final String label;
+  final List<ConversationCard> conversations;
+  final ValueChanged<String> onOpen;
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Semantics(
-        header: true,
-        child: Text(
-          label.toUpperCase(),
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                fontSize: 12,
-                letterSpacing: 0.6,
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+            child: Semantics(
+              header: true,
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontSize: 14,
+                      color: palette.text2,
+                    ),
               ),
-        ),
+            ),
+          ),
+          Panel(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (index, conversation) in conversations.indexed) ...[
+                  if (index > 0) Divider(height: 1, color: palette.border),
+                  ConversationRow(
+                    conversation: conversation,
+                    onTap: () => onOpen(conversation.id),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "People": the four seen most recently, and the way to everyone.
+final class _PeoplePanel extends StatelessWidget {
+  const _PeoplePanel({
+    required this.people,
+    required this.total,
+    required this.onOpen,
+    required this.onAll,
+  });
+
+  final List<PersonSummary> people;
+  final int total;
+  final ValueChanged<String> onOpen;
+  final VoidCallback onAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Panel(
+      key: const Key('people-panel'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            title: 'People',
+            actionLabel: 'All $total',
+            onAction: onAll,
+            actionKey: const Key('people-all'),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final person in people)
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    label: person.name,
+                    excludeSemantics: true,
+                    child: InkWell(
+                      key: Key('person-${person.id}'),
+                      borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+                      onTap: () => onOpen(person.id),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Column(
+                          children: [
+                            PersonAvatar(initials: person.initials, size: 52),
+                            const SizedBox(height: 6),
+                            Text(
+                              person.name.split(' ').first,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.labelMedium,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // Four places, so two people do not spread across the panel
+              for (var i = people.length; i < 4; i++) const Expanded(child: SizedBox()),
+            ],
+          ),
+        ],
       ),
     );
   }

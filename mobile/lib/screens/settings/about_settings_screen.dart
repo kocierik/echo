@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../services/app/app_controller.dart';
 import '../../services/app/session_controller.dart';
-import 'appearance_settings_screen.dart';
 import 'settings_components.dart';
 
 class AboutSettingsScreen extends StatefulWidget {
@@ -12,14 +11,12 @@ class AboutSettingsScreen extends StatefulWidget {
     required this.appController,
     required this.sessionController,
     required this.onLoggedOut,
-    this.appearanceBuilder,
     super.key,
   });
 
   final AppController appController;
   final SessionController sessionController;
   final VoidCallback onLoggedOut;
-  final WidgetBuilder? appearanceBuilder;
 
   @override
   State<AboutSettingsScreen> createState() => _AboutSettingsScreenState();
@@ -79,20 +76,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
       title: 'About',
       children: [
         const SettingsSection('APP'),
-        SettingsRow(
-          icon: Icons.palette_outlined,
-          title: 'Appearance',
-          value: widget.appController.value.themePreference.name,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: widget.appearanceBuilder ??
-                  (_) => AppearanceSettingsScreen(
-                        appController: widget.appController,
-                      ),
-            ),
-          ),
-        ),
         const SettingsRow(
           icon: Icons.info_outline_rounded,
           title: 'Version',

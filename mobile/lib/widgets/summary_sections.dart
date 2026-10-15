@@ -75,9 +75,10 @@ final class _DigestSectionState extends State<DigestSection> {
 /// The latest weekly summary: what the week was about, its highlights (on a
 /// tap), who came up.
 final class WeeklySummarySection extends StatefulWidget {
-  const WeeklySummarySection({required this.week, super.key});
+  const WeeklySummarySection({required this.week, required this.now, super.key});
 
   final WeeklySummary week;
+  final DateTime now;
 
   @override
   State<WeeklySummarySection> createState() => _WeeklySummarySectionState();
@@ -98,7 +99,7 @@ final class _WeeklySummarySectionState extends State<WeeklySummarySection> {
         key: const Key('weekly-summary-content'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          PanelHeader(title: 'Week of ${shortDate(week.weekStart)}'),
+          PanelHeader(title: weekLabel(week.weekStart, widget.now)),
           const SizedBox(height: 6),
           Text(
             week.summary,
@@ -124,4 +125,15 @@ final class _WeeklySummarySectionState extends State<WeeklySummarySection> {
       ),
     );
   }
+}
+
+/// "This week", "Last week", or "Week of Oct 5".
+String weekLabel(DateTime weekStart, DateTime now) {
+  final today = dayOf(now);
+  // Calendar days, not 24-hour steps: right across a change to summer time
+  final monday = DateTime(today.year, today.month, today.day - (today.weekday - 1));
+  final start = dayOf(weekStart);
+  if (start == monday) return 'This week';
+  if (start == DateTime(monday.year, monday.month, monday.day - 7)) return 'Last week';
+  return 'Week of ${shortDate(weekStart)}';
 }
