@@ -400,6 +400,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 error: _privacyError,
                 announcement: _announcement,
                 batteryPercent: widget.deviceStatus.batteryPercent,
+                pendingBytes: widget.deviceStatus.bufferBytes,
               ),
               const SizedBox(height: 12),
               NeedsYouSection(

@@ -28,6 +28,25 @@ void main() {
     expect(find.byKey(const Key('device-battery')), findsNothing);
   });
 
+  test('speech waiting on the wearable is told in seconds or minutes', () {
+    expect(pendingSpeechLabel(8 * 1024 * 5), isNull);
+    expect(pendingSpeechLabel(8 * 1024 * 40), '40 s of speech to sync');
+    expect(pendingSpeechLabel(8 * 1024 * 150), '3 min of speech to sync');
+  });
+
+  testWidgets('the card says how much speech is waiting', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: const Scaffold(
+        body: DeviceCard(
+          presentation: PrivacyControlPresentation.listening,
+          pendingBytes: 8 * 1024 * 120,
+        ),
+      ),
+    ));
+    expect(find.text('2 min of speech to sync'), findsOneWidget);
+  });
+
   test('a low battery gets the alert icon', () {
     expect(batteryIcon(10), Icons.battery_alert_rounded);
     expect(batteryIcon(95), Icons.battery_full_rounded);

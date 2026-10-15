@@ -42,7 +42,11 @@
 // ============================================================
 // PSRAM Buffer
 // ============================================================
-#define PSRAM_BUFFER_SIZE (512 * 1024) // 512KB ring buffer (~64s of ADPCM)
+// Speech waiting for the phone: up to 6 MB (~13 minutes of speech at 8 KB/s; only speech
+// is stored, so it covers much longer away from the phone). The rest of the 8 MB PSRAM
+// holds the segment being recorded, the photo slot and the camera's frame buffer.
+#define PSRAM_BUFFER_SIZE (6 * 1024 * 1024)
+#define PSRAM_RESERVE (768 * 1024)         // left free for the camera at each photo
 #define SEGMENT_MAX_SIZE (120 * 1024)  // Max 120KB per segment (~15s ADPCM)
 
 // ============================================================

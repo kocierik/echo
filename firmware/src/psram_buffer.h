@@ -5,6 +5,7 @@
 #include <freertos/semphr.h>
 #include "ble_protocol.h"
 #include "buffered_segment.h"
+#include "buffer_sizing.h"
 #include "config.h"
 #include "ring_buffer_layout.h"
 
@@ -14,7 +15,12 @@
 
 class PSRAMBuffer {
 public:
+    /** Takes up to PSRAM_BUFFER_SIZE, leaving PSRAM_RESERVE free; call it after the other
+     *  PSRAM allocations of setup(). */
     bool begin();
+
+    /** Bytes the buffer can hold (decided at begin()). */
+    size_t capacity() const { return _capacity; }
 
     /**
      * Store a segment in the buffer.
@@ -57,7 +63,8 @@ private:
     static constexpr size_t HEADER_SIZE = BufferedSegmentCodec::HEADER_SIZE;
 
     uint8_t* _buffer = nullptr;
-    RingBufferLayout _layout{PSRAM_BUFFER_SIZE};
+    size_t _capacity = 0;
+    RingBufferLayout _layout{0};
     mutable SemaphoreHandle_t _mutex = nullptr;
     uint32_t _droppedSegmentCount = 0;
     bool _initialized = false;
@@ -73,7 +80,12 @@ bool PSRAMBuffer::begin() {
         return false;
     }
 
-    _buffer = (uint8_t*)ps_malloc(PSRAM_BUFFER_SIZE);
+    _capacity = chooseBufferCapacity(
+        PSRAM_BUFFER_SIZE,
+        heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+        PSRAM_RESERVE,
+        SEGMENT_MAX_SIZE * 2);
+    _buffer = _capacity > 0 ? (uint8_t*)ps_malloc(_capacity) : nullptr;
     if (!_buffer) {
         Serial.println("[Buffer] Failed to allocate PSRAM buffer");
         return false;
@@ -87,17 +99,19 @@ bool PSRAMBuffer::begin() {
         return false;
     }
 
-    _layout = RingBufferLayout(PSRAM_BUFFER_SIZE);
+    _layout = RingBufferLayout(_capacity);
     _initialized = true;
 
-    Serial.printf("[Buffer] PSRAM buffer initialized: %u KB\n", PSRAM_BUFFER_SIZE / 1024);
+    Serial.printf("[Buffer] PSRAM buffer initialized: %u KB (~%u min of speech)\n",
+                  static_cast<unsigned>(_capacity / 1024),
+                  static_cast<unsigned>(_capacity / (8 * 1024) / 60));
     return true;
 }
 
 bool PSRAMBuffer::hasSpace(size_t dataSize) const {
-    if (!_initialized || dataSize > PSRAM_BUFFER_SIZE - HEADER_SIZE) return false;
+    if (!_initialized || dataSize > _capacity - HEADER_SIZE) return false;
     xSemaphoreTake(_mutex, portMAX_DELAY);
-    const bool available = HEADER_SIZE + dataSize <= PSRAM_BUFFER_SIZE - _layout.bytesUsed();
+    const bool available = HEADER_SIZE + dataSize <= _capacity - _layout.bytesUsed();
     xSemaphoreGive(_mutex);
     return available;
 }
@@ -122,7 +136,7 @@ bool PSRAMBuffer::store(uint32_t segmentId, const uint8_t* data, size_t length,
                         uint32_t durationMs, uint32_t silenceBeforeMs,
                         uint32_t capturedAtMs, uint16_t avgEnergy, uint32_t crc) {
     if (!_initialized || data == nullptr || length > UINT32_MAX ||
-        length > PSRAM_BUFFER_SIZE - HEADER_SIZE) {
+        length > _capacity - HEADER_SIZE) {
         return false;
     }
 

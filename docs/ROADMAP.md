@@ -15,7 +15,7 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [ ] Una giornata d'uso vero: i dati servono per misure e tarature della Fase 1
 
 ### Fase 1 — Non perdere niente (firmware)
-- [ ] Buffer offline da ~64 s a ~13 minuti di parlato, con la PSRAM libera (8 MB)
+- [x] Buffer offline da ~64 s a ~13 minuti di parlato, con la PSRAM libera (8 MB); in Today "N min of speech to sync"
 - [ ] Pulsante fisico: pressione breve = foto, lunga = muto
 - [ ] Tarature sui dati reali: tempi dei comandi vocali (scatto anticipato se serve), soglie delle voci,
       risoluzione delle foto
