@@ -24,6 +24,7 @@ from app.routers import (
     conversations,
     digest,
     entities,
+    export,
     feedback,
     notifications,
     people,
@@ -103,6 +104,7 @@ app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
 app.include_router(chat_sessions.router, prefix=settings.api_prefix)
 app.include_router(entities.router, prefix=settings.api_prefix)
+app.include_router(export.router, prefix=settings.api_prefix)
 app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)

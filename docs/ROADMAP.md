@@ -40,7 +40,7 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [ ] Live Activity "Echo sta ascoltando" (con batteria) e widget iOS
-- [ ] Condividere ed esportare una conversazione; export di tutti i dati
+- [x] Condividere una conversazione (testo/Markdown); export di tutti i dati in JSON (Settings → Privacy)
 
 ### Fase 5 — La privacy come vantaggio
 - [ ] Modalità consenso basata sulla voce: testo completo solo per te e per le persone registrate,

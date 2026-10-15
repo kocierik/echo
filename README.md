@@ -284,6 +284,10 @@ All `/api` endpoints require the `X-API-Key` header.
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
 
+### Export
+- `GET /api/export` — everything about the user as one JSON file (conversations with transcripts and
+  photo texts, entities, chats, summaries, voice names); no embeddings, no images.
+
 ### Notifications
 - `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
   schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),
