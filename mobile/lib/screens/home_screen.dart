@@ -17,6 +17,8 @@ import '../widgets/today_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
+import 'settings/voice_settings_screen.dart';
+import '../widgets/tip_card.dart';
 
 /// Today: the wearable, what needs a decision, the day so far, what is due,
 /// and the latest daily summary.
@@ -95,6 +97,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   WeeklySummary? _week;
 
+  /// The server recognises voices but has not got the user's own yet.
+  bool _ownVoiceMissing = false;
+
   List<WorkingItem> _working = const [];
   Timer? _workingTimer;
 
@@ -168,9 +173,11 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _requestedMuted = null;
     _privacyBusy = false;
     _privacyError = null;
-    _announcement = requestedMuted ? 'Microphone muted' : 'Microphone listening resumed';
+    _announcement =
+        requestedMuted ? 'Microphone muted' : 'Microphone listening resumed';
     setState(() {});
-    unawaited((widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call());
+    unawaited(
+        (widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call());
   }
 
   @override
@@ -202,6 +209,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadPending(),
       _loadWeek(),
       _loadWorking(),
+      _loadOwnVoice(),
     ]);
   }
 
@@ -225,7 +233,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       if (!mounted || generation != _conversationsGeneration) return;
       setState(() {
         _conversationsLoading = false;
-        _conversationsError = userMessage(error, "Could not load today's conversations.");
+        _conversationsError =
+            userMessage(error, "Could not load today's conversations.");
       });
     }
   }
@@ -287,15 +296,38 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       return;
     }
     if (!mounted) return;
-    final finished = _working.any((old) => !items.any((now) => now.key == old.key));
+    final finished =
+        _working.any((old) => !items.any((now) => now.key == old.key));
     setState(() => _working = items);
     if (finished) {
       unawaited(_loadPending());
       unawaited(_loadTasks());
     }
     if (items.isNotEmpty) {
-      _workingTimer = Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
+      _workingTimer =
+          Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
     }
+  }
+
+  Future<void> _loadOwnVoice() async {
+    final api = _api;
+    if (api is! VoiceApi) return;
+    try {
+      final voices = await (api as VoiceApi).getVoiceProfiles();
+      if (mounted) {
+        setState(() => _ownVoiceMissing =
+            voices.fingerprintsEnabled && voices.own == null);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _recordVoice() async {
+    final api = _api;
+    if (api is! VoiceApi) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => VoiceSettingsScreen(api: api as VoiceApi),
+    ));
+    if (mounted) unawaited(_loadOwnVoice());
   }
 
   /// The weekly summary is optional: no section without one (or on a failure).
@@ -329,7 +361,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     } catch (error) {
       if (!mounted) return;
       _snack(userMessage(error, 'Could not confirm this action.'));
-      unawaited(_loadPending()); // it may have expired or been handled elsewhere
+      unawaited(
+          _loadPending()); // it may have expired or been handled elsewhere
     } finally {
       if (mounted) setState(() => _pendingBusy.remove(action.id));
     }
@@ -388,7 +421,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _requestedMuted = muted;
       _privacyBusy = true;
       _privacyError = null;
-      _announcement = muted ? 'Requesting microphone mute' : 'Requesting listening resume';
+      _announcement =
+          muted ? 'Requesting microphone mute' : 'Requesting listening resume';
     });
 
     _muteTimeout?.cancel();
@@ -439,7 +473,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   VoidCallback? _deviceAction(PrivacyControlPresentation presentation) {
     return switch (presentation) {
-      PrivacyControlPresentation.listening => () => unawaited(_requestMuted(true)),
+      PrivacyControlPresentation.listening => () =>
+          unawaited(_requestMuted(true)),
       PrivacyControlPresentation.muted => () => unawaited(_requestMuted(false)),
       PrivacyControlPresentation.connecting => null,
       PrivacyControlPresentation.offline =>
@@ -451,7 +486,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final presentation = devicePresentation(widget.deviceStatus.connectionState);
+    final presentation =
+        devicePresentation(widget.deviceStatus.connectionState);
     final now = widget.clock();
     final tasks = editedTasks(todayTasks(_openTasks, now));
     final promises = editedTasks(openPromises(_openTasks, now));
@@ -480,6 +516,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 pendingBytes: widget.deviceStatus.bufferBytes,
               ),
               const SizedBox(height: 12),
+              if (_ownVoiceMissing)
+                TipCard(
+                  tipKey: 'record_voice',
+                  text:
+                      'Record your voice once, so Echo knows when you are the one speaking.',
+                  actionLabel: 'Record my voice',
+                  onAction: () => unawaited(_recordVoice()),
+                ),
               WorkingSection(
                 items: _working,
                 onOpen: widget.onOpenChat == null
@@ -541,7 +585,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
 bool _isRequestedTelemetry(DeviceStatus status, bool requestedMuted) {
   return status.connectionState ==
-      (requestedMuted ? DeviceConnectionState.muted : DeviceConnectionState.listening);
+      (requestedMuted
+          ? DeviceConnectionState.muted
+          : DeviceConnectionState.listening);
 }
 
 final class _TodayHeader extends StatelessWidget {
@@ -563,7 +609,10 @@ final class _TodayHeader extends StatelessWidget {
             _formatDate(date),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: palette.text2),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(color: palette.text2),
           ),
         ),
       ],
@@ -572,10 +621,28 @@ final class _TodayHeader extends StatelessWidget {
 }
 
 String _formatDate(DateTime value) {
-  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday'
+  ];
   const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
   return '${weekdays[value.weekday - 1]}, ${months[value.month - 1]} ${value.day}';
 }

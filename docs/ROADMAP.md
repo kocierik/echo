@@ -37,7 +37,8 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] App veloce anche offline: copia locale delle letture (cancellata al logout), Today si apre dalla copia,
       striscia "Offline · updated 14:32"
 - [x] "Echo sta lavorando…" in Today per i comandi vocali e le foto in arrivo, finché arriva la risposta
-- [ ] Far scoprire le funzioni: suggerimenti la prima volta, pagina "Cosa può fare Echo"
+- [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
+      (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [ ] Live Activity "Echo sta ascoltando" (con batteria) e widget iOS
 - [ ] Condividere ed esportare una conversazione; export di tutti i dati
 

@@ -6,6 +6,7 @@ import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/models/today_insights.dart';
+import 'package:echo_app/models/voice.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/api_service.dart';
 
@@ -48,7 +49,8 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   }
 
   @override
-  Future<List<ConversationCard>> listConversations({int limit = 30, int offset = 0}) async {
+  Future<List<ConversationCard>> listConversations(
+      {int limit = 30, int offset = 0}) async {
     calls.add('list $limit $offset');
     await _wait();
     if (listError case final error?) throw error;
@@ -81,7 +83,8 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   }
 
   @override
-  Future<List<TaskItem>> listTasks({required bool done, int limit = 200}) async {
+  Future<List<TaskItem>> listTasks(
+      {required bool done, int limit = 200}) async {
     calls.add('tasks $done');
     await _wait();
     if (listError case final error?) throw error;
@@ -145,7 +148,7 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
 final class FakeTodayApi extends FakeMemoryApi
-    implements TodayApi, WeeklySummaryApi, VoiceWorkingApi {
+    implements TodayApi, WeeklySummaryApi, VoiceWorkingApi, VoiceApi {
   FakeTodayApi({
     super.conversations,
     super.openTasks,
@@ -165,12 +168,36 @@ final class FakeTodayApi extends FakeMemoryApi
   @override
   Future<List<WorkingItem>> getVoiceWorking() async => List.of(working);
 
+  /// Voice recognition is off unless a test turns it on (no tip to record the voice).
+  VoiceProfiles voices =
+      const VoiceProfiles(fingerprintsEnabled: false, items: []);
+
+  @override
+  Future<VoiceProfiles> getVoiceProfiles() async => voices;
+
+  @override
+  Future<VoiceEnrollment> enrollOwnVoice(
+          DateTime startedAt, DateTime endedAt) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> deleteVoiceProfile(String id) => throw UnimplementedError();
+
+  @override
+  Future<int> nameVoice(String segmentId,
+          {bool isSelf = false, String? personId, String? name}) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> rejectVoice(String segmentId) => throw UnimplementedError();
+
   @override
   Future<WeeklySummary?> getLatestWeeklySummary() async => week;
 
   Object? digestError;
   List<PendingAction> pending;
-  ConfirmResult confirmResult = const ConfirmResult(status: 'executed', message: 'Done.');
+  ConfirmResult confirmResult =
+      const ConfirmResult(status: 'executed', message: 'Done.');
   Object? confirmError;
 
   @override

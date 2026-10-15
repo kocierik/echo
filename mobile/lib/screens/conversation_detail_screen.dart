@@ -15,6 +15,7 @@ import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
 import '../widgets/photo_thumbnail.dart';
+import '../widgets/tip_card.dart';
 import '../widgets/who_is_speaking_sheet.dart';
 import '../utils/calendar_request.dart';
 import 'navigation.dart';
@@ -370,10 +371,20 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
       ];
     }
     final loader = _photoLoader;
+    final voices = _voices;
     // Each photo where it was taken, between the lines
     final photos = loader == null ? const <ConversationPhoto>[] : detail.photos;
     var next = 0;
     return [
+      if (voices != null)
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: TipCard(
+            tipKey: 'name_speakers',
+            text: 'Tap a speaker to tell Echo who it is: Echo then recognises that voice '
+                'in other conversations too.',
+          ),
+        ),
       for (final line in detail.lines) ...[
         for (; next < photos.length && !photos[next].takenAt.isAfter(line.recordedAt); next++)
           _PhotoTile(photo: photos[next], loadSource: loader!, compact: true),
