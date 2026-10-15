@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -9,7 +10,8 @@ final class ChatComposer extends StatelessWidget {
     required this.listening,
     required this.onChanged,
     required this.onSend,
-    required this.onVoice,
+    required this.onVoiceStart,
+    required this.onVoiceEnd,
     this.onCamera,
     this.enabled = true,
     super.key,
@@ -20,7 +22,12 @@ final class ChatComposer extends StatelessWidget {
   final bool listening;
   final ValueChanged<String> onChanged;
   final VoidCallback onSend;
-  final VoidCallback onVoice;
+
+  /// Dictation runs while the mic is held: it starts on the press...
+  final VoidCallback onVoiceStart;
+
+  /// ...and ends on the release, with how long it was held (a tap is too short).
+  final ValueChanged<Duration> onVoiceEnd;
 
   /// The wearable takes a photo; the text typed, if any, is the question about it.
   /// No button without it.
@@ -40,17 +47,11 @@ final class ChatComposer extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton(
-              key: const Key('chat-mic'),
-              onPressed: enabled ? onVoice : null,
-              tooltip: listening ? 'Stop listening' : 'Use voice input',
-              icon: Icon(
-                listening ? Icons.stop_rounded : Icons.mic_none_rounded,
-                color: listening ? palette.red : palette.text2,
-              ),
-            ),
+          HoldToTalkButton(
+            enabled: enabled && !sending,
+            listening: listening,
+            onStart: onVoiceStart,
+            onEnd: onVoiceEnd,
           ),
           if (onCamera != null)
             SizedBox.square(
@@ -75,8 +76,8 @@ final class ChatComposer extends StatelessWidget {
               onSubmitted: (_) {
                 if (canSend) onSend();
               },
-              decoration: const InputDecoration(
-                hintText: 'Ask your memory',
+              decoration: InputDecoration(
+                hintText: listening ? 'Listening… release to stop' : 'Ask your memory',
                 isDense: true,
               ),
             ),
@@ -102,6 +103,78 @@ final class ChatComposer extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+/// The mic: dictation lasts as long as the button is held.
+final class HoldToTalkButton extends StatefulWidget {
+  const HoldToTalkButton({
+    required this.enabled,
+    required this.listening,
+    required this.onStart,
+    required this.onEnd,
+    super.key,
+  });
+
+  final bool enabled;
+  final bool listening;
+  final VoidCallback onStart;
+  final ValueChanged<Duration> onEnd;
+
+  @override
+  State<HoldToTalkButton> createState() => _HoldToTalkButtonState();
+}
+
+final class _HoldToTalkButtonState extends State<HoldToTalkButton> {
+  DateTime? _pressedAt;
+
+  void _down(PointerDownEvent _) {
+    if (!widget.enabled || _pressedAt != null) return;
+    setState(() => _pressedAt = clock.now());
+    widget.onStart();
+  }
+
+  void _up(PointerEvent _) {
+    final pressedAt = _pressedAt;
+    if (pressedAt == null) return;
+    setState(() => _pressedAt = null);
+    widget.onEnd(clock.now().difference(pressedAt));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final active = widget.listening || _pressedAt != null;
+    return Semantics(
+      button: true,
+      enabled: widget.enabled,
+      label: active ? 'Listening. Release to stop' : 'Hold to talk',
+      child: Listener(
+        key: const Key('chat-mic'),
+        onPointerDown: _down,
+        onPointerUp: _up,
+        onPointerCancel: _up,
+        child: Tooltip(
+          message: 'Hold to talk',
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? palette.red.withValues(alpha: 0.14) : Colors.transparent,
+            ),
+            child: Icon(
+              active ? Icons.mic_rounded : Icons.mic_none_rounded,
+              color: !widget.enabled
+                  ? palette.text2.withValues(alpha: 0.4)
+                  : active
+                      ? palette.red
+                      : palette.text2,
+            ),
+          ),
+        ),
       ),
     );
   }

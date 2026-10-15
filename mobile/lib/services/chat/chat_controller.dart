@@ -494,8 +494,13 @@ final class ChatController extends ChangeNotifier {
     }
   }
 
+  /// Ends dictation. Released before it started (permission check still running):
+  /// the start is called off, so it never keeps listening on its own.
   Future<void> stopVoice() async {
-    if (!_state.listening) return;
+    if (!_state.listening) {
+      _voiceGeneration++;
+      return;
+    }
     final generation = _voiceGeneration;
     try {
       await _voiceInput.stop();
