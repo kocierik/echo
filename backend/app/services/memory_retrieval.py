@@ -1,18 +1,27 @@
 """Memory retrieval: question -> RAG context string + sources (no LLM call).
 
 Shared by POST /api/query, the action agent's search_memory tool and the voice worker.
+
+A question that names a known person ("cosa ha detto Marco?") is answered first from
+the conversations that person was mentioned in: similarity alone would favour any
+passage about "saying", not the ones with Marco.
 """
 
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
+from app.services.people import in_person_conversations, names_person
 from app.services.temporal import DateRange, conversation_overlaps
+
+# People named in one question that narrow the search; conversations listed per person
+MAX_PEOPLE = 3
+PERSON_CONVERSATIONS_LISTED = 5
 
 
 @dataclass
@@ -42,6 +51,7 @@ async def retrieve_memory_context(
 
         embedding_service = get_embedding_service()
     question_embedding = await embedding_service.embed(question)
+    people = await people_named_in(db, user_id, question)
 
     similarity_query = (
         select(
@@ -63,32 +73,26 @@ async def retrieve_memory_context(
             *conversation_overlaps(date_range.date_from, date_range.date_to)
         )
 
-    similarity_query = similarity_query.order_by(
+    by_similarity = similarity_query.order_by(
         Chunk.embedding.cosine_distance(question_embedding)
-    ).limit(top_k)
+    )
+    rows = await _reranked(db, user_id, (await db.execute(by_similarity.limit(top_k))).all())
 
-    result = await db.execute(similarity_query)
-    rows = result.all()
-
-    # Apply feedback re-ranking
-    from app.routers.feedback import get_chunk_feedback_scores
-
-    if rows:
-        chunk_ids = [row.id for row in rows]
-        feedback_multipliers = await get_chunk_feedback_scores(db, user_id, chunk_ids)
-
-        reranked = []
-        for row in rows:
-            multiplier = feedback_multipliers.get(row.id, 1.0)
-            if multiplier == 0.0:
-                continue  # Excluded by negative feedback
-            reranked.append((row, float(row.similarity) * multiplier))
-
-        reranked.sort(key=lambda x: x[1], reverse=True)
-        rows = [r[0] for r in reranked]
+    if people:
+        # The named people's conversations first, then a couple of the best others
+        about_people = by_similarity.where(
+            or_(*(in_person_conversations(person) for person in people))
+        )
+        person_rows = await _reranked(
+            db, user_id, (await db.execute(about_people.limit(top_k))).all()
+        )
+        seen = {row.id for row in person_rows}
+        others = [row for row in rows if row.id not in seen]
+        rows = person_rows + others[: max(2, top_k - len(person_rows))]
 
     # Relevant entities (vector + keyword search)
     entities_context = await find_relevant_entities(db, user_id, question, question_embedding)
+    people_context = await describe_people(db, user_id, people, date_range)
 
     # Conversation summaries for matched conversations (high-level context)
     conversation_summaries = ""
@@ -111,11 +115,14 @@ async def retrieve_memory_context(
                 summary_lines.append(f"- [{date_str}] {title}: {s.summary}")
             conversation_summaries = "\n".join(summary_lines)
 
-    if not rows and not entities_context:
+    if not rows and not entities_context and not people_context:
         return MemoryContext(context="", sources=[], date_range=date_range)
 
     context_parts = []
     sources = []
+
+    if people_context:
+        context_parts.append(f"People asked about:\n{people_context}")
 
     if conversation_summaries:
         context_parts.append(f"Relevant conversation summaries:\n{conversation_summaries}")
@@ -143,6 +150,71 @@ async def retrieve_memory_context(
         sources=sources,
         date_range=date_range,
     )
+
+
+async def _reranked(db: AsyncSession, user_id: uuid.UUID, rows: list) -> list:
+    """Rows re-ranked by the user's feedback; those rated down are dropped."""
+    if not rows:
+        return []
+    from app.routers.feedback import get_chunk_feedback_scores
+
+    multipliers = await get_chunk_feedback_scores(db, user_id, [row.id for row in rows])
+    scored = [
+        (row, float(row.similarity) * multipliers.get(row.id, 1.0))
+        for row in rows
+        if multipliers.get(row.id, 1.0) != 0.0
+    ]
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return [row for row, _ in scored]
+
+
+async def people_named_in(
+    db: AsyncSession, user_id: uuid.UUID, question: str
+) -> list[Entity]:
+    """Known people the question names (first name, whole word), most recent first."""
+    result = await db.execute(
+        select(Entity)
+        .where(Entity.user_id == user_id)
+        .where(Entity.entity_type == "person")
+        .order_by(Entity.updated_at.desc())
+    )
+    named = [person for person in result.scalars() if names_person(person.name, question)]
+    return named[:MAX_PEOPLE]
+
+
+async def describe_people(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    people: list[Entity],
+    date_range: DateRange | None = None,
+) -> str:
+    """Who each named person is and the latest conversations they were mentioned in."""
+    lines = []
+    for person in people:
+        line = f"- {person.name}"
+        if person.content:
+            line += f": {person.content}"
+        conversations = select(Conversation.title, Conversation.started_at).where(
+            Conversation.user_id == user_id, in_person_conversations(person)
+        )
+        if date_range:
+            conversations = conversations.where(
+                *conversation_overlaps(date_range.date_from, date_range.date_to)
+            )
+        found = (
+            await db.execute(
+                conversations.order_by(Conversation.started_at.desc()).limit(
+                    PERSON_CONVERSATIONS_LISTED
+                )
+            )
+        ).all()
+        if found:
+            listed = "; ".join(
+                f"{row.started_at:%d/%m/%Y %H:%M} {row.title or 'Conversation'}" for row in found
+            )
+            line += f". Mentioned in: {listed}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 async def find_relevant_entities(
