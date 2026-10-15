@@ -66,6 +66,8 @@ final class TranscriptLine {
     required this.status,
     this.text,
     this.speaker,
+    this.speakerName,
+    this.voiceMatch,
   });
 
   factory TranscriptLine.fromJson(Map<String, dynamic> json) {
@@ -75,12 +77,30 @@ final class TranscriptLine {
       speaker: json['speaker_label'] as String?,
       status: json['status'] as String? ?? 'completed',
       recordedAt: DateTime.parse(json['recorded_at'] as String),
+      speakerName: json['speaker_name'] as String?,
+      voiceMatch: json['voice_match'] as String?,
     );
   }
 
   final String segmentId;
   final String? text;
   final String? speaker;
+
+  /// The recognised voice ("Marco"), when Echo knows it.
+  final String? speakerName;
+
+  /// "auto", "confirmed", or "suggested" (Echo asks "Marco?").
+  final String? voiceMatch;
+
+  bool get isSuggestion => voiceMatch == 'suggested' && speakerName != null;
+
+  /// "You", the person's name, "Marco?" for a suggestion, or "Other".
+  String get speakerLabel {
+    if (speaker == 'self') return 'You';
+    final name = speakerName;
+    if (name != null) return isSuggestion ? '$name?' : name;
+    return _speakerWord(speaker);
+  }
   final String status;
   final DateTime recordedAt;
 
@@ -199,3 +219,9 @@ String? _text(Object? value) {
 }
 
 DateTime? _date(Object? value) => value is String ? DateTime.tryParse(value) : null;
+
+String _speakerWord(String? speaker) => switch (speaker?.toLowerCase()) {
+      'self' => 'You',
+      'other' => 'Other',
+      _ => 'Unknown',
+    };

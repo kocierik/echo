@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
+import '../models/person.dart';
 import '../models/segment.dart';
 import '../models/task_item.dart';
 import '../services/api_exception.dart';
@@ -13,6 +14,7 @@ import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
+import '../widgets/who_is_speaking_sheet.dart';
 import '../utils/calendar_request.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
@@ -77,6 +79,49 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         _error = userMessage(error, 'Could not load this conversation.');
       });
     }
+  }
+
+  VoiceApi? get _voices {
+    final api = widget.api;
+    return api is VoiceApi ? api as VoiceApi : null;
+  }
+
+  /// "Who is speaking?" for a line: Echo learns the voice and relabels the conversation.
+  Future<void> _nameVoice(TranscriptLine line) async {
+    final voices = _voices;
+    if (voices == null) return;
+    List<PersonSummary> people = const [];
+    try {
+      people = await widget.api.listPeople();
+    } catch (_) {}
+    if (!mounted) return;
+    final choice = await showWhoIsSpeaking(context, people: people);
+    if (choice == null || !mounted) return;
+    await _voiceAction(() => voices.nameVoice(
+          line.segmentId,
+          isSelf: choice.isSelf,
+          personId: choice.personId,
+          name: choice.name,
+        ));
+  }
+
+  Future<void> _voiceAction(Future<Object?> Function() action) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final relabelled = await action();
+      if (relabelled is int && relabelled > 0) {
+        messenger.showSnackBar(SnackBar(
+          content: Text(
+            'Also recognised in $relabelled more line${relabelled == 1 ? '' : 's'}.',
+          ),
+        ));
+      }
+    } catch (error) {
+      messenger.showSnackBar(SnackBar(
+        content: Text(userMessage(error, 'Could not save who is speaking.')),
+      ));
+    }
+    await _load();
   }
 
   List<TaskItem> get _tasks {
@@ -317,6 +362,20 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         _LineTile(
           line: line,
           onTap: line.text == null ? null : () => unawaited(_openLine(line)),
+          onSpeakerTap: _voices == null || line.text == null
+              ? null
+              : () => unawaited(_nameVoice(line)),
+          onConfirmVoice: _voices == null || !line.isSuggestion
+              ? null
+              : () => unawaited(_voiceAction(
+                    () => _voices!.nameVoice(line.segmentId, name: line.speakerName),
+                  )),
+          onRejectVoice: _voices == null || !line.isSuggestion
+              ? null
+              : () => unawaited(_voiceAction(() async {
+                    await _voices!.rejectVoice(line.segmentId);
+                    return null;
+                  })),
         ),
     ];
   }
@@ -401,17 +460,30 @@ final class _Section extends StatelessWidget {
 }
 
 final class _LineTile extends StatelessWidget {
-  const _LineTile({required this.line, required this.onTap});
+  const _LineTile({
+    required this.line,
+    required this.onTap,
+    this.onSpeakerTap,
+    this.onConfirmVoice,
+    this.onRejectVoice,
+  });
 
   final TranscriptLine line;
   final VoidCallback? onTap;
+
+  /// "Who is speaking?"
+  final VoidCallback? onSpeakerTap;
+
+  /// For a suggested voice ("Marco?"): yes, or no.
+  final VoidCallback? onConfirmVoice;
+  final VoidCallback? onRejectVoice;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     final text = line.text;
-    final speaker = speakerName(line.speaker);
+    final speaker = line.speakerLabel;
     final body = text != null
         ? cleanTranscript(text)
         : line.isFailed
@@ -440,12 +512,51 @@ final class _LineTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      speaker,
-                      style: textTheme.labelSmall?.copyWith(
-                        fontSize: 12,
-                        color: line.speaker == 'self' ? palette.blue : palette.text2,
-                      ),
+                    Row(
+                      children: [
+                        Semantics(
+                          button: onSpeakerTap != null,
+                          label: 'Who is speaking: $speaker',
+                          child: InkWell(
+                            key: Key('speaker-${line.segmentId}'),
+                            onTap: onSpeakerTap,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                speaker,
+                                style: textTheme.labelSmall?.copyWith(
+                                  fontSize: 12,
+                                  color: line.speaker == 'self'
+                                      ? palette.blue
+                                      : line.speakerName != null
+                                          ? palette.green
+                                          : palette.text2,
+                                  decoration: onSpeakerTap == null
+                                      ? null
+                                      : TextDecoration.underline,
+                                  decorationStyle: TextDecorationStyle.dotted,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (onConfirmVoice != null)
+                          _VoiceButton(
+                            key: Key('voice-yes-${line.segmentId}'),
+                            icon: Icons.check_rounded,
+                            tooltip: 'Yes, it is ${line.speakerName}',
+                            color: palette.green,
+                            onPressed: onConfirmVoice!,
+                          ),
+                        if (onRejectVoice != null)
+                          _VoiceButton(
+                            key: Key('voice-no-${line.segmentId}'),
+                            icon: Icons.close_rounded,
+                            tooltip: 'No, not ${line.speakerName}',
+                            color: palette.text2,
+                            onPressed: onRejectVoice!,
+                          ),
+                      ],
                     ),
                     Text(
                       body,
@@ -463,6 +574,33 @@ final class _LineTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+final class _VoiceButton extends StatelessWidget {
+  const _VoiceButton({
+    required this.icon,
+    required this.tooltip,
+    required this.color,
+    required this.onPressed,
+    super.key,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: tooltip,
+      icon: Icon(icon, size: 18, color: color),
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+      padding: EdgeInsets.zero,
     );
   }
 }

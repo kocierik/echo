@@ -22,6 +22,9 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
 - **Voice requests.** Start a sentence with "Echo, …" (also "Eco", "Hey/Ehi Echo") while wearing the
   device: the answer appears in the **Voice requests** conversation of the app, with a notification the
   next time the app wakes up.
+- **Knows who is speaking.** Record your voice once in Settings → Voices; name the others by tapping
+  them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
+  ([ADR 0008](docs/adr/0008-voice-fingerprints.md)).
 - **Sees, when asked.** "Echo, che pianta è questa?" or the camera button in Ask: the wearable's camera
   takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
   the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
@@ -277,6 +280,14 @@ All `/api` endpoints require the `X-API-Key` header.
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
 
+### Voices
+- `GET /api/voice-profiles` — the user's voice and the named voices (`fingerprints_enabled` false
+  without the model). `POST /api/voice-profiles/self/enroll` (`{started_at, ended_at}`: the user
+  read a text aloud then; `waiting` until those segments are transcribed), `DELETE /api/voice-profiles/{id}`.
+- `POST /api/segments/{id}/voice` (`{is_self}` or `{person_id}` or `{name}`) — whose voice a segment
+  is; the conversation's other segments with that voice are labelled too. `POST /api/segments/{id}/voice/reject`
+  — not the suggested person.
+
 ### Camera
 - `POST /api/photos` (`{"question"?, "chat_session_id"?}`) — the app's camera button: a photo
   request whose answer goes to that chat (or Voice requests). Voice requests create their own.
@@ -310,6 +321,8 @@ All `/api` endpoints require the `X-API-Key` header.
 | `LLM_ANALYSIS_REASONING_EFFORT` / `LLM_QUERY_REASONING_EFFORT` / `LLM_INTENT_REASONING_EFFORT` | `low` / `low` / `none` | For reasoning models (gpt-5/6); empty for a non-reasoning model, which then gets a temperature. See [docs/MODEL-EVALUATION.md](docs/MODEL-EVALUATION.md) |
 | `LLM_ANALYSIS_API` / `LLM_QUERY_API` / `LLM_INTENT_API` | `chat` / `responses` / `chat` | OpenAI API per role: `responses` lets the agent's tools run with reasoning |
 | `LLM_VISION_MODEL` / `LLM_VISION_REASONING_EFFORT` / `LLM_VISION_API` | `gpt-6-luna` / `low` / `chat` | Answers about a photo from the wearable camera and describes it for memory |
+| `VOICE_MATCH_THRESHOLD` / `VOICE_SUGGEST_THRESHOLD` | `0.6` / `0.45` | Voice similarity from which a segment is that person's / "Marco?" is asked ([ADR 0008](docs/adr/0008-voice-fingerprints.md)) |
+| `VOICE_MODEL_PATH` | `/opt/models/voice_embedding.onnx` | Speaker-embedding model (baked into the image); missing = energy rule only |
 | `PHOTO_REQUEST_TIMEOUT_S` / `PHOTO_MAX_BYTES` | `90` / `1048576` | A photo the wearable has not sent by then fails (told in the chat); largest JPEG accepted |
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
@@ -345,6 +358,7 @@ See [docs/adr/](docs/adr/) for architectural decision records:
 - [0005 — Structured entities + vector search](docs/adr/0005-structured-entities-plus-vector-search.md)
 - [0006 — BLE relay through the phone](docs/adr/0006-ble-relay-through-phone.md)
 - [0007 — Camera photos on request](docs/adr/0007-camera-photos-on-request.md)
+- [0008 — Voice fingerprints](docs/adr/0008-voice-fingerprints.md)
 
 Feature designs: [Composio actions](docs/superpowers/specs/2026-10-13-composio-actions-design.md),
 [core beta](docs/superpowers/specs/2026-10-01-core-beta-design.md).
