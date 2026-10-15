@@ -1,21 +1,20 @@
 """People: everyone Echo heard about, and what is linked to each of them."""
 
-import re
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.conversation import Conversation
 from app.models.entity import Entity
-from app.models.entity_mention import EntityMention
 from app.models.transcription import Transcription
 from app.routers.conversations import ConversationListItem, list_items, with_segment_counts
+from app.services.people import in_person_conversations, naming
 
 router = APIRouter(prefix="/people", tags=["people"])
 
@@ -58,42 +57,13 @@ def _role(person: Entity) -> str | None:
     return role.strip() if isinstance(role, str) and role.strip() else None
 
 
-def _name_pattern(name: str) -> str:
-    """A case-insensitive whole-word Postgres regex for the person's first name.
-
-    "Marco Rossi" matches "Chiamare Marco" but not "Marcolini"; a first name under
-    three letters is too ambiguous, so the full name is used instead.
-    """
-    words = name.split()
-    key = words[0] if words and len(words[0]) >= 3 else name.strip()
-    return r"\m" + re.sub(r"([.^$*+?()\[\]{}|\\])", r"\\\1", key) + r"\M"
-
-
-def _naming(name: str):
-    """Entities whose name or content names the person."""
-    pattern = _name_pattern(name)
-    return or_(Entity.name.op("~*")(pattern), Entity.content.op("~*")(pattern))
-
-
-def _person_conversations(person: Entity):
-    """Ids of the conversations the person was mentioned in."""
-    return select(EntityMention.conversation_id).where(EntityMention.entity_id == person.id)
-
-
-def _in_conversations(person: Entity):
-    mentioned = _person_conversations(person)
-    if person.conversation_id is None:
-        return Conversation.id.in_(mentioned)
-    return or_(Conversation.id.in_(mentioned), Conversation.id == person.conversation_id)
-
-
 def _open_tasks_naming(person: Entity, user_id: uuid.UUID):
     return (
         select(Entity)
         .where(Entity.user_id == user_id)
         .where(Entity.entity_type == "task")
         .where(func.coalesce(Entity.metadata_["done"].as_boolean(), False).is_(False))
-        .where(_naming(person.name))
+        .where(naming(person.name))
     )
 
 
@@ -102,7 +72,7 @@ async def _summary(db: AsyncSession, person: Entity, user_id: uuid.UUID) -> Pers
         await db.execute(
             select(func.max(Conversation.started_at), func.count(Conversation.id))
             .where(Conversation.user_id == user_id)
-            .where(_in_conversations(person))
+            .where(in_person_conversations(person))
         )
     ).one()
     open_tasks = (
@@ -187,7 +157,7 @@ async def get_person(
     conversation_rows = (
         await db.execute(
             with_segment_counts(
-                Conversation.user_id == user_id, _in_conversations(person)
+                Conversation.user_id == user_id, in_person_conversations(person)
             ).limit(MAX_PERSON_CONVERSATIONS)
         )
     ).all()
@@ -204,7 +174,7 @@ async def get_person(
         .outerjoin(Transcription, Transcription.id == Entity.source_transcription_id)
         .where(Entity.user_id == user_id)
         .where(Entity.entity_type == "event")
-        .where(_naming(person.name))
+        .where(naming(person.name))
         .order_by(Entity.created_at.desc())
         .limit(MAX_PERSON_ITEMS)
     )
