@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/panel.dart';
 
 final class WelcomeStep extends StatelessWidget {
   const WelcomeStep({super.key});
@@ -22,26 +23,33 @@ final class WelcomeStep extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 32),
-        const _PrivacyRow(
-          icon: Icons.radio_button_checked_rounded,
-          title: 'Listening',
-          detail: 'The app shows when the wearable is actively listening.',
-        ),
-        Divider(height: 25, color: palette.border),
-        const _PrivacyRow(
-          icon: Icons.pause_circle_outline_rounded,
-          title: 'App mute',
-          detail: 'Pause listening from Echo whenever you need privacy.',
-        ),
-        Divider(height: 25, color: palette.border),
-        const _PrivacyRow(
-          icon: Icons.watch_outlined,
-          title: 'Wearable mute',
-          detail: 'The hardware mute control remains available independently.',
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            const _PrivacyRow(
+              icon: Icons.radio_button_checked_rounded,
+              title: 'Listening',
+              detail: 'Its LED, and the pill in the app, glow orange while Echo listens.',
+            ),
+            Divider(height: 25, color: palette.border),
+            const _PrivacyRow(
+              icon: Icons.pause_circle_outline_rounded,
+              title: 'Mute from the app',
+              detail: 'Hold the pill at the top of any screen to pause listening.',
+            ),
+            Divider(height: 25, color: palette.border),
+            const _PrivacyRow(
+              icon: Icons.watch_outlined,
+              title: 'Mute on the wearable',
+              detail: 'The hardware mute control remains available independently.',
+            ),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         Text(
-          'You can review connection and privacy state from the Today screen.',
+          'The pill at the top of every screen shows whether Echo is listening.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ],

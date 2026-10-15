@@ -7,6 +7,7 @@ import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../services/chat/chat_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/panel.dart';
 
 final class ChatHistoryScreen extends StatefulWidget {
   const ChatHistoryScreen({
@@ -128,6 +129,7 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     return Scaffold(
+      backgroundColor: palette.background,
       appBar: AppBar(title: const Text('History')),
       body: _body(palette),
     );
@@ -178,19 +180,16 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                     style: TextStyle(color: palette.text2),
                   ),
                 )
-              : ListView.separated(
+              : ListView.builder(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _sessions.length,
-                  separatorBuilder: (_, __) => Divider(
-                    height: 1,
-                    indent: 16,
-                    endIndent: 16,
-                    color: palette.border,
-                  ),
                   itemBuilder: (context, index) {
                     final session = _sessions[index];
                     final busy = _deleting.contains(session.id);
-                    return ListTile(
+                    return PanelListRow(
+                      index: index,
+                      count: _sessions.length,
+                      child: ListTile(
                       minTileHeight: 56,
                       leading: session.kind == 'voice'
                           ? Icon(
@@ -220,6 +219,7 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                                 icon: const Icon(Icons.delete_outline_rounded),
                               ),
                       ),
+                    ),
                     );
                   },
                 ),

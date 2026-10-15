@@ -440,7 +440,7 @@ class AppTheme {
       displayLarge: style(32, FontWeight.w700, family: titleFamily, height: 1.05),
       displayMedium: style(28, FontWeight.w700, family: titleFamily, height: 1.1),
       displaySmall: style(24, FontWeight.w700, family: titleFamily, height: 1.1),
-      headlineLarge: style(22, FontWeight.w700, family: titleFamily),
+      headlineLarge: style(30, FontWeight.w700, family: titleFamily),
       headlineMedium: style(20, FontWeight.w700, family: titleFamily),
       headlineSmall: style(20, FontWeight.w700, family: titleFamily),
       // App bar titles of the pages behind a screen

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/panel.dart';
 
 final class PermissionsStep extends StatelessWidget {
   const PermissionsStep({
@@ -31,27 +32,34 @@ final class PermissionsStep extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 28),
-        const _PermissionRow(
-          icon: Icons.bluetooth_rounded,
-          title: 'Bluetooth',
-          detail: 'Required to find and stay connected to your wearable.',
-          required: true,
-        ),
-        Divider(height: 25, color: palette.border),
-        _PermissionRow(
-          icon: Icons.notifications_none_rounded,
-          title: 'Notifications',
-          detail: notificationDenied
-              ? 'Off. Echo will continue without disconnect alerts.'
-              : 'Optional alerts for disconnects and upload problems.',
-        ),
-        Divider(height: 25, color: palette.border),
-        _PermissionRow(
-          icon: Icons.mic_none_rounded,
-          title: 'Microphone',
-          detail: voiceDenied
-              ? 'Off. Typed Ask remains available.'
-              : 'Optional, used only when you start voice Ask.',
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            const _PermissionRow(
+              icon: Icons.bluetooth_rounded,
+              title: 'Bluetooth',
+              detail: 'Required to find and stay connected to your wearable.',
+              required: true,
+            ),
+            Divider(height: 25, color: palette.border),
+            _PermissionRow(
+              icon: Icons.notifications_none_rounded,
+              title: 'Notifications',
+              detail: notificationDenied
+                  ? 'Off. Echo will continue without disconnect alerts.'
+                  : 'Optional alerts for disconnects and upload problems.',
+            ),
+            Divider(height: 25, color: palette.border),
+            _PermissionRow(
+              icon: Icons.mic_none_rounded,
+              title: 'Microphone',
+              detail: voiceDenied
+                  ? 'Off. Typed Ask remains available.'
+                  : 'Optional, used only when you start voice Ask.',
+            ),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         Row(
