@@ -7,6 +7,8 @@ import '../services/api/api_service.dart';
 import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
+import '../widgets/echo_nav_bar.dart';
+import '../widgets/screen_header.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
@@ -26,9 +28,13 @@ final class MemoriesScreen extends StatefulWidget {
     this.openConversation,
     this.openPerson,
     this.onAsk,
+    this.headerAction,
     this.clock = DateTime.now,
     super.key,
   });
+
+  /// The device pill, in the top right.
+  final Widget? headerAction;
 
   final MemoryApi? api;
   final MemoriesController? controller;
@@ -141,9 +147,9 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Text('Memories', style: Theme.of(context).textTheme.titleLarge),
+            ScreenHeader(
+              title: 'Memories',
+              actions: [if (widget.headerAction != null) widget.headerAction!],
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
@@ -231,7 +237,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
         child: ListView.builder(
           key: const Key('memories-list'),
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 96),
+          padding: EdgeInsets.only(bottom: 16 + EchoShellInsets.bottomOf(context)),
           itemCount: rows.length + (footer ? 1 : 0),
           itemBuilder: (context, index) {
             if (index == rows.length) return _footer(state);
@@ -311,7 +317,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
       child: ListView.builder(
         key: const Key('people-list'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(top: 4, bottom: 96),
+        padding: EdgeInsets.only(top: 4, bottom: 16 + EchoShellInsets.bottomOf(context)),
         itemCount: people.length,
         itemBuilder: (context, index) => PersonTile(
           person: people[index],
@@ -347,7 +353,7 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     }
     return ListView(
       key: const Key('search-results'),
-      padding: const EdgeInsets.only(bottom: 96),
+      padding: EdgeInsets.only(bottom: 16 + EchoShellInsets.bottomOf(context)),
       children: [
         if (results.conversations.isNotEmpty) ...[
           const Padding(

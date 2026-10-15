@@ -253,3 +253,19 @@ final class _TasksScreenState extends State<TasksScreen> {
     );
   }
 }
+
+/// Tasks as a page of Today: from "See all" or a promises notification.
+final class TasksPage extends StatelessWidget {
+  const TasksPage({this.segmentUploadedStream, this.onAsk, super.key});
+
+  final Stream<Object?>? segmentUploadedStream;
+  final AskCallback? onAsk;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(),
+      body: TasksScreen(segmentUploadedStream: segmentUploadedStream, onAsk: onAsk),
+    );
+  }
+}

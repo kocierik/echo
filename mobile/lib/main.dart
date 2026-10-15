@@ -28,7 +28,9 @@ import 'services/app/notification_service.dart';
 import 'services/app/session_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/echo_app_shell.dart';
+import 'widgets/device_pill.dart';
 import 'widgets/person_request_listener.dart';
+import 'widgets/tasks_request_listener.dart';
 
 late AppLifecycleCoordinator appLifecycleCoordinator;
 
@@ -285,7 +287,6 @@ class MainShell extends StatelessWidget {
     this.preferences,
     this.segmentUploadedStream,
     this.onSettingsTap,
-    this.onCancelReconnect,
     this.onRequireOnboarding,
     super.key,
   });
@@ -297,7 +298,6 @@ class MainShell extends StatelessWidget {
   final SharedPreferences? preferences;
   final Stream<Object?>? segmentUploadedStream;
   final VoidCallback? onSettingsTap;
-  final VoidCallback? onCancelReconnect;
   final VoidCallback? onRequireOnboarding;
 
   void _openSettings(BuildContext context) {
@@ -323,25 +323,34 @@ class MainShell extends StatelessWidget {
     );
   }
 
-  VoidCallback? _statusAction(
-    BuildContext context,
-    DeviceConnectionState connectionState,
-  ) {
-    final cancelReconnect =
-        onCancelReconnect ?? deviceController?.cancelReconnect;
-    return switch (connectionState) {
-      DeviceConnectionState.unpaired ||
-      DeviceConnectionState.bluetoothOff ||
-      DeviceConnectionState.reconnecting ||
-      DeviceConnectionState.offline ||
-      DeviceConnectionState.error =>
-        () => _openSettings(context),
-      DeviceConnectionState.scanning ||
-      DeviceConnectionState.connecting ||
-      DeviceConnectionState.bonding =>
-        cancelReconnect,
-      DeviceConnectionState.listening || DeviceConnectionState.muted => null,
-    };
+  void _openTasks(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TasksPage(
+          segmentUploadedStream: segmentUploadedStream,
+          onAsk: appController.requestAsk,
+        ),
+      ),
+    );
+  }
+
+  /// The pill's long press: mute, or resume listening.
+  Future<void> _toggleMute(BuildContext context, DeviceStatus status) async {
+    final controller = deviceController;
+    if (controller == null) return;
+    final mute = status.connectionState == DeviceConnectionState.listening;
+    final messenger = ScaffoldMessenger.of(context);
+    unawaited(HapticFeedback.mediumImpact());
+    void say(String message) => messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+    try {
+      await controller.setMuted(mute);
+      say(mute ? 'Echo is muted. Hold the pill again to listen.' : 'Echo is listening again.');
+    } catch (_) {
+      say('Echo could not update the microphone.');
+    }
   }
 
   @override
@@ -349,66 +358,76 @@ class MainShell extends StatelessWidget {
     return PersonRequestListener(
       request: appController.pendingPersonId,
       onAsk: appController.requestAsk,
-      child: ValueListenableBuilder<AppViewState>(
-        valueListenable: appController,
-        builder: (context, state, child) {
-          return Scaffold(
-            body: EchoAppShell(
-              selectedIndex: state.selectedTab,
+      child: TasksRequestListener(
+        requests: appController.openTasksRequests,
+        onOpen: () => _openTasks(context),
+        child: ValueListenableBuilder<AppViewState>(
+          valueListenable: appController,
+          builder: (context, state, child) {
+            final pill = DevicePill(
               status: state.device,
-              onStatusTap: _statusAction(context, state.device.connectionState),
-              onSettingsTap: () => _openSettings(context),
-              onDestinationSelected: (index) {
-                unawaited(appController.setSelectedTab(index));
-              },
-              children: [
-                HomeScreen(
-                  deviceStatus: state.device,
-                  setMuted: (muted) {
-                    final controller = deviceController;
-                    if (controller == null) {
-                      return Future<void>.error(
-                        StateError('Device controller is unavailable'),
-                      );
-                    }
-                    return controller.setMuted(muted);
+              onTap: () => _openSettings(context),
+              onLongPress: deviceController == null
+                  ? null
+                  : () => unawaited(_toggleMute(context, state.device)),
+            );
+            return Scaffold(
+              body: ValueListenableBuilder<bool>(
+                valueListenable: appController.askDictation,
+                builder: (context, dictating, _) => EchoAppShell(
+                  selectedIndex: state.selectedTab,
+                  dictating: dictating,
+                  onDestinationSelected: (index) {
+                    unawaited(appController.setSelectedTab(index));
                   },
-                  onReconnect: deviceController?.reconnect,
-                  onPair: onRequireOnboarding,
-                  onAsk: appController.requestAsk,
-                  onOpenChat: (sessionId) => sessionId == null
-                      ? appController.handleNotificationPayload(
-                          NotificationService.voicePayloadPrefix)
-                      : appController.requestOpenSession(sessionId),
-                  onOpenMemories: () {
-                    unawaited(appController
-                        .setSelectedTab(AppController.memoriesTab));
-                  },
-                  onOpenTasks: () {
-                    unawaited(
-                        appController.setSelectedTab(AppController.tasksTab));
-                  },
-                  segmentUploadedStream: segmentUploadedStream,
-                  firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
-                  onOpenSettings: () => _openSettings(context),
+                  onAskHold: appController.setAskDictation,
+                  children: [
+                    HomeScreen(
+                      deviceStatus: state.device,
+                      headerAction: pill,
+                      setMuted: (muted) {
+                        final controller = deviceController;
+                        if (controller == null) {
+                          return Future<void>.error(
+                            StateError('Device controller is unavailable'),
+                          );
+                        }
+                        return controller.setMuted(muted);
+                      },
+                      onReconnect: deviceController?.reconnect,
+                      onPair: onRequireOnboarding,
+                      onAsk: appController.requestAsk,
+                      onOpenChat: (sessionId) => sessionId == null
+                          ? appController.handleNotificationPayload(
+                              NotificationService.voicePayloadPrefix)
+                          : appController.requestOpenSession(sessionId),
+                      onOpenMemories: () {
+                        unawaited(appController
+                            .setSelectedTab(AppController.memoriesTab));
+                      },
+                      onOpenTasks: () => _openTasks(context),
+                      segmentUploadedStream: segmentUploadedStream,
+                      firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
+                      onOpenSettings: () => _openSettings(context),
+                    ),
+                    ChatScreen(
+                      headerAction: pill,
+                      dictation: appController.askDictation,
+                      openSessionRequest: appController.pendingChatSessionId,
+                      askRequest: appController.pendingChatQuestion,
+                      photoTaker: AppRuntime.maybeCoordinator?.photoService,
+                    ),
+                    MemoriesScreen(
+                      headerAction: pill,
+                      segmentUploadedStream: segmentUploadedStream,
+                      onAsk: appController.requestAsk,
+                    ),
+                  ],
                 ),
-                MemoriesScreen(
-                  segmentUploadedStream: segmentUploadedStream,
-                  onAsk: appController.requestAsk,
-                ),
-                TasksScreen(
-                  segmentUploadedStream: segmentUploadedStream,
-                  onAsk: appController.requestAsk,
-                ),
-                ChatScreen(
-                  openSessionRequest: appController.pendingChatSessionId,
-                  askRequest: appController.pendingChatQuestion,
-                  photoTaker: AppRuntime.maybeCoordinator?.photoService,
-                ),
-              ],
-            ),
-          );
-        },
+              ),
+            );
+          },
+        ),
       ),
     );
   }

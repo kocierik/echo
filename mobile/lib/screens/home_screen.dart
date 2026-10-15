@@ -19,6 +19,8 @@ import 'conversation_detail_screen.dart';
 import 'navigation.dart';
 import 'task_editing.dart';
 import 'settings/voice_settings_screen.dart';
+import '../widgets/echo_nav_bar.dart';
+import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
 
 /// Today: the wearable, what needs a decision, the day so far, what is due,
@@ -39,6 +41,7 @@ final class HomeScreen extends StatefulWidget {
     this.onOpenChat,
     this.firmwareUpdate,
     this.onOpenSettings,
+    this.headerAction,
     this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
     super.key,
@@ -64,6 +67,9 @@ final class HomeScreen extends StatefulWidget {
   /// A newer wearable firmware is announced once per version, with the way to Settings.
   final FirmwareUpdateController? firmwareUpdate;
   final VoidCallback? onOpenSettings;
+
+  /// The device pill, in the top right.
+  final Widget? headerAction;
 
   /// How often "Echo is working on it" is checked while something is working.
   final Duration workingPollInterval;
@@ -504,106 +510,116 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       color: palette.background,
       child: SafeArea(
         top: false,
-        child: RefreshIndicator(
-          onRefresh: _refreshAll,
-          child: ListView(
-            key: const Key('today'),
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-            children: [
-              _TodayHeader(date: now),
-              const SizedBox(height: 16),
-              DeviceCard(
-                presentation: presentation,
-                onAction: _deviceAction(presentation),
-                busy: _privacyBusy,
-                error: _privacyError,
-                announcement: _announcement,
-                batteryPercent: widget.deviceStatus.batteryPercent,
-                pendingBytes: widget.deviceStatus.bufferBytes,
-              ),
-              const SizedBox(height: 12),
-              if (_ownVoiceMissing)
-                TipCard(
-                  tipKey: 'record_voice',
-                  text:
-                      'Record your voice once, so Echo knows when you are the one speaking.',
-                  actionLabel: 'Record my voice',
-                  onAction: () => unawaited(_recordVoice()),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ScreenHeader(
+              overline: _weekdays[now.weekday - 1],
+              title: '${now.day} ${_months[now.month - 1]}',
+              actions: [if (widget.headerAction != null) widget.headerAction!],
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _refreshAll,
+                child: ListView(
+                  key: const Key('today'),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + EchoShellInsets.bottomOf(context)),
+                  children: [
+                    DeviceCard(
+                      presentation: presentation,
+                      onAction: _deviceAction(presentation),
+                      busy: _privacyBusy,
+                      error: _privacyError,
+                      announcement: _announcement,
+                      batteryPercent: widget.deviceStatus.batteryPercent,
+                      pendingBytes: widget.deviceStatus.bufferBytes,
+                    ),
+                    const SizedBox(height: 12),
+                    if (_ownVoiceMissing)
+                      TipCard(
+                        tipKey: 'record_voice',
+                        text:
+                            'Record your voice once, so Echo knows when you are the one speaking.',
+                        actionLabel: 'Record my voice',
+                        onAction: () => unawaited(_recordVoice()),
+                      ),
+                    if (widget.firmwareUpdate != null)
+                      ValueListenableBuilder<FirmwareUpdateState>(
+                        valueListenable: widget.firmwareUpdate!,
+                        builder: (context, update, _) {
+                          final release = update.release;
+                          if (update.phase != FirmwareUpdatePhase.available ||
+                              release == null) {
+                            return const SizedBox.shrink();
+                          }
+                          return TipCard(
+                            key: ValueKey('firmware-tip-${release.version}'),
+                            tipKey: 'firmware_${release.version}',
+                            text:
+                                'A new firmware for Echo (${release.version}) is ready. '
+                                'Installing it takes about a minute.',
+                            actionLabel: 'Open Settings',
+                            onAction: widget.onOpenSettings,
+                          );
+                        },
+                      ),
+                    WorkingSection(
+                      items: _working,
+                      onOpen: widget.onOpenChat == null
+                          ? null
+                          : (item) => widget.onOpenChat!(item.sessionId),
+                    ),
+                    NeedsYouSection(
+                      actions: _pending,
+                      busyIds: _pendingBusy,
+                      onConfirm: (a) => unawaited(_confirm(a)),
+                      onCancel: (a) => unawaited(_cancel(a)),
+                    ),
+                    TodayRecapSection(
+                      loading: _conversationsLoading,
+                      conversations: _conversations,
+                      error: _conversationsError,
+                      onRetry: () => unawaited(_loadConversations(showLoading: true)),
+                      onOpen: (c) => unawaited(_openConversation(c)),
+                      onSeeAll: widget.onOpenMemories,
+                    ),
+                    const SizedBox(height: 8),
+                    PromisesSection(
+                      promises: promises,
+                      busy: isTaskBusy,
+                      now: now,
+                      onToggle: (t) => unawaited(toggleTask(t)),
+                      onDismiss: (t) => unawaited(dismissTask(t)),
+                    ),
+                    TodayTasksSection(
+                      loading: _tasksLoading,
+                      tasks: tasks,
+                      error: _tasksError,
+                      busy: isTaskBusy,
+                      now: now,
+                      onRetry: () => unawaited(_loadTasks(showLoading: true)),
+                      onToggle: (t) => unawaited(toggleTask(t)),
+                      onDismiss: (t) => unawaited(dismissTask(t)),
+                      onSeeAll: widget.onOpenTasks,
+                    ),
+                    const SizedBox(height: 8),
+                    DigestSection(
+                      loading: _summaryLoading,
+                      summary: _summary,
+                      error: _summaryError,
+                      onRetry: () => unawaited(_loadSummary()),
+                      now: now,
+                    ),
+                    if (_week != null) ...[
+                      const SizedBox(height: 8),
+                      WeeklySummarySection(week: _week!),
+                    ],
+                  ],
                 ),
-              if (widget.firmwareUpdate != null)
-                ValueListenableBuilder<FirmwareUpdateState>(
-                  valueListenable: widget.firmwareUpdate!,
-                  builder: (context, update, _) {
-                    final release = update.release;
-                    if (update.phase != FirmwareUpdatePhase.available ||
-                        release == null) {
-                      return const SizedBox.shrink();
-                    }
-                    return TipCard(
-                      key: ValueKey('firmware-tip-${release.version}'),
-                      tipKey: 'firmware_${release.version}',
-                      text:
-                          'A new firmware for Echo (${release.version}) is ready. '
-                          'Installing it takes about a minute.',
-                      actionLabel: 'Open Settings',
-                      onAction: widget.onOpenSettings,
-                    );
-                  },
-                ),
-              WorkingSection(
-                items: _working,
-                onOpen: widget.onOpenChat == null
-                    ? null
-                    : (item) => widget.onOpenChat!(item.sessionId),
               ),
-              NeedsYouSection(
-                actions: _pending,
-                busyIds: _pendingBusy,
-                onConfirm: (a) => unawaited(_confirm(a)),
-                onCancel: (a) => unawaited(_cancel(a)),
-              ),
-              TodayRecapSection(
-                loading: _conversationsLoading,
-                conversations: _conversations,
-                error: _conversationsError,
-                onRetry: () => unawaited(_loadConversations(showLoading: true)),
-                onOpen: (c) => unawaited(_openConversation(c)),
-                onSeeAll: widget.onOpenMemories,
-              ),
-              const SizedBox(height: 8),
-              PromisesSection(
-                promises: promises,
-                busy: isTaskBusy,
-                now: now,
-                onToggle: (t) => unawaited(toggleTask(t)),
-                onDismiss: (t) => unawaited(dismissTask(t)),
-              ),
-              TodayTasksSection(
-                loading: _tasksLoading,
-                tasks: tasks,
-                error: _tasksError,
-                busy: isTaskBusy,
-                now: now,
-                onRetry: () => unawaited(_loadTasks(showLoading: true)),
-                onToggle: (t) => unawaited(toggleTask(t)),
-                onDismiss: (t) => unawaited(dismissTask(t)),
-                onSeeAll: widget.onOpenTasks,
-              ),
-              const SizedBox(height: 8),
-              DigestSection(
-                loading: _summaryLoading,
-                summary: _summary,
-                error: _summaryError,
-                onRetry: () => unawaited(_loadSummary()),
-                now: now,
-              ),
-              if (_week != null) ...[
-                const SizedBox(height: 8),
-                WeeklySummarySection(week: _week!),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -617,59 +633,27 @@ bool _isRequestedTelemetry(DeviceStatus status, bool requestedMuted) {
           : DeviceConnectionState.listening);
 }
 
-final class _TodayHeader extends StatelessWidget {
-  const _TodayHeader({required this.date});
+const _weekdays = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
 
-  final DateTime date;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text('Today', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(width: 10),
-        // Takes the free space, and gives way on narrow screens
-        Expanded(
-          child: Text(
-            _formatDate(date),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(color: palette.text2),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-String _formatDate(DateTime value) {
-  const weekdays = [
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday',
-    'Sunday'
-  ];
-  const months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-  return '${weekdays[value.weekday - 1]}, ${months[value.month - 1]} ${value.day}';
-}
+const _months = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
