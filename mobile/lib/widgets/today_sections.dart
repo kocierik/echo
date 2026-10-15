@@ -9,7 +9,7 @@ import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
 import 'action_card.dart';
 import 'conversation_card.dart';
-import 'device_card.dart';
+import 'device_readings.dart';
 import 'panel.dart';
 import 'sections.dart';
 import 'task_tile.dart';

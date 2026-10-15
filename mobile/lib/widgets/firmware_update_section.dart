@@ -54,11 +54,13 @@ class FirmwareUpdateSection extends StatelessWidget {
             const SettingsSection('UPDATE'),
             ...switch (update.phase) {
               FirmwareUpdatePhase.available => [
-                  SettingsRow(
-                    icon: Icons.system_update_alt_rounded,
-                    title: 'Firmware ${release.version} is ready',
-                    subtitle: notes,
-                  ),
+                  SettingsGroup(children: [
+                    SettingsRow(
+                      icon: Icons.system_update_alt_rounded,
+                      title: 'Firmware ${release.version} is ready',
+                      subtitle: notes,
+                    ),
+                  ]),
                   _Button(
                     key: const Key('firmware-update'),
                     label: 'Update Echo',

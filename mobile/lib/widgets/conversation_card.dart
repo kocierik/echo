@@ -123,6 +123,128 @@ final class ConversationCardTile extends StatelessWidget {
   }
 }
 
+/// A conversation inside a day's panel: its time on the left; title, summary
+/// and chips (live, people, tasks, photos, length) on the right.
+final class ConversationRow extends StatelessWidget {
+  const ConversationRow({required this.conversation, required this.onTap, super.key});
+
+  final ConversationCard conversation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final c = conversation;
+    final title = conversationTitle(c);
+    final meta = ConversationCardTile._meta(c, null);
+    final chips = <Widget>[
+      if (c.isOpen)
+        _Chip(label: 'Live', color: palette.live.withValues(alpha: 0.14), text: palette.liveText)
+      else if (c.isProcessing)
+        _Chip(label: 'Processing', color: palette.surface2, text: palette.amber),
+      if (c.people.isNotEmpty)
+        _Chip(label: c.people.join(', '), color: palette.surface2, text: palette.text2),
+      if (c.taskCount > 0)
+        _Chip(
+          label: c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
+          color: palette.accentSoft,
+          text: palette.onAccentSoft,
+        ),
+      if (c.photoCount > 0)
+        _Chip(
+          label: c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
+          color: palette.surface2,
+          text: palette.text2,
+        ),
+      if (c.duration.inSeconds >= 60)
+        _Chip(label: formatDuration(c.duration), color: palette.surface2, text: palette.text2),
+    ];
+    return Semantics(
+      button: true,
+      label: ConversationCardTile._semanticLabel(c, title, meta),
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('conversation-${c.id}'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 46,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    formatTime(c.startedAt),
+                    style: textTheme.labelMedium?.copyWith(
+                      color: palette.text2,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleSmall?.copyWith(height: 1.3),
+                    ),
+                    if (c.summary case final summary?) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        summary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodySmall?.copyWith(height: 1.4),
+                      ),
+                    ],
+                    if (chips.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 6, runSpacing: 6, children: chips),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.color, required this.text});
+
+  final String label;
+  final Color color;
+  final Color text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: text,
+              fontWeight: FontWeight.w600,
+            ),
+      ),
+    );
+  }
+}
+
 /// The conversation title, or a stand-in while it has none.
 String conversationTitle(ConversationCard c) {
   final title = c.title;
