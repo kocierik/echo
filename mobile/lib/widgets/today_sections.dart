@@ -14,6 +14,8 @@ import 'task_tile.dart';
 /// Tasks for Today: overdue and due today first, then the ones created today
 /// (so a misheard one can be dropped while it is fresh).
 List<TaskItem> todayTasks(List<TaskItem> open, DateTime now) {
+  // Promises have their own section
+  open = open.where((t) => !t.isPromise).toList();
   final today = dayOf(now);
   bool due(TaskItem t) => t.dueDate != null && !dayOf(t.dueDate!).isAfter(today);
   bool createdToday(TaskItem t) => t.createdAt != null && dayOf(t.createdAt!) == today;
@@ -21,6 +23,21 @@ List<TaskItem> todayTasks(List<TaskItem> open, DateTime now) {
     ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
   final fresh = open.where((t) => !due(t) && createdToday(t)).toList();
   return [...dueTasks, ...fresh];
+}
+
+/// A promise without a date this old is not kept yet: it goes to the top.
+const stalePromise = Duration(days: 3);
+
+/// Open promises: the stale ones without a date first, then by due date, then the rest.
+List<TaskItem> openPromises(List<TaskItem> open, DateTime now) {
+  bool stale(TaskItem t) =>
+      t.dueDate == null && t.createdAt != null && now.difference(t.createdAt!) > stalePromise;
+  final promises = open.where((t) => t.isPromise && !t.done).toList();
+  final old = promises.where(stale).toList();
+  final dated = promises.where((t) => t.dueDate != null).toList()
+    ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+  final rest = promises.where((t) => t.dueDate == null && !stale(t)).toList();
+  return [...old, ...dated, ...rest];
 }
 
 /// Today's conversations (and one still going), newest first.
@@ -202,6 +219,50 @@ final class TodayTasksSection extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
         ],
+      ],
+    );
+  }
+}
+
+/// Promises the user made, hidden when there are none.
+final class PromisesSection extends StatelessWidget {
+  const PromisesSection({
+    required this.promises,
+    required this.busy,
+    required this.onToggle,
+    required this.onDismiss,
+    required this.now,
+    this.maxVisible = 5,
+    super.key,
+  });
+
+  final List<TaskItem> promises;
+  final bool Function(TaskItem task) busy;
+  final void Function(TaskItem task) onToggle;
+  final void Function(TaskItem task) onDismiss;
+  final DateTime now;
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    if (promises.isEmpty) return const SizedBox.shrink();
+    final hidden = promises.length - maxVisible;
+    return Column(
+      key: const Key('promises-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'Promises'),
+        for (final promise in promises.take(maxVisible))
+          TaskTile(
+            task: promise,
+            now: now,
+            busy: busy(promise),
+            padding: EdgeInsets.zero,
+            onToggle: () => onToggle(promise),
+            onDismiss: () => onDismiss(promise),
+          ),
+        if (hidden > 0)
+          Text('+$hidden more', style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }

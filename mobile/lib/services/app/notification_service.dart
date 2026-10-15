@@ -1,4 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import '../../models/upcoming_notification.dart';
 import 'package:timezone/data/latest.dart' as timezone_data;
 import 'package:timezone/timezone.dart' as timezone;
 
@@ -10,6 +12,7 @@ abstract interface class NotificationPort {
     required String title,
     required String body,
     required Duration delay,
+    String? payload,
   });
   Future<void> cancel(int id);
   Future<void> show({
@@ -29,6 +32,10 @@ final class NotificationService {
   static const int voiceAnswerBaseId = 200;
   static const int voiceAnswerIdCount = 50;
   static const String voicePayloadPrefix = 'voice:';
+
+  /// Briefings, promises and the evening recap: rescheduled as a whole on each refresh.
+  static const int upcomingBaseId = 300;
+  static const int upcomingIdCount = 10;
 
   final NotificationPort _port;
   bool _disconnectScheduled = false;
@@ -82,6 +89,26 @@ final class NotificationService {
         body: preview,
         payload: '$voicePayloadPrefix${sessionId ?? ''}',
       );
+
+  /// Replaces what was scheduled before with [items] (past ones are skipped).
+  Future<void> replaceUpcoming(List<UpcomingNotification> items, DateTime now) async {
+    for (var i = 0; i < upcomingIdCount; i++) {
+      await _port.cancel(upcomingBaseId + i);
+    }
+    var slot = 0;
+    for (final item in items) {
+      if (slot >= upcomingIdCount) break;
+      final delay = item.fireAt.difference(now);
+      if (delay <= Duration.zero) continue;
+      await _port.schedule(
+        id: upcomingBaseId + slot++,
+        title: item.title,
+        body: item.body,
+        delay: delay,
+        payload: item.target,
+      );
+    }
+  }
 
   Future<void> segmentCompleted() async {}
 }
@@ -155,6 +182,7 @@ final class FlutterLocalNotificationPort implements NotificationPort {
     required String title,
     required String body,
     required Duration delay,
+    String? payload,
   }) {
     return _plugin.zonedSchedule(
       id,
@@ -165,6 +193,7 @@ final class FlutterLocalNotificationPort implements NotificationPort {
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      payload: payload,
     );
   }
 

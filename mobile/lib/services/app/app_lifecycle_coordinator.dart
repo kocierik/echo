@@ -11,6 +11,7 @@ import '../device/ble_service.dart';
 import '../device/device_controller.dart';
 import '../device/device_identity_store.dart';
 import 'network_policy.dart';
+import 'notification_scheduler.dart';
 import 'notification_service.dart';
 import '../device/photo_service.dart';
 import 'session_controller.dart';
@@ -28,6 +29,7 @@ final class AppLifecycleCoordinator {
     required this.preferences,
     required this.notificationService,
     required this.photoService,
+    required this.notificationScheduler,
     required ApiService credentialApiService,
     required AppLifecycleBinding binding,
   })  : _credentialApiService = credentialApiService,
@@ -41,6 +43,9 @@ final class AppLifecycleCoordinator {
   final SharedPreferences preferences;
   final NotificationService notificationService;
   final PhotoService photoService;
+
+  /// Briefings, promises and the evening recap, scheduled on the phone.
+  final NotificationScheduler notificationScheduler;
   final ApiService _credentialApiService;
   final AppLifecycleBinding _binding;
   bool _disposed = false;
@@ -116,6 +121,12 @@ final class AppLifecycleCoordinator {
     bleService.photoUploader = photoService.uploadFromDevice;
     bleService.onPhotoFailed = photoService.onDeviceFailure;
     photoService.start();
+    final notificationScheduler = NotificationScheduler(
+      api: credentialApiService,
+      notifications: notificationService,
+      preferences: NotificationPreferences(preferences),
+    );
+    unawaited(notificationScheduler.refresh(force: true));
     final voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
@@ -130,7 +141,10 @@ final class AppLifecycleCoordinator {
       networkAccess: networkAccess,
       startController: deviceController.start,
       reconnectOnResume: deviceController.reconnect,
-      onWake: voiceUpdates.check,
+      onWake: () async {
+        await voiceUpdates.check();
+        await notificationScheduler.refresh();
+      },
     );
     return AppLifecycleCoordinator._(
       bleService: bleService,
@@ -141,6 +155,7 @@ final class AppLifecycleCoordinator {
       preferences: preferences,
       notificationService: notificationService,
       photoService: photoService,
+      notificationScheduler: notificationScheduler,
       credentialApiService: credentialApiService,
       binding: binding,
     );

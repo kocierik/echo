@@ -15,6 +15,7 @@ import 'settings/about_settings_screen.dart';
 import 'settings/automations_settings_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/privacy_settings_screen.dart';
+import 'settings/notification_settings_screen.dart';
 import 'settings/voice_settings_screen.dart';
 import 'settings/settings_components.dart';
 
@@ -138,6 +139,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _push(AutomationsSettingsScreen(
               activityBuilder: widget.activityBuilder,
               integrationsBuilder: widget.integrationsBuilder,
+            )),
+          ),
+          SettingsRow(
+            icon: Icons.notifications_none_rounded,
+            title: 'Notifications',
+            subtitle: 'Before meetings and for promises, only when needed.',
+            onTap: () => _push(NotificationSettingsScreen(
+              preferences: _preferences,
+              onChanged: () => AppRuntime.maybeCoordinator?.notificationScheduler
+                  .refresh(force: true),
             )),
           ),
           SettingsRow(

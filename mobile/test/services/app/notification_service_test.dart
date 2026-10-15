@@ -1,7 +1,35 @@
 import 'package:echo_app/services/app/notification_service.dart';
+import 'package:echo_app/models/upcoming_notification.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('upcoming notifications replace the previous ones, past ones skipped',
+      () async {
+    final port = _FakeNotificationPort();
+    final service = NotificationService(port);
+    final now = DateTime.utc(2026, 10, 15, 8);
+    UpcomingNotification item(String key, DateTime at, String target) =>
+        UpcomingNotification(
+            key: key,
+            kind: 'briefing',
+            fireAt: at,
+            title: 'T $key',
+            body: 'B',
+            target: target);
+
+    await service.replaceUpcoming([
+      item('past', now.subtract(const Duration(minutes: 5)), 'today'),
+      item('a', now.add(const Duration(hours: 2)), 'person:p1'),
+      item('b', now.add(const Duration(hours: 5)), 'tasks'),
+    ], now);
+
+    expect(port.cancelled, List.generate(10, (i) => 300 + i));
+    expect(port.scheduled.map((c) => (c.id, c.title, c.delay, c.payload)), [
+      (300, 'T a', const Duration(hours: 2), 'person:p1'),
+      (301, 'T b', const Duration(hours: 5), 'tasks'),
+    ]);
+  });
+
   test('initialize does not request permission', () async {
     final port = _FakeNotificationPort();
     final service = NotificationService(port);
@@ -86,12 +114,14 @@ final class _NotificationCall {
     required this.title,
     required this.body,
     this.delay,
+    this.payload,
   });
 
   final int id;
   final String title;
   final String body;
   final Duration? delay;
+  final String? payload;
 }
 
 final class _FakeNotificationPort implements NotificationPort {
@@ -120,6 +150,7 @@ final class _FakeNotificationPort implements NotificationPort {
     required String title,
     required String body,
     required Duration delay,
+    String? payload,
   }) async {
     if (failNextSchedule) {
       failNextSchedule = false;
@@ -130,6 +161,7 @@ final class _FakeNotificationPort implements NotificationPort {
       title: title,
       body: body,
       delay: delay,
+      payload: payload,
     ));
   }
 

@@ -62,6 +62,15 @@ final class TaskItem {
   final String? conversationId;
   final DateTime? createdAt;
 
+  /// Something the user committed to someone ("ti mando il preventivo").
+  bool get isPromise => metadata['promise'] == true;
+
+  /// Whom it was promised to, when known.
+  String? get promiseTo {
+    final to = metadata['promise_to'];
+    return to is String && to.trim().isNotEmpty ? to.trim() : null;
+  }
+
   bool get done => metadata['done'] == true;
 
   Map<String, dynamic> metadataWithDone(bool done) => {...metadata, 'done': done};

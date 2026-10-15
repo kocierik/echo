@@ -378,6 +378,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final presentation = devicePresentation(widget.deviceStatus.connectionState);
     final now = widget.clock();
     final tasks = editedTasks(todayTasks(_openTasks, now));
+    final promises = editedTasks(openPromises(_openTasks, now));
 
     // A Material, not a ColoredBox: row ink splashes paint on it
     return Material(
@@ -418,6 +419,13 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 onSeeAll: widget.onOpenMemories,
               ),
               const SizedBox(height: 8),
+              PromisesSection(
+                promises: promises,
+                busy: isTaskBusy,
+                now: now,
+                onToggle: (t) => unawaited(toggleTask(t)),
+                onDismiss: (t) => unawaited(dismissTask(t)),
+              ),
               TodayTasksSection(
                 loading: _tasksLoading,
                 tasks: tasks,

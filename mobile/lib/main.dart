@@ -26,6 +26,7 @@ import 'services/app/network_policy.dart';
 import 'services/app/session_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/echo_app_shell.dart';
+import 'widgets/person_request_listener.dart';
 
 late AppLifecycleCoordinator appLifecycleCoordinator;
 
@@ -70,11 +71,11 @@ class EchoApp extends StatelessWidget {
     final shellDeviceController =
         deviceController ?? coordinator?.deviceController;
     final shellSessionController =
-      sessionController ?? coordinator?.sessionController;
+        sessionController ?? coordinator?.sessionController;
     final shellNetworkPolicy = networkPolicy ?? coordinator?.networkPolicy;
     final shellPreferences = preferences ?? coordinator?.preferences;
     final shellSegmentUploadedStream =
-      segmentUploadedStream ?? coordinator?.bleService.segmentUploadedStream;
+        segmentUploadedStream ?? coordinator?.bleService.segmentUploadedStream;
     final onboardingFactory = onboardingControllerFactory ??
         (coordinator == null
             ? null
@@ -113,8 +114,7 @@ class EchoApp extends StatelessWidget {
                 statusBarColor: Colors.transparent,
                 statusBarIconBrightness: iconBrightness,
                 statusBarBrightness: brightness,
-                systemNavigationBarColor:
-                    EchoPalette.of(context).background,
+                systemNavigationBarColor: EchoPalette.of(context).background,
                 systemNavigationBarIconBrightness: iconBrightness,
               ),
               child: child!,
@@ -320,74 +320,83 @@ class MainShell extends StatelessWidget {
     BuildContext context,
     DeviceConnectionState connectionState,
   ) {
-    final cancelReconnect = onCancelReconnect ?? deviceController?.cancelReconnect;
+    final cancelReconnect =
+        onCancelReconnect ?? deviceController?.cancelReconnect;
     return switch (connectionState) {
       DeviceConnectionState.unpaired ||
       DeviceConnectionState.bluetoothOff ||
       DeviceConnectionState.reconnecting ||
       DeviceConnectionState.offline ||
-      DeviceConnectionState.error => () => _openSettings(context),
+      DeviceConnectionState.error =>
+        () => _openSettings(context),
       DeviceConnectionState.scanning ||
       DeviceConnectionState.connecting ||
-      DeviceConnectionState.bonding => cancelReconnect,
+      DeviceConnectionState.bonding =>
+        cancelReconnect,
       DeviceConnectionState.listening || DeviceConnectionState.muted => null,
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<AppViewState>(
-      valueListenable: appController,
-      builder: (context, state, child) {
-        return Scaffold(
-          body: EchoAppShell(
-            selectedIndex: state.selectedTab,
-            status: state.device,
-            onStatusTap: _statusAction(context, state.device.connectionState),
-            onSettingsTap: () => _openSettings(context),
-            onDestinationSelected: (index) {
-              unawaited(appController.setSelectedTab(index));
-            },
-            children: [
-              HomeScreen(
-                deviceStatus: state.device,
-                setMuted: (muted) {
-                  final controller = deviceController;
-                  if (controller == null) {
-                    return Future<void>.error(
-                      StateError('Device controller is unavailable'),
-                    );
-                  }
-                  return controller.setMuted(muted);
-                },
-                onReconnect: deviceController?.reconnect,
-                onPair: onRequireOnboarding,
-                onAsk: appController.requestAsk,
-                onOpenMemories: () {
-                  unawaited(appController.setSelectedTab(AppController.memoriesTab));
-                },
-                onOpenTasks: () {
-                  unawaited(appController.setSelectedTab(AppController.tasksTab));
-                },
-                segmentUploadedStream: segmentUploadedStream,
-              ),
-              MemoriesScreen(
-                segmentUploadedStream: segmentUploadedStream,
-                onAsk: appController.requestAsk,
-              ),
-              TasksScreen(
-                segmentUploadedStream: segmentUploadedStream,
-                onAsk: appController.requestAsk,
-              ),
-              ChatScreen(
-                openSessionRequest: appController.pendingChatSessionId,
-                askRequest: appController.pendingChatQuestion,
-                photoTaker: AppRuntime.maybeCoordinator?.photoService,
-              ),
-            ],
-          ),
-        );
-      },
+    return PersonRequestListener(
+      request: appController.pendingPersonId,
+      onAsk: appController.requestAsk,
+      child: ValueListenableBuilder<AppViewState>(
+        valueListenable: appController,
+        builder: (context, state, child) {
+          return Scaffold(
+            body: EchoAppShell(
+              selectedIndex: state.selectedTab,
+              status: state.device,
+              onStatusTap: _statusAction(context, state.device.connectionState),
+              onSettingsTap: () => _openSettings(context),
+              onDestinationSelected: (index) {
+                unawaited(appController.setSelectedTab(index));
+              },
+              children: [
+                HomeScreen(
+                  deviceStatus: state.device,
+                  setMuted: (muted) {
+                    final controller = deviceController;
+                    if (controller == null) {
+                      return Future<void>.error(
+                        StateError('Device controller is unavailable'),
+                      );
+                    }
+                    return controller.setMuted(muted);
+                  },
+                  onReconnect: deviceController?.reconnect,
+                  onPair: onRequireOnboarding,
+                  onAsk: appController.requestAsk,
+                  onOpenMemories: () {
+                    unawaited(appController
+                        .setSelectedTab(AppController.memoriesTab));
+                  },
+                  onOpenTasks: () {
+                    unawaited(
+                        appController.setSelectedTab(AppController.tasksTab));
+                  },
+                  segmentUploadedStream: segmentUploadedStream,
+                ),
+                MemoriesScreen(
+                  segmentUploadedStream: segmentUploadedStream,
+                  onAsk: appController.requestAsk,
+                ),
+                TasksScreen(
+                  segmentUploadedStream: segmentUploadedStream,
+                  onAsk: appController.requestAsk,
+                ),
+                ChatScreen(
+                  openSessionRequest: appController.pendingChatSessionId,
+                  askRequest: appController.pendingChatQuestion,
+                  photoTaker: AppRuntime.maybeCoordinator?.photoService,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

@@ -22,6 +22,9 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
 - **Voice requests.** Start a sentence with "Echo, …" (also "Eco", "Hey/Ehi Echo") while wearing the
   device: the answer appears in the **Voice requests** conversation of the app, with a notification the
   next time the app wakes up.
+- **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
+  their day; 10 minutes before a meeting, a briefing on the person if there is something to know.
+  At most three notifications a day, none at night, each kind switchable.
 - **Knows who is speaking.** Record your voice once in Settings → Voices; name the others by tapping
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
   ([ADR 0008](docs/adr/0008-voice-fingerprints.md)).
@@ -280,6 +283,11 @@ All `/api` endpoints require the `X-API-Key` header.
 
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
+
+### Notifications
+- `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
+  schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),
+  already filtered: only when there is something to do, at most 3 a day, none from 22 to 8.
 
 ### Voices
 - `GET /api/voice-profiles` — the user's voice and the named voices (`fingerprints_enabled` false

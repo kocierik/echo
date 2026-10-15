@@ -97,7 +97,10 @@ final class _BleStopper implements ActiveBleStopper {
 }
 
 final class _Clearer
-    implements ApiCredentialsClearer, DeviceIdentityClearer, SessionCacheClearer {
+    implements
+        ApiCredentialsClearer,
+        DeviceIdentityClearer,
+        SessionCacheClearer {
   _Clearer(this.calls, this.name, this.error);
 
   final List<String> calls;

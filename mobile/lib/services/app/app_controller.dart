@@ -43,6 +43,12 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// The chat screen sends it and sets it back to null.
   final ValueNotifier<String?> pendingChatQuestion = ValueNotifier(null);
 
+  /// A person whose page should open (a briefing notification); set back to null
+  /// once opened.
+  final ValueNotifier<String?> pendingPersonId = ValueNotifier(null);
+
+  static const personPayloadPrefix = 'person:';
+
   final Stream<DeviceStatus> _deviceStates;
   final Stream<SessionState> _sessionStates;
   final AppPreferences _preferences;
@@ -117,9 +123,19 @@ final class AppController extends ValueNotifier<AppViewState> {
   }
 
   /// Routes a tapped notification: "voice:<sessionId>" opens that session in
-  /// Ask ("voice:" alone only selects Ask); other payloads are ignored.
+  /// Ask ("voice:" alone only selects Ask), "person:<id>" that person's page,
+  /// "tasks" and "today" their tab; other payloads are ignored.
   void handleNotificationPayload(String payload) {
     if (_disposed) return;
+    if (payload == 'tasks' || payload == 'today') {
+      unawaited(setSelectedTab(payload == 'tasks' ? tasksTab : todayTab));
+      return;
+    }
+    if (payload.startsWith(personPayloadPrefix)) {
+      final id = payload.substring(personPayloadPrefix.length).trim();
+      if (id.isNotEmpty) pendingPersonId.value = id;
+      return;
+    }
     const prefix = NotificationService.voicePayloadPrefix;
     if (!payload.startsWith(prefix)) return;
     final id = payload.substring(prefix.length).trim();
@@ -165,6 +181,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     unawaited(_deviceSubscription?.cancel());
     unawaited(_sessionSubscription?.cancel());
     pendingChatSessionId.dispose();
+    pendingPersonId.dispose();
     pendingChatQuestion.dispose();
     super.dispose();
   }

@@ -104,11 +104,11 @@ void main() {
       'light',
     );
     expect(preferences.values[AppController.selectedTabKey], 1);
-    expect(() => controller.setSelectedTab(AppController.tabCount), throwsRangeError);
+    expect(() => controller.setSelectedTab(AppController.tabCount),
+        throwsRangeError);
   });
 
-  test('initialize is idempotent and subscribes to each stream once',
-      () async {
+  test('initialize is idempotent and subscribes to each stream once', () async {
     controller = await createController();
     await controller.initialize();
     var notifications = 0;
@@ -131,7 +131,8 @@ void main() {
 
       expect(controller.pendingChatSessionId.value, 'session-7');
       expect(controller.value.selectedTab, AppController.askTab);
-      expect(preferences.values[AppController.selectedTabKey], AppController.askTab);
+      expect(preferences.values[AppController.selectedTabKey],
+          AppController.askTab);
     });
 
     test('a voice payload without a session only selects Ask', () async {
@@ -144,7 +145,8 @@ void main() {
       expect(controller.value.selectedTab, AppController.askTab);
     });
 
-    test('requestAsk selects Ask with the question, ignoring blank ones', () async {
+    test('requestAsk selects Ask with the question, ignoring blank ones',
+        () async {
       controller = await createController();
 
       controller.requestAsk('   ');
@@ -156,6 +158,22 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(controller.pendingChatQuestion.value, 'What about Ada?');
       expect(controller.value.selectedTab, AppController.askTab);
+    });
+
+    test('a briefing opens the person, promises the Tasks, the recap Today',
+        () async {
+      controller = await createController();
+
+      controller.handleNotificationPayload('person:p-1');
+      expect(controller.pendingPersonId.value, 'p-1');
+
+      controller.handleNotificationPayload('tasks');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.value.selectedTab, AppController.tasksTab);
+
+      controller.handleNotificationPayload('today');
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.value.selectedTab, AppController.todayTab);
     });
 
     test('other payloads are ignored', () async {

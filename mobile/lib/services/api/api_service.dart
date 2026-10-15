@@ -12,6 +12,7 @@ import '../../models/chat_session.dart';
 import '../../models/memory.dart';
 import '../../models/person.dart';
 import '../../models/photo.dart';
+import '../../models/upcoming_notification.dart';
 import '../../models/voice.dart';
 import '../../models/segment.dart';
 import '../../models/task_item.dart';
@@ -91,6 +92,15 @@ abstract interface class TodayApi implements MemoryApi {
   Future<List<PendingAction>> listPendingActions();
   Future<ConfirmResult> confirmPendingAction(String id);
   Future<void> cancelPendingAction(String id);
+}
+
+/// The few notifications worth scheduling (briefings, promises, evening recap).
+abstract interface class NotificationsApi {
+  Future<List<UpcomingNotification>> getUpcomingNotifications({
+    required bool briefings,
+    required bool promises,
+    required bool evening,
+  });
 }
 
 /// Known voices: the user's own (recorded for it) and people named in transcripts.
@@ -260,7 +270,8 @@ class ApiService
         VoiceUpdatesApi,
         PhotoApi,
         WeeklySummaryApi,
-        VoiceApi {
+        VoiceApi,
+        NotificationsApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -790,6 +801,23 @@ class ApiService
           .where((digest) => digest.summary.isNotEmpty)
           .toList();
       return summaries.isEmpty ? null : summaries.first;
+    });
+  }
+
+  @override
+  Future<List<UpcomingNotification>> getUpcomingNotifications({
+    required bool briefings,
+    required bool promises,
+    required bool evening,
+  }) async {
+    final response = await _getJson(
+      '/api/notifications/upcoming?briefings=$briefings&promises=$promises&evening=$evening',
+    );
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['notifications'] as List<dynamic>;
+      return items
+          .map((item) => UpcomingNotification.fromJson(item as Map<String, dynamic>))
+          .toList();
     });
   }
 

@@ -80,6 +80,15 @@ final class TaskTile extends StatelessWidget {
                       decoration: task.done ? TextDecoration.lineThrough : null,
                     ),
                   ),
+                  if (task.isPromise)
+                    Text(
+                      task.promiseTo == null ? 'Promised' : 'Promised to ${task.promiseTo}',
+                      key: Key('task-promise-${task.id}'),
+                      style: textTheme.bodySmall?.copyWith(
+                        fontSize: 13,
+                        color: palette.blue,
+                      ),
+                    ),
                   if (due != null)
                     Text(
                       overdue ? 'Overdue · ${shortDate(due)}' : dayLabel(due, today),

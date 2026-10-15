@@ -1,0 +1,88 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../services/app/notification_scheduler.dart';
+import 'settings_components.dart';
+
+/// Few notifications, each one switchable: briefings and promises on, the evening off.
+final class NotificationSettingsScreen extends StatefulWidget {
+  const NotificationSettingsScreen({
+    required this.preferences,
+    this.onChanged,
+    super.key,
+  });
+
+  final SharedPreferences preferences;
+
+  /// Called after a change, to reschedule with the new choice.
+  final VoidCallback? onChanged;
+
+  @override
+  State<NotificationSettingsScreen> createState() => _NotificationSettingsScreenState();
+}
+
+final class _NotificationSettingsScreenState extends State<NotificationSettingsScreen> {
+  late final NotificationPreferences _choices = NotificationPreferences(widget.preferences);
+
+  Future<void> _set(String key, bool value) async {
+    await _choices.set(key, value);
+    if (!mounted) return;
+    setState(() {});
+    widget.onChanged?.call();
+  }
+
+  Widget _row({
+    required String key,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+  }) {
+    return SettingsRow(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      trailing: Switch(
+        key: Key(key),
+        value: value,
+        onChanged: (on) => _set(key, on),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsPageScaffold(
+      title: 'Notifications',
+      children: [
+        const SettingsSection('ONLY WHEN THERE IS SOMETHING TO DO'),
+        _row(
+          key: NotificationPreferences.briefingsKey,
+          icon: Icons.event_note_outlined,
+          title: 'Before a meeting',
+          subtitle: '10 minutes before, when you have tasks, a promise or a recent '
+              'conversation with someone there. Needs Google Calendar connected.',
+          value: _choices.briefings,
+        ),
+        _row(
+          key: NotificationPreferences.promisesKey,
+          icon: Icons.handshake_outlined,
+          title: 'Promises',
+          subtitle: 'The morning a promise you made is due.',
+          value: _choices.promises,
+        ),
+        _row(
+          key: NotificationPreferences.eveningKey,
+          icon: Icons.nightlight_outlined,
+          title: 'Evening recap',
+          subtitle: 'At 9 pm, after a day with conversations. The recap is on Today anyway.',
+          value: _choices.evening,
+        ),
+        const SettingsMessage(
+          'At most three a day, never between 10 pm and 8 am. They are scheduled on this '
+          'phone while Echo is in use.',
+        ),
+      ],
+    );
+  }
+}
