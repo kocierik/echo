@@ -224,8 +224,8 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ### Dalla roadmap (ancora aperti)
 - **Hardware reale:** calibrazione VAD (soglia fissa a 500, nessuna adattiva), misura consumi, range BLE.
-- **Memoria:** diarization vera (oggi solo energia), riassunti settimanali, raggruppamento conversazioni per argomento.
-- **Query:** filtri per persona ("cosa ha detto Marco?") e per tipo di entità nel RAG.
+- **Memoria:** diarization vera (oggi solo energia; impronte vocali in corso), raggruppamento conversazioni per argomento.
+- **Query:** filtro per tipo di entità nel RAG (la ricerca per persona c'è: prima le conversazioni in cui compare).
 - **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), storage offline su microSD. La lettura della batteria
   c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.

@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 12)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 13)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -344,7 +344,8 @@ def test_migration_011_adds_photos_and_photo_chunks_once(monkeypatch):
     assert {"status", "source", "question", "image", "description", "answer"} <= set(photos)
     assert state.tables["chunks"]["columns"]["photo_id"] is True  # nullable
 
-    again = _run(_migrations()[-1], state, monkeypatch)
+    migration_011 = next(m for m in _migrations() if m.revision == "011")
+    again = _run(migration_011, state, monkeypatch)
 
     assert again.calls == []
 

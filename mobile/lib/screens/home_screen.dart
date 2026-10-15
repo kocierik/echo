@@ -85,6 +85,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   bool _summaryLoading = true;
   String? _summaryError;
 
+  WeeklySummary? _week;
+
   List<PendingAction> _pending = const [];
   final Set<String> _pendingBusy = {};
 
@@ -142,7 +144,13 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   }
 
   Future<void> _refreshAll() async {
-    await Future.wait([_loadConversations(), _loadTasks(), _loadSummary(), _loadPending()]);
+    await Future.wait([
+      _loadConversations(),
+      _loadTasks(),
+      _loadSummary(),
+      _loadPending(),
+      _loadWeek(),
+    ]);
   }
 
   Future<void> _loadConversations({bool showLoading = false}) async {
@@ -212,6 +220,16 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         _summaryError = userMessage(error, 'Could not load the daily summary.');
       });
     }
+  }
+
+  /// The weekly summary is optional: no section without one (or on a failure).
+  Future<void> _loadWeek() async {
+    final api = _api;
+    if (api is! WeeklySummaryApi) return;
+    try {
+      final week = await (api as WeeklySummaryApi).getLatestWeeklySummary();
+      if (mounted) setState(() => _week = week);
+    } catch (_) {}
   }
 
   /// Pending actions are optional: a failure just shows none.
@@ -418,6 +436,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 onRetry: () => unawaited(_loadSummary()),
                 now: now,
               ),
+              if (_week != null) ...[
+                const SizedBox(height: 8),
+                WeeklySummarySection(week: _week!),
+              ],
             ],
           ),
         ),

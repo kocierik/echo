@@ -29,6 +29,7 @@ from app.models.transcription import Transcription
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.temporal import conversation_overlaps
+from app.services.weekly_digest import generate_weekly_digest, week_bounds, week_start_of
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import retry_with_backoff
 
@@ -231,6 +232,8 @@ async def run_digest_loop(shutdown_event: asyncio.Event | None = None):
             return
 
         await generate_digests_for_all_users(target_day)
+        if target_day.weekday() == 6:  # Sunday just ended: the week is complete
+            await generate_weekly_digests_for_all_users(week_start_of(target_day))
 
 
 async def generate_digests_for_all_users(target_date: date):
@@ -253,3 +256,27 @@ async def generate_digests_for_all_users(target_date: date):
                 await generate_digest_for_date(user_id, target_date, db)
         except Exception as e:
             logger.error(f"[Digest] Failed for user {user_id} on {target_date}: {e}")
+
+
+async def generate_weekly_digests_for_all_users(week_start: date):
+    """Weekly summaries for every user with conversations that week."""
+    start, end = week_bounds(week_start)
+    async with async_session() as db:
+        result = await db.execute(
+            select(Conversation.user_id).where(*conversation_overlaps(start, end)).distinct()
+        )
+        user_ids = [row[0] for row in result.all()]
+
+    for user_id in user_ids:
+        try:
+            async with async_session() as db:
+                await retry_with_backoff(
+                    generate_weekly_digest,
+                    db,
+                    user_id,
+                    week_start,
+                    get_llm_analysis_service(),
+                    operation_name=f"Weekly digest {week_start}",
+                )
+        except Exception as e:
+            logger.error(f"[Weekly] Failed for user {user_id}, week of {week_start}: {e}")

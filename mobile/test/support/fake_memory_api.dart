@@ -144,15 +144,23 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 }
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
-final class FakeTodayApi extends FakeMemoryApi implements TodayApi {
+final class FakeTodayApi extends FakeMemoryApi implements TodayApi, WeeklySummaryApi {
   FakeTodayApi({
     super.conversations,
     super.openTasks,
     this.digest,
+    this.week,
     List<PendingAction>? pending,
   }) : pending = pending ?? [];
 
   DailySummary? digest;
+
+  /// The weekly summary (not recorded in [calls]: optional for Today).
+  WeeklySummary? week;
+
+  @override
+  Future<WeeklySummary?> getLatestWeeklySummary() async => week;
+
   Object? digestError;
   List<PendingAction> pending;
   ConfirmResult confirmResult = const ConfirmResult(status: 'executed', message: 'Done.');

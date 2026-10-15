@@ -355,6 +355,35 @@ void main() {
       expect(find.text('Met Ada about Atlas.'), findsOneWidget);
     });
 
+    testWidgets('the weekly summary shows its week, expands to its highlights', (tester) async {
+      await pumpToday(
+        tester,
+        api: FakeTodayApi(
+          week: WeeklySummary(
+            weekStart: DateTime(2026, 10, 5),
+            summary: 'A week of planning the demo.',
+            highlights: const ['Demo moved to Friday'],
+            people: const ['Marco', 'Ada'],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Week of Oct 5'), findsOneWidget);
+      expect(find.text('With Marco, Ada'), findsOneWidget);
+      expect(find.text('• Demo moved to Friday'), findsNothing);
+      await tester.ensureVisible(find.byKey(const Key('weekly-summary-content')));
+      await tester.tap(find.byKey(const Key('weekly-summary-content')));
+      await tester.pumpAndSettle();
+      expect(find.text('• Demo moved to Friday'), findsOneWidget);
+    });
+
+    testWidgets('no weekly section before the first weekly summary', (tester) async {
+      await pumpToday(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('weekly-summary')), findsNothing);
+    });
+
     testWidgets('empty and error states', (tester) async {
       await pumpToday(tester);
       await tester.pumpAndSettle();
@@ -387,6 +416,12 @@ void main() {
             due: DateTime(2026, 10, 10), source: '[Tu] Una frase lunga da cui nasce il task.'),
       ],
       digest: DailySummary(date: DateTime(2026, 10, 13), summary: 'A long summary. ' * 20),
+      week: WeeklySummary(
+        weekStart: DateTime(2026, 10, 5),
+        summary: 'A long week. ' * 20,
+        highlights: const ['A long highlight that has to wrap on a small screen'],
+        people: const ['Alessandro', 'Margherita', 'Bartolomeo', 'Ada'],
+      ),
       pending: const [
         PendingAction(id: 'a1', summary: 'Send a long email to many people', status: 'pending',
             app: 'Google Calendar', source: 'voice'),
