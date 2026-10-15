@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/chat_message.dart';
@@ -9,6 +10,8 @@ import '../services/device/photo_service.dart';
 import '../services/chat/voice_input.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_composer.dart';
+import '../widgets/echo_nav_bar.dart';
+import '../widgets/screen_header.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import '../utils/chat_suggestions.dart';
@@ -24,10 +27,18 @@ final class ChatScreen extends StatefulWidget {
     this.askRequest,
     this.memoryApi,
     this.photoTaker,
+    this.headerAction,
+    this.dictation,
     super.key,
   });
 
   final ChatController? controller;
+
+  /// The device pill, in the top right.
+  final Widget? headerAction;
+
+  /// True while the navigation's Ask button is held: dictate into the question.
+  final ValueListenable<bool>? dictation;
 
   /// The wearable camera; no camera button without it.
   final PhotoTaker? photoTaker;
@@ -83,6 +94,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     _controller.addListener(_onControllerChanged);
     widget.openSessionRequest?.addListener(_onOpenSessionRequest);
     widget.askRequest?.addListener(_onAskRequest);
+    widget.dictation?.addListener(_onDictation);
     // A request made before this screen existed (cold start from a tap)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onOpenSessionRequest();
@@ -104,6 +116,15 @@ final class _ChatScreenState extends State<ChatScreen> {
       widget.askRequest?.addListener(_onAskRequest);
       _onAskRequest();
     }
+  }
+
+  bool _dictating = false;
+
+  void _onDictation() {
+    final holding = widget.dictation?.value ?? false;
+    if (!mounted || holding == _dictating) return;
+    _dictating = holding;
+    unawaited(holding ? _controller.startVoice() : _controller.stopVoice());
   }
 
   void _onAskRequest() {
@@ -221,6 +242,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     _controller.removeListener(_onControllerChanged);
     widget.openSessionRequest?.removeListener(_onOpenSessionRequest);
     widget.askRequest?.removeListener(_onAskRequest);
+    widget.dictation?.removeListener(_onDictation);
     _textController.dispose();
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();
@@ -240,14 +262,30 @@ final class _ChatScreenState extends State<ChatScreen> {
         child: AnimatedPadding(
           duration: const Duration(milliseconds: 160),
           curve: Curves.easeOut,
-          padding: EdgeInsets.only(bottom: keyboardInset),
+          // Above the keyboard, or above the navigation bar
+          padding: EdgeInsets.only(
+            bottom: keyboardInset > 0 ? keyboardInset : EchoShellInsets.bottomOf(context),
+          ),
           child: Column(
             children: [
-              _Header(
-                onHistory: _openHistory,
-                onNewChat: _controller.newChat,
+              ScreenHeader(
+                title: 'Ask',
+                actions: [
+                  HeaderIconButton(
+                    key: const Key('chat-history'),
+                    icon: Icons.history_rounded,
+                    tooltip: 'Chat history',
+                    onPressed: () => unawaited(_openHistory()),
+                  ),
+                  HeaderIconButton(
+                    key: const Key('chat-new'),
+                    icon: Icons.add_rounded,
+                    tooltip: 'New chat',
+                    onPressed: _controller.newChat,
+                  ),
+                  if (widget.headerAction != null) widget.headerAction!,
+                ],
               ),
-              Divider(height: 1, color: palette.border),
               Expanded(child: _messageArea(state, palette)),
               Divider(height: 1, color: palette.border),
               ChatComposer(
@@ -396,45 +434,6 @@ final class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
-    );
-  }
-}
-
-final class _Header extends StatelessWidget {
-  const _Header({required this.onHistory, required this.onNewChat});
-
-  final VoidCallback onHistory;
-  final VoidCallback onNewChat;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        children: [
-          const SizedBox(width: 4),
-          Text('Ask', style: Theme.of(context).textTheme.titleLarge),
-          const Spacer(),
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton(
-              key: const Key('chat-history'),
-              onPressed: onHistory,
-              tooltip: 'Chat history',
-              icon: const Icon(Icons.history_rounded),
-            ),
-          ),
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton(
-              key: const Key('chat-new'),
-              onPressed: onNewChat,
-              tooltip: 'New chat',
-              icon: const Icon(Icons.add_rounded),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

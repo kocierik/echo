@@ -1,32 +1,24 @@
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/theme/app_theme.dart';
-import 'package:echo_app/widgets/device_status_strip.dart';
+import 'package:echo_app/widgets/device_pill.dart';
 import 'package:echo_app/widgets/echo_app_shell.dart';
-import 'package:echo_app/widgets/echo_bottom_navigation.dart';
+import 'package:echo_app/widgets/echo_nav_bar.dart';
+import 'package:echo_app/widgets/screen_header.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('EchoBottomNavigation', () {
-    testWidgets('shows stable labeled destinations and selected semantics',
+  group('EchoNavBar', () {
+    testWidgets('shows Today, Memories and the Ask button with semantics',
         (tester) async {
       await tester.pumpWidget(_themed(
-        EchoBottomNavigation(
-          selectedIndex: 1,
-          onDestinationSelected: (_) {},
-        ),
+        EchoNavBar(selectedIndex: 2, onSelect: (_) {}, onAskHold: (_) {}),
       ));
 
       expect(find.text('Today'), findsOneWidget);
       expect(find.text('Memories'), findsOneWidget);
-      expect(find.text('Tasks'), findsOneWidget);
-      expect(find.text('Ask'), findsOneWidget);
-      expect(find.byIcon(Icons.home_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.forum_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
       expect(
-        tester.getSemantics(find.byKey(const Key('echo-nav-1'))),
+        tester.getSemantics(find.byKey(const Key('echo-nav-2'))),
         matchesSemantics(
           label: 'Memories',
           isButton: true,
@@ -35,28 +27,59 @@ void main() {
           hasTapAction: true,
         ),
       );
+      expect(
+        tester.getSemantics(find.byKey(const Key('echo-nav-1'))),
+        matchesSemantics(
+          label: 'Ask Echo',
+          hint: 'Hold to dictate',
+          isButton: true,
+          hasSelectedState: true,
+          hasTapAction: true,
+        ),
+      );
     });
 
-    testWidgets('reports destination changes without shifting tracks',
-        (tester) async {
-      int? selected;
+    testWidgets('reports taps on every destination', (tester) async {
+      final selected = <int>[];
       await tester.pumpWidget(_themed(
-        EchoBottomNavigation(
+        EchoNavBar(selectedIndex: 0, onSelect: selected.add, onAskHold: (_) {}),
+      ));
+
+      await tester.tap(find.byKey(const Key('echo-nav-2')));
+      await tester.tap(find.byKey(const Key('echo-ask-button')));
+      await tester.tap(find.byKey(const Key('echo-nav-0')));
+      expect(selected, [2, 1, 0]);
+      for (final index in [0, 1, 2]) {
+        final size = tester.getSize(find.byKey(Key('echo-nav-$index')));
+        expect(size.width, greaterThanOrEqualTo(44));
+        expect(size.height, greaterThanOrEqualTo(44));
+      }
+    });
+
+    testWidgets('a held Ask button dictates until let go, without a tap',
+        (tester) async {
+      final holds = <bool>[];
+      var taps = 0;
+      await tester.pumpWidget(_themed(
+        EchoNavBar(
           selectedIndex: 0,
-          onDestinationSelected: (index) => selected = index,
+          onSelect: (_) => taps++,
+          onAskHold: holds.add,
         ),
       ));
 
-      final widths = List.generate(
-        4,
-        (index) => tester.getSize(find.byKey(Key('echo-nav-$index'))).width,
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const Key('echo-ask-button'))),
       );
-      expect(widths[0], widths[1]);
-      expect(widths[1], widths[2]);
-      expect(widths[2], widths[3]);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(holds, isEmpty);
+      await tester.pump(AskButton.holdAfter);
+      expect(holds, [true]);
 
-      await tester.tap(find.byKey(const Key('echo-nav-3')));
-      expect(selected, 3);
+      await gesture.up();
+      await tester.pump();
+      expect(holds, [true, false]);
+      expect(taps, 0);
     });
   });
 
@@ -78,7 +101,7 @@ void main() {
       expect(stateBeforeSwitch!.count, 1);
       expect(stateBeforeSwitch.scrollOffset, greaterThan(0));
 
-      await tester.tap(find.byKey(const Key('echo-nav-1')));
+      await tester.tap(find.byKey(const Key('echo-nav-2')));
       await tester.pump();
       await tester.tap(find.byKey(const Key('echo-nav-0')));
       await tester.pump();
@@ -88,153 +111,36 @@ void main() {
       expect(retainedKey.currentState!.scrollOffset, greaterThan(0));
     });
 
-    testWidgets('exposes the settings callback through a 44 point control',
-        (tester) async {
-      var settingsTaps = 0;
+    testWidgets(
+        'tells the tabs how much the bar covers, and hides it for the '
+        'keyboard', (tester) async {
+      double? covered;
+      Widget shell() => EchoAppShell(
+            selectedIndex: 0,
+            onDestinationSelected: (_) {},
+            onAskHold: (_) {},
+            children: [
+              Builder(builder: (context) {
+                covered = EchoShellInsets.bottomOf(context);
+                return const SizedBox();
+              }),
+              const SizedBox(),
+              const SizedBox(),
+            ],
+          );
+
+      await tester.pumpWidget(_themed(shell()));
+      expect(find.byType(EchoNavBar), findsOneWidget);
+      expect(covered, greaterThan(EchoNavBar.barHeight));
+
       await tester.pumpWidget(_themed(
-        EchoAppShell(
-          selectedIndex: 0,
-          status: _status(DeviceConnectionState.listening),
-          onDestinationSelected: (_) {},
-          onSettingsTap: () => settingsTaps++,
-          children: const [
-            SizedBox(),
-            SizedBox(),
-            SizedBox(),
-            SizedBox(),
-          ],
+        MediaQuery(
+          data: const MediaQueryData(viewInsets: EdgeInsets.only(bottom: 300)),
+          child: shell(),
         ),
       ));
-
-      final settings = find.byTooltip('Settings');
-      expect(settings, findsOneWidget);
-      expect(tester.getSize(settings).width, greaterThanOrEqualTo(44));
-      expect(tester.getSize(settings).height, greaterThanOrEqualTo(44));
-      await tester.tap(settings);
-      expect(settingsTaps, 1);
-    });
-
-    testWidgets('keeps 56 point status and 64 point safe navigation geometry',
-        (tester) async {
-      // At ratio 1 the 20 pixel inset is 20 points
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      tester.view.padding = const FakeViewPadding(bottom: 20);
-      addTearDown(tester.view.resetPadding);
-      await tester.pumpWidget(_themed(
-        EchoAppShell(
-          selectedIndex: 0,
-          status: _status(DeviceConnectionState.listening),
-          onDestinationSelected: (_) {},
-          onSettingsTap: () {},
-          children: const [
-            SizedBox(),
-            SizedBox(),
-            SizedBox(),
-            SizedBox(),
-          ],
-        ),
-      ));
-
-      expect(tester.getSize(find.byType(DeviceStatusStrip)).height, 56);
-      expect(
-        tester.getSize(find.byType(EchoBottomNavigation)).height,
-        84,
-      );
-      for (var index = 0; index < 4; index++) {
-        expect(
-          tester.getSize(find.byKey(Key('echo-nav-$index'))).height,
-          greaterThanOrEqualTo(44),
-        );
-      }
-    });
-  });
-
-  group('DeviceStatusStrip', () {
-    final cases = <DeviceConnectionState, String>{
-      DeviceConnectionState.unpaired: 'Set up wearable',
-      DeviceConnectionState.bluetoothOff: 'Bluetooth is off',
-      DeviceConnectionState.scanning: 'Finding Echo',
-      DeviceConnectionState.connecting: 'Connecting',
-      DeviceConnectionState.bonding: 'Securing connection',
-      DeviceConnectionState.listening: 'Listening',
-      DeviceConnectionState.muted: 'Muted',
-      DeviceConnectionState.reconnecting: 'Reconnecting',
-      DeviceConnectionState.offline: 'Echo offline',
-      DeviceConnectionState.error: 'Pairing failed',
-    };
-
-    for (final entry in cases.entries) {
-      testWidgets('${entry.key.name} has approved copy and live semantics',
-          (tester) async {
-        await tester.pumpWidget(_themed(
-          DeviceStatusStrip(
-            status: DeviceStatus(
-              connectionState: entry.key,
-              error: entry.key == DeviceConnectionState.error
-                  ? 'Pairing failed'
-                  : null,
-            ),
-          ),
-        ));
-
-        expect(find.text(entry.value), findsOneWidget);
-        expect(
-          tester.getSemantics(
-            find.byKey(const Key('device-status-semantics')),
-          ),
-          matchesSemantics(
-            label: 'Device status: ${entry.value}',
-            isLiveRegion: true,
-          ),
-        );
-      });
-    }
-
-    testWidgets('uses an error fallback and distinct listening and mute cues',
-        (tester) async {
-      await tester.pumpWidget(_themed(
-        DeviceStatusStrip(status: _status(DeviceConnectionState.error)),
-      ));
-      expect(find.text('Connection error'), findsOneWidget);
-      expect(find.byIcon(Icons.error_outline_rounded), findsOneWidget);
-
-      await tester.pumpWidget(_themed(
-        DeviceStatusStrip(status: _status(DeviceConnectionState.listening)),
-      ));
-      expect(find.byIcon(Icons.hearing_rounded), findsOneWidget);
-      final listeningColor = _statusText(tester, 'Listening').style!.color;
-
-      await tester.pumpWidget(_themed(
-        DeviceStatusStrip(status: _status(DeviceConnectionState.muted)),
-      ));
-      expect(find.byIcon(Icons.privacy_tip_outlined), findsOneWidget);
-      final mutedColor = _statusText(tester, 'Muted').style!.color;
-      expect(listeningColor, EchoPalette.dark.green);
-      expect(mutedColor, EchoPalette.dark.red);
-      expect(mutedColor, isNot(listeningColor));
-    });
-
-    testWidgets('only renders a tappable chevron when callback is provided',
-        (tester) async {
-      var taps = 0;
-      await tester.pumpWidget(_themed(
-        DeviceStatusStrip(status: _status(DeviceConnectionState.offline)),
-      ));
-      expect(find.byIcon(Icons.chevron_right_rounded), findsNothing);
-      expect(find.byKey(const Key('device-status-action')), findsNothing);
-
-      await tester.pumpWidget(_themed(
-        DeviceStatusStrip(
-          status: _status(DeviceConnectionState.offline),
-          onTap: () => taps++,
-        ),
-      ));
-      expect(find.byIcon(Icons.chevron_right_rounded), findsOneWidget);
-      final action = find.byKey(const Key('device-status-action'));
-      expect(tester.getSize(action).height, greaterThanOrEqualTo(44));
-      await tester.tap(action);
-      expect(taps, 1);
+      expect(find.byType(EchoNavBar), findsNothing);
+      expect(covered, 0);
     });
 
     testWidgets('does not overflow at 320 width and 1.3 text scale',
@@ -244,52 +150,142 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
-      for (final state in DeviceConnectionState.values) {
-        await tester.pumpWidget(_themed(
-          MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(1.3),
-            ),
-            child: DeviceStatusStrip(
-              status: DeviceStatus(
-                connectionState: state,
-                error: state == DeviceConnectionState.error
-                    ? 'A very long connection error that must stay contained'
-                    : null,
-              ),
-              onTap: () {},
-            ),
-          ),
-        ));
-        expect(tester.takeException(), isNull, reason: state.name);
-      }
-
       await tester.pumpWidget(_themed(
         MediaQuery(
-          data: const MediaQueryData(
-            textScaler: TextScaler.linear(1.3),
-          ),
+          data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
           child: EchoAppShell(
-            selectedIndex: 0,
-            status: const DeviceStatus(
-              connectionState: DeviceConnectionState.bonding,
-            ),
-            onStatusTap: () {},
+            selectedIndex: 1,
+            dictating: true,
             onDestinationSelected: (_) {},
-            onSettingsTap: () {},
-            children: const [
-              SizedBox(),
-              SizedBox(),
-              SizedBox(),
-              SizedBox(),
-            ],
+            onAskHold: (_) {},
+            children: const [SizedBox(), SizedBox(), SizedBox()],
           ),
         ),
       ));
       expect(tester.takeException(), isNull);
     });
   });
+
+  group('DevicePill', () {
+    final cases = <DeviceConnectionState, String>{
+      DeviceConnectionState.unpaired: 'Set up Echo',
+      DeviceConnectionState.bluetoothOff: 'Bluetooth off',
+      DeviceConnectionState.scanning: 'Connecting',
+      DeviceConnectionState.connecting: 'Connecting',
+      DeviceConnectionState.bonding: 'Connecting',
+      DeviceConnectionState.listening: 'On',
+      DeviceConnectionState.muted: 'Muted',
+      DeviceConnectionState.reconnecting: 'Connecting',
+      DeviceConnectionState.offline: 'Offline',
+      DeviceConnectionState.error: 'Offline',
+    };
+
+    for (final entry in cases.entries) {
+      testWidgets('${entry.key.name} reads "${entry.value}"', (tester) async {
+        await tester.pumpWidget(_themed(
+          DevicePill(status: _status(entry.key), onTap: () {}),
+        ));
+        expect(find.text(entry.value), findsOneWidget);
+        expect(
+          tester.getSemantics(find.byKey(const Key('device-pill'))),
+          matchesSemantics(
+            isButton: true,
+            isLiveRegion: true,
+            hasTapAction: true,
+            label: _spoken[entry.key],
+            hint: 'Opens settings',
+          ),
+        );
+      });
+    }
+
+    testWidgets('shows the battery while listening', (tester) async {
+      await tester.pumpWidget(_themed(
+        const DevicePill(
+          status: DeviceStatus(
+            connectionState: DeviceConnectionState.listening,
+            batteryPercent: 82,
+          ),
+        ),
+      ));
+      expect(find.text('82%'), findsOneWidget);
+    });
+
+    testWidgets('a tap opens settings; a long press mutes only when it can',
+        (tester) async {
+      var taps = 0;
+      var holds = 0;
+      Widget pill(DeviceConnectionState state) => _themed(
+            DevicePill(
+              status: _status(state),
+              onTap: () => taps++,
+              onLongPress: () => holds++,
+            ),
+          );
+
+      await tester.pumpWidget(pill(DeviceConnectionState.listening));
+      final pillFinder = find.byKey(const Key('device-pill'));
+      expect(tester.getSize(pillFinder).height, greaterThanOrEqualTo(44));
+      await tester.tap(pillFinder);
+      await tester.longPress(pillFinder);
+      expect((taps, holds), (1, 1));
+
+      await tester.pumpWidget(pill(DeviceConnectionState.muted));
+      await tester.longPress(pillFinder);
+      expect(holds, 2);
+
+      await tester.pumpWidget(pill(DeviceConnectionState.offline));
+      await tester.longPress(pillFinder);
+      expect(holds, 2);
+    });
+
+    testWidgets('fits a header at 320 width and 1.3 text scale',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      for (final state in DeviceConnectionState.values) {
+        await tester.pumpWidget(_themed(
+          MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+            child: ScreenHeader(
+              title: 'Ask',
+              actions: [
+                HeaderIconButton(
+                  icon: Icons.history_rounded,
+                  tooltip: 'Chat history',
+                  onPressed: () {},
+                ),
+                HeaderIconButton(
+                  icon: Icons.add_rounded,
+                  tooltip: 'New chat',
+                  onPressed: () {},
+                ),
+                DevicePill(status: _status(state), onTap: () {}),
+              ],
+            ),
+          ),
+        ));
+        expect(tester.takeException(), isNull, reason: state.name);
+      }
+    });
+  });
 }
+
+const _spoken = <DeviceConnectionState, String>{
+  DeviceConnectionState.unpaired: 'No Echo paired',
+  DeviceConnectionState.bluetoothOff: 'Bluetooth is off',
+  DeviceConnectionState.scanning: 'Echo is connecting',
+  DeviceConnectionState.connecting: 'Echo is connecting',
+  DeviceConnectionState.bonding: 'Echo is connecting',
+  DeviceConnectionState.listening: 'Echo is listening',
+  DeviceConnectionState.muted: 'Echo is muted',
+  DeviceConnectionState.reconnecting: 'Echo is connecting',
+  DeviceConnectionState.offline: 'Echo is offline',
+  DeviceConnectionState.error: 'Echo is offline',
+};
 
 Widget _themed(Widget child) {
   return MaterialApp(
@@ -302,10 +298,6 @@ Widget _themed(Widget child) {
 
 DeviceStatus _status(DeviceConnectionState state) {
   return DeviceStatus(connectionState: state);
-}
-
-Text _statusText(WidgetTester tester, String copy) {
-  return tester.widget<Text>(find.text(copy));
 }
 
 final class _ShellHost extends StatefulWidget {
@@ -324,16 +316,14 @@ final class _ShellHostState extends State<_ShellHost> {
   Widget build(BuildContext context) {
     return EchoAppShell(
       selectedIndex: selectedIndex,
-      status: _status(DeviceConnectionState.listening),
       onDestinationSelected: (index) {
         setState(() => selectedIndex = index);
       },
-      onSettingsTap: () {},
+      onAskHold: (_) {},
       children: [
         _RetainedTab(key: widget.retainedKey),
         const ColoredBox(color: Colors.red),
         const ColoredBox(color: Colors.green),
-        const ColoredBox(color: Colors.blue),
       ],
     );
   }

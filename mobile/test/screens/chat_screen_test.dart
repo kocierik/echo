@@ -32,6 +32,34 @@ void main() {
     expect(controller.state.composerText, 'still alive');
   });
 
+  testWidgets('holding the Ask button dictates into the question',
+      (tester) async {
+    final voice = _FakeVoiceInput();
+    final controller = ChatController(api: _FakeChatApi(), voiceInput: voice);
+    addTearDown(controller.dispose);
+    final dictation = ValueNotifier(false);
+    addTearDown(dictation.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: ChatScreen(controller: controller, dictation: dictation),
+    ));
+
+    dictation.value = true;
+    await tester.pump();
+    expect(voice.starts, 1);
+    voice.onPartial!('what did Ada say');
+    await tester.pump();
+    expect(controller.state.composerText, 'what did Ada say');
+
+    dictation.value = false;
+    await tester.pump();
+    expect(voice.stops, 1);
+    // Dictation fills the question; it never sends it by itself
+    expect(controller.state.listening, isFalse);
+    expect(controller.state.composerText, 'what did Ada say');
+  });
+
   testWidgets('an open-session request loads that session and is cleared',
       (tester) async {
     final api = _FakeChatApi();
@@ -340,6 +368,10 @@ final class _FakeChatApi implements ChatApi {
 }
 
 final class _FakeVoiceInput implements VoiceInput {
+  int starts = 0;
+  int stops = 0;
+  ValueChanged<String>? onPartial;
+
   @override
   Future<bool> available() async => true;
 
@@ -350,10 +382,13 @@ final class _FakeVoiceInput implements VoiceInput {
   Future<void> start({
     required ValueChanged<String> onPartial,
     required ValueChanged<String> onFinal,
-  }) async {}
+  }) async {
+    starts++;
+    this.onPartial = onPartial;
+  }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async => stops++;
 
   @override
   Future<void> cancel() async {}

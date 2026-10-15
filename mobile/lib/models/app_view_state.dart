@@ -11,8 +11,8 @@ final class AppViewState {
     this.selectedTab = 0,
   }) : assert(selectedTab >= 0 && selectedTab < tabCount);
 
-  /// Today, Memories, Tasks, Ask.
-  static const tabCount = 4;
+  /// Today, Ask (in the middle), Memories. Tasks open from Today.
+  static const tabCount = 3;
 
   final SessionState session;
   final DeviceStatus device;

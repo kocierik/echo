@@ -26,13 +26,12 @@ final class AppController extends ValueNotifier<AppViewState> {
         ));
 
   static const themePreferenceKey = 'echo_theme_mode';
-  // v2: four tabs since Memories and Tasks replaced Transcripts (an old index 2
-  // meant Ask and would now open Tasks)
-  static const selectedTabKey = 'echo_selected_tab_v2';
+  // v3: Today, Ask, Memories (Tasks became a page of Today); an older index
+  // would open the wrong tab
+  static const selectedTabKey = 'echo_selected_tab_v3';
   static const todayTab = 0;
-  static const memoriesTab = 1;
-  static const tasksTab = 2;
-  static const askTab = 3;
+  static const askTab = 1;
+  static const memoriesTab = 2;
   static const tabCount = AppViewState.tabCount;
 
   /// A chat session the Ask tab should open (e.g. from a notification tap).
@@ -46,6 +45,13 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// A person whose page should open (a briefing notification); set back to null
   /// once opened.
   final ValueNotifier<String?> pendingPersonId = ValueNotifier(null);
+
+  /// Counts the requests to open the Tasks page (a promises notification); the
+  /// shell opens it on each change.
+  final ValueNotifier<int> openTasksRequests = ValueNotifier(0);
+
+  /// True while the Ask button is held: Ask dictates into its question.
+  final ValueNotifier<bool> askDictation = ValueNotifier(false);
 
   static const personPayloadPrefix = 'person:';
 
@@ -122,13 +128,31 @@ final class AppController extends ValueNotifier<AppViewState> {
     unawaited(setSelectedTab(askTab));
   }
 
+  /// Selects Today and opens its Tasks page.
+  void requestOpenTasks() {
+    if (_disposed) return;
+    unawaited(setSelectedTab(todayTab));
+    openTasksRequests.value++;
+  }
+
+  /// The Ask button: held, Ask opens and dictates until it is let go.
+  void setAskDictation(bool holding) {
+    if (_disposed) return;
+    if (holding) unawaited(setSelectedTab(askTab));
+    askDictation.value = holding;
+  }
+
   /// Routes a tapped notification: "voice:<sessionId>" opens that session in
   /// Ask ("voice:" alone only selects Ask), "person:<id>" that person's page,
-  /// "tasks" and "today" their tab; other payloads are ignored.
+  /// "tasks" the Tasks page, "today" Today; other payloads are ignored.
   void handleNotificationPayload(String payload) {
     if (_disposed) return;
-    if (payload == 'tasks' || payload == 'today') {
-      unawaited(setSelectedTab(payload == 'tasks' ? tasksTab : todayTab));
+    if (payload == 'tasks') {
+      requestOpenTasks();
+      return;
+    }
+    if (payload == 'today') {
+      unawaited(setSelectedTab(todayTab));
       return;
     }
     if (payload.startsWith(personPayloadPrefix)) {
@@ -183,6 +207,8 @@ final class AppController extends ValueNotifier<AppViewState> {
     pendingChatSessionId.dispose();
     pendingPersonId.dispose();
     pendingChatQuestion.dispose();
+    openTasksRequests.dispose();
+    askDictation.dispose();
     super.dispose();
   }
 }
