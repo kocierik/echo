@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
+import '../widgets/panel.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
@@ -88,7 +89,11 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(appBar: AppBar(), body: _body());
+    return Scaffold(
+      backgroundColor: EchoPalette.of(context).background,
+      appBar: AppBar(),
+      body: _body(),
+    );
   }
 
   Widget _body() {
@@ -122,7 +127,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
           _Header(person: person, now: now),
           if (ask != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
               child: OutlinedButton.icon(
                 key: const Key('person-ask'),
                 onPressed: () => askFromAnywhere(
@@ -135,43 +140,49 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
                 label: Text('Ask about ${person.name}'),
               ),
             ),
-          if (tasks.isNotEmpty) ...[
-            _Section(title: 'Open tasks', count: tasks.length),
-            for (final task in tasks)
-              TaskTile(
-                task: task,
-                now: now,
-                busy: isTaskBusy(task),
-                onToggle: () => unawaited(toggleTask(task)),
-                onDismiss: () => unawaited(dismissTask(task)),
-                onOpenConversation: task.conversationId == null
-                    ? null
-                    : () => unawaited(_openConversation(task.conversationId!)),
-              ),
-          ],
-          if (detail.events.isNotEmpty) ...[
-            _Section(title: 'Events', count: detail.events.length),
-            for (final event in detail.events)
-              MemoryEntityRow(
-                entity: event,
-                now: now,
-                onAddToCalendar: ask == null
-                    ? null
-                    : () => askFromAnywhere(context, ask, calendarRequest(event)),
-                onTap: event.conversationId == null
-                    ? null
-                    : () => unawaited(_openConversation(event.conversationId!)),
-              ),
-          ],
-          if (detail.conversations.isNotEmpty) ...[
-            _Section(title: 'Conversations', count: detail.conversations.length),
-            for (final conversation in detail.conversations)
-              ConversationCardTile(
-                conversation: conversation,
-                dayFrom: now,
-                onTap: () => unawaited(_openConversation(conversation.id)),
-              ),
-          ],
+          if (tasks.isNotEmpty)
+            PanelSection(title: 'Open tasks', trailing: '${tasks.length}', children: [
+              for (final task in tasks)
+                TaskTile(
+                  task: task,
+                  now: now,
+                  busy: isTaskBusy(task),
+                  padding: const EdgeInsets.only(left: 6, right: 4),
+                  onToggle: () => unawaited(toggleTask(task)),
+                  onDismiss: () => unawaited(dismissTask(task)),
+                  onOpenConversation: task.conversationId == null
+                      ? null
+                      : () => unawaited(_openConversation(task.conversationId!)),
+                ),
+            ]),
+          if (detail.events.isNotEmpty)
+            PanelSection(title: 'Events', trailing: '${detail.events.length}', children: [
+              for (final event in detail.events)
+                MemoryEntityRow(
+                  entity: event,
+                  now: now,
+                  onAddToCalendar: ask == null
+                      ? null
+                      : () => askFromAnywhere(context, ask, calendarRequest(event)),
+                  onTap: event.conversationId == null
+                      ? null
+                      : () => unawaited(_openConversation(event.conversationId!)),
+                ),
+            ]),
+          if (detail.conversations.isNotEmpty)
+            PanelSection(
+              title: 'Conversations',
+              trailing: '${detail.conversations.length}',
+              children: [
+                for (final conversation in detail.conversations)
+                  ConversationCardTile(
+                    conversation: conversation,
+                    dayFrom: now,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    onTap: () => unawaited(_openConversation(conversation.id)),
+                  ),
+              ],
+            ),
           if (nothingLinked)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -215,7 +226,7 @@ final class _Header extends StatelessWidget {
           const SizedBox(height: 12),
           Semantics(
             header: true,
-            child: Text(person.name, style: textTheme.headlineMedium),
+            child: Text(person.name, style: textTheme.displayLarge?.copyWith(fontSize: 28)),
           ),
           if (subtitle.isNotEmpty) ...[
             const SizedBox(height: 2),
@@ -227,21 +238,6 @@ final class _Header extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-final class _Section extends StatelessWidget {
-  const _Section({required this.title, required this.count});
-
-  final String title;
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: SectionHeader(title: title, trailing: '$count'),
     );
   }
 }

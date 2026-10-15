@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
+import '../widgets/panel.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
 import '../widgets/photo_thumbnail.dart';
@@ -214,6 +215,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   Widget build(BuildContext context) {
     final detail = _detail;
     return Scaffold(
+      backgroundColor: EchoPalette.of(context).background,
       appBar: AppBar(
         actions: [
           if (detail != null)
@@ -273,7 +275,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           _Header(card: detail.card, people: _people(detail), now: widget.clock()),
           if (widget.onAsk case final ask?)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: OutlinedButton.icon(
                 key: const Key('conversation-ask'),
                 onPressed: () => askFromAnywhere(
@@ -288,7 +290,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
               ),
             ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: SegmentedButton<_DetailTab>(
               key: const Key('conversation-tabs'),
               showSelectedIcon: false,
@@ -326,8 +328,9 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     final now = widget.clock();
     return [
       Padding(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-        child: Text(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Panel(
+          child: Text(
           card.summary ??
               (card.isOpen
                   ? 'Echo is still listening. The summary is written a few minutes after '
@@ -338,40 +341,42 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           key: const Key('conversation-summary'),
           style: card.summary == null
               ? textTheme.bodyMedium?.copyWith(color: EchoPalette.of(context).text2)
-              : textTheme.bodyLarge,
+              : textTheme.bodyLarge?.copyWith(height: 1.5),
+          ),
         ),
       ),
-      if (detail.photos.isNotEmpty && _photoLoader != null) ...[
-        const _Section(title: 'Photos'),
-        for (final photo in detail.photos)
-          _PhotoTile(photo: photo, loadSource: _photoLoader!),
-      ],
-      if (tasks.isNotEmpty) ...[
-        const _Section(title: 'Tasks'),
-        for (final task in tasks)
-          TaskTile(
-            task: task,
-            busy: isTaskBusy(task),
-            now: now,
-            onToggle: () => unawaited(toggleTask(task)),
-            onDismiss: () => unawaited(dismissTask(task)),
-          ),
-      ],
-      if (events.isNotEmpty) ...[
-        const _Section(title: 'Events'),
-        for (final event in events)
-          MemoryEntityRow(
-            entity: event,
-            now: now,
-            onAddToCalendar: widget.onAsk == null
-                ? null
-                : () => askFromAnywhere(context, widget.onAsk!, calendarRequest(event)),
-          ),
-      ],
-      if (notes.isNotEmpty) ...[
-        const _Section(title: 'Ideas & notes'),
-        for (final note in notes) MemoryEntityRow(entity: note, now: now),
-      ],
+      if (detail.photos.isNotEmpty && _photoLoader != null)
+        PanelSection(title: 'Photos', children: [
+          for (final photo in detail.photos)
+            _PhotoTile(photo: photo, loadSource: _photoLoader!),
+        ]),
+      if (tasks.isNotEmpty)
+        PanelSection(title: 'Tasks', children: [
+          for (final task in tasks)
+            TaskTile(
+              task: task,
+              busy: isTaskBusy(task),
+              now: now,
+              padding: const EdgeInsets.only(left: 6, right: 4),
+              onToggle: () => unawaited(toggleTask(task)),
+              onDismiss: () => unawaited(dismissTask(task)),
+            ),
+        ]),
+      if (events.isNotEmpty)
+        PanelSection(title: 'Events', children: [
+          for (final event in events)
+            MemoryEntityRow(
+              entity: event,
+              now: now,
+              onAddToCalendar: widget.onAsk == null
+                  ? null
+                  : () => askFromAnywhere(context, widget.onAsk!, calendarRequest(event)),
+            ),
+        ]),
+      if (notes.isNotEmpty)
+        PanelSection(title: 'Ideas & notes', children: [
+          for (final note in notes) MemoryEntityRow(entity: note, now: now),
+        ]),
     ];
   }
 
@@ -451,7 +456,7 @@ final class _Header extends StatelessWidget {
           const SizedBox(height: 12),
           Semantics(
             header: true,
-            child: Text(conversationTitle(card), style: textTheme.headlineMedium),
+            child: Text(conversationTitle(card), style: textTheme.displayLarge?.copyWith(fontSize: 28)),
           ),
           const SizedBox(height: 4),
           Text(
@@ -463,7 +468,7 @@ final class _Header extends StatelessWidget {
             Text(
               'Live · still listening',
               style: textTheme.bodySmall?.copyWith(
-                color: palette.green,
+                color: palette.liveText,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -479,7 +484,8 @@ final class _Header extends StatelessWidget {
                     avatar: Icon(Icons.person_outline_rounded, size: 16, color: palette.text2),
                     label: Text(name),
                     visualDensity: VisualDensity.compact,
-                    side: BorderSide(color: palette.border),
+                    side: BorderSide.none,
+                    shape: const StadiumBorder(),
                     backgroundColor: palette.surface,
                   ),
               ],
@@ -487,20 +493,6 @@ final class _Header extends StatelessWidget {
           ],
         ],
       ),
-    );
-  }
-}
-
-final class _Section extends StatelessWidget {
-  const _Section({required this.title});
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: SectionHeader(title: title),
     );
   }
 }
