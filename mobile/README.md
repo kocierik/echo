@@ -66,6 +66,10 @@ Settings → Device → **Pair Echo**.
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
   (shown the next time the app wakes up).
+- **Live Activity** (iOS 16.1+, `ios/EchoActivity` widget extension): listening, muted or
+  offline, battery and minutes waiting to sync, on the lock screen and in the Dynamic Island.
+  Updated locally by the app over the `echo/live_activity` channel (no push); off in
+  Settings → Notifications.
 
 ## Architecture
 

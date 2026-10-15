@@ -12,11 +12,15 @@ final class NotificationPreferences {
   static const promisesKey = 'notify_promises';
   static const eveningKey = 'notify_evening';
 
+  /// The wearable on the Lock Screen and in the Dynamic Island.
+  static const liveActivityKey = 'live_activity';
+
   final SharedPreferences _preferences;
 
   bool get briefings => _preferences.getBool(briefingsKey) ?? true;
   bool get promises => _preferences.getBool(promisesKey) ?? true;
   bool get evening => _preferences.getBool(eveningKey) ?? false;
+  bool get liveActivity => _preferences.getBool(liveActivityKey) ?? true;
 
   Future<void> set(String key, bool value) => _preferences.setBool(key, value);
 }

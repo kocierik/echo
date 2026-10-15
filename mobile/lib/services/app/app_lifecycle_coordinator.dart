@@ -17,6 +17,7 @@ import '../device/photo_service.dart';
 import 'session_controller.dart';
 import '../chat/voice_updates_service.dart';
 import '../api/response_cache.dart';
+import '../device/live_activity_service.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
 
@@ -31,6 +32,7 @@ final class AppLifecycleCoordinator {
     required this.notificationService,
     required this.photoService,
     required this.notificationScheduler,
+    required this.liveActivity,
     required ApiService credentialApiService,
     required AppLifecycleBinding binding,
   })  : _credentialApiService = credentialApiService,
@@ -47,6 +49,9 @@ final class AppLifecycleCoordinator {
 
   /// Briefings, promises and the evening recap, scheduled on the phone.
   final NotificationScheduler notificationScheduler;
+
+  /// The wearable on the Lock Screen (iOS 16.1+).
+  final LiveActivityService liveActivity;
   final ApiService _credentialApiService;
   final AppLifecycleBinding _binding;
   bool _disposed = false;
@@ -131,6 +136,12 @@ final class AppLifecycleCoordinator {
       preferences: NotificationPreferences(preferences),
     );
     unawaited(notificationScheduler.refresh(force: true));
+    final notificationChoices = NotificationPreferences(preferences);
+    final liveActivity = LiveActivityService(
+      initial: deviceController.state,
+      statuses: deviceController.stateStream,
+      enabled: () => notificationChoices.liveActivity,
+    )..start();
     final voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
@@ -160,6 +171,7 @@ final class AppLifecycleCoordinator {
       notificationService: notificationService,
       photoService: photoService,
       notificationScheduler: notificationScheduler,
+      liveActivity: liveActivity,
       credentialApiService: credentialApiService,
       binding: binding,
     );
@@ -198,6 +210,7 @@ final class AppLifecycleCoordinator {
     if (_disposed) return;
     _disposed = true;
     photoService.stop();
+    await liveActivity.dispose();
     appController.dispose();
     await _binding.dispose();
     await sessionController.dispose();
