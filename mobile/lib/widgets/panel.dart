@@ -89,3 +89,80 @@ final class PanelHeader extends StatelessWidget {
     );
   }
 }
+
+/// A titled panel of rows that bring their own side padding (tasks, events,
+/// conversations), with the margin of a page.
+final class PanelSection extends StatelessWidget {
+  const PanelSection({
+    required this.title,
+    required this.children,
+    this.trailing,
+    super.key,
+  });
+
+  final String title;
+
+  /// A muted note on the right: a count, usually.
+  final String? trailing;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Panel(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: PanelHeader(title: title, trailing: trailing),
+            ),
+            const SizedBox(height: 4),
+            ...children,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A row of a long list drawn as one panel: the first and the last row round
+/// its corners, a hairline separates the others. Keeps the list lazy.
+final class PanelListRow extends StatelessWidget {
+  const PanelListRow({
+    required this.index,
+    required this.count,
+    required this.child,
+    super.key,
+  });
+
+  final int index;
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    const round = Radius.circular(AppTheme.panelRadius);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: palette.surface,
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.vertical(
+          top: index == 0 ? round : Radius.zero,
+          bottom: index == count - 1 ? round : Radius.zero,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (index > 0) Divider(height: 1, indent: 16, endIndent: 16, color: palette.border),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
