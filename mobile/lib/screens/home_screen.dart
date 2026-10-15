@@ -98,7 +98,44 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     super.initState();
     _api = widget.api ?? (_ownedApi = ApiService());
     _subscribeToUploads();
+    unawaited(_prefillFromPhone());
     unawaited(_refreshAll());
+  }
+
+  /// The phone's copy of the last answers, shown at once while the server answers;
+  /// whatever arrives from the server replaces it.
+  Future<void> _prefillFromPhone() async {
+    final api = _api;
+    if (api is! ApiService) return;
+    final cached = api.cacheView();
+    try {
+      final all = await cached.listConversations(limit: 30);
+      // Still loading: the server has not answered yet
+      if (mounted && _conversationsLoading) {
+        setState(() {
+          _conversations = todayConversations(all, widget.clock());
+          _conversationsLoading = false;
+        });
+      }
+    } catch (_) {}
+    try {
+      final open = await cached.listTasks(done: false);
+      if (mounted && _tasksLoading) {
+        setState(() {
+          _openTasks = open;
+          _tasksLoading = false;
+        });
+      }
+    } catch (_) {}
+    try {
+      final summary = await cached.getLatestDigest();
+      if (mounted && _summaryLoading) {
+        setState(() {
+          _summary = summary;
+          _summaryLoading = false;
+        });
+      }
+    } catch (_) {}
   }
 
   @override

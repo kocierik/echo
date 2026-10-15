@@ -6,6 +6,7 @@ import '../../models/session_state.dart';
 import '../api/api_service.dart';
 import '../device/device_controller.dart';
 import '../device/device_identity_store.dart';
+import '../api/response_cache.dart';
 
 export '../../models/session_state.dart';
 
@@ -115,7 +116,7 @@ final class DeviceControllerBleStopper implements ActiveBleStopper {
 
 final class SharedPreferencesSessionCacheClearer
     implements SessionCacheClearer {
-  const SharedPreferencesSessionCacheClearer(this._preferences);
+  const SharedPreferencesSessionCacheClearer(this._preferences, {this.responses});
 
   static const knownKeys = <String>{
     'echo_theme_mode',
@@ -126,9 +127,15 @@ final class SharedPreferencesSessionCacheClearer
     'echo_network_policy',
     'echo_allow_cellular',
     'echo_last_session_id',
+    'notify_briefings',
+    'notify_promises',
+    'notify_evening',
   };
 
   final SharedPreferences _preferences;
+
+  /// The offline copy of the server's answers: the user's memory, gone on logout.
+  final ResponseCache? responses;
 
   @override
   Future<void> clear() async {
@@ -139,6 +146,11 @@ final class SharedPreferencesSessionCacheClearer
       } catch (error) {
         firstError ??= error;
       }
+    }
+    try {
+      await responses?.clear();
+    } catch (error) {
+      firstError ??= error;
     }
     if (firstError != null) {
       throw StateError('Failed to clear session cache: $firstError');

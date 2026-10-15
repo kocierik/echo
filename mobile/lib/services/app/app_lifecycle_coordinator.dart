@@ -16,6 +16,7 @@ import 'notification_service.dart';
 import '../device/photo_service.dart';
 import 'session_controller.dart';
 import '../chat/voice_updates_service.dart';
+import '../api/response_cache.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
 
@@ -97,7 +98,10 @@ final class AppLifecycleCoordinator {
       bleStopper: DeviceControllerBleStopper(deviceController),
       apiCredentials: ApiServiceCredentialsClearer(credentialApiService),
       deviceIdentity: DeviceIdentityStoreClearer(identityStore),
-      sessionCache: SharedPreferencesSessionCacheClearer(preferences),
+      sessionCache: SharedPreferencesSessionCacheClearer(
+        preferences,
+        responses: FileResponseCache.shared,
+      ),
     );
     final appController = AppController(
       initialDevice: deviceController.state,
