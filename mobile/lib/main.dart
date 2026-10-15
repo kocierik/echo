@@ -23,6 +23,7 @@ import 'services/onboarding/onboarding_adapters.dart';
 import 'services/onboarding/onboarding_controller.dart';
 import 'services/onboarding/onboarding_permissions_service.dart';
 import 'services/app/network_policy.dart';
+import 'services/app/notification_service.dart';
 import 'services/app/session_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/echo_app_shell.dart';
@@ -369,6 +370,10 @@ class MainShell extends StatelessWidget {
                   onReconnect: deviceController?.reconnect,
                   onPair: onRequireOnboarding,
                   onAsk: appController.requestAsk,
+                  onOpenChat: (sessionId) => sessionId == null
+                      ? appController.handleNotificationPayload(
+                          NotificationService.voicePayloadPrefix)
+                      : appController.requestOpenSession(sessionId),
                   onOpenMemories: () {
                     unawaited(appController
                         .setSelectedTab(AppController.memoriesTab));

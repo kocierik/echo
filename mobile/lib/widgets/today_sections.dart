@@ -224,6 +224,68 @@ final class TodayTasksSection extends StatelessWidget {
   }
 }
 
+/// "Echo is working on it": voice requests and photos until their answer arrives.
+final class WorkingSection extends StatelessWidget {
+  const WorkingSection({required this.items, this.onOpen, super.key});
+
+  final List<WorkingItem> items;
+  final void Function(WorkingItem item)? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) return const SizedBox.shrink();
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      key: const Key('working-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Material(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                key: Key('working-${item.key}'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: onOpen == null ? null : () => onOpen!(item),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.blue),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          workingLabel(item),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodyMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// "📷 Taking a photo: che pianta è?" / "Working on: che impegni ho domani?".
+String workingLabel(WorkingItem item) {
+  if (item.isPhoto) {
+    return item.text.isEmpty ? '📷 Taking a photo…' : '📷 Taking a photo: ${item.text}';
+  }
+  return 'Working on: ${item.text}';
+}
+
 /// Promises the user made, hidden when there are none.
 final class PromisesSection extends StatelessWidget {
   const PromisesSection({

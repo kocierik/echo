@@ -49,6 +49,8 @@ void main() {
             onPair: () => calls.add('pair'),
             onOpenMemories: () => calls.add('memories'),
             onOpenTasks: () => calls.add('tasks'),
+            onOpenChat: (id) => calls.add('chat $id'),
+            workingPollInterval: const Duration(seconds: 1),
             openConversation: (context, id) async => calls.add('open $id'),
             segmentUploadedStream: uploads,
             onMuteAcknowledged: () async {},
@@ -376,6 +378,30 @@ void main() {
       await tester.tap(find.byKey(const Key('weekly-summary-content')));
       await tester.pumpAndSettle();
       expect(find.text('• Demo moved to Friday'), findsOneWidget);
+    });
+
+    testWidgets('a request being answered shows until its answer arrives', (tester) async {
+      final api = FakeTodayApi()
+        ..working = [
+          WorkingItem(
+            key: 'photo:p1',
+            kind: 'photo',
+            text: 'Che pianta è?',
+            since: DateTime(2026, 10, 14, 17),
+            sessionId: 's1',
+          ),
+        ];
+      await pumpToday(tester, api: api);
+      await tester.pump();
+
+      expect(find.text('📷 Taking a photo: Che pianta è?'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('working-photo:p1')));
+      expect(calls.last, 'chat s1');
+
+      api.working = [];
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.byKey(const Key('working-section')), findsNothing);
     });
 
     testWidgets('no weekly section before the first weekly summary', (tester) async {

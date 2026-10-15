@@ -47,3 +47,36 @@ final class WeeklySummary {
   final List<String> people;
   final int conversationCount;
 }
+
+/// A voice request Echo is answering, or a photo on its way.
+final class WorkingItem {
+  const WorkingItem({
+    required this.key,
+    required this.kind,
+    required this.text,
+    required this.since,
+    this.sessionId,
+  });
+
+  factory WorkingItem.fromJson(Map<String, dynamic> json) => WorkingItem(
+        key: json['key'] as String,
+        kind: json['kind'] as String,
+        text: (json['text'] as String? ?? '').trim(),
+        since: DateTime.parse(json['since'] as String),
+        sessionId: json['session_id'] as String?,
+      );
+
+  final String key;
+
+  /// "request" or "photo".
+  final String kind;
+
+  /// The command, or the question about the photo ("" for a plain photo).
+  final String text;
+  final DateTime since;
+
+  /// The chat the answer goes to, when known.
+  final String? sessionId;
+
+  bool get isPhoto => kind == 'photo';
+}
