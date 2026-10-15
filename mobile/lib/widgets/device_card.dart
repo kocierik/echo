@@ -14,6 +14,7 @@ final class DeviceCard extends StatelessWidget {
     this.error,
     this.announcement,
     this.batteryPercent,
+    this.pendingBytes = 0,
     super.key,
   });
 
@@ -21,6 +22,9 @@ final class DeviceCard extends StatelessWidget {
 
   /// The wearable's battery, when it measures one (null: unknown or not connected).
   final int? batteryPercent;
+
+  /// Speech the wearable holds that has not reached the phone yet (ADPCM bytes).
+  final int pendingBytes;
   final VoidCallback? onAction;
   final bool busy;
   final String? error;
@@ -48,6 +52,7 @@ final class DeviceCard extends StatelessWidget {
               visual.title,
               visual.detail,
               if (batteryPercent != null) 'Battery $batteryPercent percent',
+              if (pendingSpeechLabel(pendingBytes) case final pending?) pending,
             ].join('. '),
             excludeSemantics: true,
             child: Row(
@@ -73,6 +78,12 @@ final class DeviceCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: textTheme.bodySmall,
                       ),
+                      if (pendingSpeechLabel(pendingBytes) case final pending?)
+                        Text(
+                          pending,
+                          key: const Key('device-pending-speech'),
+                          style: textTheme.bodySmall?.copyWith(color: palette.blue),
+                        ),
                     ],
                   ),
                 ),
@@ -199,3 +210,14 @@ IconData batteryIcon(int percent) => switch (percent) {
       >= BatteryIndicator.lowPercent => Icons.battery_2_bar_rounded,
       _ => Icons.battery_alert_rounded,
     };
+
+/// ADPCM at 16 kHz: 8 KB a second.
+const _adpcmBytesPerSecond = 8 * 1024;
+
+/// "2 min of speech to sync" (null under 10 s: it is about to arrive anyway).
+String? pendingSpeechLabel(int bytes) {
+  final seconds = bytes ~/ _adpcmBytesPerSecond;
+  if (seconds < 10) return null;
+  if (seconds < 60) return '$seconds s of speech to sync';
+  return '${(seconds / 60).round()} min of speech to sync';
+}

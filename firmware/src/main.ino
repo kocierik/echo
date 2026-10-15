@@ -127,12 +127,6 @@ void setup() {
     indicators.setMuted(muteState.isMuted());
     bleTransport.setMuted(muteState.isMuted());
 
-    // Initialize PSRAM buffer
-    if (!buffer.begin()) {
-        Serial.println("[FATAL] PSRAM buffer init failed");
-        while (true) { delay(1000); }
-    }
-
     // Allocate segment accumulation buffer on PSRAM
     segmentBuffer = (uint8_t*)ps_malloc(SEGMENT_MAX_SIZE);
     if (!segmentBuffer) {
@@ -140,9 +134,17 @@ void setup() {
         while (true) { delay(1000); }
     }
 
-    // Camera (optional): the JPEG slot lives in PSRAM; no camera, no photos
+    // The JPEG slot before the speech buffer, which takes most of what is left
     uint8_t* photoBuffer = (uint8_t*)ps_malloc(PHOTO_MAX_BYTES);
     if (photoBuffer != nullptr) photoSlot.attach(photoBuffer, PHOTO_MAX_BYTES);
+
+    // Initialize PSRAM buffer
+    if (!buffer.begin()) {
+        Serial.println("[FATAL] PSRAM buffer init failed");
+        while (true) { delay(1000); }
+    }
+
+    // Camera (optional): no camera, no photos
     const bool cameraAvailable = camera.begin(photoSlot);
     Serial.printf("[Camera] %s\n", cameraAvailable ? "ready" : "not available");
     bleTransport.setPhotoSlot(&photoSlot, cameraAvailable);
