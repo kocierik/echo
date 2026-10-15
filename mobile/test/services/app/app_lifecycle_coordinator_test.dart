@@ -49,7 +49,8 @@ void main() {
     await uploads.close();
   });
 
-  test('starts controller and maps connected and disconnected states', () async {
+  test('starts controller and maps connected and disconnected states',
+      () async {
     expect(controllerStartCalls, 1);
     expect(observers, [binding]);
 
@@ -59,8 +60,7 @@ void main() {
     states.add(const DeviceStatus(
       connectionState: DeviceConnectionState.offline,
     ));
-    expect(notificationPort.scheduledIds,
-        [NotificationService.disconnectId]);
+    expect(notificationPort.scheduledIds, [NotificationService.disconnectId]);
 
     states.add(const DeviceStatus(
       connectionState: DeviceConnectionState.listening,
@@ -68,8 +68,7 @@ void main() {
     states.add(const DeviceStatus(
       connectionState: DeviceConnectionState.muted,
     ));
-    expect(notificationPort.cancelledIds,
-        [NotificationService.disconnectId]);
+    expect(notificationPort.cancelledIds, [NotificationService.disconnectId]);
   });
 
   test('notifies only when the dropped segment count increases', () async {
@@ -106,7 +105,8 @@ void main() {
     expect(notificationPort.lossCounts, [7, 1]);
   });
 
-  test('shows the third upload failure once until a successful upload', () async {
+  test('shows the third upload failure once until a successful upload',
+      () async {
     uploadFailures.add(1);
     uploadFailures.add(2);
     uploadFailures.add(3);
@@ -247,6 +247,7 @@ final class _FakeNotificationPort implements NotificationPort {
     required String title,
     required String body,
     required Duration delay,
+    String? payload,
   }) async {
     scheduledIds.add(id);
   }

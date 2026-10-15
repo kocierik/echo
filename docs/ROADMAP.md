@@ -26,11 +26,12 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Biglietto da visita → persona in People con ruolo, azienda, email, telefono (contatto Google: a richiesta in chat)
 
 ### Fase 3 — Echo viene da te
-- [ ] Riepilogo serale
-- [ ] Promesse da mantenere ("ti mando il preventivo" → promemoria con la frase d'origine)
-- [ ] Briefing prima di un incontro (calendario + persone: ultima conversazione, task aperti, promesse)
-- Da decidere: notifiche push di Apple (orario preciso, serve l'account sviluppatore) o programmate dal
-  telefono (meno precise)
+- [x] Riepilogo serale (spento di default, attivabile in Settings → Notifications)
+- [x] Promesse da mantenere: riconosciute nell'estrazione, sezione "Promises" in Today, notifica la mattina
+      della scadenza
+- [x] Briefing 10 minuti prima di un incontro, solo se c'è qualcosa da sapere sulla persona (apre la sua pagina)
+- Deciso: notifiche programmate dal telefono a ogni risveglio (niente account sviluppatore a pagamento); al
+  massimo 3 al giorno, mai tra le 22 e le 8
 
 ### Fase 4 — Esperienza d'uso
 - [ ] App veloce anche offline (copia locale dei dati)

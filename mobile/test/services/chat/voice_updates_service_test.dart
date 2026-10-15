@@ -182,6 +182,7 @@ final class _FakePort implements NotificationPort {
     required String title,
     required String body,
     required Duration delay,
+    String? payload,
   }) async {}
 
   @override

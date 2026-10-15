@@ -57,6 +57,11 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onRequireOnboarding,
   }) async {
+    // Tall enough for every row: the list builds only what is on screen
+    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -90,6 +95,8 @@ void main() {
       'Privacy',
       'ECHO',
       'Automations',
+      'Notifications',
+      'Voices',
       'Diagnostics',
       'About',
     ];
@@ -120,6 +127,8 @@ void main() {
     Navigator.of(tester.element(find.text('Privacy'))).pop();
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Diagnostics'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Diagnostics'));
     await tester.pumpAndSettle();
     expect(find.text('Diagnostics route'), findsOneWidget);
