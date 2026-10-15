@@ -12,6 +12,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 
+from app.actions.phone_provider import PHONE_APP_NAMES
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
 
@@ -94,7 +95,8 @@ class Route:
 
 
 def _label(slug: str, known_apps: dict[str, str]) -> str:
-    return f"{slug} ({known_apps[slug]})" if slug in known_apps else slug
+    names = {**PHONE_APP_NAMES, **known_apps}
+    return f"{slug} ({names[slug]})" if slug in names else slug
 
 
 def _apps_section(connected: list[str] | None, known_apps: dict[str, str]) -> str:
@@ -139,6 +141,12 @@ def _parse_intent(
     # Slugs and display names, in any spelling, resolve to the slug
     lookup = {_normalize(slug): slug for slug in (*known_apps, *(connected or []))}
     lookup.update({_normalize(name): slug for slug, name in known_apps.items()})
+    # The iPhone's apps, by name too, when they are on (they are not apps to "connect")
+    lookup.update({
+        _normalize(name): slug
+        for slug, name in PHONE_APP_NAMES.items()
+        if slug in (connected or [])
+    })
     slugs: list[str] = []
     unresolved: list[str] = []
     for app in apps:

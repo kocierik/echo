@@ -26,6 +26,7 @@ from app.actions.agent import run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
+from app.actions.phone_provider import with_phone_apps
 from app.actions.provider import ActionProviderError
 from app.actions.voice import (
     WORKING_KEY,
@@ -144,6 +145,7 @@ class _PhotoRoute:
 
 async def _answer(
     db: AsyncSession,
+    redis_client,
     user_id: uuid.UUID,
     command: str,
     history: list[dict],
@@ -156,7 +158,9 @@ async def _answer(
     try:
         provider = get_action_provider()
     except ActionProviderError:
-        logger.info("[Voice] Action provider not configured; answering from memory")
+        logger.info("[Voice] Action provider not configured")
+    # The iPhone's Reminders and Calendar, when the app offers them
+    provider = await with_phone_apps(provider, redis_client, user_id)
     if provider is None:
         # Still checked for the camera; app requests have nothing to act on
         route = await route_request(get_llm_intent_service(), command, history, [], camera=True)
@@ -263,7 +267,7 @@ async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, co
         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
     ]
     asked_at = _utcnow().isoformat()
-    result = await _answer(db, segment.user_id, command, history, voice_session.id)
+    result = await _answer(db, redis_client, segment.user_id, command, history, voice_session.id)
     if isinstance(result, _PhotoRoute):
         await _request_photo(db, redis_client, segment, command, asked_at, voice_session)
         logger.info(f"[Voice] Photo requested from segment {segment_id}")

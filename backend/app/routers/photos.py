@@ -1,7 +1,7 @@
-"""Wearable camera: photo requests, image upload and download, and the wearable's commands.
+"""Wearable camera: photo requests, image upload and download.
 
-The app long-polls `GET /device/commands` while the wearable is connected and relays
-each TAKE_PHOTO; it uploads the JPEG with `PUT /photos/{id}/image`, or reports why the
+The app gets each TAKE_PHOTO from `GET /device/commands` (routers/device.py) and relays it
+to the wearable; it uploads the JPEG with `PUT /photos/{id}/image`, or reports why the
 wearable could not take it with `POST /photos/{id}/failure`. See app/services/photos.py.
 """
 
@@ -16,7 +16,6 @@ from fastapi import (
     File,
     Header,
     HTTPException,
-    Query,
     Request,
     Response,
     UploadFile,
@@ -43,12 +42,9 @@ from app.services.photos import (
     lock_chat_session,
     request_photo,
     store_image,
-    take_device_commands,
 )
 
 router = APIRouter(tags=["photos"])
-
-MAX_WAIT_S = 25
 
 
 class PhotoRequest(BaseModel):
@@ -205,18 +201,3 @@ async def get_photo_image(
         media_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=86400"},
     )
-
-
-@router.get("/device/commands")
-async def device_commands(
-    request: Request,
-    wait: int = Query(default=0, ge=0, le=MAX_WAIT_S),
-    user_id: uuid.UUID = Depends(get_current_user_id),
-):
-    """Commands for the wearable (TAKE_PHOTO), waiting up to `wait` seconds for one.
-
-    A command is handed out once: the app relays it, then uploads the photo or reports
-    the failure. One that is never answered fails after PHOTO_REQUEST_TIMEOUT_S.
-    """
-    commands = await take_device_commands(request.app.state.redis, user_id, wait)
-    return {"commands": commands}

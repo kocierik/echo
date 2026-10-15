@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
 from app.actions.pending import create_pending_action
+from app.actions.phone_provider import PHONE_APP_NAMES
 from app.actions.policy import ToolTier, classify_call, toolkit_of
 from app.actions.provider import (
     AccountNotConnectedError,
@@ -93,7 +94,7 @@ TEXTS = {
     },
 }
 
-TOOLKIT_NAMES = APP_NAMES
+TOOLKIT_NAMES = {**APP_NAMES, **PHONE_APP_NAMES}
 
 # Told to the model when an execute call timed out after being sent.
 _UNKNOWN_NOTE = (
@@ -122,6 +123,12 @@ told otherwise. When no event id is known, find the event by title and day by li
 events first.
 """
 
+_PHONE_RULES = """- Reminders and Calendar on the user's iPhone (applereminders, applecalendar): \
+when the user asks to be reminded of something at a time, create a reminder due then (the \
+iPhone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
+iPhone's calendar unless the user names another calendar app.
+"""
+
 
 @dataclass
 class AgentOutcome:
@@ -139,13 +146,14 @@ class _Failure:
     unknown: bool = False
 
 
-def _system_prompt() -> str:
+def _system_prompt(phone_apps: bool = False) -> str:
     now = datetime.now(user_zone())
-    return _SYSTEM_PROMPT.format(
+    prompt = _SYSTEM_PROMPT.format(
         now=now.strftime("%A %Y-%m-%d %H:%M"),
         today=now.date().isoformat(),
         timezone=settings.user_timezone,
     )
+    return prompt + _PHONE_RULES if phone_apps else prompt
 
 
 def _tool_name(schema: dict) -> str:
@@ -260,8 +268,9 @@ async def run_action_agent(
         return AgentOutcome(answer=texts["unreachable"])
     offered = {_tool_name(schema) for schema in external_tools}
     tools = [SEARCH_MEMORY_TOOL, *external_tools]
+    phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
-    messages = [LLMMessage(role="system", content=_system_prompt())]
+    messages = [LLMMessage(role="system", content=_system_prompt(phone_apps))]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
             messages.append(LLMMessage(role=item["role"], content=item["content"]))

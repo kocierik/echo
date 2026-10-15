@@ -20,6 +20,7 @@ from app.actions.agent import run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
+from app.actions.phone_provider import with_phone_apps
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
@@ -122,7 +123,7 @@ _TOOL_HINT = re.compile(
     r"book|spost|rimand|anticip|posticip|resched|move|cancell|elimin|annull|delete|"
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
-    r"inbox)",
+    r"inbox|ricordami|ricordarmi|remind|promemoria)",
     re.IGNORECASE,
 )
 
@@ -360,8 +361,9 @@ async def _answer_query(
         try:
             provider = get_action_provider()
         except ActionProviderError:
-            # Composio not configured on this server: memory answers only
-            logger.info("Action provider not configured; using the memory path")
+            # Composio not configured on this server: only the iPhone's apps, if any
+            logger.info("Action provider not configured")
+        provider = await with_phone_apps(provider, redis_client, user_id)
         if provider is not None:
             reachable: list[str] | None = None
             try:

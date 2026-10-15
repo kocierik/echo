@@ -39,23 +39,6 @@ final class PhotoInfo {
   }
 }
 
-/// A command for the wearable, relayed by the app (today only "take_photo").
-@immutable
-final class DeviceCommand {
-  const DeviceCommand({required this.type, required this.photoId});
-
-  final String type;
-  final String photoId;
-
-  static DeviceCommand? tryParse(Object? json) {
-    if (json is! Map<String, dynamic>) return null;
-    final type = json['type'];
-    final photoId = json['photo_id'];
-    if (type is! String || photoId is! String) return null;
-    return DeviceCommand(type: type, photoId: photoId);
-  }
-}
-
 /// Where the image of a photo is downloaded from (the API key goes in the headers).
 @immutable
 final class PhotoImageSource {

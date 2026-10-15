@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import ChatSession, Chunk, Conversation, Photo
 from app.services import photos as photo_service
 from app.services.conversation_reanalysis import reanalyse_conversation
+from app.services.device_commands import DEVICE_COMMANDS_KEY
 from tests.conftest import TEST_USER_ID
 from tests.test_conversation_reanalysis import (
     RecordingEmbeddings,
@@ -168,7 +169,7 @@ async def test_device_commands_are_handed_out_once_and_expired_ones_dropped(
     redis = client._transport.app.state.redis
     photo = SimpleNamespace(id=uuid.uuid4(), user_id=TEST_USER_ID)
     await photo_service.send_take_photo(redis, photo)
-    key = photo_service.DEVICE_COMMANDS_KEY.format(user_id=TEST_USER_ID)
+    key = DEVICE_COMMANDS_KEY.format(user_id=TEST_USER_ID)
     stale = {
         "type": "take_photo",
         "photo_id": str(uuid.uuid4()),

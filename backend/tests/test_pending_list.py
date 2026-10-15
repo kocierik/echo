@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import PendingAction
 from tests.conftest import TEST_USER_ID
 
+
 def _pending(
     summary: str,
     *,

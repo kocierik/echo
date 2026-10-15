@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/device_command.dart';
 import '../../models/photo.dart';
 import '../api/api_service.dart';
 
@@ -49,8 +50,8 @@ final class PhotoUnavailableException implements Exception {
 /// Photos from the wearable camera, between the backend and the wearable.
 ///
 /// - A voice request ("Echo, what is this?") reaches the app as a TAKE_PHOTO command
-///   from `GET /device/commands`, long-polled while the app runs; the app button calls
-///   [takePhoto]. Either way the wearable gets TAKE_PHOTO, one photo at a time.
+///   (DeviceCommandLoop calls [handleTakePhoto]); the app button calls [takePhoto].
+///   Either way the wearable gets TAKE_PHOTO, one photo at a time.
 /// - The JPEG arrives over BLE ([uploadFromDevice]); once the backend has it the
 ///   wearable is told to free it (UPLOAD_OK, sent by the relay). Photos are uploaded
 ///   on any network: the user asked for them and is waiting.
@@ -60,7 +61,6 @@ final class PhotoService implements PhotoTaker {
   PhotoService({
     required PhotoApi api,
     required PhotoDevice device,
-    this.commandWait = const Duration(seconds: 20),
     this.captureTimeout = const Duration(seconds: 60),
     this.answerTimeout = const Duration(seconds: 90),
     this.pollInterval = const Duration(seconds: 2),
@@ -69,42 +69,21 @@ final class PhotoService implements PhotoTaker {
         _device = device,
         _sleep = sleep ?? Future<void>.delayed;
 
-  static const _retryDelays = [
-    Duration(seconds: 2),
-    Duration(seconds: 5),
-    Duration(seconds: 10),
-    Duration(seconds: 30),
-  ];
-
   final PhotoApi _api;
   final PhotoDevice _device;
   final Future<void> Function(Duration) _sleep;
-  final Duration commandWait;
   final Duration captureTimeout;
   final Duration answerTimeout;
   final Duration pollInterval;
 
   String? _pendingId;
   Timer? _pendingTimer;
-  bool _running = false;
-  int _loopGeneration = 0;
 
   /// The photo the wearable is taking or sending, if any.
   @visibleForTesting
   String? get pendingPhotoId => _pendingId;
 
-  /// Long-polls the wearable's commands until [stop].
-  void start() {
-    if (_running) return;
-    _running = true;
-    unawaited(_commandLoop(++_loopGeneration));
-  }
-
-  void stop() {
-    _running = false;
-    _loopGeneration++;
-    _clearPending();
-  }
+  void dispose() => _clearPending();
 
   @override
   Future<PhotoInfo> takePhoto({String? question, String? chatSessionId}) async {
@@ -151,28 +130,10 @@ final class PhotoService implements PhotoTaker {
     await _report(photoId, reason);
   }
 
-  Future<void> _commandLoop(int generation) async {
-    var failures = 0;
-    while (_running && generation == _loopGeneration) {
-      try {
-        final commands = await _api.getDeviceCommands(wait: commandWait);
-        failures = 0;
-        for (final command in commands) {
-          if (generation != _loopGeneration) return;
-          if (command.type == 'take_photo') await _onTakePhoto(command.photoId);
-        }
-      } catch (error) {
-        // Offline, suspended in the background, server restarting: back off
-        if (generation != _loopGeneration) return;
-        final delay = _retryDelays[failures.clamp(0, _retryDelays.length - 1)];
-        failures++;
-        debugPrint('[Photos] command poll failed: $error; retrying in $delay');
-        await _sleep(delay);
-      }
-    }
-  }
-
-  Future<void> _onTakePhoto(String photoId) async {
+  /// A voice request's TAKE_PHOTO (DeviceCommandLoop): to the wearable, or reported
+  /// at once when it cannot take one now.
+  Future<void> handleTakePhoto(TakePhotoCommand command) async {
+    final photoId = command.photoId;
     final reason = _unavailableReason() ?? (_pendingId != null ? 'busy' : null);
     if (reason != null) {
       await _report(photoId, reason);

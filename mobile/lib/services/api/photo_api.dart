@@ -3,7 +3,8 @@ import 'package:http/http.dart' as http;
 import '../../models/photo.dart';
 import 'api_client.dart';
 
-/// The wearable camera: requests, the wearable's commands, uploads and images.
+/// The wearable camera: requests, uploads and images. Its TAKE_PHOTO commands come
+/// with the others (device_api.dart).
 abstract interface class PhotoApi {
   /// The app's camera button; the question (if any) and the answer go to
   /// [chatSessionId], or to "Voice requests". [fromWearableButton]: taken with the
@@ -20,9 +21,6 @@ abstract interface class PhotoApi {
 
   /// [reason]: "muted", "not_connected", "no_camera", "capture_failed" or "busy".
   Future<void> reportPhotoFailure(String id, String reason);
-
-  /// Waits up to [wait] for a command (long poll).
-  Future<List<DeviceCommand>> getDeviceCommands({Duration wait});
 
   Future<PhotoImageSource> photoImage(String id);
 }
@@ -77,29 +75,6 @@ mixin PhotoEndpoints on ApiClient implements PhotoApi {
       body: {'reason': reason},
       decode: false,
     );
-  }
-
-  @override
-  Future<List<DeviceCommand>> getDeviceCommands({
-    Duration wait = const Duration(seconds: 20),
-  }) async {
-    final target = await url('/api/device/commands?wait=${wait.inSeconds}');
-    final headers = await credentials.headers;
-    final response = await send(
-      () => httpClient.get(target, headers: headers),
-      expect: const {200},
-      shape: JsonShape.map,
-      // The server holds the request open for up to `wait`
-      timeout: wait + requestTimeout,
-    );
-    return parse(response.data, (data) {
-      final commands = (data as Map<String, dynamic>)['commands'];
-      if (commands is! List<dynamic>) throw const FormatException('commands');
-      return commands
-          .map(DeviceCommand.tryParse)
-          .whereType<DeviceCommand>()
-          .toList();
-    });
   }
 
   @override

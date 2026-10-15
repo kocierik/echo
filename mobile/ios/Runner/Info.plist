@@ -28,6 +28,14 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Echo adds the events you ask for, and reads your next meetings to brief you before they start.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Echo adds the events you ask for, and reads your next meetings to brief you before they start.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Echo adds the reminders you ask for, and reads them when you ask what you have to do.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Echo adds the reminders you ask for, and reads them when you ask what you have to do.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

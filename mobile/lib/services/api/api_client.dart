@@ -124,6 +124,24 @@ abstract class ApiClient {
   }
 
   @protected
+  Future<ApiResponse> put(
+    String path, {
+    required Object body,
+    Set<int> expect = const {200},
+    JsonShape shape = JsonShape.map,
+    bool decode = true,
+  }) async {
+    final target = await url(path);
+    final headers = await credentials.headers;
+    return send(
+      () => httpClient.put(target, headers: headers, body: jsonEncode(body)),
+      expect: expect,
+      shape: shape,
+      decode: decode,
+    );
+  }
+
+  @protected
   Future<void> delete(String path, {Set<int> expect = const {204}}) async {
     final target = await url(path);
     final headers = await credentials.headers;

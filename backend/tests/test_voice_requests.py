@@ -408,6 +408,9 @@ class _Redis:
         for key in keys:
             self.keys.pop(key, None)
 
+    async def get(self, key):
+        return self.keys.get(key)
+
 
 # Words a model would read as a request on that app (only for the fake below).
 _APP_WORDS = (
@@ -1158,7 +1161,7 @@ async def test_worker_needed_without_a_name_and_nothing_connected_gives_a_hint(w
 @pytest.mark.asyncio
 async def test_worker_a_camera_request_asks_the_wearable_for_a_photo(worker):
     from app.models.photo import Photo
-    from app.services.photos import DEVICE_COMMANDS_KEY
+    from app.services.device_commands import DEVICE_COMMANDS_KEY
 
     worker.llm.intent = {"camera": True, "needs_apps": False, "apps": []}
     wake = _seg("[You] Echo, che pianta è questa?")

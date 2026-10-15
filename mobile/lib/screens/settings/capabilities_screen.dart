@@ -55,7 +55,8 @@ final class CapabilitiesScreen extends StatelessWidget {
           child: Text(
             'The answer arrives in the Voice requests chat, with a notification. Reading '
             'and creating run at once; sending to others, changing and deleting wait for '
-            'your Confirm.',
+            "your Confirm. Reminders and events go to your connected apps, or to this "
+            "iPhone's (Automations → On this iPhone).",
             style: textTheme.bodySmall,
           ),
         ),
