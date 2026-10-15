@@ -111,6 +111,12 @@ before and tells the app it has none. Photo size and quality are `PHOTO_FRAME_SI
 `PHOTO_JPEG_QUALITY` in `src/config.h`; the serial monitor logs the sensor found at boot and each
 photo's size and capture time ([ADR 0007](adr/0007-camera-photos-on-request.md)).
 
+Battery: the XIAO ESP32-S3 has no battery sense of its own. Solder two 200 kΩ resistors in series
+between BAT+ and GND, with the middle point on A0 (GPIO1), then set `BATTERY_DIVIDER_FITTED 1` in
+`src/config.h` and flash. The firmware averages a reading every 30 s, converts it with a LiPo
+discharge curve and sends the percentage in DEVICE_STATUS; the app shows it on the Today card and
+in Settings → Device. Without the divider (the default) the battery is reported as unknown.
+
 ## Running the backend outside Docker
 
 With only Postgres and Redis in Docker (`docker-compose-infra.yml`):

@@ -91,6 +91,17 @@
 #define CAM_PIN_PCLK 13
 
 // ============================================================
+// Battery (1:2 divider: 200 kOhm BAT+ -> A0 -> 200 kOhm GND)
+// ============================================================
+// Set to 1 once the divider is soldered: an unconnected A0 floats and could read a
+// plausible but meaningless voltage. Until then the app shows the battery as unknown.
+#define BATTERY_DIVIDER_FITTED 0
+#define BATTERY_ADC_PIN 1                  // A0 / GPIO1 (ADC1, usable with BLE)
+#define BATTERY_DIVIDER_RATIO 2.0f         // Vbat / Vpin
+#define BATTERY_SAMPLES 16                 // averaged per reading
+#define BATTERY_SAMPLE_INTERVAL_MS 30000
+
+// ============================================================
 // Hardware Pins
 // ============================================================
 #define LED_PIN 21                     // Built-in LED on XIAO ESP32-S3

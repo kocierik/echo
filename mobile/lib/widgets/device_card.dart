@@ -13,10 +13,14 @@ final class DeviceCard extends StatelessWidget {
     this.busy = false,
     this.error,
     this.announcement,
+    this.batteryPercent,
     super.key,
   });
 
   final PrivacyControlPresentation presentation;
+
+  /// The wearable's battery, when it measures one (null: unknown or not connected).
+  final int? batteryPercent;
   final VoidCallback? onAction;
   final bool busy;
   final String? error;
@@ -40,7 +44,11 @@ final class DeviceCard extends StatelessWidget {
         children: [
           Semantics(
             liveRegion: true,
-            label: '${visual.title}. ${visual.detail}',
+            label: [
+              visual.title,
+              visual.detail,
+              if (batteryPercent != null) 'Battery $batteryPercent percent',
+            ].join('. '),
             excludeSemantics: true,
             child: Row(
               children: [
@@ -68,6 +76,8 @@ final class DeviceCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (batteryPercent != null)
+                  BatteryIndicator(percent: batteryPercent!),
               ],
             ),
           ),
@@ -151,3 +161,41 @@ DeviceVisual deviceVisual(PrivacyControlPresentation presentation, EchoPalette p
       ),
   };
 }
+
+/// A battery icon and percentage; red when low.
+final class BatteryIndicator extends StatelessWidget {
+  const BatteryIndicator({required this.percent, super.key});
+
+  final int percent;
+
+  static const lowPercent = 15;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final color = percent < lowPercent ? palette.red : palette.text2;
+    return Padding(
+      key: const Key('device-battery'),
+      padding: const EdgeInsets.only(left: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(batteryIcon(percent), size: 18, color: color),
+          const SizedBox(width: 2),
+          Text(
+            '$percent%',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+IconData batteryIcon(int percent) => switch (percent) {
+      >= 90 => Icons.battery_full_rounded,
+      >= 60 => Icons.battery_5_bar_rounded,
+      >= 35 => Icons.battery_3_bar_rounded,
+      >= BatteryIndicator.lowPercent => Icons.battery_2_bar_rounded,
+      _ => Icons.battery_alert_rounded,
+    };

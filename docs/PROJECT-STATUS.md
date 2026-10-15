@@ -226,7 +226,8 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Hardware reale:** calibrazione VAD (soglia fissa a 500, nessuna adattiva), misura consumi, range BLE.
 - **Memoria:** diarization vera (oggi solo energia), riassunti settimanali, raggruppamento conversazioni per argomento.
 - **Query:** filtri per persona ("cosa ha detto Marco?") e per tipo di entità nel RAG.
-- **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), lettura batteria (sempre 255), storage offline su microSD.
+- **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), storage offline su microSD. La lettura della batteria
+  c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
 - **Multi-utente / OAuth login:** fuori scope beta; l'API key si crea con `make create-key`.
 - **Android in background:** non è un gate della beta.
