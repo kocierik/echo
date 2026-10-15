@@ -10,11 +10,13 @@ final class PhotoThumbnail extends StatelessWidget {
   const PhotoThumbnail({
     required this.photoId,
     required this.loadSource,
+    this.height = 200,
     super.key,
   });
 
   final String photoId;
   final PhotoSourceLoader loadSource;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,7 @@ final class PhotoThumbnail extends StatelessWidget {
           return ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: SizedBox(
-              height: 200,
+              height: height,
               width: double.infinity,
               child: source == null
                   ? ColoredBox(color: palette.surface2)

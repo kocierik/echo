@@ -16,6 +16,7 @@ final class ConversationCard {
     this.isOpen = false,
     this.people = const [],
     this.taskCount = 0,
+    this.photoCount = 0,
   });
 
   factory ConversationCard.fromJson(Map<String, dynamic> json) {
@@ -34,6 +35,7 @@ final class ConversationCard {
         (json['people'] as List<dynamic>? ?? const []).whereType<String>(),
       ),
       taskCount: (json['task_count'] as num? ?? 0).toInt(),
+      photoCount: (json['photo_count'] as num? ?? 0).toInt(),
     );
   }
 
@@ -51,6 +53,9 @@ final class ConversationCard {
   final bool isOpen;
   final List<String> people;
   final int taskCount;
+
+  /// Photos from the wearable camera taken during the conversation.
+  final int photoCount;
 
   /// Being transcribed or analysed: the title and summary are not there yet.
   bool get isProcessing =>
@@ -157,11 +162,37 @@ final class MemoryEntity {
 
 /// `GET /api/conversations/{id}`.
 @immutable
+/// A photo taken during a conversation (its image comes from the photos API).
+@immutable
+final class ConversationPhoto {
+  const ConversationPhoto({
+    required this.id,
+    required this.takenAt,
+    this.question,
+    this.answer,
+  });
+
+  factory ConversationPhoto.fromJson(Map<String, dynamic> json) => ConversationPhoto(
+        id: json['id'] as String,
+        takenAt: DateTime.parse(json['taken_at'] as String),
+        question: _text(json['question']),
+        answer: _text(json['answer']),
+      );
+
+  final String id;
+  final DateTime takenAt;
+  final String? question;
+
+  /// What Echo said about it.
+  final String? answer;
+}
+
 final class ConversationDetail {
   const ConversationDetail({
     required this.card,
     required this.lines,
     required this.entities,
+    this.photos = const [],
   });
 
   factory ConversationDetail.fromJson(Map<String, dynamic> json) {
@@ -176,12 +207,19 @@ final class ConversationDetail {
             .map((item) => MemoryEntity.fromJson(item as Map<String, dynamic>))
             .where((entity) => entity.name.isNotEmpty),
       ),
+      photos: List.unmodifiable(
+        (json['photos'] as List<dynamic>? ?? const [])
+            .map((item) => ConversationPhoto.fromJson(item as Map<String, dynamic>)),
+      ),
     );
   }
 
   final ConversationCard card;
   final List<TranscriptLine> lines;
   final List<MemoryEntity> entities;
+
+  /// In the order they were taken.
+  final List<ConversationPhoto> photos;
 
   List<MemoryEntity> ofType(String type) =>
       entities.where((entity) => entity.type == type).toList();

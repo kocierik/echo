@@ -72,10 +72,22 @@ async def reanalyse_conversation(
             .where(Chunk.conversation_id == conversation_id)
             .where(Chunk.photo_id.is_(None))
         )
-        # Entities also mentioned in other conversations survive (moved there)
+        # Entities also mentioned in other conversations survive (moved there). What a
+        # photo showed is not in the transcripts: those entities stay as they are
         await release_conversation(db, conversation_id)
-        await db.execute(delete(Entity).where(Entity.conversation_id == conversation_id))
+        from_photos = Entity.metadata_["photo_id"].astext.isnot(None)
+        await db.execute(
+            delete(Entity)
+            .where(Entity.conversation_id == conversation_id)
+            .where(~from_photos)
+        )
         await db.flush()
+        photo_entities = (
+            await db.execute(
+                select(Entity).where(Entity.conversation_id == conversation_id, from_photos)
+            )
+        ).scalars().all()
+        await record_mentions(db, list(photo_entities))
 
         conversation.title = None
         conversation.summary = None

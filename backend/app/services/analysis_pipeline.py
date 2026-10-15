@@ -49,15 +49,7 @@ class AnalysisPipeline:
         conversation = await assign_to_conversation(db, segment)
 
         # --- Fetch known people for context-aware extraction ---
-        known_people_query = (
-            select(Entity.name)
-            .where(Entity.user_id == user_id)
-            .where(Entity.entity_type == "person")
-            .order_by(Entity.updated_at.desc())
-            .limit(20)
-        )
-        people_result = await db.execute(known_people_query)
-        known_people = [row[0] for row in people_result.all()]
+        known_people = await known_people_names(db, user_id)
 
         # --- Entity extraction (with retry + known people context) ---
         # Requests to Echo inside the text are skipped by the extraction prompt itself.
@@ -73,35 +65,14 @@ class AnalysisPipeline:
             operation_name=f"Entity extraction segment {segment.id}",
         )
 
-        # --- Consolidate with existing entities ---
-        # Update existing entities if new info refers to something already known,
-        # only insert truly new entities
-        consolidation = await consolidate_entities(db, entities, user_id)
-        new_entities = consolidation.new
-        for entity in new_entities:
-            db.add(entity)
-
-        # Generate embeddings for NEW entities only (existing ones already have them)
-        if new_entities:
-            entity_texts = [
-                f"{entity.name}: {entity.content}" if entity.content else entity.name
-                for entity in new_entities
-            ]
-            entity_embeddings = await retry_with_backoff(
-                self.embedding_service.embed_batch,
-                entity_texts,
-                operation_name=f"Entity embeddings segment {segment.id}",
-            )
-            for entity, embedding in zip(new_entities, entity_embeddings):
-                entity.embedding = embedding
-
-        # Flush to persist entities before dedup, then note where each was mentioned
-        # (a merge during dedup moves the mention to the surviving entity)
-        await db.flush()
-        await record_mentions(db, consolidation.resolved)
-
-        # --- Deduplicate entities (catches remaining fuzzy duplicates) ---
-        await deduplicate_entities(db, user_id, self.llm_service)
+        new_entities = await save_entities(
+            db,
+            entities,
+            user_id,
+            self.llm_service,
+            self.embedding_service,
+            label=f"segment {segment.id}",
+        )
 
         # --- Incremental chunking & embedding ---
         # Only embed the NEW segment's text as an additional chunk,
@@ -149,6 +120,61 @@ class AnalysisPipeline:
 
         await db.commit()
         return AnalysisResult(len(entities), len(new_entities), len(new_chunks))
+
+
+async def known_people_names(db: AsyncSession, user_id: uuid.UUID, limit: int = 20) -> list[str]:
+    """The people the user mentioned most recently, for extraction to name them alike."""
+    result = await db.execute(
+        select(Entity.name)
+        .where(Entity.user_id == user_id)
+        .where(Entity.entity_type == "person")
+        .order_by(Entity.updated_at.desc())
+        .limit(limit)
+    )
+    return [row[0] for row in result.all()]
+
+
+async def save_entities(
+    db: AsyncSession,
+    entities: list[Entity],
+    user_id: uuid.UUID,
+    llm_service: LLMService,
+    embedding_service: EmbeddingService,
+    *,
+    label: str,
+) -> list[Entity]:
+    """Store freshly extracted entities as a segment or a photo does: merged into known
+    ones when they are the same thing, embedded when new, their mentions recorded, then
+    fuzzy duplicates resolved. Returns the new ones (not flushed for the caller's commit)."""
+    # Update existing entities if new info refers to something already known,
+    # only insert truly new entities
+    consolidation = await consolidate_entities(db, entities, user_id)
+    new_entities = consolidation.new
+    for entity in new_entities:
+        db.add(entity)
+
+    # Generate embeddings for NEW entities only (existing ones already have them)
+    if new_entities:
+        entity_texts = [
+            f"{entity.name}: {entity.content}" if entity.content else entity.name
+            for entity in new_entities
+        ]
+        entity_embeddings = await retry_with_backoff(
+            embedding_service.embed_batch,
+            entity_texts,
+            operation_name=f"Entity embeddings {label}",
+        )
+        for entity, embedding in zip(new_entities, entity_embeddings):
+            entity.embedding = embedding
+
+    # Flush to persist entities before dedup, then note where each was mentioned
+    # (a merge during dedup moves the mention to the surviving entity)
+    await db.flush()
+    await record_mentions(db, consolidation.resolved)
+
+    # Deduplicate entities (catches remaining fuzzy duplicates)
+    await deduplicate_entities(db, user_id, llm_service)
+    return new_entities
 
 
 def _segment_end(segment: Segment) -> datetime:
@@ -223,7 +249,7 @@ async def extract_entities(
     llm_service,
     text: str,
     user_id: uuid.UUID,
-    transcription_id: uuid.UUID,
+    transcription_id: uuid.UUID | None,
     conversation_id: uuid.UUID,
     known_people: list[str] | None = None,
     reference_date: date | None = None,

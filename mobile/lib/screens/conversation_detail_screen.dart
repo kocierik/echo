@@ -14,6 +14,7 @@ import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
+import '../widgets/photo_thumbnail.dart';
 import '../widgets/who_is_speaking_sheet.dart';
 import '../utils/calendar_request.dart';
 import 'navigation.dart';
@@ -79,6 +80,12 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         _error = userMessage(error, 'Could not load this conversation.');
       });
     }
+  }
+
+  /// Photos are shown only with an api that serves their images.
+  PhotoSourceLoader? get _photoLoader {
+    final api = widget.api;
+    return api is PhotoApi ? (api as PhotoApi).photoImage : null;
   }
 
   VoiceApi? get _voices {
@@ -319,6 +326,11 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
               : textTheme.bodyLarge,
         ),
       ),
+      if (detail.photos.isNotEmpty && _photoLoader != null) ...[
+        const _Section(title: 'Photos'),
+        for (final photo in detail.photos)
+          _PhotoTile(photo: photo, loadSource: _photoLoader!),
+      ],
       if (tasks.isNotEmpty) ...[
         const _Section(title: 'Tasks'),
         for (final task in tasks)
@@ -357,8 +369,14 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         ),
       ];
     }
+    final loader = _photoLoader;
+    // Each photo where it was taken, between the lines
+    final photos = loader == null ? const <ConversationPhoto>[] : detail.photos;
+    var next = 0;
     return [
-      for (final line in detail.lines)
+      for (final line in detail.lines) ...[
+        for (; next < photos.length && !photos[next].takenAt.isAfter(line.recordedAt); next++)
+          _PhotoTile(photo: photos[next], loadSource: loader!, compact: true),
         _LineTile(
           line: line,
           onTap: line.text == null ? null : () => unawaited(_openLine(line)),
@@ -377,6 +395,9 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
                     return null;
                   })),
         ),
+      ],
+      for (final photo in photos.skip(next))
+        _PhotoTile(photo: photo, loadSource: loader!, compact: true),
     ];
   }
 }
@@ -601,6 +622,64 @@ final class _VoiceButton extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
       padding: EdgeInsets.zero,
+    );
+  }
+}
+
+/// A photo of the conversation and what Echo said about it.
+final class _PhotoTile extends StatelessWidget {
+  const _PhotoTile({required this.photo, required this.loadSource, this.compact = false});
+
+  final ConversationPhoto photo;
+  final PhotoSourceLoader loadSource;
+
+  /// In the transcript: the time on the left, a smaller picture.
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        PhotoThumbnail(
+          photoId: photo.id,
+          loadSource: loadSource,
+          height: compact ? 160 : 200,
+        ),
+        if (photo.answer != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              photo.answer!,
+              maxLines: compact ? 2 : 4,
+              overflow: TextOverflow.ellipsis,
+              style: textTheme.bodySmall,
+            ),
+          ),
+      ],
+    );
+    return Padding(
+      key: Key('conversation-photo-${photo.id}'),
+      padding: EdgeInsets.fromLTRB(20, compact ? 4 : 8, 20, 8),
+      child: compact
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 52,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      formatTime(photo.takenAt),
+                      style: textTheme.bodySmall?.copyWith(fontSize: 12),
+                    ),
+                  ),
+                ),
+                Expanded(child: body),
+              ],
+            )
+          : body,
     );
   }
 }

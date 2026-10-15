@@ -16,6 +16,7 @@ from app.core.database import get_db
 from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
+from app.models.photo import Photo
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.voice_profile import VoiceProfile
@@ -49,6 +50,8 @@ class ConversationListItem(BaseModel):
     # Up to three people mentioned, in order of appearance
     people: list[str]
     task_count: int
+    # Photos from the wearable camera taken during it
+    photo_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -84,6 +87,16 @@ class TranscriptionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PhotoOut(BaseModel):
+    """A photo taken during the conversation (the image: GET /photos/{id}/image)."""
+
+    id: uuid.UUID
+    taken_at: datetime
+    question: str | None
+    answer: str | None
+    description: str | None
+
+
 class ConversationDetail(BaseModel):
     id: uuid.UUID
     title: str | None
@@ -96,6 +109,7 @@ class ConversationDetail(BaseModel):
     analysis_status: str
     transcriptions: list[TranscriptionOut]
     entities: list[EntityOut]
+    photos: list[PhotoOut] = []
 
     model_config = {"from_attributes": True}
 
@@ -168,7 +182,9 @@ def with_segment_counts(*conditions):
 
 async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
     """List items for (conversation, segment_count) rows, with their people and task counts."""
-    people, tasks = await _people_and_tasks(db, [conv.id for conv, _ in rows])
+    ids = [conv.id for conv, _ in rows]
+    people, tasks = await _people_and_tasks(db, ids)
+    photos = await _photo_counts(db, ids)
     now = datetime.now(timezone.utc)
     return [
         ConversationListItem(
@@ -184,9 +200,21 @@ async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
             is_open=_is_open(conv, now),
             people=people[conv.id][:MAX_LISTED_PEOPLE],
             task_count=tasks[conv.id],
+            photo_count=photos.get(conv.id, 0),
         )
         for conv, segment_count in rows
     ]
+
+
+async def _photo_counts(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    if not ids:
+        return {}
+    rows = await db.execute(
+        select(Photo.conversation_id, func.count(Photo.id))
+        .where(Photo.conversation_id.in_(ids), Photo.image_sha256.isnot(None))
+        .group_by(Photo.conversation_id)
+    )
+    return dict(rows.all())
 
 
 def conversation_entities(conversation_id: uuid.UUID):
@@ -294,6 +322,22 @@ async def get_conversation(
         for e, source_text in entity_rows.all()
     ]
 
+    photo_rows = await db.execute(
+        select(Photo)
+        .where(Photo.conversation_id == conversation_id, Photo.image_sha256.isnot(None))
+        .order_by(func.coalesce(Photo.captured_at, Photo.created_at))
+    )
+    photos = [
+        PhotoOut(
+            id=p.id,
+            taken_at=p.captured_at or p.created_at,
+            question=p.question,
+            answer=p.answer,
+            description=p.description,
+        )
+        for p in photo_rows.scalars().all()
+    ]
+
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
@@ -306,6 +350,7 @@ async def get_conversation(
         analysis_status=conversation.analysis_status,
         transcriptions=transcriptions,
         entities=entities,
+        photos=photos,
     )
 
 
