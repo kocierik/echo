@@ -236,8 +236,6 @@ void loop() {
             break;
     }
 
-
-
     // While a new firmware arrives the microphone pauses (the mute setting is unchanged)
     if (bleTransport.otaInProgress()) {
         if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {
@@ -261,7 +259,6 @@ void loop() {
     // Read audio frame from microphone
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
-
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);
@@ -359,61 +356,34 @@ void encodeFrame(const int16_t* samples, size_t count) {
 }
 
 void finalizeSegment() {
+    indicators.setRecording(false);
 
     if (segmentPos == 0) {
         Serial.println("[Main] Empty segment, resetting");
-
-        indicators.setRecording(false);
-
         // Reset VAD and buffers before returning to listening
         vad.reset();
-
         preBufferCount = 0;
         preBufferWriteIdx = 0;
-
         state = STATE_IDLE;
         return;
     }
 
-
-    indicators.setRecording(false);
-
-
-    uint32_t durationMs = millis() - segmentStartMs;
-
-    Serial.printf(
-        "[Main] Segment ready: %u bytes, %ums\n",
-        (unsigned)segmentPos,
-        durationMs
-    );
-
+    const uint32_t durationMs = millis() - segmentStartMs;
+    Serial.printf("[Main] Segment ready: %u bytes, %ums\n", (unsigned)segmentPos, durationMs);
 
     const uint16_t avgEnergy =
-        energyFrameCount > 0
-        ? static_cast<uint16_t>(energySum / energyFrameCount)
-        : 0;
-
-
+        energyFrameCount > 0 ? static_cast<uint16_t>(energySum / energyFrameCount) : 0;
     const uint32_t segmentId = nextSegmentId++;
     const uint32_t segmentCrc = EchoBleProtocol::crc32Finalize(segmentCrcAccumulator);
 
-
     indicators.setBlinking(true);
 
-
     const auto storeNewest = [&]() {
-        return buffer.store(
-            segmentId,
-            segmentBuffer,
-            segmentPos,
-            durationMs,
-            lastSilenceDurationMs,
-            segmentStartMs,
-            avgEnergy,
-            segmentCrc
-        );
+        return buffer.store(segmentId, segmentBuffer, segmentPos, durationMs,
+                            lastSilenceDurationMs, segmentStartMs, avgEnergy, segmentCrc);
     };
 
+    // A full buffer drops its oldest segments to make room for the newest
     bool stored = storeNewest();
     while (!stored) {
         BufferedSegment oldest = {};
@@ -425,71 +395,32 @@ void finalizeSegment() {
         if (droppedSegmentId == 0) break;
 
         bleTransport.reportBufferOverflow();
-        Serial.printf(
-            "[Main] Dropped segment %u for overflow (dropped total: %u)\n",
-            droppedSegmentId,
-            buffer.droppedSegmentCount()
-        );
+        Serial.printf("[Main] Dropped segment %u for overflow (dropped total: %u)\n",
+                      droppedSegmentId, buffer.droppedSegmentCount());
         stored = storeNewest();
     }
 
     if (!stored) {
-
         Serial.println(
-            "[Main] PSRAM buffer empty but newest segment still could not be stored. Segment lost."
-        );
-
+            "[Main] PSRAM buffer empty but newest segment still could not be stored. Segment lost.");
     } else {
-
-        Serial.printf(
-            "[Main] Stored segment %u: %u bytes (buffered: %u)\n",
-            segmentId,
-            (unsigned)segmentPos,
-            (unsigned)buffer.count()
-        );
-
-
-        if (!bleTransport.isConnected()) {
-
-            Serial.println(
-                "[Main] No BLE connection — waiting"
-            );
-
-        } else {
-
-            Serial.println(
-                "[Main] BLE connected — sending"
-            );
-        }
-
-
+        Serial.printf("[Main] Stored segment %u: %u bytes (buffered: %u)\n", segmentId,
+                      (unsigned)segmentPos, (unsigned)buffer.count());
+        Serial.println(bleTransport.isConnected() ? "[Main] BLE connected — sending"
+                                                  : "[Main] No BLE connection — waiting");
         bleTransport.requestBufferStatus();
     }
 
-
     indicators.setBlinking(false);
 
-
-    // ====================================================
-    // IMPORTANT:
-    // Prepare system for next recording
-    // ====================================================
-
+    // Ready for the next segment
     segmentPos = 0;
     energySum = 0;
     energyFrameCount = 0;
     segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
-
     vad.reset();
-
     preBufferCount = 0;
     preBufferWriteIdx = 0;
-
-
     state = STATE_IDLE;
-
-
-    Serial.println(
-        "[Main] Ready for next speech segment"
-    );
+    Serial.println("[Main] Ready for next speech segment");
 }

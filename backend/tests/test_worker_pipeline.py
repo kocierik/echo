@@ -20,7 +20,7 @@ from app.services.analysis_pipeline import (
     generate_conversation_summary,
 )
 from app.services.entity_consolidation import ConsolidationResult
-from app.workers import main as worker_main
+from app.workers import stt as stt_worker
 from tests.mocks import MockLLMService
 
 
@@ -120,9 +120,9 @@ async def test_stt_claim_reads_audio_before_committing_processing(monkeypatch):
         events.append("read")
         return b"audio"
 
-    monkeypatch.setattr(worker_main.Path, "read_bytes", read_bytes)
+    monkeypatch.setattr(stt_worker.Path, "read_bytes", read_bytes)
 
-    claimed = await worker_main._claim_stt_audio(db, _SttRedis(), segment_id)
+    claimed = await stt_worker._claim_stt_audio(db, _SttRedis(), segment_id)
 
     assert claimed == (segment, b"audio")
     assert events == ["lock", "read", "commit"]
@@ -148,9 +148,9 @@ async def test_stt_claim_fails_and_dead_letters_missing_audio(monkeypatch, audio
     def missing_file(_path):
         raise FileNotFoundError
 
-    monkeypatch.setattr(worker_main.Path, "read_bytes", missing_file)
+    monkeypatch.setattr(stt_worker.Path, "read_bytes", missing_file)
 
-    claimed = await worker_main._claim_stt_audio(db, redis, segment_id)
+    claimed = await stt_worker._claim_stt_audio(db, redis, segment_id)
 
     assert claimed is None
     assert segment.transcription_status == "failed"
