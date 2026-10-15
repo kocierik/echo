@@ -12,15 +12,15 @@ final class CapabilitiesScreen extends StatelessWidget {
 
   static const _askExamples = [
     'What did I promise this week?',
-    'Cosa ha detto Marco sul preventivo?',
-    'Che impegni ho domani?',
-    'Riassumimi le ultime mail',
+    'What did Marco say about the quote?',
+    'What do I have tomorrow?',
+    'Summarize my latest emails',
   ];
 
   static const _voiceExamples = [
-    'Echo, ricordami di chiamare Giulia venerdì',
-    "Echo, cos'è questo?",
-    'Echo, manda un messaggio a Marco su Slack',
+    'Echo, remind me to call Giulia on Friday',
+    'Echo, what is this?',
+    'Echo, send Marco a message on Slack',
   ];
 
   @override
@@ -35,6 +35,9 @@ final class CapabilitiesScreen extends StatelessWidget {
           'events and promises, a summary for every day and every week.',
         ),
         const SettingsSection('ASK IN THE CHAT (TAP ONE)'),
+        const SettingsMessage(
+          'In any language: Echo understands it and answers in the one you use.',
+        ),
         for (final question in _askExamples)
           SettingsRow(
             key: Key('capability-ask-$question'),

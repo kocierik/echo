@@ -42,11 +42,11 @@ TEXTS = {
             "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
         ),
         "not_connected": (
-            "{app} non è collegato. Collegalo da Impostazioni → Automazioni → Integrazioni."
+            "{app} non è collegato. Collegalo da Settings → Automations → Integrations."
         ),
         "none_connected": (
-            "Nessuna app è ancora collegata. Collegane una in Impostazioni → Automazioni → "
-            "Integrazioni."
+            "Nessuna app è ancora collegata. Collegane una in Settings → Automations → "
+            "Integrations."
         ),
     },
 }
