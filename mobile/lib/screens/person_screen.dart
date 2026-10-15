@@ -297,7 +297,7 @@ final class PersonTile extends StatelessWidget {
                         counts,
                         style: textTheme.bodySmall?.copyWith(
                           fontSize: 13,
-                          color: person.openTaskCount > 0 ? palette.blue : null,
+                          color: person.openTaskCount > 0 ? palette.accent : null,
                         ),
                       ),
                   ],

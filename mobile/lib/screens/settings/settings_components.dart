@@ -83,14 +83,14 @@ class SettingsRow extends StatelessWidget {
               height: 36,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: (destructive ? palette.red : palette.blue)
+                color: (destructive ? palette.red : palette.accent)
                     .withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(
                 icon,
                 size: 20,
-                color: destructive ? palette.red : palette.blue,
+                color: destructive ? palette.red : palette.accent,
               ),
             ),
             title: Text(

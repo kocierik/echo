@@ -128,7 +128,7 @@ final class MemoryEntityRow extends StatelessWidget {
             key: Key('entity-calendar-${entity.id}'),
             tooltip: 'Add "${entity.name}" to calendar',
             onPressed: addToCalendar,
-            icon: Icon(Icons.event_available_outlined, color: palette.blue),
+            icon: Icon(Icons.event_available_outlined, color: palette.accent),
           ),
         ),
       ],

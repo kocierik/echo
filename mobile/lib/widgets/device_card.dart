@@ -82,7 +82,7 @@ final class DeviceCard extends StatelessWidget {
                         Text(
                           pending,
                           key: const Key('device-pending-speech'),
-                          style: textTheme.bodySmall?.copyWith(color: palette.blue),
+                          style: textTheme.bodySmall?.copyWith(color: palette.accent),
                         ),
                     ],
                   ),
@@ -162,13 +162,13 @@ DeviceVisual deviceVisual(PrivacyControlPresentation presentation, EchoPalette p
         title: 'Echo is offline',
         detail: 'Reconnect when the device is nearby and Bluetooth is on.',
         icon: Icons.bluetooth_disabled_rounded,
-        color: palette.blue,
+        color: palette.accent,
       ),
     PrivacyControlPresentation.unpaired => DeviceVisual(
         title: 'No Echo paired',
         detail: 'Pair your Echo to start capturing conversations.',
         icon: Icons.bluetooth_rounded,
-        color: palette.blue,
+        color: palette.accent,
       ),
   };
 }

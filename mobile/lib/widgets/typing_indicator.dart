@@ -46,18 +46,19 @@ class _TypingIndicatorState extends State<TypingIndicator> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.bgElevated,
+        color: palette.surface,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
           bottomLeft: Radius.circular(4),
           bottomRight: Radius.circular(20),
         ),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: palette.border),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -69,7 +70,7 @@ class _TypingIndicatorState extends State<TypingIndicator> with TickerProviderSt
               width: 7,
               height: 7,
               decoration: BoxDecoration(
-                color: AppColors.foregroundMuted.withValues(alpha: _animations[i].value),
+                color: palette.text2.withValues(alpha: _animations[i].value),
                 shape: BoxShape.circle,
               ),
             ),

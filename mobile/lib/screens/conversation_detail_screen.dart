@@ -573,7 +573,7 @@ final class _LineTile extends StatelessWidget {
                                 style: textTheme.labelSmall?.copyWith(
                                   fontSize: 12,
                                   color: line.speaker == 'self'
-                                      ? palette.blue
+                                      ? palette.accent
                                       : line.speakerName != null
                                           ? palette.green
                                           : palette.text2,

@@ -11,7 +11,7 @@ final class WelcomeStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.hearing_outlined, size: 32, color: palette.blue),
+        Icon(Icons.hearing_outlined, size: 32, color: palette.accent),
         const SizedBox(height: 24),
         Text('You control listening', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 8),
@@ -69,7 +69,7 @@ final class _PrivacyRow extends StatelessWidget {
         SizedBox(
           width: 44,
           height: 44,
-          child: Icon(icon, color: palette.blue),
+          child: Icon(icon, color: palette.accent),
         ),
         const SizedBox(width: 12),
         Expanded(

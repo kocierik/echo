@@ -46,7 +46,7 @@ final class MessageBubble extends StatelessWidget {
             Text(
               role,
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: message.isUser ? palette.blue : palette.green,
+                    color: message.isUser ? palette.accent : palette.green,
                     fontWeight: FontWeight.w700,
                   ),
             ),
@@ -67,7 +67,7 @@ final class MessageBubble extends StatelessWidget {
                   h2: Theme.of(context).textTheme.titleMedium,
                   h3: Theme.of(context).textTheme.titleSmall,
                   code: TextStyle(
-                    color: palette.blue,
+                    color: palette.accent,
                     backgroundColor: palette.surface2,
                     fontFamily: 'monospace',
                   ),
@@ -76,7 +76,7 @@ final class MessageBubble extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   blockquoteDecoration: BoxDecoration(
-                    border: Border(left: BorderSide(color: palette.blue, width: 3)),
+                    border: Border(left: BorderSide(color: palette.accent, width: 3)),
                   ),
                 ),
               ),
@@ -173,7 +173,7 @@ final class _Sources extends StatelessWidget {
                       child: Text(
                         source.label,
                         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: palette.blue,
+                              color: palette.accent,
                             ),
                       ),
                     ),

@@ -55,7 +55,7 @@ final class SectionLoading extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: LinearProgressIndicator(
           minHeight: 2,
-          color: palette.blue,
+          color: palette.accent,
           backgroundColor: palette.surface2,
         ),
       ),
