@@ -222,21 +222,6 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_controller.send(suggestion));
   }
 
-  /// A press shorter than this is a tap: dictation needs the mic held.
-  static const _shortestHold = Duration(milliseconds: 400);
-
-  void _voiceEnded(Duration held) {
-    unawaited(_controller.stopVoice());
-    if (held < _shortestHold && mounted) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          key: Key('hold-to-talk-hint'),
-          content: Text('Hold the mic while you talk.'),
-        ));
-    }
-  }
-
   @override
   void dispose() {
     _controller.removeListener(_onControllerChanged);
@@ -287,20 +272,19 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               Expanded(child: _messageArea(state, palette)),
-              Divider(height: 1, color: palette.border),
-              ChatComposer(
-                controller: _textController,
-                sending: state.sending,
-                listening: state.listening,
-                enabled: !state.loadingSession,
-                onChanged: _controller.setComposerText,
-                onSend: _send,
-                onVoiceStart: () => unawaited(_controller.startVoice()),
-                onVoiceEnd: _voiceEnded,
-                onCamera: _controller.canTakePhotos
-                    ? () => unawaited(_controller.takePhoto())
-                    : null,
-              ),
+              if (state.listening)
+                DictationPanel(text: state.composerText)
+              else
+                ChatComposer(
+                  controller: _textController,
+                  sending: state.sending,
+                  enabled: !state.loadingSession,
+                  onChanged: _controller.setComposerText,
+                  onSend: _send,
+                  onCamera: _controller.canTakePhotos
+                      ? () => unawaited(_controller.takePhoto())
+                      : null,
+                ),
             ],
           ),
         ),
@@ -321,11 +305,11 @@ final class _ChatScreenState extends State<ChatScreen> {
 
     if (state.messages.isEmpty) {
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         children: [
           Text(
             'Ask what your memory knows',
-            style: Theme.of(context).textTheme.headlineSmall,
+            style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
@@ -337,8 +321,8 @@ final class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 6),
           Text(
             _controller.canTakePhotos
-                ? 'Hold 🎙 to talk · 📷 asks Echo about what you see'
-                : 'Hold 🎙 to talk',
+                ? 'Hold the Ask button to dictate. The camera asks Echo about what you see.'
+                : 'Hold the Ask button to dictate.',
             key: const Key('chat-input-hint'),
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -356,9 +340,10 @@ final class _ChatScreenState extends State<ChatScreen> {
                   style: OutlinedButton.styleFrom(
                     alignment: Alignment.centerLeft,
                     minimumSize: const Size.fromHeight(44),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    foregroundColor: palette.text,
+                    side: BorderSide(color: palette.border),
+                    shape: const StadiumBorder(),
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
                   ),
                   child: Text(suggestion),
                 ),
