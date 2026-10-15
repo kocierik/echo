@@ -21,11 +21,11 @@ from pathlib import Path
 
 from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
-from app.routers.query import rag_system_prompt
 from app.services.analysis_pipeline import extract_entities
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import openai_llm
+from app.services.memory_answers import rag_system_prompt
 from evals.scoring import Extracted, normalize_words, score_extraction
 
 CASES = Path(__file__).parent / "cases"

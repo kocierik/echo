@@ -35,7 +35,6 @@ from app.actions.voice import (
 )
 from app.core.database import async_session
 from app.models.segment import Segment
-from app.routers.query import no_results_message, rag_system_prompt
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
@@ -44,6 +43,7 @@ from app.services.llm_openai import (
     get_llm_intent_service,
     get_llm_query_service,
 )
+from app.services.memory_answers import no_results_message, rag_system_prompt
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
