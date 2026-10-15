@@ -60,7 +60,7 @@ _UNFINISHED = {
     ),
     "it": (
         "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere "
-        "stati eseguiti: controlla Impostazioni → Automazioni → Attività prima di riprovare."
+        "stati eseguiti: controlla Settings → Automations → Activity prima di riprovare."
     ),
 }
 

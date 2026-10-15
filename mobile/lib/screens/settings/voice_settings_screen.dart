@@ -10,10 +10,10 @@ import 'settings_components.dart';
 
 /// The text read aloud to record the user's voice (~20 s at a normal pace).
 const enrollmentText =
-    'Ciao Echo, questa è la mia voce. Oggi è una bella giornata e ho tante cose da fare: '
-    'scrivere qualche mail, chiamare un amico, comprare il pane e magari fare una '
-    'passeggiata al parco. Quando parlo con le persone vicino a me, voglio che tu capisca '
-    'quando sono io a parlare e quando invece parla qualcun altro.';
+    'Hi Echo, this is my voice. Today is a nice day and I have a lot to do: write a few '
+    'emails, call a friend, buy some bread and maybe take a walk in the park. When I talk '
+    'with the people around me, I want you to know when I am the one speaking and when '
+    'someone else is.';
 
 /// Known voices: the user's own, recorded here, and the people named in transcripts.
 final class VoiceSettingsScreen extends StatefulWidget {
@@ -319,6 +319,12 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
               border: Border.all(color: palette.border),
             ),
             child: Text(enrollmentText, style: textTheme.titleMedium?.copyWith(height: 1.5)),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Or say anything else for as long, in your own language: Echo only listens to how '
+            'your voice sounds.',
+            style: textTheme.bodySmall,
           ),
           const SizedBox(height: 24),
           switch (_step) {
