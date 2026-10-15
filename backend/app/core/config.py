@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     # Auto-calibration: energy percentile above which a segment is "self" (0..1)
     speaker_threshold_percentile: float = 0.7
 
+    # Voice fingerprints (who is speaking): an ONNX speaker-embedding model, baked into the
+    # image. Without it the energy rule above decides "You" / "Others".
+    voice_model_path: str = "/opt/models/voice_embedding.onnx"
+    # Cosine similarity to a voice profile: from this, the voice is that person's...
+    voice_match_threshold: float = 0.6
+    # ...from this (below the match), the transcript asks "Marco?"
+    voice_suggest_threshold: float = 0.45
+    # Shorter audio gives an unreliable fingerprint
+    voice_min_seconds: float = 1.5
+
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"
 

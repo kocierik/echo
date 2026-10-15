@@ -110,6 +110,11 @@ async def edit_transcription(
         transcription.text = normalized_text
         transcription.speaker_label = normalized_speaker
         segment.speaker = normalized_speaker
+        if normalized_speaker == "self" and effective_speaker != "self":
+            # "This is me": the segment's voice refines the user's voice profile
+            from app.services.voice_profiles import learn_self
+
+            await learn_self(db, segment)
         segment.conversation.analysis_status = "reprocessing"
         conversation_id = segment.conversation.id
 

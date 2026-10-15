@@ -45,6 +45,8 @@ from app.services.transcription_enhancer import (
     is_meaningful_transcription,
     speaker_prefix,
 )
+from app.services.voice_embedding import embed_voice
+from app.services.voice_profiles import list_profiles, recognize
 from app.workers.digest import run_digest_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.photos import process_photos
@@ -515,25 +517,37 @@ async def process_stt(redis_client: redis.Redis):
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
 
+                # The voice fingerprint, beside the transcription (adds no delay)
+                fingerprint = asyncio.create_task(embed_voice(wav_data))
+
                 # Known names and topics, as a prompt or keyterms depending on the provider
                 stt_context = await build_stt_context(db, segment.user_id)
 
-                stt_result = await retry_with_backoff(
-                    stt_service.transcribe,
-                    wav_data,
-                    language=settings.stt_language,
-                    prompt=stt_context.prompt or None,
-                    keyterms=stt_context.keyterms,
-                    operation_name=f"STT segment {segment_id}",
-                )
+                try:
+                    stt_result = await retry_with_backoff(
+                        stt_service.transcribe,
+                        wav_data,
+                        language=settings.stt_language,
+                        prompt=stt_context.prompt or None,
+                        keyterms=stt_context.keyterms,
+                        operation_name=f"STT segment {segment_id}",
+                    )
+                except BaseException:
+                    fingerprint.cancel()
+                    raise
 
                 # Post-process: clean artifacts and normalize
                 cleaned_text = clean_transcription(stt_result.text)
 
-                # Classify speaker based on audio energy
-                speaker = await classify_segment(
-                    db, segment.user_id, segment.audio_energy
-                )
+                # Who spoke: the known voices, else the audio energy
+                speaker = None
+                embedding = await fingerprint
+                if embedding is not None:
+                    segment.voice_embedding = embedding
+                    profiles = await list_profiles(db, segment.user_id)
+                    speaker = recognize(segment, embedding, profiles)
+                if speaker is None:
+                    speaker = await classify_segment(db, segment.user_id, segment.audio_energy)
                 segment.speaker = speaker
 
                 # Prefix transcription with speaker tag

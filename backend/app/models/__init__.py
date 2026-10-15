@@ -13,6 +13,7 @@ from app.models.query_feedback import QueryFeedback
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
+from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "Transcription",
     "TranscriptionEdit",
     "UUIDPrimaryKey",
+    "VoiceProfile",
     "WeeklyDigest",
 ]

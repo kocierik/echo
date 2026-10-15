@@ -35,6 +35,8 @@ settings.openai_api_key = "sk-test-not-real"
 settings.composio_api_key = ""
 settings.deepgram_api_key = ""
 settings.metrics_token = ""
+# No real voice model: fingerprints are tested with fakes (the model takes ~2 s a segment)
+settings.voice_model_path = "/nonexistent/voice_embedding.onnx"
 
 TEST_USER_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 TEST_API_KEY = "test-secret-key"
@@ -72,6 +74,7 @@ async def setup_database():
         await conn.execute(text("DELETE FROM photos"))
         await conn.execute(text("DELETE FROM weekly_digests"))
         await conn.execute(text("DELETE FROM digests"))
+        await conn.execute(text("DELETE FROM voice_profiles"))
         await conn.execute(text("DELETE FROM entities"))
         await conn.execute(text("DELETE FROM chunks"))
         await conn.execute(text("DELETE FROM transcription_edits"))
