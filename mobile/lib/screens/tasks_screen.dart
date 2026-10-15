@@ -7,6 +7,8 @@ import '../services/api/api_service.dart';
 import '../services/memory/tasks_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sections.dart';
+import '../widgets/panel.dart';
+import '../widgets/screen_header.dart';
 import '../widgets/task_tile.dart';
 import 'conversation_detail_screen.dart';
 import 'navigation.dart';
@@ -134,24 +136,10 @@ final class _TasksScreenState extends State<TasksScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Expanded(
-                    child: Text('Tasks', style: Theme.of(context).textTheme.titleLarge),
-                  ),
-                  if (!state.loading && state.open.isNotEmpty)
-                    Text(
-                      '${state.open.length} open',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
+            ScreenHeader(
+              title: 'Tasks',
+              overline: !state.loading && state.open.isNotEmpty ? '${state.open.length} open' : null,
             ),
-            Divider(height: 1, color: palette.border),
             Expanded(child: _body(state)),
           ],
         ),
@@ -190,50 +178,76 @@ final class _TasksScreenState extends State<TasksScreen> {
       child: ListView(
         key: const Key('tasks-list'),
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 96),
+        padding: const EdgeInsets.only(top: 4, bottom: 48),
         children: [
           if (state.open.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: SectionEmpty(message: 'All done. Nothing open right now.'),
             ),
-          for (final group in groupTasks(state.open, now)) ...[
+          // A panel per group: overdue, today, this week, later, no date
+          for (final group in groupTasks(state.open, now))
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-              child: Semantics(
-                header: true,
-                child: Text(
-                  '${group.bucket.label.toUpperCase()} · ${group.tasks.length}',
-                  key: Key('task-group-${group.bucket.name}'),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        fontSize: 12,
-                        letterSpacing: 0.6,
-                        color: group.bucket == TaskBucket.overdue ? palette.red : null,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Panel(
+                padding: const EdgeInsets.only(top: 14, bottom: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Semantics(
+                        header: true,
+                        child: Text(
+                          '${group.bucket.label.toUpperCase()} · ${group.tasks.length}',
+                          key: Key('task-group-${group.bucket.name}'),
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                fontSize: 12,
+                                letterSpacing: 0.6,
+                                fontWeight: FontWeight.w600,
+                                color: group.bucket == TaskBucket.overdue ? palette.red : null,
+                              ),
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 4),
+                    for (final task in group.tasks) _tile(task, state, now),
+                  ],
                 ),
               ),
             ),
-            for (final task in group.tasks) _tile(task, state, now),
-          ],
-          if (state.done.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Divider(height: 1, color: palette.border),
-            ListTile(
-              key: const Key('tasks-done-toggle'),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              title: Text(
-                'Done · ${state.done.length}',
-                style: Theme.of(context).textTheme.titleSmall,
+          if (state.done.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Panel(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ListTile(
+                      key: const Key('tasks-done-toggle'),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+                      ),
+                      title: Text(
+                        'Done · ${state.done.length}',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      trailing: Icon(
+                        _showDone ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                        color: palette.text2,
+                      ),
+                      onTap: () => setState(() => _showDone = !_showDone),
+                    ),
+                    if (_showDone) ...[
+                      for (final task in state.done) _tile(task, state, now),
+                      const SizedBox(height: 6),
+                    ],
+                  ],
+                ),
               ),
-              trailing: Icon(
-                _showDone ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                color: palette.text2,
-              ),
-              onTap: () => setState(() => _showDone = !_showDone),
             ),
-            if (_showDone)
-              for (final task in state.done) _tile(task, state, now),
-          ],
         ],
       ),
     );
@@ -244,6 +258,7 @@ final class _TasksScreenState extends State<TasksScreen> {
     return TaskTile(
       task: task,
       now: now,
+      padding: const EdgeInsets.only(left: 6, right: 4),
       busy: state.busyIds.contains(task.id),
       onToggle: () => unawaited(_toggle(task)),
       onDismiss: task.done ? null : () => unawaited(_dismiss(task)),
@@ -264,6 +279,7 @@ final class TasksPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: EchoPalette.of(context).background,
       appBar: AppBar(),
       body: TasksScreen(segmentUploadedStream: segmentUploadedStream, onAsk: onAsk),
     );

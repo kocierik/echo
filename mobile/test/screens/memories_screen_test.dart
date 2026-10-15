@@ -4,7 +4,7 @@ import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/memories_screen.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
-import 'package:echo_app/widgets/sections.dart';
+import 'package:echo_app/widgets/panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -167,9 +167,9 @@ void main() {
     runSearch();
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(SectionHeader, 'Conversations'), findsOneWidget);
+    expect(find.widgetWithText(PanelHeader, 'Conversations'), findsOneWidget);
     expect(find.text('Atlas kickoff'), findsOneWidget);
-    expect(find.widgetWithText(SectionHeader, 'Mentions'), findsOneWidget);
+    expect(find.widgetWithText(PanelHeader, 'Mentions'), findsOneWidget);
     expect(find.text('Atlas dashboard'), findsOneWidget);
     expect(find.text('“Facciamo una dashboard per Atlas.”'), findsOneWidget);
     await tester.tap(find.text('Atlas dashboard'));

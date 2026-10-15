@@ -335,33 +335,36 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
     }
     return ListView(
       key: const Key('search-results'),
-      padding: EdgeInsets.only(bottom: 16 + EchoShellInsets.bottomOf(context)),
+      padding: EdgeInsets.only(top: 4, bottom: 16 + EchoShellInsets.bottomOf(context)),
       children: [
-        if (results.conversations.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: SectionHeader(title: 'Conversations'),
+        if (results.conversations.isNotEmpty)
+          PanelSection(
+            title: 'Conversations',
+            trailing: '${results.conversations.length}',
+            children: [
+              for (final conversation in results.conversations)
+                ConversationCardTile(
+                  conversation: conversation,
+                  dayFrom: widget.clock(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  onTap: () => unawaited(_open(conversation.id)),
+                ),
+            ],
           ),
-          for (final conversation in results.conversations)
-            ConversationCardTile(
-              conversation: conversation,
-              dayFrom: widget.clock(),
-              onTap: () => unawaited(_open(conversation.id)),
-            ),
-        ],
-        if (results.entities.isNotEmpty) ...[
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20),
-            child: SectionHeader(title: 'Mentions'),
+        if (results.entities.isNotEmpty)
+          PanelSection(
+            title: 'Mentions',
+            trailing: '${results.entities.length}',
+            children: [
+              for (final entity in results.entities)
+                MemoryEntityRow(
+                  entity: entity,
+                  onTap: entity.conversationId == null
+                      ? null
+                      : () => unawaited(_open(entity.conversationId!)),
+                ),
+            ],
           ),
-          for (final entity in results.entities)
-            MemoryEntityRow(
-              entity: entity,
-              onTap: entity.conversationId == null
-                  ? null
-                  : () => unawaited(_open(entity.conversationId!)),
-            ),
-        ],
       ],
     );
   }
