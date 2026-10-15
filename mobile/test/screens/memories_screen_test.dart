@@ -1,5 +1,6 @@
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
+import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/memories_screen.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
@@ -74,6 +75,42 @@ void main() {
     await tester.tap(find.text('Lunch with Ada'));
     await tester.pumpAndSettle();
     expect(opened, ['lunch']);
+  });
+
+  testWidgets('the weekly and daily summaries sit above the days', (tester) async {
+    final api = FakeTodayApi(
+      conversations: [card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30))],
+      digest: DailySummary(date: DateTime(2026, 10, 13), summary: 'Met Ada about Atlas.'),
+      week: WeeklySummary(
+        weekStart: DateTime(2026, 10, 5),
+        summary: 'A week of planning the demo.',
+        highlights: const ['Demo moved to Friday'],
+        people: const ['Marco', 'Ada'],
+      ),
+    );
+    await pump(tester, api);
+
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('Met Ada about Atlas.'), findsOneWidget);
+    expect(find.text('Week of Oct 5'), findsOneWidget);
+    expect(find.text('With Marco, Ada'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Met Ada about Atlas.')).dy,
+      lessThan(tester.getTopLeft(find.text('TODAY')).dy),
+    );
+
+    expect(find.text('• Demo moved to Friday'), findsNothing);
+    await tester.tap(find.byKey(const Key('weekly-summary-content')));
+    await tester.pumpAndSettle();
+    expect(find.text('• Demo moved to Friday'), findsOneWidget);
+  });
+
+  testWidgets('no summaries before the first ones', (tester) async {
+    await pump(tester, FakeTodayApi(
+      conversations: [card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30))],
+    ));
+    expect(find.byKey(const Key('weekly-summary')), findsNothing);
+    expect(find.byKey(const Key('daily-summary')), findsNothing);
   });
 
   testWidgets('empty memory explains when conversations appear', (tester) async {

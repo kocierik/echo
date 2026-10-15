@@ -9,10 +9,16 @@ abstract interface class VoiceWorkingApi {
   Future<List<WorkingItem>> getVoiceWorking();
 }
 
+/// The apps Echo can connect to (Composio), each saying whether it is connected.
+abstract interface class ToolkitsApi {
+  Future<List<Toolkit>> getToolkits({String? query});
+}
+
 /// Connected apps (Composio), actions waiting for a Confirm, the action log, and
 /// what voice requests are doing.
 mixin ActionEndpoints on ApiClient
-    implements PendingActionsApi, VoiceUpdatesApi, VoiceWorkingApi {
+    implements PendingActionsApi, VoiceUpdatesApi, VoiceWorkingApi, ToolkitsApi {
+  @override
   Future<List<Toolkit>> getToolkits({String? query}) async {
     final path = Uri(
       path: '/api/actions/toolkits',

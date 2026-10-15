@@ -147,7 +147,7 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 }
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
-final class FakeTodayApi extends FakeMemoryApi
+class FakeTodayApi extends FakeMemoryApi
     implements TodayApi, WeeklySummaryApi, VoiceWorkingApi, VoiceApi {
   FakeTodayApi({
     super.conversations,
@@ -269,6 +269,22 @@ TaskItem task(
     metadata: {'done': done},
     sourceText: source,
     conversationId: conversationId,
+    createdAt: createdAt,
+  );
+}
+
+/// A promise the user made, to [to] when known.
+TaskItem promise(String id, String name, {String? to, DateTime? due, DateTime? createdAt}) {
+  return TaskItem(
+    id: id,
+    name: name,
+    dueDate: due,
+    metadata: {
+      'done': false,
+      'promise': true,
+      if (to != null) 'promise_to': to,
+      if (due != null) 'due_date': due.toIso8601String().substring(0, 10),
+    },
     createdAt: createdAt,
   );
 }

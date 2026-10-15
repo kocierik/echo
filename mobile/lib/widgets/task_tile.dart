@@ -17,6 +17,7 @@ final class TaskTile extends StatelessWidget {
     this.onOpenConversation,
     this.now,
     this.padding = const EdgeInsets.only(left: 8, right: 4),
+    this.showSource = true,
     super.key,
   });
 
@@ -29,6 +30,9 @@ final class TaskTile extends StatelessWidget {
   /// Injectable "now" for tests.
   final DateTime? now;
   final EdgeInsetsGeometry padding;
+
+  /// The sentence it came from (Today's short list leaves it out).
+  final bool showSource;
 
   @override
   Widget build(BuildContext context) {
@@ -86,7 +90,8 @@ final class TaskTile extends StatelessWidget {
                       key: Key('task-promise-${task.id}'),
                       style: textTheme.bodySmall?.copyWith(
                         fontSize: 13,
-                        color: palette.accent,
+                        color: palette.onAttention,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   if (due != null)
@@ -98,7 +103,7 @@ final class TaskTile extends StatelessWidget {
                         fontWeight: overdue ? FontWeight.w600 : null,
                       ),
                     ),
-                  if (source != null) SourceQuote(text: source),
+                  if (showSource && source != null) SourceQuote(text: source),
                 ],
               ),
             ),

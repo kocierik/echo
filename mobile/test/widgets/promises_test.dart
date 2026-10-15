@@ -38,25 +38,37 @@ void main() {
     expect(todayTasks(open, now).map((t) => t.id), ['plain']);
   });
 
-  testWidgets('the section says to whom, and hides when empty', (tester) async {
-    Future<void> pump(List<TaskItem> promises) => tester.pumpWidget(MaterialApp(
-          theme: AppTheme.light,
-          home: Scaffold(
-            body: PromisesSection(
-              promises: promises,
-              busy: (_) => false,
-              onToggle: (_) {},
-              onDismiss: (_) {},
-              now: now,
-            ),
-          ),
-        ));
+  test('To do today: promises due, stale or made today, then the tasks', () {
+    final open = [
+      _task('plain', due: DateTime(2026, 10, 15)),
+      _task('later', promise: true, due: DateTime(2026, 10, 20)),
+      _task('due', promise: true, due: DateTime(2026, 10, 15)),
+      _task('stale', promise: true, created: now.subtract(const Duration(days: 5))),
+      _task('new', promise: true, created: DateTime(2026, 10, 15, 9)),
+      _task('recent', promise: true, created: now.subtract(const Duration(days: 1))),
+    ];
 
-    await pump([_task('p', promise: true, to: 'Marco')]);
-    expect(find.text('Promises'), findsOneWidget);
+    expect(todayTodo(open, now).map((t) => t.id), ['stale', 'due', 'new', 'plain']);
+  });
+
+  testWidgets('a promise says to whom', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: TodoPanel(
+          loading: false,
+          tasks: [_task('p', promise: true, to: 'Marco')],
+          error: null,
+          busy: (_) => false,
+          onRetry: () {},
+          onToggle: (_) {},
+          onDismiss: (_) {},
+          onSeeAll: () {},
+          now: now,
+        ),
+      ),
+    ));
+    expect(find.text('To do today'), findsOneWidget);
     expect(find.text('Promised to Marco'), findsOneWidget);
-
-    await pump(const []);
-    expect(find.byKey(const Key('promises-section')), findsNothing);
   });
 }

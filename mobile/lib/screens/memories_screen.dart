@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
+import '../models/today_insights.dart';
 import '../services/api/api_service.dart';
 import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
@@ -12,6 +13,7 @@ import '../widgets/screen_header.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/sections.dart';
+import '../widgets/summary_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'navigation.dart';
 import 'person_screen.dart';
@@ -58,6 +60,10 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
   final _searchController = TextEditingController();
   _MemoriesView _view = _MemoriesView.conversations;
 
+  /// The latest daily and weekly summaries, above the conversations.
+  DailySummary? _digest;
+  WeeklySummary? _week;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +75,28 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
         MemoriesController(api: api, uploadStream: widget.segmentUploadedStream);
     _controller.addListener(_onChanged);
     unawaited(_controller.initialize());
+    unawaited(_loadSummaries());
+  }
+
+  /// Optional: without them (or on a failure) the list starts with the days.
+  Future<void> _loadSummaries() async {
+    final api = _api;
+    if (api is TodayApi) {
+      try {
+        final digest = await api.getLatestDigest();
+        if (mounted) setState(() => _digest = digest);
+      } catch (_) {}
+    }
+    if (api case final WeeklySummaryApi weekly) {
+      try {
+        final week = await weekly.getLatestWeeklySummary();
+        if (mounted) setState(() => _week = week);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([_controller.refresh(), _loadSummaries()]);
   }
 
   @override
@@ -225,10 +253,23 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
       );
     }
 
-    final rows = _rowsByDay(state.conversations, widget.clock());
+    final now = widget.clock();
+    final rows = _rowsByDay(state.conversations, now);
     final footer = state.loadingMore || state.hasMore || state.error != null;
+    final summaries = [
+      if (_week case final week?) WeeklySummarySection(week: week),
+      if (_digest case final digest?)
+        DigestSection(
+          loading: false,
+          summary: digest,
+          error: null,
+          onRetry: () {},
+          now: now,
+        ),
+    ];
+    final first = summaries.isEmpty ? 0 : 1;
     return RefreshIndicator(
-      onRefresh: _controller.refresh,
+      onRefresh: _refresh,
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification.metrics.extentAfter < 600) unawaited(_controller.loadMore());
@@ -238,8 +279,20 @@ final class _MemoriesScreenState extends State<MemoriesScreen> {
           key: const Key('memories-list'),
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.only(bottom: 16 + EchoShellInsets.bottomOf(context)),
-          itemCount: rows.length + (footer ? 1 : 0),
+          itemCount: first + rows.length + (footer ? 1 : 0),
           itemBuilder: (context, index) {
+            if (index < first) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Column(
+                  children: [
+                    for (final summary in summaries)
+                      Padding(padding: const EdgeInsets.only(bottom: 12), child: summary),
+                  ],
+                ),
+              );
+            }
+            index -= first;
             if (index == rows.length) return _footer(state);
             final row = rows[index];
             return row.day != null

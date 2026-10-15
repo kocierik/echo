@@ -385,15 +385,6 @@ class MainShell extends StatelessWidget {
                     HomeScreen(
                       deviceStatus: state.device,
                       headerAction: pill,
-                      setMuted: (muted) {
-                        final controller = deviceController;
-                        if (controller == null) {
-                          return Future<void>.error(
-                            StateError('Device controller is unavailable'),
-                          );
-                        }
-                        return controller.setMuted(muted);
-                      },
                       onReconnect: deviceController?.reconnect,
                       onPair: onRequireOnboarding,
                       onAsk: appController.requestAsk,
