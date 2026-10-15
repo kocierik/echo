@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/chat_message.dart';
-import '../services/api_service.dart';
-import '../services/chat_controller.dart';
-import '../services/photo_service.dart';
-import '../services/voice_input.dart';
+import '../services/api/api_service.dart';
+import '../services/chat/chat_controller.dart';
+import '../services/device/photo_service.dart';
+import '../services/chat/voice_input.dart';
 import '../theme/app_theme.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/message_bubble.dart';

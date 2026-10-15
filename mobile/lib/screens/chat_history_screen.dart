@@ -3,9 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/chat_session.dart';
-import '../services/api_exception.dart';
-import '../services/api_service.dart';
-import '../services/chat_controller.dart';
+import '../services/api/api_exception.dart';
+import '../services/api/api_service.dart';
+import '../services/chat/chat_controller.dart';
 import '../theme/app_theme.dart';
 
 final class ChatHistoryScreen extends StatefulWidget {

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/screens/transcript_detail_screen.dart';
-import 'package:echo_app/services/api_exception.dart';
-import 'package:echo_app/services/api_service.dart';
+import 'package:echo_app/services/api/api_exception.dart';
+import 'package:echo_app/services/api/api_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

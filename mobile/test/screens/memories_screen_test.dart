@@ -1,7 +1,7 @@
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/screens/memories_screen.dart';
-import 'package:echo_app/services/memories_controller.dart';
+import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:echo_app/widgets/sections.dart';
 import 'package:flutter/material.dart';

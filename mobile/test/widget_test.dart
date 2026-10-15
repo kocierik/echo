@@ -1,7 +1,7 @@
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/session_state.dart';
-import 'package:echo_app/services/app_controller.dart';
-import 'package:echo_app/services/onboarding_controller.dart';
+import 'package:echo_app/services/app/app_controller.dart';
+import 'package:echo_app/services/onboarding/onboarding_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo_app/main.dart';

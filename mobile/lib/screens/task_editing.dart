@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/task_item.dart';
-import '../services/api_exception.dart';
-import '../services/api_service.dart';
+import '../services/api/api_exception.dart';
+import '../services/api/api_service.dart';
 
 /// Completing and dropping tasks in place on a screen that loaded them: changes
 /// show at once and are undone, with a message, when the server refuses.

@@ -3,10 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../services/api_exception.dart';
-import '../../services/api_service.dart';
-import '../../services/app_lifecycle_coordinator.dart';
-import '../../services/network_policy.dart';
+import '../../services/api/api_exception.dart';
+import '../../services/api/api_service.dart';
+import '../../services/app/app_lifecycle_coordinator.dart';
+import '../../services/app/network_policy.dart';
 import 'settings_components.dart';
 
 class ConnectionSettingsScreen extends StatefulWidget {

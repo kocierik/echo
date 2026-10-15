@@ -237,8 +237,8 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ## 5. Debito tecnico
 
-- **Struttura del mobile:** `lib/services/` ha 30 file piatti (controller, adattatori, client API, BLE); andrebbe divisa
-  per area (`ble/`, `api/`, `onboarding/`…) quando si tocca quella parte.
+- **Struttura del mobile:** fatto il 15/10: `lib/services/` è divisa per area (`api/`, `app/`, `chat/`, `device/`,
+  `memory/`, `onboarding/`), i test seguono la stessa struttura.
 - **`backend/app/routers/query.py`** concentra RAG, instradamento verso le azioni e idempotenza: candidato a
   dividersi se cresce ancora.
 - Fatto il 14/10: codice morto rimosso (`get_redis`, factory Deepgram inutilizzata, `embedding_dimensions`, gauge delle
@@ -264,5 +264,5 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
    tempo e peso della foto (`[Camera] photo N bytes in M ms`), poi il pulsante 📷 in Ask e "Echo, cos'è questo?".
    Misurare consumo e calore durante lo scatto; se il trasferimento è lento, `PHOTO_FRAME_SIZE` → `FRAMESIZE_SVGA`.
 
-**Per me**, se vuoi: Today senza dispositivo ("Pair Echo"), divisione di `mobile/lib/services/`, traduzione delle
+**Per me**, se vuoi: Today senza dispositivo ("Pair Echo"), traduzione delle
 entità estratte.

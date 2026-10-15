@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/app_view_state.dart';
-import '../../services/app_controller.dart';
+import '../../services/app/app_controller.dart';
 import 'settings_components.dart';
 
 class AppearanceSettingsScreen extends StatelessWidget {
