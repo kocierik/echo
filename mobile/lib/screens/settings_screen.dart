@@ -157,9 +157,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'Before meetings and for promises, only when needed.',
             onTap: () => _push(NotificationSettingsScreen(
               preferences: _preferences,
-              onChanged: () => AppRuntime
-                  .maybeCoordinator?.notificationScheduler
-                  .refresh(force: true),
+              onChanged: () {
+                final coordinator = AppRuntime.maybeCoordinator;
+                coordinator?.notificationScheduler.refresh(force: true);
+                coordinator?.liveActivity.refresh();
+              },
             )),
           ),
           SettingsRow(

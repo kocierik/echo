@@ -39,7 +39,8 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] "Echo sta lavorando…" in Today per i comandi vocali e le foto in arrivo, finché arriva la risposta
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
-- [ ] Live Activity "Echo sta ascoltando" (con batteria) e widget iOS
+- [x] Live Activity (iOS 16.1+): schermata di blocco e Dynamic Island con stato (ascolta/muto/offline),
+      batteria e minuti in attesa di sync; aggiornata dall'app, senza push. Spegnibile in Settings → Notifications
 - [x] Condividere una conversazione (testo/Markdown); export di tutti i dati in JSON (Settings → Privacy)
 
 ### Fase 5 — La privacy come vantaggio

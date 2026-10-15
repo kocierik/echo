@@ -82,6 +82,15 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
           'At most three a day, never between 10 pm and 8 am. They are scheduled on this '
           'phone while Echo is in use.',
         ),
+        const SettingsSection('ON THE LOCK SCREEN'),
+        _row(
+          key: NotificationPreferences.liveActivityKey,
+          icon: Icons.phone_iphone_rounded,
+          title: 'Live Activity',
+          subtitle: 'Whether Echo is listening, its battery and the speech waiting to sync, '
+              'on the Lock Screen and in the Dynamic Island.',
+          value: _choices.liveActivity,
+        ),
       ],
     );
   }
