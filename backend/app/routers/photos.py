@@ -8,6 +8,7 @@ wearable could not take it with `POST /photos/{id}/failure`. See app/services/ph
 import hashlib
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import (
     APIRouter,
@@ -52,6 +53,9 @@ MAX_WAIT_S = 25
 
 class PhotoRequest(BaseModel):
     question: str | None = Field(default=None, max_length=500)
+    # "app" (the camera button in Ask) or "button" (the wearable's own button: the user is
+    # not looking at the phone, so the answer is notified)
+    source: Literal["app", "button"] = "app"
     # The chat the photo is asked from; the "Voice requests" chat when omitted
     chat_session_id: uuid.UUID | None = None
 
@@ -107,7 +111,7 @@ async def create_photo_request(
         session = await get_or_create_voice_session(db, user_id)
         await db.flush()
     photo = request_photo(
-        db, user_id, source="app", chat_session_id=session.id, question=body.question
+        db, user_id, source=body.source, chat_session_id=session.id, question=body.question
     )
     await append_message(
         db,

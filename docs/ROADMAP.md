@@ -16,7 +16,7 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 
 ### Fase 1 — Non perdere niente (firmware)
 - [x] Buffer offline da ~64 s a ~13 minuti di parlato, con la PSRAM libera (8 MB); in Today "N min of speech to sync"
-- [ ] Pulsante fisico: pressione breve = foto, lunga = muto
+- [x] Pulsante fisico (D1/GPIO2 → GND): pressione breve = foto con notifica, lunga = muto/riattiva
 - [ ] Tarature sui dati reali: tempi dei comandi vocali (scatto anticipato se serve), soglie delle voci,
       risoluzione delle foto
 

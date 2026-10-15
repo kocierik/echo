@@ -210,7 +210,7 @@ async def fail_photo(db: AsyncSession, photo: Photo, reason: str) -> None:
         {
             "role": "assistant",
             "content": failure_text(photo, reason),
-            "notify": photo.source == "voice",
+            "notify": photo.source != "app",
         },
     )
 
@@ -347,7 +347,7 @@ async def analyse_photo(
             "content": answer,
             "photo_id": str(photo.id),
             # The app button waits for its own photo: no notification
-            "notify": photo.source == "voice",
+            "notify": photo.source != "app",
         },
     )
     await db.commit()
@@ -368,7 +368,7 @@ async def fail_analysis(db: AsyncSession, photo_id: uuid.UUID) -> None:
             "role": "assistant",
             "content": failure_text(photo, "analysis_failed"),
             "photo_id": str(photo.id),
-            "notify": photo.source == "voice",
+            "notify": photo.source != "app",
         },
     )
     await db.commit()

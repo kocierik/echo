@@ -277,8 +277,8 @@ void test_muted_gate_discards_capture_before_reading_audio() {
 void test_indicators_do_not_read_or_toggle_the_mute_button() {
     const std::string source = readSource("src/indicators.h");
 
-    TEST_ASSERT_TRUE(source.find("MUTE_BUTTON_PIN") == std::string::npos);
-    TEST_ASSERT_TRUE(source.find("ButtonDebouncer") == std::string::npos);
+    TEST_ASSERT_TRUE(source.find("BUTTON_PIN") == std::string::npos);
+    TEST_ASSERT_TRUE(source.find("ButtonGesture") == std::string::npos);
     TEST_ASSERT_TRUE(source.find("void setMuted(bool muted)") != std::string::npos);
     TEST_ASSERT_TRUE(source.find("_muted = muted") != std::string::npos);
 }

@@ -133,9 +133,9 @@ final class PhotoService implements PhotoTaker {
   Future<bool> uploadFromDevice(Uint8List jpeg, DateTime capturedAt) async {
     var photoId = _pendingId;
     if (photoId == null) {
-      // A photo kept by the wearable across an app restart, or past the timeout:
-      // still delivered, as a photo without a question
-      photoId = (await _api.requestPhoto()).id;
+      // Taken with the wearable's own button (or kept across an app restart, or past
+      // the timeout): delivered as a photo without a question, with a notification
+      photoId = (await _api.requestPhoto(fromWearableButton: true)).id;
       _pendingId = photoId;
     }
     await _api.uploadPhoto(photoId, jpeg, capturedAt);

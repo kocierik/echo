@@ -25,7 +25,8 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
 - **Knows who is speaking.** Record your voice once in Settings → Voices; name the others by tapping
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
   ([ADR 0008](docs/adr/0008-voice-fingerprints.md)).
-- **Sees, when asked.** "Echo, che pianta è questa?" or the camera button in Ask: the wearable's camera
+- **Sees, when asked.** "Echo, che pianta è questa?", the camera button in Ask, or a short press of the
+  wearable's button (a long press mutes): the wearable's camera
   takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
   the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
 

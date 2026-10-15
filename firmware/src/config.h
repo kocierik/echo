@@ -109,8 +109,11 @@
 // Hardware Pins
 // ============================================================
 #define LED_PIN 21                     // Built-in LED on XIAO ESP32-S3
-#define MUTE_BUTTON_PIN 2              // GPIO for mute button (active LOW)
-#define MUTE_DEBOUNCE_MS 50            // Button debounce time
+// The button, between D1 (GPIO2) and GND (internal pull-up): a short press takes a photo,
+// a long press mutes or resumes listening
+#define BUTTON_PIN 2
+#define BUTTON_DEBOUNCE_MS 50
+#define BUTTON_LONG_PRESS_MS 1500
 
 static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,
               "A segment must fit in the PSRAM buffer");
