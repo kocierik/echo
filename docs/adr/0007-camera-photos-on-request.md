@@ -25,6 +25,13 @@ Monday?").
    `photo_id`, kept by transcript reanalysis) and a title (for a photo taken outside a
    conversation, which gets its own).
 
+Since 15/10/2026 the description also goes through the same entity extraction as transcripts
+(a whiteboard with "giovedì ore 15" becomes an event, marked with its `photo_id`), and a business
+card or badge becomes a person in People with role, company, email and phone. That part is best
+effort, in a savepoint: a failure never loses the answer. Transcript reanalysis keeps the entities
+photos produced. Photos show in the conversation (summary, and in the transcript where they were
+taken) and Memories counts them.
+
 ## Considered Options
 
 - **Photos on the wearable's flash or an SD card**: rejected; the user wants nothing kept on the

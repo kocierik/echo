@@ -401,3 +401,174 @@ async def test_a_photo_from_the_wearable_button_is_notified(client, auth_headers
     assert message["photo_id"] == photo["id"] and message["notify"] is True
     bad = await client.post("/api/photos", headers=auth_headers, json={"source": "voice"})
     assert bad.status_code == 422
+
+
+class AnalysisLLM:
+    """Entity extraction for photo descriptions; never confirms a duplicate."""
+
+    def __init__(self, entities=None, fail=False):
+        self.entities = entities if entities is not None else [
+            {
+                "type": "event",
+                "name": "Riunione Q4",
+                "content": "Riunione sul quarto trimestre",
+                "metadata": {"event_date": "2026-10-15", "event_time": "15:00"},
+            }
+        ]
+        self.fail = fail
+        self.texts = []
+
+    async def complete_json(self, messages, temperature=0.1):
+        if self.fail:
+            raise RuntimeError("model down")
+        self.texts.append(messages[-1].content)
+        return {"entities": self.entities}
+
+    async def complete(self, messages, temperature=0.3):
+        from app.services.llm_base import LLMResponse
+
+        return LLMResponse(content="no", model="fake")
+
+
+class _BatchEmbeddings(Embeddings):
+    async def embed_batch(self, texts):
+        return [[0.1] * 1536 for _ in texts]
+
+
+async def _analysed(client, auth_headers, db_session, vision=None, analysis=None):
+    photo = await _request(client, auth_headers)
+    await _upload(client, auth_headers, photo["id"])
+    await photo_service.analyse_photo(
+        db_session,
+        uuid.UUID(photo["id"]),
+        vision or VisionLLM(),
+        _BatchEmbeddings(),
+        analysis_llm=analysis or AnalysisLLM(),
+    )
+    return await _photo(db_session, photo["id"])
+
+
+@pytest.mark.asyncio
+async def test_what_a_photo_shows_becomes_entities(client, auth_headers, db_session):
+    from app.models import Entity, EntityMention
+
+    analysis = AnalysisLLM()
+    photo = await _analysed(client, auth_headers, db_session, analysis=analysis)
+
+    assert "FICUS 12 euro" in analysis.texts[0]
+    event = (
+        await db_session.execute(select(Entity).where(Entity.name == "Riunione Q4"))
+    ).scalar_one()
+    assert event.entity_type == "event"
+    assert event.metadata_["photo_id"] == str(photo.id)
+    assert event.conversation_id == photo.conversation_id
+    mention = (
+        await db_session.execute(select(EntityMention).where(EntityMention.entity_id == event.id))
+    ).scalar_one()
+    assert mention.conversation_id == photo.conversation_id
+
+
+@pytest.mark.asyncio
+async def test_a_business_card_becomes_a_person(client, auth_headers, db_session):
+    from app.models import Entity
+
+    card = VisionLLM({
+        "answer": "È il biglietto da visita di Giulia Bianchi.",
+        "description": "Biglietto: Giulia Bianchi, Designer, Acme, giulia@acme.it",
+        "title": "Biglietto da visita",
+        "contact": {
+            "name": "Giulia Bianchi",
+            "role": "Designer",
+            "company": "Acme",
+            "email": "giulia@acme.it",
+            "phone": "",
+        },
+    })
+    # Extraction finds the same person in the description: the card's details win
+    found_again = [{"type": "person", "name": "Giulia Bianchi", "content": "Designer presso Acme"}]
+    photo = await _analysed(
+        client, auth_headers, db_session, vision=card, analysis=AnalysisLLM(entities=found_again)
+    )
+
+    person = (
+        await db_session.execute(select(Entity).where(Entity.name == "Giulia Bianchi"))
+    ).scalar_one()
+    assert person.entity_type == "person"
+    assert person.content == "Designer, Acme"
+    assert person.metadata_["email"] == "giulia@acme.it" and "phone" not in person.metadata_
+    assert photo.answer.endswith("Aggiunto alle tue persone: Giulia Bianchi.")
+    message = await _last_voice_message(db_session)
+    assert message["content"] == photo.answer
+
+    # The same card again completes the same person
+    card.reply = {**card.reply, "contact": {"name": "giulia bianchi", "phone": "+39 333"}}
+    await _analysed(client, auth_headers, db_session, vision=card, analysis=AnalysisLLM([]))
+    people = (
+        await db_session.execute(select(Entity).where(Entity.entity_type == "person"))
+    ).scalars().all()
+    assert len(people) == 1
+    await db_session.refresh(people[0])
+    assert people[0].metadata_["phone"] == "+39 333"
+    assert people[0].metadata_["email"] == "giulia@acme.it"
+
+
+@pytest.mark.asyncio
+async def test_failing_entities_never_lose_the_answer(client, auth_headers, db_session):
+    photo = await _analysed(client, auth_headers, db_session, analysis=AnalysisLLM(fail=True))
+
+    assert photo.status == "done" and photo.answer == "È un ficus."
+    chunk = (
+        await db_session.execute(select(Chunk).where(Chunk.photo_id == photo.id))
+    ).scalar_one()
+    assert "FICUS" in chunk.text
+
+
+@pytest.mark.asyncio
+async def test_photos_in_the_conversation_and_in_the_list(client, auth_headers, db_session):
+    photo = await _analysed(client, auth_headers, db_session)
+
+    detail = await client.get(
+        f"/api/conversations/{photo.conversation_id}", headers=auth_headers
+    )
+    photos = detail.json()["photos"]
+    assert [p["id"] for p in photos] == [str(photo.id)]
+    assert photos[0]["answer"] == "È un ficus."
+    entities = detail.json()["entities"]
+    assert any(e["metadata_"].get("photo_id") == str(photo.id) for e in entities)
+
+    listed = await client.get("/api/conversations", headers=auth_headers)
+    item = next(c for c in listed.json()["conversations"] if c["id"] == str(photo.conversation_id))
+    assert item["photo_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_reanalysis_keeps_what_photos_showed(db_session: AsyncSession, monkeypatch):
+    import app.services.conversation_reanalysis as reanalysis_module
+    from app.models import Entity, EntityMention
+
+    async def direct_retry(coro_func, *args, **kwargs):
+        kwargs.pop("operation_name", None)
+        return await coro_func(*args, **kwargs)
+
+    monkeypatch.setattr(reanalysis_module, "retry_with_backoff", direct_retry)
+    conversation, *_ = await _seed_reanalysis_data(db_session)
+    from_photo = Entity(
+        user_id=TEST_USER_ID,
+        entity_type="person",
+        name="Giulia Bianchi",
+        metadata_={"photo_id": str(uuid.uuid4()), "email": "giulia@acme.it"},
+        conversation_id=conversation.id,
+    )
+    db_session.add(from_photo)
+    await db_session.commit()
+
+    await reanalyse_conversation(db_session, conversation.id, RecordingLLM(), RecordingEmbeddings())
+
+    kept = await db_session.get(Entity, from_photo.id)
+    assert kept is not None and kept.metadata_["email"] == "giulia@acme.it"
+    mention = (
+        await db_session.execute(
+            select(EntityMention).where(EntityMention.entity_id == from_photo.id)
+        )
+    ).scalar_one()
+    assert mention.conversation_id == conversation.id

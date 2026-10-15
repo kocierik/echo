@@ -13,7 +13,7 @@ import uuid
 
 from app.core.database import async_session
 from app.services.embedding_openai import get_embedding_service
-from app.services.llm_openai import get_llm_vision_service
+from app.services.llm_openai import get_llm_analysis_service, get_llm_vision_service
 from app.services.photos import (
     PHOTO_QUEUE,
     analyse_photo,
@@ -31,7 +31,11 @@ POP_TIMEOUT_S = 2
 async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
     async with session_factory() as db:
         return await analyse_photo(
-            db, photo_id, get_llm_vision_service(), get_embedding_service()
+            db,
+            photo_id,
+            get_llm_vision_service(),
+            get_embedding_service(),
+            analysis_llm=get_llm_analysis_service(),
         )
 
 

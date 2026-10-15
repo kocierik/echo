@@ -57,6 +57,7 @@ final class MemoryEntityRow extends StatelessWidget {
         ? eventWhen(entity, now ?? DateTime.now()) ?? entity.content
         : entity.content;
     final source = entity.sourceText;
+    final fromPhoto = source == null && entity.metadata['photo_id'] != null;
 
     final row = Semantics(
       button: onTap != null,
@@ -65,6 +66,7 @@ final class MemoryEntityRow extends StatelessWidget {
         entity.name,
         if (detail != null) detail,
         if (source != null) 'From: ${cleanTranscript(source)}',
+        if (fromPhoto) 'From a photo',
       ].join('. '),
       excludeSemantics: true,
       child: InkWell(
@@ -93,6 +95,18 @@ final class MemoryEntityRow extends StatelessWidget {
                         style: textTheme.bodySmall,
                       ),
                     if (source != null) SourceQuote(text: source),
+                    if (fromPhoto)
+                      Padding(
+                        key: Key('entity-from-photo-${entity.id}'),
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Row(
+                          children: [
+                            Icon(Icons.photo_camera_outlined, size: 14, color: palette.text2),
+                            const SizedBox(width: 4),
+                            Text('From a photo', style: textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
                   ],
                 ),
               ),

@@ -86,6 +86,11 @@ final class ConversationCardTile extends StatelessWidget {
                             icon: Icons.check_circle_outline_rounded,
                             text: c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
                           ),
+                        if (c.photoCount > 0)
+                          _IconText(
+                            icon: Icons.photo_camera_outlined,
+                            text: c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
+                          ),
                       ],
                     ),
                   ],
@@ -113,6 +118,7 @@ final class ConversationCardTile extends StatelessWidget {
       if (c.summary != null) c.summary!,
       if (c.people.isNotEmpty) 'With ${c.people.join(', ')}',
       if (c.taskCount > 0) c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
+      if (c.photoCount > 0) c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
     ].join('. ');
   }
 }

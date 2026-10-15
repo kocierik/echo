@@ -21,9 +21,9 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       risoluzione delle foto
 
 ### Fase 2 — Fotocamera più utile
-- [ ] Le foto generano task ed eventi (estrazione delle entità sulla descrizione)
-- [ ] Foto nel dettaglio della conversazione e in Memories
-- [ ] Biglietto da visita → persona in People (e contatto Google, se collegato)
+- [x] Le foto generano task ed eventi (estrazione delle entità sulla descrizione)
+- [x] Foto nel dettaglio della conversazione (riepilogo e transcript) e in Memories (📷 N)
+- [x] Biglietto da visita → persona in People con ruolo, azienda, email, telefono (contatto Google: a richiesta in chat)
 
 ### Fase 3 — Echo viene da te
 - [ ] Riepilogo serale
