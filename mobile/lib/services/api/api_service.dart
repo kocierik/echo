@@ -121,6 +121,11 @@ abstract interface class VoiceApi {
   Future<void> rejectVoice(String segmentId);
 }
 
+/// Voice requests being answered and photos on their way (optional for Today).
+abstract interface class VoiceWorkingApi {
+  Future<List<WorkingItem>> getVoiceWorking();
+}
+
 /// Weekly summaries (optional for a Today api: no section without it).
 abstract interface class WeeklySummaryApi {
   /// The latest weekly summary of the last two weeks, or null.
@@ -272,7 +277,8 @@ class ApiService
         PhotoApi,
         WeeklySummaryApi,
         VoiceApi,
-        NotificationsApi {
+        NotificationsApi,
+        VoiceWorkingApi {
   ApiService({
     http.Client? client,
     ApiCredentialStore? credentialStore,
@@ -823,6 +829,21 @@ class ApiService
       return items
           .map((item) => UpcomingNotification.fromJson(item as Map<String, dynamic>))
           .toList();
+    });
+  }
+
+  @override
+  Future<List<WorkingItem>> getVoiceWorking() async {
+    final server = await _credentialStore.serverUrl;
+    final headers = await _credentialStore.headers;
+    final response = await _send(
+      () => _client.get(Uri.parse('$server/api/actions/voice-working'), headers: headers),
+      expectedStatuses: const {200},
+      expectedShape: _JsonShape.map,
+    );
+    return _parseDecoded(response.data, (data) {
+      final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
+      return items.map((i) => WorkingItem.fromJson(i as Map<String, dynamic>)).toList();
     });
   }
 

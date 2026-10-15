@@ -144,7 +144,8 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 }
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
-final class FakeTodayApi extends FakeMemoryApi implements TodayApi, WeeklySummaryApi {
+final class FakeTodayApi extends FakeMemoryApi
+    implements TodayApi, WeeklySummaryApi, VoiceWorkingApi {
   FakeTodayApi({
     super.conversations,
     super.openTasks,
@@ -157,6 +158,12 @@ final class FakeTodayApi extends FakeMemoryApi implements TodayApi, WeeklySummar
 
   /// The weekly summary (not recorded in [calls]: optional for Today).
   WeeklySummary? week;
+
+  /// Requests Echo is answering (not recorded in [calls]).
+  List<WorkingItem> working = [];
+
+  @override
+  Future<List<WorkingItem>> getVoiceWorking() async => List.of(working);
 
   @override
   Future<WeeklySummary?> getLatestWeeklySummary() async => week;

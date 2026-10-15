@@ -33,6 +33,8 @@ final class HomeScreen extends StatefulWidget {
     this.segmentUploadedStream,
     this.onMuteAcknowledged,
     this.openConversation,
+    this.onOpenChat,
+    this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
     super.key,
   });
@@ -50,6 +52,12 @@ final class HomeScreen extends StatefulWidget {
   final Stream<Object?>? segmentUploadedStream;
   final Future<void> Function()? onMuteAcknowledged;
   final ConversationOpener? openConversation;
+
+  /// Opens the chat an answer goes to (null: the Voice requests chat).
+  final void Function(String? sessionId)? onOpenChat;
+
+  /// How often "Echo is working on it" is checked while something is working.
+  final Duration workingPollInterval;
   final DateTime Function() clock;
 
   @override
@@ -86,6 +94,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   String? _summaryError;
 
   WeeklySummary? _week;
+
+  List<WorkingItem> _working = const [];
+  Timer? _workingTimer;
 
   List<PendingAction> _pending = const [];
   final Set<String> _pendingBusy = {};
@@ -167,6 +178,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _conversationsGeneration++;
     _tasksGeneration++;
     _muteTimeout?.cancel();
+    _workingTimer?.cancel();
     unawaited(_uploadSubscription?.cancel());
     _ownedApi?.dispose();
     super.dispose();
@@ -177,6 +189,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _uploadSubscription = widget.segmentUploadedStream?.listen((_) {
       unawaited(_loadConversations());
       unawaited(_loadTasks());
+      // A segment may hold "Echo, …": show it as soon as it is being answered
+      unawaited(_loadWorking());
     });
   }
 
@@ -187,6 +201,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadSummary(),
       _loadPending(),
       _loadWeek(),
+      _loadWorking(),
     ]);
   }
 
@@ -256,6 +271,30 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         _summaryLoading = false;
         _summaryError = userMessage(error, 'Could not load the daily summary.');
       });
+    }
+  }
+
+  /// Requests being answered: checked again while there are any; when one finishes,
+  /// what it may have changed (actions to confirm, tasks) is reloaded.
+  Future<void> _loadWorking() async {
+    final api = _api;
+    if (api is! VoiceWorkingApi) return;
+    _workingTimer?.cancel();
+    List<WorkingItem> items;
+    try {
+      items = await (api as VoiceWorkingApi).getVoiceWorking();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final finished = _working.any((old) => !items.any((now) => now.key == old.key));
+    setState(() => _working = items);
+    if (finished) {
+      unawaited(_loadPending());
+      unawaited(_loadTasks());
+    }
+    if (items.isNotEmpty) {
+      _workingTimer = Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
     }
   }
 
@@ -441,6 +480,12 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 pendingBytes: widget.deviceStatus.bufferBytes,
               ),
               const SizedBox(height: 12),
+              WorkingSection(
+                items: _working,
+                onOpen: widget.onOpenChat == null
+                    ? null
+                    : (item) => widget.onOpenChat!(item.sessionId),
+              ),
               NeedsYouSection(
                 actions: _pending,
                 busyIds: _pendingBusy,

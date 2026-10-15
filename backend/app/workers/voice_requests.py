@@ -13,6 +13,7 @@ localized "couldn't complete that" reply, so an action never happens silently.
 """
 
 import asyncio
+import json
 import logging
 import uuid
 from contextlib import suppress
@@ -27,6 +28,8 @@ from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.voice import (
+    WORKING_KEY,
+    WORKING_TTL_S,
     collect_command,
     find_wake,
     get_or_create_voice_session,
@@ -228,7 +231,31 @@ async def _process(
         return True
     claim.user_id = segment.user_id
     claim.command = command
+    await _mark_working(redis_client, segment.user_id, segment_id, command)
+    try:
+        return await _answer_confirmed(db, redis_client, segment, command)
+    finally:
+        await _unmark_working(redis_client, segment.user_id, segment_id)
 
+
+async def _mark_working(redis_client, user_id, segment_id, command: str) -> None:
+    key = WORKING_KEY.format(user_id=user_id)
+    with suppress(Exception):  # only a progress hint: never fails the request
+        await redis_client.hset(
+            key,
+            str(segment_id),
+            json.dumps({"command": command, "since": _utcnow().isoformat()}),
+        )
+        await redis_client.expire(key, WORKING_TTL_S)
+
+
+async def _unmark_working(redis_client, user_id, segment_id) -> None:
+    with suppress(Exception):
+        await redis_client.hdel(WORKING_KEY.format(user_id=user_id), str(segment_id))
+
+
+async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, command: str) -> bool:
+    segment_id = segment.id
     voice_session = await get_or_create_voice_session(db, segment.user_id)
     history = [
         {"role": m["role"], "content": m["content"]}

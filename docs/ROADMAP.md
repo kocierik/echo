@@ -36,7 +36,7 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 ### Fase 4 — Esperienza d'uso
 - [x] App veloce anche offline: copia locale delle letture (cancellata al logout), Today si apre dalla copia,
       striscia "Offline · updated 14:32"
-- [ ] "Echo sta lavorando alla tua richiesta…" in Today per i comandi vocali
+- [x] "Echo sta lavorando…" in Today per i comandi vocali e le foto in arrivo, finché arriva la risposta
 - [ ] Far scoprire le funzioni: suggerimenti la prima volta, pagina "Cosa può fare Echo"
 - [ ] Live Activity "Echo sta ascoltando" (con batteria) e widget iOS
 - [ ] Condividere ed esportare una conversazione; export di tutti i dati

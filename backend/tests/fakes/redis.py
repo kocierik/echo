@@ -57,6 +57,20 @@ class InMemoryRedis:
                 return key, self.lists[key].pop(0)
         return None
 
+    async def hset(self, key, field, value):
+        self.values.setdefault(key, {})[field] = value
+        return 1
+
+    async def hdel(self, key, *fields):
+        found = self.values.get(key, {})
+        return sum(found.pop(field, None) is not None for field in fields)
+
+    async def hgetall(self, key):
+        return {
+            k.encode(): v.encode() if isinstance(v, str) else v
+            for k, v in dict(self.values.get(key, {})).items()
+        }
+
     async def llen(self, key):
         return len(self.lists.get(key, []))
 

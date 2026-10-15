@@ -572,3 +572,25 @@ async def test_reanalysis_keeps_what_photos_showed(db_session: AsyncSession, mon
         )
     ).scalar_one()
     assert mention.conversation_id == conversation.id
+
+
+@pytest.mark.asyncio
+async def test_voice_working_lists_requests_and_photos_on_their_way(client, auth_headers):
+    from app.actions.voice import WORKING_KEY
+
+    redis = client._transport.app.state.redis
+    await redis.hset(
+        WORKING_KEY.format(user_id=TEST_USER_ID),
+        "seg-1",
+        json.dumps({"command": "che impegni ho domani?", "since": "2026-10-15T10:00:00+00:00"}),
+    )
+    photo = await _request(client, auth_headers, question="Che pianta è?")
+
+    response = await client.get("/api/actions/voice-working", headers=auth_headers)
+
+    items = response.json()["items"]
+    assert [(i["kind"], i["text"]) for i in items] == [
+        ("request", "che impegni ho domani?"),
+        ("photo", "Che pianta è?"),
+    ]
+    assert items[1]["session_id"] == photo["chat_session_id"]

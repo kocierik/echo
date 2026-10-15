@@ -33,6 +33,11 @@ STT_WAIT_LIMIT = timedelta(seconds=25)
 # arrives within about this many seconds of the previous segment's arrival.
 CONTINUATION_WAIT_S = 10
 
+# Requests being answered, per user (hash: segment id -> {"command", "since"}), so the app
+# can show "Echo is working on it"; the TTL clears what a crash would leave behind.
+WORKING_KEY = "voice:working:{user_id}"
+WORKING_TTL_S = 300
+
 # Speaker tag prepended by the STT worker: "[You] " / "[Others] " (older: "[Tu] "/"[Altri] ").
 _SPEAKER_TAG = re.compile(r"^\s*\[(?:you|others|tu|altri)\]\s*", re.IGNORECASE)
 # Whole word only: an apostrophe glued to the name ("l'eco") is part of another word.

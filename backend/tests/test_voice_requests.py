@@ -367,6 +367,7 @@ class _Redis:
         self.lists = {vr.VOICE_QUEUE: list(items)}
         self.keys = {}
         self.set_calls = []
+        self.working_seen = []
 
     async def lpush(self, name, *values):
         for value in values:
@@ -379,6 +380,14 @@ class _Redis:
 
     async def expire(self, name, seconds):
         self.keys[f"ttl:{name}"] = seconds
+
+    async def hset(self, name, field, value):
+        self.keys.setdefault(name, {})[field] = value
+        self.working_seen.append((field, json.loads(value)["command"]))
+
+    async def hdel(self, name, *fields):
+        for field in fields:
+            self.keys.get(name, {}).pop(field, None)
 
     async def rpop(self, name):
         items = self.lists.get(name) or []
@@ -1184,3 +1193,17 @@ async def test_worker_without_composio_still_takes_photos(worker):
 
     assert worker.rag_calls == []
     assert "photo_id" in _voice_session(worker).messages[-1]
+
+
+@pytest.mark.asyncio
+async def test_worker_marks_the_request_working_while_answering(worker):
+    from app.actions.voice import WORKING_KEY
+
+    wake = _seg("[You] Echo, riassumimi le mail")
+    _ready(worker, wake)
+    redis = _Redis()
+
+    await vr.handle_voice_item(redis, str(wake.id))
+
+    assert redis.working_seen == [(str(wake.id), "riassumimi le mail")]
+    assert redis.keys[WORKING_KEY.format(user_id=USER_ID)] == {}  # cleared once answered

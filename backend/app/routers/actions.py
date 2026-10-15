@@ -3,7 +3,7 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
@@ -21,11 +21,13 @@ from app.actions.pending import (
 )
 from app.actions.policy import toolkit_of
 from app.actions.provider import ActionProvider, ActionProviderError
+from app.actions.voice import WORKING_KEY
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
+from app.models.photo import Photo
 from app.services.chat_history import save_session_history
 from app.services.language import detect_language
 
@@ -356,3 +358,50 @@ async def voice_updates(
                 }
             )
     return {"messages": messages, "now": datetime.now(timezone.utc).isoformat()}
+
+
+# A photo still waiting for the wearable or the vision model this long is shown as working
+PHOTO_WORKING_WINDOW = timedelta(minutes=10)
+
+
+@router.get("/voice-working")
+async def voice_working(
+    request: Request,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Voice requests Echo is answering right now, and photos on their way: the app shows
+    "Echo is working on it" until the answer arrives."""
+    items = []
+    raw = await request.app.state.redis.hgetall(WORKING_KEY.format(user_id=user_id))
+    for key, value in (raw or {}).items():
+        try:
+            entry = json.loads(value)
+            items.append(
+                {
+                    "key": f"request:{key.decode() if isinstance(key, bytes) else key}",
+                    "kind": "request",
+                    "text": entry["command"],
+                    "since": entry["since"],
+                }
+            )
+        except (ValueError, KeyError, TypeError):
+            continue
+    since = datetime.now(timezone.utc) - PHOTO_WORKING_WINDOW
+    photos = await db.execute(
+        select(Photo)
+        .where(Photo.user_id == user_id, Photo.status.in_(("requested", "received")))
+        .where(Photo.created_at >= since)
+        .order_by(Photo.created_at)
+    )
+    for photo in photos.scalars():
+        items.append(
+            {
+                "key": f"photo:{photo.id}",
+                "kind": "photo",
+                "text": photo.question or "",
+                "since": photo.created_at.isoformat(),
+                "session_id": str(photo.chat_session_id) if photo.chat_session_id else None,
+            }
+        )
+    return {"items": sorted(items, key=lambda item: item["since"])}
