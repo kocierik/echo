@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../services/ble_service.dart';
+import '../services/device/ble_service.dart';
 
 class DeviceMessagesScreen extends StatefulWidget {
   const DeviceMessagesScreen({super.key});

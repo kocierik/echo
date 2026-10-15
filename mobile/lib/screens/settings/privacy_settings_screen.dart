@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/device_status.dart';
-import '../../services/app_controller.dart';
+import '../../services/app/app_controller.dart';
 import 'settings_components.dart';
 
 class PrivacySettingsScreen extends StatelessWidget {

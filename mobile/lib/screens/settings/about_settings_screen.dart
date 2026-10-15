@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../services/app_controller.dart';
-import '../../services/session_controller.dart';
+import '../../services/app/app_controller.dart';
+import '../../services/app/session_controller.dart';
 import 'appearance_settings_screen.dart';
 import 'settings_components.dart';
 

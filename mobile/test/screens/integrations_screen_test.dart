@@ -1,7 +1,7 @@
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/screens/integrations_screen.dart';
-import 'package:echo_app/services/api_exception.dart';
-import 'package:echo_app/services/api_service.dart';
+import 'package:echo_app/services/api/api_exception.dart';
+import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

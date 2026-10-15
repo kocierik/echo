@@ -6,8 +6,8 @@ import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/models/today_insights.dart';
-import 'package:echo_app/services/api_exception.dart';
-import 'package:echo_app/services/api_service.dart';
+import 'package:echo_app/services/api/api_exception.dart';
+import 'package:echo_app/services/api/api_service.dart';
 
 /// An in-memory [MemoryApi] (and [TranscriptMemoryApi]) recording every call.
 class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {

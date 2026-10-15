@@ -1,7 +1,7 @@
 import 'package:echo_app/screens/onboarding/onboarding_screen.dart';
-import 'package:echo_app/services/app_preferences.dart';
-import 'package:echo_app/services/build_defaults.dart';
-import 'package:echo_app/services/onboarding_controller.dart';
+import 'package:echo_app/services/app/app_preferences.dart';
+import 'package:echo_app/services/api/build_defaults.dart';
+import 'package:echo_app/services/onboarding/onboarding_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

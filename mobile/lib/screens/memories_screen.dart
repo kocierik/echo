@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
-import '../services/api_service.dart';
-import '../services/memories_controller.dart';
+import '../services/api/api_service.dart';
+import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../utils/formatting.dart';

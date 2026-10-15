@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../services/build_defaults.dart';
-import '../../services/onboarding_controller.dart';
+import '../../services/api/build_defaults.dart';
+import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
 import 'backend_step.dart';
 import 'pairing_step.dart';

@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/person.dart';
-import '../services/api_exception.dart';
-import '../services/api_service.dart';
+import '../services/api/api_exception.dart';
+import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../utils/formatting.dart';

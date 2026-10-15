@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../services/api_service.dart';
-import '../services/app_controller.dart';
-import '../services/app_runtime.dart';
-import '../services/device_controller.dart';
-import '../services/network_policy.dart';
-import '../services/onboarding_controller.dart';
-import '../services/session_controller.dart';
+import '../services/api/api_service.dart';
+import '../services/app/app_controller.dart';
+import '../services/app/app_runtime.dart';
+import '../services/device/device_controller.dart';
+import '../services/app/network_policy.dart';
+import '../services/onboarding/onboarding_controller.dart';
+import '../services/app/session_controller.dart';
 import '../theme/app_theme.dart';
 import 'device_detail_screen.dart';
 import 'device_messages_screen.dart';

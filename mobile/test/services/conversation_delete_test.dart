@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:echo_app/services/api_exception.dart';
-import 'package:echo_app/services/api_service.dart';
+import 'package:echo_app/services/api/api_exception.dart';
+import 'package:echo_app/services/api/api_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 

@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/voice.dart';
-import '../../services/api_exception.dart';
-import '../../services/api_service.dart';
+import '../../services/api/api_exception.dart';
+import '../../services/api/api_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_components.dart';
 

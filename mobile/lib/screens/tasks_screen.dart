@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/task_item.dart';
-import '../services/api_service.dart';
-import '../services/tasks_controller.dart';
+import '../services/api/api_service.dart';
+import '../services/memory/tasks_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
