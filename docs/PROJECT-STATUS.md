@@ -239,8 +239,8 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 - **Struttura del mobile:** fatto il 15/10: `lib/services/` è divisa per area (`api/`, `app/`, `chat/`, `device/`,
   `memory/`, `onboarding/`), i test seguono la stessa struttura.
-- **`backend/app/routers/query.py`** concentra RAG, instradamento verso le azioni e idempotenza: candidato a
-  dividersi se cresce ancora.
+- **`backend/app/routers/query.py`:** alleggerito il 15/10 (storico chat in `services/chat_history.py`, prompt e
+  testi delle risposte in `services/memory_answers.py`); restano endpoint, idempotenza e instradamento.
 - Fatto il 14/10: codice morto rimosso (`get_redis`, factory Deepgram inutilizzata, `embedding_dimensions`, gauge delle
   metriche, runner duplicato dei test speaker, riesportazione dell'onboarding), target `make` tutti nel container,
   porte solo su `127.0.0.1`, `make deploy` senza chiave di esempio, documentazione allineata.

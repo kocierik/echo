@@ -26,7 +26,7 @@ from app.core.database import get_db
 from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
-from app.routers.query import _save_session_history
+from app.services.chat_history import save_session_history
 from app.services.language import detect_language
 
 logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ async def _append_to_context(redis_client, session_id: uuid.UUID, text: str) -> 
             return
         history = json.loads(raw)
         history.append({"role": "assistant", "content": text, "actions": True})
-        await _save_session_history(redis_client, str(session_id), history)
+        await save_session_history(redis_client, str(session_id), history)
     except Exception:
         logger.warning("Could not add the action outcome to the chat context", exc_info=True)
 

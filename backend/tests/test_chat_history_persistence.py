@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.chat_session import ChatSession
-from app.routers import query as query_module
+from app.services import chat_history as query_module
 
 USER_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 
@@ -51,7 +51,7 @@ async def test_new_session_is_created_with_the_turn_and_title():
     db = _FakeDb()
     session_id = str(uuid.uuid4())
 
-    await query_module._persist_chat_session(db, USER_ID, session_id, _turn("Ciao?", "Ciao!"))
+    await query_module.persist_chat_session(db, USER_ID, session_id, _turn("Ciao?", "Ciao!"))
 
     assert len(db.added) == 1
     session = db.added[0]
@@ -69,7 +69,7 @@ async def test_existing_session_appends_instead_of_overwriting():
     )
     db = _FakeDb(existing)
 
-    await query_module._persist_chat_session(
+    await query_module.persist_chat_session(
         db, USER_ID, str(existing.id), _turn("nuova", "ok")
     )
 
@@ -83,7 +83,7 @@ async def test_session_of_another_user_is_not_touched():
     db = _FakeDb(existing)
 
     with pytest.raises(HTTPException) as exc:
-        await query_module._persist_chat_session(
+        await query_module.persist_chat_session(
             db, USER_ID, str(existing.id), _turn("q", "a")
         )
 
@@ -98,11 +98,11 @@ async def test_record_turn_updates_redis_context_and_appends_only_new_turn(monke
     async def fake_persist(_db, _user_id, _session_id, new_messages):
         persisted.append(new_messages)
 
-    monkeypatch.setattr(query_module, "_persist_chat_session", fake_persist)
+    monkeypatch.setattr(query_module, "persist_chat_session", fake_persist)
     redis = _FakeRedis()
     history = _turn("vecchia", "risposta")
 
-    await query_module._record_turn(
+    await query_module.record_turn(
         redis, _FakeDb(), USER_ID, "sid", history, "nuova", "ok"
     )
 
@@ -120,7 +120,7 @@ async def test_persisted_history_is_loaded_when_redis_context_expired():
     ]
     db = _FakeDb(stored)
 
-    history = await query_module._load_persisted_history(db, USER_ID, uuid.uuid4())
+    history = await query_module.load_persisted_history(db, USER_ID, uuid.uuid4())
 
     assert len(history) == query_module.MAX_HISTORY_MESSAGES
     assert history[-1] == {"role": "assistant", "content": "a14"}
@@ -129,6 +129,6 @@ async def test_persisted_history_is_loaded_when_redis_context_expired():
 
 @pytest.mark.asyncio
 async def test_missing_persisted_session_gives_empty_history():
-    history = await query_module._load_persisted_history(_FakeDb(None), USER_ID, uuid.uuid4())
+    history = await query_module.load_persisted_history(_FakeDb(None), USER_ID, uuid.uuid4())
 
     assert history == []

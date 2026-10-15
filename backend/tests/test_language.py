@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.routers import query
 from app.services import analysis_pipeline
+from app.services import memory_answers as query
 from app.services.language import detect_language
 from app.services.temporal import DateRange
 from app.services.transcription_enhancer import speaker_prefix

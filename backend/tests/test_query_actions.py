@@ -13,6 +13,7 @@ from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
 from app.routers import chat_sessions
 from app.routers import query as q
+from app.services.chat_history import load_persisted_history
 from tests.fakes.action_provider import FakeActionProvider
 from tests.mocks import MockLLMService
 
@@ -251,7 +252,7 @@ async def test_persisted_history_keeps_actions_flag_and_schema_accepts_extras():
         async def execute(self, _q):
             return types.SimpleNamespace(scalar_one_or_none=lambda: stored)
 
-    hist = await q._load_persisted_history(Db(), USER_ID, uuid.uuid4())
+    hist = await load_persisted_history(Db(), USER_ID, uuid.uuid4())
     assert hist == [{"role": "assistant", "content": "x", "actions": True}]
     msg = chat_sessions.ChatMessage(**stored[0])
     assert msg.pending_action["summary"] == "s"
