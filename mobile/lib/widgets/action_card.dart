@@ -55,12 +55,11 @@ final class ActionCard extends StatelessWidget {
     final label = statusLabel(action.status);
     return Container(
       key: Key('action-card-${action.id}'),
-      margin: const EdgeInsets.only(top: 8),
+      margin: const EdgeInsets.only(top: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: palette.surface2,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: palette.border),
+        color: palette.background,
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -70,7 +69,10 @@ final class ActionCard extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(caption, style: Theme.of(context).textTheme.labelSmall),
             ),
-          Text(action.summary, style: Theme.of(context).textTheme.bodyMedium),
+          Text(
+            action.summary,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
           const SizedBox(height: 10),
           if (_pending)
             // Wraps on narrow screens with large text instead of overflowing
@@ -84,7 +86,7 @@ final class ActionCard extends StatelessWidget {
                   onPressed: busy ? null : onConfirm,
                   child: const Text('Confirm'),
                 ),
-                OutlinedButton(
+                TextButton(
                   key: Key('action-cancel-${action.id}'),
                   onPressed: busy ? null : onCancel,
                   child: const Text('Cancel'),

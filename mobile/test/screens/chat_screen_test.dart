@@ -111,7 +111,8 @@ void main() {
     ));
 
     expect(find.text('Answer'), findsOneWidget);
-    expect(find.text('Sources (1)'), findsOneWidget);
+    expect(find.text('Source 1'), findsOneWidget);
+    expect(find.text('Transcript'), findsOneWidget);
   });
 
   Future<_FakeChatApi> pumpWithAction(WidgetTester tester) async {
@@ -157,7 +158,7 @@ void main() {
     );
     expect(
       tester
-          .widget<OutlinedButton>(find.byKey(const Key('action-cancel-act-1')))
+          .widget<TextButton>(find.byKey(const Key('action-cancel-act-1')))
           .onPressed,
       isNull,
     );

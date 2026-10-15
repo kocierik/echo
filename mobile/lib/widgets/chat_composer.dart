@@ -1,17 +1,15 @@
-import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
+/// The question box: the text, the wearable's camera, and Send once there is
+/// something to send. Dictation is the navigation's Ask button, held.
 final class ChatComposer extends StatelessWidget {
   const ChatComposer({
     required this.controller,
     required this.sending,
-    required this.listening,
     required this.onChanged,
     required this.onSend,
-    required this.onVoiceStart,
-    required this.onVoiceEnd,
     this.onCamera,
     this.enabled = true,
     super.key,
@@ -19,15 +17,8 @@ final class ChatComposer extends StatelessWidget {
 
   final TextEditingController controller;
   final bool sending;
-  final bool listening;
   final ValueChanged<String> onChanged;
   final VoidCallback onSend;
-
-  /// Dictation runs while the mic is held: it starts on the press...
-  final VoidCallback onVoiceStart;
-
-  /// ...and ends on the release, with how long it was held (a tap is too short).
-  final ValueChanged<Duration> onVoiceEnd;
 
   /// The wearable takes a photo; the text typed, if any, is the question about it.
   /// No button without it.
@@ -39,31 +30,12 @@ final class ChatComposer extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final canSend = enabled && !sending && controller.text.trim().isNotEmpty;
 
-    return Container(
+    return Padding(
       key: const Key('chat-composer'),
-      constraints: const BoxConstraints(minHeight: 54),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      color: palette.background,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          HoldToTalkButton(
-            enabled: enabled && !sending,
-            listening: listening,
-            onStart: onVoiceStart,
-            onEnd: onVoiceEnd,
-          ),
-          if (onCamera != null)
-            SizedBox.square(
-              dimension: 44,
-              child: IconButton(
-                key: const Key('chat-camera'),
-                onPressed: enabled && !sending ? onCamera : null,
-                tooltip: 'Ask Echo about what you see',
-                icon: Icon(Icons.photo_camera_outlined, color: palette.text2),
-              ),
-            ),
-          const SizedBox(width: 6),
           Expanded(
             child: TextField(
               key: const Key('chat-input'),
@@ -76,103 +48,136 @@ final class ChatComposer extends StatelessWidget {
               onSubmitted: (_) {
                 if (canSend) onSend();
               },
-              decoration: InputDecoration(
-                hintText: listening ? 'Listening… release to stop' : 'Ask your memory',
-                isDense: true,
-              ),
-            ),
-          ),
-          const SizedBox(width: 6),
-          SizedBox.square(
-            dimension: 44,
-            child: IconButton.filled(
-              key: const Key('chat-send'),
-              onPressed: canSend ? onSend : null,
-              tooltip: 'Send question',
-              style: IconButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+              decoration: const InputDecoration(
+                hintText: 'Ask about your day',
+                contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.all(Radius.circular(25)),
+                  borderSide: BorderSide.none,
                 ),
               ),
-              icon: sending
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.arrow_upward_rounded),
             ),
           ),
+          if (onCamera != null) ...[
+            const SizedBox(width: 8),
+            _RoundButton(
+              key: const Key('chat-camera'),
+              tooltip: 'Ask Echo about what you see',
+              onPressed: enabled && !sending ? onCamera : null,
+              color: palette.surface,
+              child: Icon(Icons.photo_camera_outlined, size: 22, color: palette.text),
+            ),
+          ],
+          if (canSend || sending) ...[
+            const SizedBox(width: 8),
+            _RoundButton(
+              key: const Key('chat-send'),
+              tooltip: 'Send question',
+              onPressed: canSend ? onSend : null,
+              color: palette.text,
+              child: sending
+                  ? SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: palette.background),
+                    )
+                  : Icon(Icons.arrow_upward_rounded, color: palette.background),
+            ),
+          ],
         ],
       ),
     );
   }
 }
-/// The mic: dictation lasts as long as the button is held.
-final class HoldToTalkButton extends StatefulWidget {
-  const HoldToTalkButton({
-    required this.enabled,
-    required this.listening,
-    required this.onStart,
-    required this.onEnd,
+
+final class _RoundButton extends StatelessWidget {
+  const _RoundButton({
+    required this.tooltip,
+    required this.onPressed,
+    required this.color,
+    required this.child,
     super.key,
   });
 
-  final bool enabled;
-  final bool listening;
-  final VoidCallback onStart;
-  final ValueChanged<Duration> onEnd;
+  final String tooltip;
+  final VoidCallback? onPressed;
+  final Color color;
+  final Widget child;
 
   @override
-  State<HoldToTalkButton> createState() => _HoldToTalkButtonState();
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 50,
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        style: IconButton.styleFrom(
+          backgroundColor: color,
+          disabledBackgroundColor: color.withValues(alpha: 0.5),
+          shape: const CircleBorder(),
+        ),
+        icon: child,
+      ),
+    );
+  }
 }
 
-final class _HoldToTalkButtonState extends State<HoldToTalkButton> {
-  DateTime? _pressedAt;
+/// While the Ask button is held: what Echo hears, as it hears it.
+final class DictationPanel extends StatelessWidget {
+  const DictationPanel({required this.text, super.key});
 
-  void _down(PointerDownEvent _) {
-    if (!widget.enabled || _pressedAt != null) return;
-    setState(() => _pressedAt = clock.now());
-    widget.onStart();
-  }
-
-  void _up(PointerEvent _) {
-    final pressedAt = _pressedAt;
-    if (pressedAt == null) return;
-    setState(() => _pressedAt = null);
-    widget.onEnd(clock.now().difference(pressedAt));
-  }
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final active = widget.listening || _pressedAt != null;
-    return Semantics(
-      button: true,
-      enabled: widget.enabled,
-      label: active ? 'Listening. Release to stop' : 'Hold to talk',
-      child: Listener(
-        key: const Key('chat-mic'),
-        onPointerDown: _down,
-        onPointerUp: _up,
-        onPointerCancel: _up,
-        child: Tooltip(
-          message: 'Hold to talk',
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: active ? palette.red.withValues(alpha: 0.14) : Colors.transparent,
-            ),
-            child: Icon(
-              active ? Icons.mic_rounded : Icons.mic_none_rounded,
-              color: !widget.enabled
-                  ? palette.text2.withValues(alpha: 0.4)
-                  : active
-                      ? palette.red
-                      : palette.text2,
-            ),
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Container(
+        key: const Key('dictation-panel'),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+          border: Border.all(color: palette.live, width: 2),
+        ),
+        child: Semantics(
+          liveRegion: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(color: palette.live, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Listening',
+                    style: textTheme.labelMedium?.copyWith(
+                      color: palette.liveText,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                text.isEmpty ? 'Say your question…' : text,
+                style: textTheme.bodyLarge?.copyWith(
+                  fontSize: 18,
+                  height: 1.4,
+                  color: text.isEmpty ? palette.text2 : null,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Let go to stop. You can change the text before sending it.',
+                style: textTheme.bodySmall,
+              ),
+            ],
           ),
         ),
       ),

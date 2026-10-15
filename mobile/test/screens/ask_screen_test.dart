@@ -105,8 +105,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byTooltip('Send question'));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('chat-sources')));
-    await tester.pumpAndSettle();
+    // The sources show under the answer, no need to open them
     expect(find.textContaining('Lunch with Marco · '), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('chat-source-k1')));
@@ -244,57 +243,51 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Summary'), findsOneWidget);
-    expect(find.text('Sources (1)'), findsOneWidget);
-    await tester.tap(find.text('Sources (1)'));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('The original transcript text.'),
+      200,
+      scrollable: find
+          .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
+          .first,
+    );
     expect(find.text('The original transcript text.'), findsOneWidget);
     expect(find.byIcon(Icons.open_in_new_rounded), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('dictation lasts while the mic is held', (tester) async {
+  testWidgets('dictating shows what Echo hears in place of the box',
+      (tester) async {
     final harness = _Harness();
     await harness.pump(tester);
 
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(const Key('chat-mic'))),
-    );
+    await harness.controller.startVoice();
     await tester.pump();
-    expect(harness.voice.starts, 1);
-    expect(harness.controller.state.listening, isTrue);
-    expect(find.text('Listening… release to stop'), findsOneWidget);
+    expect(find.byKey(const Key('dictation-panel')), findsOneWidget);
+    expect(find.byKey(const Key('chat-composer')), findsNothing);
+    expect(find.text('Listening'), findsOneWidget);
 
-    await tester.pump(const Duration(seconds: 1));
-    await gesture.up();
+    await harness.controller.stopVoice();
     await tester.pumpAndSettle();
-
-    expect(harness.voice.stops, 1);
-    expect(harness.controller.state.listening, isFalse);
+    expect(find.byKey(const Key('dictation-panel')), findsNothing);
     expect(harness.controller.state.composerText, 'ciao Echo');
-    expect(find.byKey(const Key('hold-to-talk-hint')), findsNothing);
+    // The words go into the box, to change or send
+    expect(find.text('ciao Echo'), findsOneWidget);
+    expect(find.byKey(const Key('chat-send')), findsOneWidget);
   });
 
-  testWidgets('a tap on the mic says to hold it', (tester) async {
+  testWidgets('Send shows only with something to send; buttons are 44 or more',
+      (tester) async {
     final harness = _Harness();
     await harness.pump(tester);
+    expect(find.byKey(const Key('chat-send')), findsNothing);
+    expect(find.byKey(const Key('chat-mic')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('chat-mic')));
+    await tester.enterText(find.byType(TextField), 'Hi');
     await tester.pump();
-
-    expect(harness.controller.state.listening, isFalse);
-    expect(find.byKey(const Key('hold-to-talk-hint')), findsOneWidget);
-  });
-
-  testWidgets('mic send and history actions remain 44 square', (tester) async {
-    final harness = _Harness();
-    await harness.pump(tester);
-
-    for (final key in const [
-      Key('chat-mic'),
-      Key('chat-send'),
-      Key('chat-history'),
-    ]) {
-      expect(tester.getSize(find.byKey(key)), const Size(44, 44));
+    for (final key in const [Key('chat-send'), Key('chat-history'), Key('chat-new')]) {
+      final size = tester.getSize(find.byKey(key));
+      expect(size.width, greaterThanOrEqualTo(44));
+      expect(size.height, greaterThanOrEqualTo(44));
     }
   });
 }

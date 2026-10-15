@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
 import 'action_card.dart';
+import 'panel.dart';
 import 'photo_thumbnail.dart';
 
 final class MessageBubble extends StatelessWidget {
@@ -33,98 +34,130 @@ final class MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    final role = message.isUser ? 'You' : 'Echo';
     return Semantics(
       container: true,
-      label: '$role message',
+      label: message.isUser ? 'You asked' : 'Echo answered',
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              role,
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: message.isUser ? palette.accent : palette.green,
-                    fontWeight: FontWeight.w700,
-                  ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: message.isUser ? _question(context) : _answer(context),
+      ),
+    );
+  }
+
+  /// The question: ink on the right, like a message sent.
+  Widget _question(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.text,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+                bottomLeft: Radius.circular(20),
+                bottomRight: Radius.circular(6),
+              ),
             ),
-            const SizedBox(height: 5),
-            if (message.isUser)
-              Text(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+              child: Text(
                 message.text,
-                style: Theme.of(context).textTheme.bodyLarge,
-              )
-            else
-              MarkdownBody(
-                data: message.text,
-                selectable: true,
-                onTapLink: (_, href, __) => _launch(href),
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.45),
-                  h1: Theme.of(context).textTheme.titleLarge,
-                  h2: Theme.of(context).textTheme.titleMedium,
-                  h3: Theme.of(context).textTheme.titleSmall,
-                  code: TextStyle(
-                    color: palette.accent,
-                    backgroundColor: palette.surface2,
-                    fontFamily: 'monospace',
-                  ),
-                  codeblockDecoration: BoxDecoration(
-                    color: palette.surface2,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  blockquoteDecoration: BoxDecoration(
-                    border: Border(left: BorderSide(color: palette.accent, width: 3)),
-                  ),
-                ),
+                style: textTheme.bodyMedium?.copyWith(color: palette.background, height: 1.4),
               ),
-            if (!message.isUser && message.photoId != null && loadPhoto != null)
-              PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
-            if (!message.isUser && message.pendingAction != null)
-              ActionCard(
-                action: message.pendingAction!,
-                busy: actionBusy,
-                onConfirm: onConfirmAction ?? () {},
-                onCancel: onCancelAction ?? () {},
-              ),
-            if (message.failed)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Send failed',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: palette.red,
-                      ),
-                ),
-              ),
-            if (!message.isUser && message.sources.isNotEmpty)
-              _Sources(sources: message.sources, onOpenConversation: onOpenConversation),
-            if (!message.isUser && onFeedback != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(
-                  children: [
-                    _FeedbackButton(
-                      tooltip: 'Helpful',
-                      icon: Icons.thumb_up_outlined,
-                      active: message.feedback == 'positive',
-                      activeColor: palette.green,
-                      onPressed: () => onFeedback!('positive'),
-                    ),
-                    _FeedbackButton(
-                      tooltip: 'Not helpful',
-                      icon: Icons.thumb_down_outlined,
-                      active: message.feedback == 'negative',
-                      activeColor: palette.red,
-                      onPressed: () => onFeedback!('negative'),
-                    ),
-                  ],
-                ),
-              ),
-          ],
+            ),
+          ),
         ),
+        if (message.failed)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Send failed',
+              style: textTheme.labelMedium?.copyWith(color: palette.red),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The answer: a panel with what Echo did, its sources and the feedback.
+  Widget _answer(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final theme = Theme.of(context);
+    final textTheme = theme.textTheme;
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MarkdownBody(
+            data: message.text,
+            selectable: true,
+            onTapLink: (_, href, __) => _launch(href),
+            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+              p: textTheme.bodyMedium?.copyWith(height: 1.5),
+              h1: textTheme.titleLarge,
+              h2: textTheme.titleMedium,
+              h3: textTheme.titleSmall,
+              code: TextStyle(
+                color: palette.accent,
+                backgroundColor: palette.surface2,
+                fontFamily: 'monospace',
+              ),
+              codeblockDecoration: BoxDecoration(
+                color: palette.surface2,
+                borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+              ),
+              blockquoteDecoration: BoxDecoration(
+                border: Border(left: BorderSide(color: palette.accent, width: 3)),
+              ),
+            ),
+          ),
+          if (message.photoId != null && loadPhoto != null)
+            PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
+          if (message.pendingAction != null)
+            ActionCard(
+              action: message.pendingAction!,
+              busy: actionBusy,
+              onConfirm: onConfirmAction ?? () {},
+              onCancel: onCancelAction ?? () {},
+            ),
+          if (message.sources.isNotEmpty)
+            _Sources(sources: message.sources, onOpenConversation: onOpenConversation),
+          if (message.failed)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Send failed',
+                style: textTheme.labelMedium?.copyWith(color: palette.red),
+              ),
+            ),
+          if (onFeedback != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  _FeedbackButton(
+                    tooltip: 'Helpful',
+                    icon: Icons.thumb_up_outlined,
+                    active: message.feedback == 'positive',
+                    activeColor: palette.green,
+                    onPressed: () => onFeedback!('positive'),
+                  ),
+                  _FeedbackButton(
+                    tooltip: 'Not helpful',
+                    icon: Icons.thumb_down_outlined,
+                    active: message.feedback == 'negative',
+                    activeColor: palette.red,
+                    onPressed: () => onFeedback!('negative'),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -136,81 +169,126 @@ final class MessageBubble extends StatelessWidget {
   }
 }
 
-final class _Sources extends StatelessWidget {
+/// Where the answer comes from: the first two passages as tiles (a tap opens
+/// the conversation or the page), the others on request.
+final class _Sources extends StatefulWidget {
   const _Sources({required this.sources, this.onOpenConversation});
+
+  static const shown = 2;
 
   final List<ChatSource> sources;
   final ValueChanged<String>? onOpenConversation;
 
-  bool _opens(ChatSource source) =>
-      onOpenConversation != null && source.conversationId != null;
+  @override
+  State<_Sources> createState() => _SourcesState();
+}
+
+final class _SourcesState extends State<_Sources> {
+  bool _all = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = widget.sources;
+    final hidden = sources.length - _Sources.shown;
+    final visible = _all || hidden <= 0 ? sources : sources.take(_Sources.shown);
+    return Column(
+      key: const Key('chat-sources'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final source in visible)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _SourceTile(source: source, onOpenConversation: widget.onOpenConversation),
+          ),
+        if (hidden > 0 && !_all)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('chat-sources-more'),
+              onPressed: () => setState(() => _all = true),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              child: Text(hidden == 1 ? '1 more source' : '$hidden more sources'),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+final class _SourceTile extends StatelessWidget {
+  const _SourceTile({required this.source, this.onOpenConversation});
+
+  final ChatSource source;
+  final ValueChanged<String>? onOpenConversation;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        key: const Key('chat-sources'),
-        tilePadding: EdgeInsets.zero,
-        childrenPadding: EdgeInsets.zero,
-        minTileHeight: 44,
-        title: Text(
-          'Sources (${sources.length})',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: palette.text2,
-              ),
-        ),
-        children: sources.map((source) {
-          final content = Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+    final textTheme = Theme.of(context).textTheme;
+    final conversationId = source.conversationId;
+    final url = source.url;
+    final VoidCallback? onTap = url != null
+        ? () => launchUrl(url, mode: LaunchMode.externalApplication)
+        : conversationId != null && onOpenConversation != null
+            ? () => onOpenConversation!(conversationId)
+            : null;
+    final radius = BorderRadius.circular(AppTheme.tileRadius);
+    return Semantics(
+      button: onTap != null,
+      hint: url != null
+          ? 'Opens the page'
+          : onTap != null
+              ? 'Opens the conversation'
+              : null,
+      child: Material(
+        color: palette.tint,
+        borderRadius: radius,
+        child: InkWell(
+          key: Key('chat-source-${source.chunkId ?? conversationId ?? source.label}'),
+          borderRadius: radius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        source.label,
-                        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                              color: palette.accent,
-                            ),
-                      ),
-                    ),
-                    if (source.url != null)
-                      const Icon(Icons.open_in_new_rounded, size: 16)
-                    else if (_opens(source))
-                      Icon(Icons.chevron_right_rounded, size: 18, color: palette.text2),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    url != null ? Icons.link_rounded : Icons.graphic_eq_rounded,
+                    size: 20,
+                    color: palette.accent,
+                  ),
                 ),
-                if (source.text.isNotEmpty) ...[
-                  const SizedBox(height: 3),
-                  Text(source.text),
-                ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.label,
+                        style: textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      if (source.text.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          source.text,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (url != null)
+                  Icon(Icons.open_in_new_rounded, size: 16, color: palette.text2)
+                else if (onTap != null)
+                  Icon(Icons.chevron_right_rounded, size: 18, color: palette.text2),
               ],
             ),
-          );
-          final conversationId = source.conversationId;
-          if (source.url == null && _opens(source)) {
-            return Semantics(
-              button: true,
-              hint: 'Opens the conversation',
-              child: InkWell(
-                key: Key('chat-source-${source.chunkId ?? conversationId}'),
-                onTap: () => onOpenConversation!(conversationId!),
-                child: content,
-              ),
-            );
-          }
-          if (source.url == null) return content;
-          return InkWell(
-            onTap: () => launchUrl(
-              source.url!,
-              mode: LaunchMode.externalApplication,
-            ),
-            child: content,
-          );
-        }).toList(),
+          ),
+        ),
       ),
     );
   }

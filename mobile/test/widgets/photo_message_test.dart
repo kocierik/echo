@@ -55,11 +55,8 @@ void main() {
         _app(ChatComposer(
           controller: controller,
           sending: sending,
-          listening: false,
           onChanged: (_) {},
           onSend: () {},
-          onVoiceStart: () {},
-          onVoiceEnd: (_) {},
           onCamera: onCamera,
         ));
 
