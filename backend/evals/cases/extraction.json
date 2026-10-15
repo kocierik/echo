@@ -1,85 +1,279 @@
 {
   "reference_date": "2026-10-14",
-  "known_people": ["Marco Rossi", "Giulia"],
+  "known_people": [
+    "Marco Rossi",
+    "Giulia"
+  ],
   "cases": [
     {
       "id": "task-tomorrow",
       "text": "[Tu] Domani devo chiamare Marco per il preventivo.",
       "expect": [
-        {"types": ["task"], "keywords": ["marco"], "due_date": "2026-10-15"},
-        {"types": ["person"], "keywords": ["marco"]}
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "marco"
+          ],
+          "due_date": "2026-10-15"
+        },
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "marco"
+          ]
+        }
       ]
     },
     {
       "id": "vague-wish-is-not-a-task",
       "text": "[Tu] Devo mangiare meglio, davvero.",
-      "forbid": [{"types": ["task"]}]
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
     },
     {
       "id": "echo-command-is-not-memory",
       "text": "[Tu] Echo, segnami il dentista giovedì alle 15.",
-      "forbid": [{"types": ["task", "event"]}]
+      "forbid": [
+        {
+          "types": [
+            "task",
+            "event"
+          ]
+        }
+      ]
     },
     {
       "id": "hey-echo-request",
       "text": "[Tu] Hey Echo, riassumimi le ultime mail.",
-      "forbid": [{"types": ["task", "event", "note", "idea"]}]
+      "forbid": [
+        {
+          "types": [
+            "task",
+            "event",
+            "note",
+            "idea"
+          ]
+        }
+      ]
     },
     {
       "id": "event-friday-evening",
       "text": "[Altri] Ci vediamo venerdì alle 20 al ristorante Da Gino per la cena di Giulia.",
       "expect": [
-        {"types": ["event"], "keywords": ["giulia"], "event_date": "2026-10-16", "event_time": "20:00"},
-        {"types": ["person"], "keywords": ["giulia"]}
+        {
+          "types": [
+            "event"
+          ],
+          "keywords": [
+            "giulia"
+          ],
+          "event_date": "2026-10-16",
+          "event_time": "20:00"
+        },
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "giulia"
+          ]
+        }
       ]
     },
     {
       "id": "new-person-with-role",
       "text": "[Tu] Ho conosciuto Alessandra Bianchi, fa la product manager in Lumen.",
-      "expect": [{"types": ["person"], "keywords": ["alessandra", "bianchi"]}]
+      "expect": [
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "alessandra",
+            "bianchi"
+          ]
+        }
+      ]
     },
     {
       "id": "idea",
       "text": "[Tu] Idea: potremmo fare una newsletter mensile per i clienti di Atlas.",
-      "expect": [{"types": ["idea"], "keywords": ["newsletter"]}]
+      "expect": [
+        {
+          "types": [
+            "idea"
+          ],
+          "keywords": [
+            "newsletter"
+          ]
+        }
+      ]
     },
     {
       "id": "end-of-month-deadline",
       "text": "[Tu] Entro fine mese devo rinnovare il passaporto.",
-      "expect": [{"types": ["task"], "keywords": ["passaporto"], "due_date": "2026-10-31"}]
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "passaporto"
+          ],
+          "due_date": "2026-10-31"
+        }
+      ]
     },
     {
       "id": "explicit-date-and-time",
       "text": "[Altri] Il volo per Lisbona parte il 3 novembre alle 7:40.",
-      "expect": [{"types": ["event"], "keywords": ["lisbona"], "event_date": "2026-11-03", "event_time": "07:40"}]
+      "expect": [
+        {
+          "types": [
+            "event"
+          ],
+          "keywords": [
+            "lisbona"
+          ],
+          "event_date": "2026-11-03",
+          "event_time": "07:40"
+        }
+      ]
     },
     {
       "id": "filler-only",
       "text": "[Tu] Sì, ok, va bene, perfetto.",
-      "forbid": [{"types": ["task", "event", "note", "idea", "person"]}]
+      "forbid": [
+        {
+          "types": [
+            "task",
+            "event",
+            "note",
+            "idea",
+            "person"
+          ]
+        }
+      ]
     },
     {
       "id": "next-monday",
       "text": "[Tu] Lunedì prossimo devo pagare la bolletta della luce.",
-      "expect": [{"types": ["task"], "keywords": ["bolletta"], "due_date": "2026-10-19"}]
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "bolletta"
+          ],
+          "due_date": "2026-10-19"
+        }
+      ]
     },
     {
       "id": "note-and-person",
       "text": "[Tu] La password del wifi dell'ufficio è cambiata, ora la gestisce Paolo.",
       "expect": [
-        {"types": ["note", "task"], "keywords": ["wifi"]},
-        {"types": ["person"], "keywords": ["paolo"]}
+        {
+          "types": [
+            "note",
+            "task"
+          ],
+          "keywords": [
+            "password"
+          ]
+        },
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "paolo"
+          ]
+        }
       ]
     },
     {
       "id": "in-two-weeks",
       "text": "[Tu] Tra due settimane ho la revisione della macchina.",
-      "expect": [{"types": ["event", "task"], "keywords": ["revisione"], "date": "2026-10-28"}]
+      "expect": [
+        {
+          "types": [
+            "event",
+            "task"
+          ],
+          "keywords": [
+            "revisione"
+          ],
+          "date": "2026-10-28"
+        }
+      ]
     },
     {
       "id": "product-name-is-not-a-command",
       "text": "[Tu] Ho comprato un Echo nuovo con Marco e domani lo proviamo insieme.",
-      "expect": [{"types": ["person"], "keywords": ["marco"]}]
+      "expect": [
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "marco"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "promise-with-deadline",
+      "text": "[You] Marco, ti mando il preventivo entro venerdì.",
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "preventivo"
+          ],
+          "promise": true,
+          "promise_to": "marco",
+          "due_date": "2026-10-16"
+        }
+      ]
+    },
+    {
+      "id": "promise-to-call-back",
+      "text": "[You] Ti richiamo domani, Giulia, va bene?",
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "promise": true,
+          "promise_to": "giulia",
+          "due_date": "2026-10-15"
+        }
+      ]
+    },
+    {
+      "id": "someone-else-promises",
+      "text": "[Others] Tranquillo, il preventivo te lo mando io domani.",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ],
+          "promise": true
+        }
+      ]
     }
   ]
 }

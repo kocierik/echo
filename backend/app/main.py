@@ -25,6 +25,7 @@ from app.routers import (
     digest,
     entities,
     feedback,
+    notifications,
     people,
     photos,
     query,
@@ -105,6 +106,7 @@ app.include_router(entities.router, prefix=settings.api_prefix)
 app.include_router(digest.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(feedback.router, prefix=settings.api_prefix)
+app.include_router(notifications.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(people.router, prefix=settings.api_prefix)

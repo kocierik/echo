@@ -53,6 +53,12 @@ def _matches(entity: Extracted, spec: dict) -> bool:
     for key in _METADATA_KEYS:
         if key in spec and str(entity.metadata.get(key, "")) != spec[key]:
             return False
+    if "promise" in spec and bool(entity.metadata.get("promise")) != spec["promise"]:
+        return False
+    if "promise_to" in spec and spec["promise_to"] not in normalize_words(
+        str(entity.metadata.get("promise_to", ""))
+    ):
+        return False
     if "date" in spec and spec["date"] not in (
         entity.metadata.get("due_date"),
         entity.metadata.get("event_date"),
