@@ -296,6 +296,14 @@ final class _ChatScreenState extends State<ChatScreen> {
                   color: palette.text2,
                 ),
           ),
+          const SizedBox(height: 6),
+          Text(
+            _controller.canTakePhotos
+                ? 'Hold 🎙 to talk · 📷 asks Echo about what you see'
+                : 'Hold 🎙 to talk',
+            key: const Key('chat-input-hint'),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           if (state.error != null) ...[
             const SizedBox(height: 16),
             _ErrorNotice(message: state.error!),

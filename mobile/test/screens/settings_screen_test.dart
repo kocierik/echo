@@ -94,6 +94,7 @@ void main() {
       'Connection',
       'Privacy',
       'ECHO',
+      'What Echo can do',
       'Automations',
       'Notifications',
       'Voices',

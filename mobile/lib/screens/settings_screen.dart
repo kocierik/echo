@@ -15,6 +15,7 @@ import 'settings/about_settings_screen.dart';
 import 'settings/automations_settings_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/privacy_settings_screen.dart';
+import 'settings/capabilities_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/voice_settings_screen.dart';
 import 'settings/settings_components.dart';
@@ -133,6 +134,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SettingsSection('ECHO'),
           SettingsRow(
+            icon: Icons.auto_awesome_motion_outlined,
+            title: 'What Echo can do',
+            subtitle: 'Examples to try, by chat and by voice.',
+            onTap: () => _push(CapabilitiesScreen(
+              onAsk: _appController.requestAsk,
+              onOpenVoices: () => _push(const VoiceSettingsScreen()),
+            )),
+          ),
+          SettingsRow(
             icon: Icons.auto_awesome_outlined,
             title: 'Automations',
             subtitle: 'Connected apps and what Echo did with them.',
@@ -147,7 +157,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: 'Before meetings and for promises, only when needed.',
             onTap: () => _push(NotificationSettingsScreen(
               preferences: _preferences,
-              onChanged: () => AppRuntime.maybeCoordinator?.notificationScheduler
+              onChanged: () => AppRuntime
+                  .maybeCoordinator?.notificationScheduler
                   .refresh(force: true),
             )),
           ),

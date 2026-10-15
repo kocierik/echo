@@ -1,0 +1,83 @@
+import 'package:flutter/material.dart';
+
+import '../navigation.dart';
+import 'settings_components.dart';
+
+/// What Echo can do, with examples: the chat ones open Ask with the question.
+final class CapabilitiesScreen extends StatelessWidget {
+  const CapabilitiesScreen({this.onAsk, this.onOpenVoices, super.key});
+
+  final AskCallback? onAsk;
+  final VoidCallback? onOpenVoices;
+
+  static const _askExamples = [
+    'What did I promise this week?',
+    'Cosa ha detto Marco sul preventivo?',
+    'Che impegni ho domani?',
+    'Riassumimi le ultime mail',
+  ];
+
+  static const _voiceExamples = [
+    'Echo, ricordami di chiamare Giulia venerdì',
+    "Echo, cos'è questo?",
+    'Echo, manda un messaggio a Marco su Slack',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return SettingsPageScaffold(
+      title: 'What Echo can do',
+      children: [
+        const SettingsSection('REMEMBERS'),
+        const SettingsMessage(
+          'Wear it: Echo keeps what is said as conversations, with their people, tasks, '
+          'events and promises, a summary for every day and every week.',
+        ),
+        const SettingsSection('ASK IN THE CHAT (TAP ONE)'),
+        for (final question in _askExamples)
+          SettingsRow(
+            key: Key('capability-ask-$question'),
+            icon: Icons.chat_bubble_outline_rounded,
+            title: question,
+            onTap: onAsk == null
+                ? null
+                : () {
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                    onAsk!(question);
+                  },
+          ),
+        const SettingsSection('SAY IT TO THE WEARABLE'),
+        for (final command in _voiceExamples)
+          SettingsRow(icon: Icons.record_voice_over_outlined, title: command),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+          child: Text(
+            'The answer arrives in the Voice requests chat, with a notification. Reading '
+            'and creating run at once; sending to others, changing and deleting wait for '
+            'your Confirm.',
+            style: textTheme.bodySmall,
+          ),
+        ),
+        const SettingsSection('SEES AND HEARS WHO'),
+        const SettingsRow(
+          icon: Icons.photo_camera_outlined,
+          title: 'Photos',
+          subtitle: 'A short press of the wearable button, or 📷 in Ask: Echo answers about '
+              'what you see and remembers it. A business card becomes a person.',
+        ),
+        SettingsRow(
+          icon: Icons.mic_none_rounded,
+          title: 'Who is speaking',
+          subtitle: 'Record your voice, then tap a speaker in a transcript to name them.',
+          onTap: onOpenVoices,
+        ),
+        const SettingsRow(
+          icon: Icons.notifications_none_rounded,
+          title: 'Comes to you, rarely',
+          subtitle: 'Before a meeting and on the day of a promise. At most three a day.',
+        ),
+      ],
+    );
+  }
+}
