@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// Echo's colours. Panels sit on a quiet ground; two accents carry meaning:
+/// [live] (orange, the wearable's LED) for what is happening now, [accent] (teal) for
+/// what is on, done or can be tapped. [attention] is the "Needs you" panel. The
+/// graphite [chrome] is the hardware: the navigation bar, the device pill and puck.
 @immutable
 final class EchoPalette extends ThemeExtension<EchoPalette> {
   const EchoPalette({
@@ -8,49 +12,125 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     required this.surface2,
     required this.text,
     required this.text2,
-    required this.blue,
+    required this.border,
+    required this.accent,
+    required this.accentSoft,
+    required this.onAccentSoft,
+    required this.tint,
+    required this.live,
+    required this.liveText,
+    required this.liveGlow,
+    required this.attention,
+    required this.onAttention,
+    required this.onAttention2,
     required this.green,
     required this.amber,
     required this.red,
-    required this.border,
+    required this.chrome,
+    required this.chromeRaised,
+    required this.chromeLine,
+    required this.onChrome,
+    required this.onChromeMuted,
   });
 
-  static const dark = EchoPalette(
-    background: Color(0xFF080A0D),
-    surface: Color(0xFF111419),
-    surface2: Color(0xFF171B21),
-    text: Color(0xFFF4F6F8),
-    text2: Color(0xFF9CA3AE),
-    blue: Color(0xFF4385FF),
-    green: Color(0xFF46D69A),
-    amber: Color(0xFFFFBD59),
-    red: Color(0xFFFF6B74),
-    border: Color(0xFF252A32),
-  );
-
   static const light = EchoPalette(
-    background: Color(0xFFF7F8FA),
-    surface: Color(0xFFFFFFFF),
-    surface2: Color(0xFFEDF0F4),
-    text: Color(0xFF191C21),
-    text2: Color(0xFF6B727C),
-    blue: Color(0xFF286FD4),
-    green: Color(0xFF168A5B),
+    background: Color(0xFFE9EAE7),
+    surface: Color(0xFFF7F7F5),
+    surface2: Color(0xFFECEDEA),
+    text: Color(0xFF1F2326),
+    text2: Color(0xFF5B6166),
+    border: Color(0xFFE0E1DD),
+    accent: Color(0xFF0E6F68),
+    accentSoft: Color(0xFFD6E8E5),
+    onAccentSoft: Color(0xFF2F4A47),
+    tint: Color(0xFFE4EBEC),
+    live: Color(0xFFE8590C),
+    liveText: Color(0xFFC24A0A),
+    liveGlow: Color(0xFF5A3B2C),
+    attention: Color(0xFFFFF1E2),
+    onAttention: Color(0xFF8A4B12),
+    onAttention2: Color(0xFF6B4A2B),
+    green: Color(0xFF1E7A4D),
     amber: Color(0xFFA96500),
     red: Color(0xFFB72F3B),
-    border: Color(0xFFDFE3E8),
+    chrome: Color(0xFF1F2326),
+    chromeRaised: Color(0xFF2E3133),
+    chromeLine: Color(0xFF464B4F),
+    onChrome: Color(0xFFF7F7F5),
+    onChromeMuted: Color(0xFFB9BBB6),
   );
 
+  /// Warm graphite: like the hardware, never pure black.
+  static const dark = EchoPalette(
+    background: Color(0xFF1C1E20),
+    surface: Color(0xFF26292C),
+    surface2: Color(0xFF2F3336),
+    text: Color(0xFFECEDEA),
+    text2: Color(0xFFA3A8AC),
+    border: Color(0xFF3A3E42),
+    accent: Color(0xFF6CC4BA),
+    accentSoft: Color(0xFF24403C),
+    onAccentSoft: Color(0xFFA9D3CC),
+    tint: Color(0xFF2D3638),
+    live: Color(0xFFFF7A33),
+    liveText: Color(0xFFFF9A5C),
+    liveGlow: Color(0xFF4D3122),
+    attention: Color(0xFF3A2B1C),
+    onAttention: Color(0xFFF2B57A),
+    onAttention2: Color(0xFFD9B48E),
+    green: Color(0xFF5CC98F),
+    amber: Color(0xFFFFBD59),
+    red: Color(0xFFFF6B74),
+    chrome: Color(0xFF303438),
+    chromeRaised: Color(0xFF45494D),
+    chromeLine: Color(0xFF5C6166),
+    onChrome: Color(0xFFF7F7F5),
+    onChromeMuted: Color(0xFF9EA3A7),
+  );
+
+  /// The ground the panels sit on.
   final Color background;
+
+  /// A panel.
   final Color surface;
+
+  /// A tile or field inside a panel.
   final Color surface2;
   final Color text;
   final Color text2;
-  final Color blue;
+
+  /// Hairlines between rows inside a panel.
+  final Color border;
+
+  /// On, done, selected, a link (teal).
+  final Color accent;
+  final Color accentSoft;
+  final Color onAccentSoft;
+
+  /// A neutral cool block (a conversation in the day's timeline).
+  final Color tint;
+
+  /// Happening now: the LED, recording, dictation (orange).
+  final Color live;
+
+  /// [live] for small text, readable on the ground.
+  final Color liveText;
+  final Color liveGlow;
+
+  /// The "Needs you" panel and its text.
+  final Color attention;
+  final Color onAttention;
+  final Color onAttention2;
   final Color green;
   final Color amber;
   final Color red;
-  final Color border;
+
+  /// Graphite hardware: the navigation bar, the device pill and puck.
+  final Color chrome;
+  final Color chromeRaised;
+  final Color chromeLine;
+  final Color onChrome;
+  final Color onChromeMuted;
 
   static EchoPalette of(BuildContext context) {
     return Theme.of(context).extension<EchoPalette>()!;
@@ -63,11 +143,25 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     Color? surface2,
     Color? text,
     Color? text2,
-    Color? blue,
+    Color? border,
+    Color? accent,
+    Color? accentSoft,
+    Color? onAccentSoft,
+    Color? tint,
+    Color? live,
+    Color? liveText,
+    Color? liveGlow,
+    Color? attention,
+    Color? onAttention,
+    Color? onAttention2,
     Color? green,
     Color? amber,
     Color? red,
-    Color? border,
+    Color? chrome,
+    Color? chromeRaised,
+    Color? chromeLine,
+    Color? onChrome,
+    Color? onChromeMuted,
   }) {
     return EchoPalette(
       background: background ?? this.background,
@@ -75,65 +169,87 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
       surface2: surface2 ?? this.surface2,
       text: text ?? this.text,
       text2: text2 ?? this.text2,
-      blue: blue ?? this.blue,
+      border: border ?? this.border,
+      accent: accent ?? this.accent,
+      accentSoft: accentSoft ?? this.accentSoft,
+      onAccentSoft: onAccentSoft ?? this.onAccentSoft,
+      tint: tint ?? this.tint,
+      live: live ?? this.live,
+      liveText: liveText ?? this.liveText,
+      liveGlow: liveGlow ?? this.liveGlow,
+      attention: attention ?? this.attention,
+      onAttention: onAttention ?? this.onAttention,
+      onAttention2: onAttention2 ?? this.onAttention2,
       green: green ?? this.green,
       amber: amber ?? this.amber,
       red: red ?? this.red,
-      border: border ?? this.border,
+      chrome: chrome ?? this.chrome,
+      chromeRaised: chromeRaised ?? this.chromeRaised,
+      chromeLine: chromeLine ?? this.chromeLine,
+      onChrome: onChrome ?? this.onChrome,
+      onChromeMuted: onChromeMuted ?? this.onChromeMuted,
     );
   }
 
   @override
   EchoPalette lerp(covariant EchoPalette? other, double t) {
     if (other == null) return this;
+    Color mix(Color a, Color b) => Color.lerp(a, b, t)!;
     return EchoPalette(
-      background: Color.lerp(background, other.background, t)!,
-      surface: Color.lerp(surface, other.surface, t)!,
-      surface2: Color.lerp(surface2, other.surface2, t)!,
-      text: Color.lerp(text, other.text, t)!,
-      text2: Color.lerp(text2, other.text2, t)!,
-      blue: Color.lerp(blue, other.blue, t)!,
-      green: Color.lerp(green, other.green, t)!,
-      amber: Color.lerp(amber, other.amber, t)!,
-      red: Color.lerp(red, other.red, t)!,
-      border: Color.lerp(border, other.border, t)!,
+      background: mix(background, other.background),
+      surface: mix(surface, other.surface),
+      surface2: mix(surface2, other.surface2),
+      text: mix(text, other.text),
+      text2: mix(text2, other.text2),
+      border: mix(border, other.border),
+      accent: mix(accent, other.accent),
+      accentSoft: mix(accentSoft, other.accentSoft),
+      onAccentSoft: mix(onAccentSoft, other.onAccentSoft),
+      tint: mix(tint, other.tint),
+      live: mix(live, other.live),
+      liveText: mix(liveText, other.liveText),
+      liveGlow: mix(liveGlow, other.liveGlow),
+      attention: mix(attention, other.attention),
+      onAttention: mix(onAttention, other.onAttention),
+      onAttention2: mix(onAttention2, other.onAttention2),
+      green: mix(green, other.green),
+      amber: mix(amber, other.amber),
+      red: mix(red, other.red),
+      chrome: mix(chrome, other.chrome),
+      chromeRaised: mix(chromeRaised, other.chromeRaised),
+      chromeLine: mix(chromeLine, other.chromeLine),
+      onChrome: mix(onChrome, other.onChrome),
+      onChromeMuted: mix(onChromeMuted, other.onChromeMuted),
     );
   }
 }
 
-class AppColors {
-  static const bgDeep = Color(0xFF080A0D);
-  static const bgBase = Color(0xFF080A0D);
-  static const bgElevated = Color(0xFF111419);
-  static const surface = Color(0xFF171B21);
-  static const foreground = Color(0xFFF4F6F8);
-  static const foregroundMuted = Color(0xFF9CA3AE);
-  static const accent = Color(0xFF4385FF);
-  static const accentGlow = Color(0x334385FF);
-  static const border = Color(0xFF252A32);
-  static const success = Color(0xFF46D69A);
-  static const warning = Color(0xFFFFBD59);
-  static const error = Color(0xFFFF6B74);
-}
-
 class AppTheme {
-  static const fontFamily = 'DM Sans';
+  static const fontFamily = 'Archivo';
+
+  /// Archivo at 116% width: screen and panel titles.
+  static const titleFamily = 'Archivo Expanded';
   static const minimumInteractiveDimension = 44.0;
+
+  /// Panels and the tiles inside them.
+  static const panelRadius = 22.0;
+  static const tileRadius = 14.0;
 
   static ThemeData get dark => _build(Brightness.dark, EchoPalette.dark);
   static ThemeData get light => _build(Brightness.light, EchoPalette.light);
 
   static ThemeData _build(Brightness brightness, EchoPalette palette) {
     final textTheme = _textTheme(palette);
-    final inputBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: palette.border),
+    final fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(24),
+      borderSide: BorderSide.none,
     );
-    final componentShape = RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(8),
-    );
+    const pill = StadiumBorder();
     const minimumSize = WidgetStatePropertyAll(
       Size(minimumInteractiveDimension, minimumInteractiveDimension),
+    );
+    const buttonPadding = WidgetStatePropertyAll(
+      EdgeInsets.symmetric(horizontal: 20, vertical: 12),
     );
 
     return ThemeData(
@@ -146,9 +262,10 @@ class AppTheme {
       canvasColor: palette.surface,
       colorScheme: ColorScheme(
         brightness: brightness,
-        primary: palette.blue,
-        onPrimary: Colors.white,
-        secondary: palette.green,
+        // Switches, checkboxes and progress are teal; buttons set their own ink
+        primary: palette.accent,
+        onPrimary: palette.background,
+        secondary: palette.accent,
         onSecondary: palette.background,
         error: palette.red,
         onError: Colors.white,
@@ -162,8 +279,8 @@ class AppTheme {
         color: palette.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
-        shape: componentShape.copyWith(
-          side: BorderSide(color: palette.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(panelRadius),
         ),
       ),
       appBarTheme: AppBarTheme(
@@ -174,63 +291,40 @@ class AppTheme {
         scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: textTheme.titleLarge,
-        iconTheme: IconThemeData(color: palette.text2),
+        iconTheme: IconThemeData(color: palette.text),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: palette.surface2,
-        border: inputBorder,
-        enabledBorder: inputBorder,
-        focusedBorder: inputBorder.copyWith(
-          borderSide: BorderSide(color: palette.blue, width: 2),
+        fillColor: palette.surface,
+        border: fieldBorder,
+        enabledBorder: fieldBorder,
+        disabledBorder: fieldBorder,
+        focusedBorder: fieldBorder.copyWith(
+          borderSide: BorderSide(color: palette.accent, width: 2),
         ),
-        errorBorder: inputBorder.copyWith(
+        errorBorder: fieldBorder.copyWith(
           borderSide: BorderSide(color: palette.red),
         ),
-        focusedErrorBorder: inputBorder.copyWith(
+        focusedErrorBorder: fieldBorder.copyWith(
           borderSide: BorderSide(color: palette.red, width: 2),
         ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         hintStyle: textTheme.bodyMedium!.copyWith(color: palette.text2),
       ),
-      navigationBarTheme: NavigationBarThemeData(
-        height: 64,
-        backgroundColor: palette.surface,
-        surfaceTintColor: Colors.transparent,
-        indicatorColor: palette.blue.withValues(alpha: 0.16),
-        iconTheme: WidgetStateProperty.resolveWith((states) {
-          return IconThemeData(
-            color: states.contains(WidgetState.selected)
-                ? palette.blue
-                : palette.text2,
-          );
-        }),
-        labelTextStyle: WidgetStateProperty.resolveWith((states) {
-          return textTheme.labelSmall!.copyWith(
-            color: states.contains(WidgetState.selected)
-                ? palette.blue
-                : palette.text2,
-          );
-        }),
-      ),
-      // Selected in the action blue, like the navigation (Material 3 would use
-      // the green "secondary", which means "listening" here)
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
           textStyle: WidgetStatePropertyAll(textTheme.labelMedium),
-          shape: WidgetStatePropertyAll(componentShape),
-          side: WidgetStatePropertyAll(BorderSide(color: palette.border)),
+          side: const WidgetStatePropertyAll(BorderSide.none),
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             return states.contains(WidgetState.selected)
-                ? palette.blue.withValues(alpha: 0.14)
+                ? palette.text
                 : palette.surface;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
-            return states.contains(WidgetState.selected) ? palette.blue : palette.text2;
+            return states.contains(WidgetState.selected)
+                ? palette.background
+                : palette.text;
           }),
         ),
       ),
@@ -242,44 +336,64 @@ class AppTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: palette.surface,
         surfaceTintColor: Colors.transparent,
-        shape: componentShape,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(panelRadius),
+        ),
         titleTextStyle: textTheme.titleLarge,
         contentTextStyle: textTheme.bodyMedium,
       ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.background,
+        surfaceTintColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(panelRadius)),
+        ),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: palette.chrome,
+        contentTextStyle: textTheme.bodyMedium!.copyWith(color: palette.onChrome),
+        actionTextColor: palette.accentSoft,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        side: BorderSide(color: palette.text2, width: 1.5),
+      ),
+      // The main action is ink on the ground: graphite in light, light in dark
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          backgroundColor: WidgetStatePropertyAll(palette.blue),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          padding: buttonPadding,
+          elevation: const WidgetStatePropertyAll(0),
+          backgroundColor: WidgetStatePropertyAll(palette.text),
+          foregroundColor: WidgetStatePropertyAll(palette.background),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
-          shape: WidgetStatePropertyAll(componentShape),
+          shape: const WidgetStatePropertyAll(pill),
         ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          backgroundColor: WidgetStatePropertyAll(palette.blue),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          padding: buttonPadding,
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            return states.contains(WidgetState.disabled)
+                ? palette.text.withValues(alpha: 0.24)
+                : palette.text;
+          }),
+          foregroundColor: WidgetStatePropertyAll(palette.background),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
-          shape: WidgetStatePropertyAll(componentShape),
+          shape: const WidgetStatePropertyAll(pill),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          foregroundColor: WidgetStatePropertyAll(palette.blue),
+          padding: buttonPadding,
+          foregroundColor: WidgetStatePropertyAll(palette.text),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
-          side: WidgetStatePropertyAll(BorderSide(color: palette.border)),
-          shape: WidgetStatePropertyAll(componentShape),
+          side: WidgetStatePropertyAll(BorderSide(color: palette.chromeLine.withValues(alpha: 0.4))),
+          shape: const WidgetStatePropertyAll(pill),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -288,16 +402,16 @@ class AppTheme {
           padding: const WidgetStatePropertyAll(
             EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
-          foregroundColor: WidgetStatePropertyAll(palette.blue),
+          foregroundColor: WidgetStatePropertyAll(palette.accent),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
-          shape: WidgetStatePropertyAll(componentShape),
+          shape: const WidgetStatePropertyAll(pill),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
-          foregroundColor: WidgetStatePropertyAll(palette.text2),
-          shape: WidgetStatePropertyAll(componentShape),
+          foregroundColor: WidgetStatePropertyAll(palette.text),
+          shape: const WidgetStatePropertyAll(CircleBorder()),
         ),
       ),
     );
@@ -307,11 +421,12 @@ class AppTheme {
     TextStyle style(
       double size,
       FontWeight weight, {
+      String family = fontFamily,
       Color? color,
-      double height = 1.25,
+      double height = 1.3,
     }) {
       return TextStyle(
-        fontFamily: fontFamily,
+        fontFamily: family,
         fontSize: size,
         fontWeight: weight,
         color: color ?? palette.text,
@@ -321,26 +436,25 @@ class AppTheme {
     }
 
     return TextTheme(
-      displayLarge: style(24, FontWeight.w600),
-      displayMedium: style(24, FontWeight.w600),
-      displaySmall: style(24, FontWeight.w600),
-      headlineLarge: style(20, FontWeight.w600),
-      headlineMedium: style(20, FontWeight.w600),
-      headlineSmall: style(20, FontWeight.w600),
-      titleLarge: style(20, FontWeight.w600),
-      titleMedium: style(16, FontWeight.w600),
-      titleSmall: style(14, FontWeight.w600),
-      bodyLarge: style(16, FontWeight.w400, height: 1.5),
-      bodyMedium: style(16, FontWeight.w400, height: 1.5),
-      bodySmall: style(
-        14,
-        FontWeight.w400,
-        color: palette.text2,
-        height: 1.4,
-      ),
-      labelLarge: style(16, FontWeight.w600),
-      labelMedium: style(14, FontWeight.w600),
-      labelSmall: style(14, FontWeight.w600, color: palette.text2),
+      // Screen titles: "15 October", "Ask", "Memories"
+      displayLarge: style(32, FontWeight.w700, family: titleFamily, height: 1.05),
+      displayMedium: style(28, FontWeight.w700, family: titleFamily, height: 1.1),
+      displaySmall: style(24, FontWeight.w700, family: titleFamily, height: 1.1),
+      headlineLarge: style(22, FontWeight.w700, family: titleFamily),
+      headlineMedium: style(20, FontWeight.w700, family: titleFamily),
+      headlineSmall: style(20, FontWeight.w700, family: titleFamily),
+      // App bar titles of the pages behind a screen
+      titleLarge: style(20, FontWeight.w700, family: titleFamily),
+      // Panel titles: "To do today", "Your day"
+      titleMedium: style(16, FontWeight.w700, family: titleFamily),
+      // Row titles
+      titleSmall: style(15, FontWeight.w600),
+      bodyLarge: style(17, FontWeight.w400, height: 1.45),
+      bodyMedium: style(15, FontWeight.w400, height: 1.5),
+      bodySmall: style(13, FontWeight.w400, color: palette.text2, height: 1.4),
+      labelLarge: style(15, FontWeight.w600),
+      labelMedium: style(13, FontWeight.w600),
+      labelSmall: style(12, FontWeight.w600, color: palette.text2),
     );
   }
 }

@@ -85,7 +85,7 @@ final class DeviceStatusStrip extends StatelessWidget {
     return switch (status.connectionState) {
       DeviceConnectionState.unpaired => _StatusPresentation(
           copy: 'Set up wearable',
-          color: palette.blue,
+          color: palette.accent,
           icon: Icons.watch_outlined,
         ),
       DeviceConnectionState.bluetoothOff => _StatusPresentation(
@@ -95,17 +95,17 @@ final class DeviceStatusStrip extends StatelessWidget {
         ),
       DeviceConnectionState.scanning => _StatusPresentation(
           copy: 'Finding Echo',
-          color: palette.blue,
+          color: palette.accent,
           icon: Icons.bluetooth_searching_rounded,
         ),
       DeviceConnectionState.connecting => _StatusPresentation(
           copy: 'Connecting',
-          color: palette.blue,
+          color: palette.accent,
           icon: Icons.sync_rounded,
         ),
       DeviceConnectionState.bonding => _StatusPresentation(
           copy: 'Securing connection',
-          color: palette.blue,
+          color: palette.accent,
           icon: Icons.lock_outline_rounded,
         ),
       DeviceConnectionState.listening => _StatusPresentation(

@@ -3,70 +3,58 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('dark theme uses the approved palette and typography', () {
-    final theme = AppTheme.dark;
-    final palette = theme.extension<EchoPalette>()!;
-
-    expect(theme.brightness, Brightness.dark);
-    expect(theme.textTheme.bodyMedium!.fontFamily, 'DM Sans');
-    expect(palette.background, const Color(0xFF080A0D));
-    expect(palette.surface, const Color(0xFF111419));
-    expect(palette.surface2, const Color(0xFF171B21));
-    expect(palette.text, const Color(0xFFF4F6F8));
-    expect(palette.text2, const Color(0xFF9CA3AE));
-    expect(palette.blue, const Color(0xFF4385FF));
-    expect(palette.green, const Color(0xFF46D69A));
-    expect(palette.amber, const Color(0xFFFFBD59));
-    expect(palette.red, const Color(0xFFFF6B74));
-    expect(palette.border, const Color(0xFF252A32));
-  });
-
-  test('light theme uses the approved accessible palette', () {
+  test('light theme: panels on a quiet ground, Archivo', () {
     final theme = AppTheme.light;
     final palette = theme.extension<EchoPalette>()!;
 
     expect(theme.brightness, Brightness.light);
-    expect(theme.textTheme.bodyMedium!.fontFamily, 'DM Sans');
-    expect(palette.background, const Color(0xFFF7F8FA));
-    expect(palette.surface, const Color(0xFFFFFFFF));
-    expect(palette.surface2, const Color(0xFFEDF0F4));
-    expect(palette.text, const Color(0xFF191C21));
-    expect(palette.text2, const Color(0xFF6B727C));
-    expect(palette.blue, const Color(0xFF286FD4));
-    expect(palette.green, const Color(0xFF168A5B));
-    expect(palette.amber, const Color(0xFFA96500));
-    expect(palette.red, const Color(0xFFB72F3B));
-    expect(palette.border, const Color(0xFFDFE3E8));
+    expect(theme.textTheme.bodyMedium!.fontFamily, 'Archivo');
+    expect(theme.textTheme.displayLarge!.fontFamily, 'Archivo Expanded');
+    expect(palette.background, const Color(0xFFE9EAE7));
+    expect(palette.surface, const Color(0xFFF7F7F5));
+    expect(palette.text, const Color(0xFF1F2326));
+    expect(palette.accent, const Color(0xFF0E6F68));
+    expect(palette.live, const Color(0xFFE8590C));
+    expect(palette.chrome, const Color(0xFF1F2326));
   });
 
-  test('component geometry and text spacing meet the mobile baseline', () {
-    for (final theme in [AppTheme.dark, AppTheme.light]) {
-      final cardShape = theme.cardTheme.shape! as RoundedRectangleBorder;
-      final cardRadius = cardShape.borderRadius as BorderRadius;
-      final elevatedMinimum =
-          theme.elevatedButtonTheme.style!.minimumSize!.resolve({})!;
-        final filledMinimum =
-          theme.filledButtonTheme.style!.minimumSize!.resolve({})!;
-      final outlinedMinimum =
-          theme.outlinedButtonTheme.style!.minimumSize!.resolve({})!;
-      final textMinimum =
-          theme.textButtonTheme.style!.minimumSize!.resolve({})!;
-        final iconMinimum =
-          theme.iconButtonTheme.style!.minimumSize!.resolve({})!;
+  test('dark theme: warm graphite, never pure black', () {
+    final theme = AppTheme.dark;
+    final palette = theme.extension<EchoPalette>()!;
 
-      expect(cardRadius.topLeft.x, lessThanOrEqualTo(8));
-      expect(elevatedMinimum.width, greaterThanOrEqualTo(44));
-      expect(elevatedMinimum.height, greaterThanOrEqualTo(44));
-        expect(filledMinimum.width, greaterThanOrEqualTo(44));
-        expect(filledMinimum.height, greaterThanOrEqualTo(44));
-      expect(outlinedMinimum.width, greaterThanOrEqualTo(44));
-      expect(outlinedMinimum.height, greaterThanOrEqualTo(44));
-      expect(textMinimum.width, greaterThanOrEqualTo(44));
-      expect(textMinimum.height, greaterThanOrEqualTo(44));
-        expect(iconMinimum.width, greaterThanOrEqualTo(44));
-        expect(iconMinimum.height, greaterThanOrEqualTo(44));
+    expect(theme.brightness, Brightness.dark);
+    expect(palette.background, const Color(0xFF1C1E20));
+    expect(palette.surface, const Color(0xFF26292C));
+    expect(palette.text, const Color(0xFFECEDEA));
+    expect(palette.accent, const Color(0xFF6CC4BA));
+    expect(palette.live, const Color(0xFFFF7A33));
+  });
+
+  test('main buttons are ink on the ground, links are teal', () {
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      final palette = theme.extension<EchoPalette>()!;
+      final filled = theme.filledButtonTheme.style!;
+      expect(filled.backgroundColor!.resolve({}), palette.text);
+      expect(filled.foregroundColor!.resolve({}), palette.background);
+      expect(theme.textButtonTheme.style!.foregroundColor!.resolve({}), palette.accent);
+    }
+  });
+
+  test('every control keeps a 44 pt target and text has no tracking', () {
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      for (final style in [
+        theme.elevatedButtonTheme.style!,
+        theme.filledButtonTheme.style!,
+        theme.outlinedButtonTheme.style!,
+        theme.textButtonTheme.style!,
+        theme.iconButtonTheme.style!,
+      ]) {
+        final minimum = style.minimumSize!.resolve({})!;
+        expect(minimum.width, greaterThanOrEqualTo(44));
+        expect(minimum.height, greaterThanOrEqualTo(44));
+      }
       expect(theme.textTheme.displayLarge!.letterSpacing, 0);
-      expect(theme.textTheme.titleLarge!.letterSpacing, 0);
+      expect(theme.textTheme.bodyMedium!.letterSpacing, 0);
     }
   });
 }

@@ -295,6 +295,14 @@ final class _Fixture {
     ThemeData? theme,
     double textScale = 1,
   }) async {
+    // Tall enough for every row: the list builds only what is on screen
+    // (unless the test chose a size of its own)
+    if (tester.view.devicePixelRatio != 1) {
+      tester.view.physicalSize = const Size(400, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+    }
     await tester.pumpWidget(MaterialApp(
       theme: theme ?? AppTheme.light,
       home: MediaQuery(

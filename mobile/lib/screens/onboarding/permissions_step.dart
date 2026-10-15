@@ -20,7 +20,7 @@ final class PermissionsStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.shield_outlined, size: 32, color: palette.blue),
+        Icon(Icons.shield_outlined, size: 32, color: palette.accent),
         const SizedBox(height: 24),
         Text('Permissions', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 8),
@@ -94,7 +94,7 @@ final class _PermissionRow extends StatelessWidget {
         SizedBox(
           width: 44,
           height: 44,
-          child: Icon(icon, color: palette.blue),
+          child: Icon(icon, color: palette.accent),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -114,7 +114,7 @@ final class _PermissionRow extends StatelessWidget {
                     Text(
                       'REQUIRED',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: palette.blue,
+                            color: palette.accent,
                             fontSize: 11,
                           ),
                     ),

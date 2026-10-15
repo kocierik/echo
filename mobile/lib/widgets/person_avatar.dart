@@ -18,7 +18,7 @@ final class PersonAvatar extends StatelessWidget {
         height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: palette.blue.withValues(alpha: 0.12),
+          color: palette.accent.withValues(alpha: 0.12),
           shape: BoxShape.circle,
         ),
         child: Text(
@@ -26,7 +26,7 @@ final class PersonAvatar extends StatelessWidget {
           style: TextStyle(
             fontSize: size * 0.38,
             fontWeight: FontWeight.w600,
-            color: palette.blue,
+            color: palette.accent,
             height: 1,
           ),
         ),

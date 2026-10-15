@@ -20,7 +20,7 @@ final class BackendStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.dns_outlined, size: 32, color: palette.blue),
+        Icon(Icons.dns_outlined, size: 32, color: palette.accent),
         const SizedBox(height: 24),
         Text('Connect your backend', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 8),

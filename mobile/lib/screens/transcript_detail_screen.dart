@@ -94,9 +94,10 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Scaffold(
       key: const Key('transcript-detail-screen'),
-      backgroundColor: AppColors.bgBase,
+      backgroundColor: palette.background,
       appBar: AppBar(title: const Text('Transcript')),
       body: SafeArea(
         child: _editable ? _buildEditor() : _buildReadOnly(),
@@ -105,13 +106,14 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
   }
 
   Widget _buildEditor() {
+    final palette = EchoPalette.of(context);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
-        const Text(
+        Text(
           'TRANSCRIPT',
           style: TextStyle(
-            color: AppColors.foregroundMuted,
+            color: palette.text2,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -131,17 +133,17 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
         ),
         if (_textIsEmpty) ...[
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Transcript text is required.',
-            key: Key('transcript-text-error'),
-            style: TextStyle(color: AppColors.error, fontSize: 12),
+            key: const Key('transcript-text-error'),
+            style: TextStyle(color: palette.red, fontSize: 12),
           ),
         ],
         const SizedBox(height: 24),
-        const Text(
+        Text(
           'SPEAKER',
           style: TextStyle(
-            color: AppColors.foregroundMuted,
+            color: palette.text2,
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -206,7 +208,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
           label: Text(_submitting ? 'Saving...' : 'Save correction'),
         ),
         const SizedBox(height: 32),
-        const Divider(color: AppColors.border),
+        Divider(color: palette.border),
         const SizedBox(height: 16),
         if (_deleteError != null) ...[
           _ErrorPanel(
@@ -222,8 +224,8 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
           key: const Key('delete-conversation'),
           onPressed: _busy ? null : _confirmDelete,
           style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.error,
-            side: const BorderSide(color: AppColors.error),
+            foregroundColor: palette.red,
+            side: BorderSide(color: palette.red),
             minimumSize: const Size.fromHeight(48),
           ),
           icon: _deleting
@@ -240,6 +242,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
   }
 
   Widget _buildReadOnly() {
+    final palette = EchoPalette.of(context);
     final text = _stripDisplayPrefix(widget.segment.text ?? '').trim();
     final message = widget.segment.isFailed
         ? 'Transcription failed'
@@ -260,8 +263,8 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
         Text(
           message,
           key: const Key('read-only-transcript'),
-          style: const TextStyle(
-            color: AppColors.foreground,
+          style: TextStyle(
+            color: palette.text,
             fontSize: 15,
             height: 1.5,
           ),
@@ -269,8 +272,8 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
         const SizedBox(height: 12),
         Text(
           status,
-          style: const TextStyle(
-            color: AppColors.foregroundMuted,
+          style: TextStyle(
+            color: palette.text2,
             fontSize: 13,
           ),
         ),
@@ -290,8 +293,8 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
             key: const Key('delete-conversation'),
             onPressed: _busy ? null : _confirmDelete,
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.error,
-              side: const BorderSide(color: AppColors.error),
+              foregroundColor: palette.red,
+              side: BorderSide(color: palette.red),
               minimumSize: const Size.fromHeight(48),
             ),
             icon: _deleting
@@ -349,6 +352,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
   }
 
   Future<void> _confirmDelete() async {
+    final palette = EchoPalette.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -366,7 +370,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
             key: const Key('confirm-delete-conversation'),
             onPressed: () => Navigator.pop(dialogContext, true),
             style: FilledButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: palette.red,
               minimumSize: const Size(44, 44),
             ),
             child: const Text('Delete'),
@@ -417,27 +421,28 @@ class _CorrectionStatus extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     if (result.queued) {
-      return const _StatusPanel(
-        key: Key('reanalysis-queued'),
+      return _StatusPanel(
+        key: const Key('reanalysis-queued'),
         icon: Icons.sync_rounded,
-        color: AppColors.accent,
+        color: palette.accent,
         message: 'Reprocessing memory',
       );
     }
     if (result.queueFailed) {
-      return const _StatusPanel(
-        key: Key('reanalysis-queue-failed'),
+      return _StatusPanel(
+        key: const Key('reanalysis-queue-failed'),
         icon: Icons.warning_amber_rounded,
-        color: AppColors.error,
+        color: palette.red,
         message:
             'Correction saved, but reprocessing needs retry or attention.',
       );
     }
-    return const _StatusPanel(
-      key: Key('reanalysis-unchanged'),
+    return _StatusPanel(
+      key: const Key('reanalysis-unchanged'),
       icon: Icons.check_circle_outline,
-      color: AppColors.foregroundMuted,
+      color: palette.text2,
       message: 'No reprocessing needed',
     );
   }
@@ -457,11 +462,12 @@ class _StatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
+        color: palette.surface,
+        border: Border.all(color: palette.border),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -496,16 +502,17 @@ class _ErrorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.error),
+        color: palette.surface,
+        border: Border.all(color: palette.red),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          Icon(Icons.error_outline, color: palette.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -513,8 +520,8 @@ class _ErrorPanel extends StatelessWidget {
               children: [
                 Text(
                   error.message,
-                  style: const TextStyle(
-                    color: AppColors.foreground,
+                  style: TextStyle(
+                    color: palette.text,
                     fontSize: 13,
                   ),
                 ),
@@ -523,8 +530,8 @@ class _ErrorPanel extends StatelessWidget {
                   error.retryable
                       ? 'You can retry this request.'
                       : 'Review the request before trying again.',
-                  style: const TextStyle(
-                    color: AppColors.foregroundMuted,
+                  style: TextStyle(
+                    color: palette.text2,
                     fontSize: 11,
                   ),
                 ),

@@ -133,16 +133,16 @@ final class PrivacyControl extends StatelessWidget {
       PrivacyControlPresentation.offline => _PrivacyControlConfig(
           label: 'Reconnect Echo',
           icon: Icons.bluetooth_searching_rounded,
-          background: palette.blue,
+          background: palette.accent,
           foreground: Colors.white,
-          border: palette.blue,
+          border: palette.accent,
         ),
       PrivacyControlPresentation.unpaired => _PrivacyControlConfig(
           label: 'Pair Echo',
           icon: Icons.bluetooth_rounded,
-          background: palette.blue,
+          background: palette.accent,
           foreground: Colors.white,
-          border: palette.blue,
+          border: palette.accent,
         ),
     };
   }

@@ -50,7 +50,7 @@ final class TaskTile extends StatelessWidget {
             child: busy
                 ? Padding(
                     padding: const EdgeInsets.all(13),
-                    child: CircularProgressIndicator(strokeWidth: 2, color: palette.blue),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
                   )
                 : IconButton(
                     key: Key('task-toggle-${task.id}'),
@@ -86,7 +86,7 @@ final class TaskTile extends StatelessWidget {
                       key: Key('task-promise-${task.id}'),
                       style: textTheme.bodySmall?.copyWith(
                         fontSize: 13,
-                        color: palette.blue,
+                        color: palette.accent,
                       ),
                     ),
                   if (due != null)

@@ -82,7 +82,7 @@ final class _WhoIsSpeakingSheetState extends State<WhoIsSpeakingSheet> {
             ),
             ListTile(
               key: const Key('voice-me'),
-              leading: Icon(Icons.person_rounded, color: palette.blue),
+              leading: Icon(Icons.person_rounded, color: palette.accent),
               title: const Text('Me'),
               onTap: () => Navigator.pop(context, const VoiceChoice.me()),
             ),

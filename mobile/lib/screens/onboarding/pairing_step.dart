@@ -38,12 +38,12 @@ final class PairingStep extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: palette.surface2,
                     shape: BoxShape.circle,
-                    border: Border.all(color: palette.blue, width: 2),
+                    border: Border.all(color: palette.accent, width: 2),
                   ),
                   child: Icon(
                     paired ? Icons.check_rounded : Icons.watch_outlined,
                     size: 34,
-                    color: paired ? palette.green : palette.blue,
+                    color: paired ? palette.green : palette.accent,
                   ),
                 ),
               ],

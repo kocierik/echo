@@ -137,7 +137,7 @@ final class TodayRecapSection extends StatelessWidget {
           if (conversations.length > maxVisible)
             Text(
               '+${conversations.length - maxVisible} more today',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.blue),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.accent),
             ),
         ],
       ],
@@ -256,7 +256,7 @@ final class WorkingSection extends StatelessWidget {
                     children: [
                       SizedBox.square(
                         dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.blue),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

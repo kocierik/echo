@@ -36,7 +36,7 @@ final class EchoBottomNavigation extends StatelessWidget {
               children: List.generate(_destinations.length, (index) {
                 final destination = _destinations[index];
                 final selected = index == selectedIndex;
-                final color = selected ? palette.blue : palette.text2;
+                final color = selected ? palette.accent : palette.text2;
                 return Expanded(
                   child: Semantics(
                     key: Key('echo-nav-$index'),

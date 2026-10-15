@@ -67,7 +67,7 @@ final class _TipCardState extends State<TipCard> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
       decoration: BoxDecoration(
-        color: palette.blue.withValues(alpha: 0.10),
+        color: palette.accent.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -75,7 +75,7 @@ final class _TipCardState extends State<TipCard> {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(Icons.lightbulb_outline_rounded, size: 18, color: palette.blue),
+            child: Icon(Icons.lightbulb_outline_rounded, size: 18, color: palette.accent),
           ),
           const SizedBox(width: 10),
           Expanded(

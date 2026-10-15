@@ -256,7 +256,7 @@ final class _OnboardingHeader extends StatelessWidget {
                       right: index == OnboardingStep.values.length - 1 ? 0 : 6,
                     ),
                     decoration: BoxDecoration(
-                      color: index <= step.index ? palette.blue : palette.border,
+                      color: index <= step.index ? palette.accent : palette.border,
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),

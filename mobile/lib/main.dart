@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,11 @@ late AppLifecycleCoordinator appLifecycleCoordinator;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Archivo (SIL Open Font License), listed in About → Licenses
+  LicenseRegistry.addLicense(() async* {
+    final license = await rootBundle.loadString('assets/fonts/OFL-Archivo.txt');
+    yield LicenseEntryWithLineBreaks(const ['Archivo'], license);
+  });
   appLifecycleCoordinator = await AppLifecycleCoordinator.create();
   AppRuntime.initialize(appLifecycleCoordinator);
   bleService = appLifecycleCoordinator.bleService;
