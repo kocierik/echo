@@ -32,7 +32,7 @@ make eval-stt PROVIDERS=deepgram:nova-3,openai:gpt-transcribe
 | Model | Used for | Shut down | Replacement |
 |---|---|---|---|
 | `gpt-4o`, `gpt-4o-mini` | every LLM call | 2027-01-14 | `gpt-6-luna` |
-| `gpt-4o-transcribe` | STT when `STT_PROVIDER=openai` | 2027-02-26 | `gpt-transcribe` |
+| `gpt-4o-transcribe` | STT when `STT_PROVIDER=openai` (this server uses Deepgram) | 2027-02-26 | `gpt-transcribe` |
 
 ## Results, 2026-10-14
 

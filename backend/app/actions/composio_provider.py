@@ -30,6 +30,7 @@ SDK surface used (all synchronous):
 import asyncio
 import functools
 import logging
+import time
 from typing import Any
 
 from app.actions.policy import CREATE_TOOLS, toolkit_of
@@ -47,6 +48,11 @@ logger = logging.getLogger(__name__)
 
 SDK_TIMEOUT_SECONDS = 20
 SEARCH_LIMIT = 20
+# Kept in memory to spare Composio round trips on every request (~1 s each). Connected
+# accounts are refreshed when the Integrations screen lists them, after a disconnect, and
+# before telling the user an app is not connected; tool schemas rarely change.
+CONNECTED_CACHE_SECONDS = 60
+TOOLS_CACHE_SECONDS = 600
 # Tool schemas offered to the model per request (token cost and tool-choice quality).
 MAX_OFFERED_TOOLS = 100
 # Always offered when their toolkit is connected: the create tools and the known
@@ -143,6 +149,18 @@ class ComposioActionProvider:
     def __init__(self, client: Any = None):
         self._client = client
         self._auth_config_ids: dict[str, str] = {}
+        self._connected: dict[str, tuple[float, list[str]]] = {}
+        self._tools: dict[tuple[str, tuple[str, ...]], tuple[float, list[dict]]] = {}
+
+    def _remember_connected(self, user_id: str, accounts: list) -> list[str]:
+        slugs = list(dict.fromkeys(a.toolkit.slug for a in accounts))
+        self._connected[user_id] = (time.monotonic(), slugs)
+        return slugs
+
+    def _forget(self, user_id: str) -> None:
+        self._connected.pop(user_id, None)
+        for key in [key for key in self._tools if key[0] == user_id]:
+            del self._tools[key]
 
     @property
     def client(self):
@@ -183,7 +201,7 @@ class ComposioActionProvider:
     async def list_toolkits(self, user_id: str, query: str | None = None) -> list[Toolkit]:
         """Search results, or the initial toolkits plus any other connected toolkit."""
         accounts = await _call(self._active_slugs, user_id)
-        connected_order = list(dict.fromkeys(a.toolkit.slug for a in accounts))
+        connected_order = self._remember_connected(user_id, accounts)
         connected = set(connected_order)
 
         def fetch() -> list[Toolkit]:
@@ -207,9 +225,12 @@ class ComposioActionProvider:
 
         return await _call(fetch)
 
-    async def connected_toolkits(self, user_id: str) -> list[str]:
+    async def connected_toolkits(self, user_id: str, *, fresh: bool = False) -> list[str]:
+        cached = self._connected.get(user_id)
+        if not fresh and cached and time.monotonic() - cached[0] < CONNECTED_CACHE_SECONDS:
+            return list(cached[1])
         accounts = await _call(self._active_slugs, user_id)
-        return list(dict.fromkeys(a.toolkit.slug for a in accounts))
+        return list(self._remember_connected(user_id, accounts))
 
     async def connect_link(self, user_id: str, toolkit: str, callback_url: str | None) -> str:
         def link() -> str:
@@ -228,6 +249,7 @@ class ComposioActionProvider:
             for account in self._active_slugs(user_id, toolkit):
                 self.client.connected_accounts.delete(account.id)
 
+        self._forget(user_id)
         await _call(delete)
 
     def _important_slugs(self, toolkits: list[str]) -> list[str]:
@@ -248,6 +270,16 @@ class ComposioActionProvider:
             return []
 
     async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
+        """The tool schemas for these toolkits, from memory for TOOLS_CACHE_SECONDS."""
+        key = (user_id, tuple(dict.fromkeys(toolkits)))
+        cached = self._tools.get(key)
+        if cached and time.monotonic() - cached[0] < TOOLS_CACHE_SECONDS:
+            return [dict(schema) for schema in cached[1]]
+        tools = await self._fetch_tools(user_id, toolkits)
+        self._tools[key] = (time.monotonic(), tools)
+        return [dict(schema) for schema in tools]
+
+    async def _fetch_tools(self, user_id: str, toolkits: list[str]) -> list[dict]:
         """At most MAX_OFFERED_TOOLS schemas: required write tools, important ones, then
         the rest shared across the connected toolkits; initial toolkits first."""
         wanted = list(dict.fromkeys(toolkits))
@@ -313,9 +345,10 @@ class ComposioActionProvider:
 
     async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult:
         toolkit = toolkit_of(tool)
-        accounts = await _call(self._active_slugs, user_id, toolkit)
-        if not any(a.toolkit.slug == toolkit for a in accounts):
-            raise AccountNotConnectedError(toolkit)
+        if toolkit not in await self.connected_toolkits(user_id):
+            # Maybe connected since the list was kept: ask again before saying no
+            if toolkit not in await self.connected_toolkits(user_id, fresh=True):
+                raise AccountNotConnectedError(toolkit)
         result = await _call(
             self.client.tools.execute,
             tool,

@@ -186,7 +186,7 @@ async def _answer(
         source="voice",
         provider=provider,
         llm=llm,
-        connected_toolkits=connected,
+        connected_toolkits=route.apps or connected,
     )
     extra: dict = {"actions": True}
     if outcome.pending_action is not None:

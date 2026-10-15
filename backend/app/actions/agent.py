@@ -248,8 +248,8 @@ async def run_action_agent(
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
-    `connected_toolkits`, when the caller already fetched them, avoids asking the provider
-    again.
+    `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
+    are offered: the connected apps the request names, else all connected ones.
     """
     texts = TEXTS[detect_language(request)]
 
