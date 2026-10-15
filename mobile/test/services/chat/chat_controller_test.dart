@@ -614,6 +614,16 @@ void main() {
     expect(api.queries, isEmpty);
   });
 
+  test('released before dictation started: it never starts', () async {
+    final starting = controller.startVoice();  // still checking the permission
+    await controller.stopVoice();
+    await starting;
+
+    expect(controller.state.listening, isFalse);
+    voice.emitPartial('ignored');
+    expect(controller.state.composerText, isEmpty);
+  });
+
   test('dispose cancels voice and ignores later callbacks', () async {
     await controller.startVoice();
     controller.dispose();

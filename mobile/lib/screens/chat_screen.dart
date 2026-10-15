@@ -201,11 +201,18 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_controller.send(suggestion));
   }
 
-  void _toggleVoice() {
-    if (_controller.state.listening) {
-      unawaited(_controller.stopVoice());
-    } else {
-      unawaited(_controller.startVoice());
+  /// A press shorter than this is a tap: dictation needs the mic held.
+  static const _shortestHold = Duration(milliseconds: 400);
+
+  void _voiceEnded(Duration held) {
+    unawaited(_controller.stopVoice());
+    if (held < _shortestHold && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          key: Key('hold-to-talk-hint'),
+          content: Text('Hold the mic while you talk.'),
+        ));
     }
   }
 
@@ -250,7 +257,8 @@ final class _ChatScreenState extends State<ChatScreen> {
                 enabled: !state.loadingSession,
                 onChanged: _controller.setComposerText,
                 onSend: _send,
-                onVoice: _toggleVoice,
+                onVoiceStart: () => unawaited(_controller.startVoice()),
+                onVoiceEnd: _voiceEnded,
                 onCamera: _controller.canTakePhotos
                     ? () => unawaited(_controller.takePhoto())
                     : null,

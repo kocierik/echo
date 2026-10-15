@@ -58,7 +58,8 @@ void main() {
           listening: false,
           onChanged: (_) {},
           onSend: () {},
-          onVoice: () {},
+          onVoiceStart: () {},
+          onVoiceEnd: (_) {},
           onCamera: onCamera,
         ));
 

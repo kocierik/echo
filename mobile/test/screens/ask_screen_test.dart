@@ -252,6 +252,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('dictation lasts while the mic is held', (tester) async {
+    final harness = _Harness();
+    await harness.pump(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const Key('chat-mic'))),
+    );
+    await tester.pump();
+    expect(harness.voice.starts, 1);
+    expect(harness.controller.state.listening, isTrue);
+    expect(find.text('Listening… release to stop'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 1));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(harness.voice.stops, 1);
+    expect(harness.controller.state.listening, isFalse);
+    expect(harness.controller.state.composerText, 'ciao Echo');
+    expect(find.byKey(const Key('hold-to-talk-hint')), findsNothing);
+  });
+
+  testWidgets('a tap on the mic says to hold it', (tester) async {
+    final harness = _Harness();
+    await harness.pump(tester);
+
+    await tester.tap(find.byKey(const Key('chat-mic')));
+    await tester.pump();
+
+    expect(harness.controller.state.listening, isFalse);
+    expect(find.byKey(const Key('hold-to-talk-hint')), findsOneWidget);
+  });
+
   testWidgets('mic send and history actions remain 44 square', (tester) async {
     final harness = _Harness();
     await harness.pump(tester);
@@ -398,6 +431,9 @@ final class _FakeChatApi implements ChatApi {
 }
 
 final class _FakeVoiceInput implements VoiceInput {
+  int starts = 0;
+  int stops = 0;
+
   @override
   Future<bool> available() async => true;
 
@@ -408,10 +444,13 @@ final class _FakeVoiceInput implements VoiceInput {
   Future<void> start({
     required ValueChanged<String> onPartial,
     required ValueChanged<String> onFinal,
-  }) async {}
+  }) async {
+    starts++;
+    onPartial('ciao Echo');
+  }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async => stops++;
 
   @override
   Future<void> cancel() async {}
