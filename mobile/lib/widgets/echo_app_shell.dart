@@ -5,6 +5,7 @@ import '../models/device_status.dart';
 import '../theme/app_theme.dart';
 import 'device_status_strip.dart';
 import 'echo_bottom_navigation.dart';
+import 'offline_banner.dart';
 
 final class EchoAppShell extends StatelessWidget {
   const EchoAppShell({
@@ -60,6 +61,7 @@ final class EchoAppShell extends StatelessWidget {
               ),
             ),
           ),
+          const OfflineBanner(),
           Expanded(
             child: IndexedStack(
               index: selectedIndex,

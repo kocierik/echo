@@ -34,7 +34,8 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
   massimo 3 al giorno, mai tra le 22 e le 8
 
 ### Fase 4 — Esperienza d'uso
-- [ ] App veloce anche offline (copia locale dei dati)
+- [x] App veloce anche offline: copia locale delle letture (cancellata al logout), Today si apre dalla copia,
+      striscia "Offline · updated 14:32"
 - [ ] "Echo sta lavorando alla tua richiesta…" in Today per i comandi vocali
 - [ ] Far scoprire le funzioni: suggerimenti la prima volta, pagina "Cosa può fare Echo"
 - [ ] Live Activity "Echo sta ascoltando" (con batteria) e widget iOS

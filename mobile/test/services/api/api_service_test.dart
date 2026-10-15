@@ -6,6 +6,7 @@ import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/services/api/response_cache.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -297,6 +298,65 @@ void main() {
     });
   });
 
+  group('offline copy', () {
+    late MemoryResponseCache cache;
+    late bool offline;
+    late ApiService service;
+    final page = {
+      'conversations': [
+        {'id': 'c1', 'started_at': '2026-10-15T08:00:00Z', 'title': 'Pranzo'},
+      ],
+      'total': 1,
+    };
+
+    setUp(() {
+      cache = MemoryResponseCache()
+        ..clock = () => DateTime.utc(2026, 10, 15, 12, 32);
+      offline = false;
+      offlineDataSince.value = null;
+      service = ApiService(
+        client: _StubClient((request) {
+          if (offline) throw http.ClientException('no network', request.url);
+          return _jsonResponse(request, 200, page);
+        }),
+        credentialStore: _FakeCredentialStore(),
+        cache: cache,
+      );
+    });
+
+    tearDown(() => offlineDataSince.value = null);
+
+    test('the last answer is shown offline, and the banner knows since when',
+        () async {
+      expect((await service.listConversations()).single.title, 'Pranzo');
+      await Future<void>.delayed(
+          Duration.zero); // the copy is written in the background
+      expect(offlineDataSince.value, isNull);
+
+      offline = true;
+      expect((await service.listConversations()).single.title, 'Pranzo');
+      expect(offlineDataSince.value, DateTime.utc(2026, 10, 15, 12, 32));
+
+      offline = false;
+      await service.listConversations();
+      expect(offlineDataSince.value, isNull);
+    });
+
+    test('without a copy the error stays an error', () async {
+      offline = true;
+      await _expectApiException(service.listConversations(), code: 'offline');
+    });
+
+    test('the cache view reads only the copy', () async {
+      await _expectApiException(service.cacheView().listConversations(),
+          code: 'offline');
+      await service.listConversations();
+      await Future<void>.delayed(Duration.zero);
+      offline = true;
+      expect((await service.cacheView().listConversations()).single.id, 'c1');
+    });
+  });
+
   group('credential probes', () {
     test('returns true only for 200 and sends the supplied key', () async {
       late http.BaseRequest captured;
@@ -406,7 +466,8 @@ void main() {
       expect(await service.getLatestDigest(), isNull);
     });
 
-    test('open tasks ask the server for done=false and skip nameless ones', () async {
+    test('open tasks ask the server for done=false and skip nameless ones',
+        () async {
       late http.Request captured;
       final service = _service((request) {
         captured = request as http.Request;
@@ -420,7 +481,12 @@ void main() {
               'conversation_id': 'c1',
               'created_at': '2026-10-14T09:30:00Z',
             },
-            {'id': 'blank', 'name': ' ', 'metadata_': {}, 'created_at': '2026-10-14T09:30:00Z'},
+            {
+              'id': 'blank',
+              'name': ' ',
+              'metadata_': {},
+              'created_at': '2026-10-14T09:30:00Z'
+            },
           ],
           'total': 2,
         });
@@ -428,7 +494,8 @@ void main() {
 
       final tasks = await service.listTasks(done: false);
 
-      expect(captured.url.toString(), 'https://echo.test/api/entities/tasks?done=false&limit=200');
+      expect(captured.url.toString(),
+          'https://echo.test/api/entities/tasks?done=false&limit=200');
       expect(tasks.map((task) => task.id), ['open']);
       expect(tasks.single.dueDate, DateTime(2026, 10, 14));
       expect(tasks.single.sourceText, '[Tu] Chiamo Ada.');
@@ -442,7 +509,8 @@ void main() {
       });
 
       await service.setTaskDone(
-        const TaskItem(id: 'task-1', name: 'Call Ada', metadata: {'priority': 'high'}),
+        const TaskItem(
+            id: 'task-1', name: 'Call Ada', metadata: {'priority': 'high'}),
         true,
       );
 
@@ -457,7 +525,8 @@ void main() {
       late http.Request captured;
       final service = _service((request) {
         captured = request as http.Request;
-        return _jsonResponse(request, 200, {'conversations': [], 'entities': []});
+        return _jsonResponse(
+            request, 200, {'conversations': [], 'entities': []});
       });
 
       final results = await service.search(' 50% off & more ');
@@ -469,7 +538,12 @@ void main() {
     test('people and pending actions parse their lists', () async {
       final service = _service((request) => switch (request.url.path) {
             '/api/people' => _jsonResponse(request, 200, [
-                {'id': 'p1', 'name': 'Ada', 'conversation_count': 2, 'open_task_count': 1},
+                {
+                  'id': 'p1',
+                  'name': 'Ada',
+                  'conversation_count': 2,
+                  'open_task_count': 1
+                },
                 {'id': 'p2', 'name': ' '},
               ]),
             _ => _jsonResponse(request, 200, [
@@ -497,7 +571,8 @@ void main() {
   });
 
   group('streamed answers', () {
-    Future<http.StreamedResponse> sse(http.BaseRequest request, List<String> chunks) async {
+    Future<http.StreamedResponse> sse(
+        http.BaseRequest request, List<String> chunks) async {
       return http.StreamedResponse(
         Stream.fromIterable(chunks.map(utf8.encode)),
         200,
@@ -521,7 +596,8 @@ void main() {
       });
       final pieces = <String>[];
 
-      final response = await service.query('Marco?', clientRequestId: 'r1', onToken: pieces.add);
+      final response = await service.query('Marco?',
+          clientRequestId: 'r1', onToken: pieces.add);
 
       expect(captured.url.toString(), 'https://echo.test/api/query/stream');
       expect(jsonDecode(captured.body), {
@@ -550,7 +626,8 @@ void main() {
 
     test('a 409 before the stream is the usual conflict', () async {
       final service = _service(
-        (request) => _jsonResponse(request, 409, {'detail': 'Still working on it'}),
+        (request) =>
+            _jsonResponse(request, 409, {'detail': 'Still working on it'}),
       );
 
       await _expectApiException(
@@ -565,7 +642,8 @@ void main() {
             'event: token\ndata: {"text": "Half"}\n\n',
           ]));
 
-      await _expectApiException(service.query('Marco?', onToken: (_) {}), code: 'offline');
+      await _expectApiException(service.query('Marco?', onToken: (_) {}),
+          code: 'offline');
     });
   });
 

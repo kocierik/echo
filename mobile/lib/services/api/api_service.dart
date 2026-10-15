@@ -18,6 +18,7 @@ import '../../models/segment.dart';
 import '../../models/task_item.dart';
 import '../../models/today_insights.dart';
 import 'api_exception.dart';
+import 'response_cache.dart';
 import '../chat/voice_updates_service.dart';
 
 class QueryResponse {
@@ -278,7 +279,11 @@ class ApiService
     Duration requestTimeout = const Duration(seconds: 10),
     Duration uploadTimeout = const Duration(seconds: 20),
     Duration queryTimeout = const Duration(seconds: 90),
+    ResponseCache? cache,
+    bool cacheOnly = false,
   })  : _client = client ?? http.Client(),
+        _cache = cache ?? FileResponseCache.shared,
+        _cacheOnly = cacheOnly,
         _credentialStore =
             credentialStore ?? SharedPreferencesApiCredentialStore(),
         _requestTimeout = requestTimeout,
@@ -294,6 +299,18 @@ class ApiService
   /// Chat queries may run several tool calls on connected apps.
   final Duration _queryTimeout;
   final bool _ownsClient;
+  final ResponseCache _cache;
+
+  /// Reads only the phone's copy: for showing a screen before the server answers.
+  final bool _cacheOnly;
+
+  /// The same reads, from the phone's copy only (throws when there is none).
+  ApiService cacheView() => ApiService(
+        client: _client,
+        credentialStore: _credentialStore,
+        cache: _cache,
+        cacheOnly: true,
+      );
 
   Future<bool> isConfigured() => _credentialStore.configured;
 
@@ -414,16 +431,7 @@ class ApiService
 
   @override
   Future<List<ChatSessionSummary>> getSessions() async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/chat-sessions'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
+    final response = await _getJson('/api/chat-sessions');
     return _parseDecoded(response.data, (data) {
       final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
       return items
@@ -436,16 +444,7 @@ class ApiService
 
   @override
   Future<ChatSessionDetail> getSessionDetail(String id) async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/chat-sessions/$id'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
+    final response = await _getJson('/api/chat-sessions/$id');
     return _parseDecoded(
       response.data,
       (data) => ChatSessionDetail.fromJson(data as Map<String, dynamic>),
@@ -587,13 +586,7 @@ class ApiService
 
   @override
   Future<List<PersonSummary>> listPeople() async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(Uri.parse('$server/api/people'), headers: headers),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.list,
-    );
+    final response = await _getCached('/api/people', _JsonShape.list);
     return _parseDecoded(response.data, (data) {
       return (data as List<dynamic>)
           .map((item) => PersonSummary.fromJson(item as Map<String, dynamic>))
@@ -724,14 +717,35 @@ class ApiService
     );
   }
 
-  Future<_ApiResponse> _getJson(String path) async {
+  Future<_ApiResponse> _getJson(String path) => _getCached(path, _JsonShape.map);
+
+  /// A read that keeps its answer on the phone, and falls back to it when the server
+  /// cannot be reached (then [offlineDataSince] says since when the data is).
+  Future<_ApiResponse> _getCached(String path, _JsonShape shape) async {
     final server = await _credentialStore.serverUrl;
+    final key = '$server$path';
+    if (_cacheOnly) {
+      final cached = await _cache.read(key);
+      if (cached == null) throw _offlineException('no copy on this phone');
+      return _ApiResponse(200, _decodeJson(cached.body, expectedShape: shape));
+    }
     final headers = await _credentialStore.headers;
-    return _send(
-      () => _client.get(Uri.parse('$server$path'), headers: headers),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
+    try {
+      final response = await _send(
+        () => _client.get(Uri.parse(key), headers: headers),
+        expectedStatuses: const {200},
+        expectedShape: shape,
+      );
+      unawaited(_cache.write(key, jsonEncode(response.data)));
+      offlineDataSince.value = null;
+      return response;
+    } on ApiException catch (error) {
+      if (error.code != 'offline' && error.code != 'timeout') rethrow;
+      final cached = await _cache.read(key);
+      if (cached == null) rethrow;
+      offlineDataSince.value = cached.savedAt;
+      return _ApiResponse(200, _decodeJson(cached.body, expectedShape: shape));
+    }
   }
 
 
@@ -784,16 +798,7 @@ class ApiService
   /// The most recent daily digest of the last two days, or null if none exists.
   @override
   Future<DailySummary?> getLatestDigest() async {
-    final server = await _credentialStore.serverUrl;
-    final headers = await _credentialStore.headers;
-    final response = await _send(
-      () => _client.get(
-        Uri.parse('$server/api/digest?days=2'),
-        headers: headers,
-      ),
-      expectedStatuses: const {200},
-      expectedShape: _JsonShape.map,
-    );
+    final response = await _getJson('/api/digest?days=2');
     return _parseDecoded(response.data, (data) {
       final items = (data as Map<String, dynamic>)['items'] as List<dynamic>;
       final summaries = items
