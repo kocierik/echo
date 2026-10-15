@@ -88,6 +88,9 @@ class Route:
 
     kind: str
     notice: str | None = None
+    # For "agent": the connected apps the request names (empty: any connected app).
+    # Only their tools are offered, which keeps the agent's prompt small and fast.
+    apps: list[str] = field(default_factory=list)
 
 
 def _label(slug: str, known_apps: dict[str, str]) -> str:
@@ -225,4 +228,4 @@ async def route_request(
         return Route("notice", not_connected_answer(request, intent.unresolved[0]))
     if not connected:
         return Route("notice", none_connected_answer(request))
-    return Route("agent")
+    return Route("agent", apps=list(intent.apps))

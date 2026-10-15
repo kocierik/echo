@@ -180,10 +180,10 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ### Ancora aperti
 
-- **`gpt-4o-transcribe` si spegne il 26/2/2027** (avviso OpenAI del 14/10/2026): da confrontare
-  con Deepgram Nova-3 e `gpt-transcribe` (`make eval-stt`, servono registrazioni delle ultime 24 h).
-  Analisi, chat, agente e instradamento sono già passati a `gpt-6-luna`
-  ([MODEL-EVALUATION.md](MODEL-EVALUATION.md)).
+- **Trascrizione:** questo server usa Deepgram Nova-3 (`STT_PROVIDER=deepgram`), non toccato dalle
+  deprecazioni OpenAI. Solo con `STT_PROVIDER=openai` conta lo spegnimento di `gpt-4o-transcribe` (26/2/2027,
+  sostituto `gpt-transcribe`); il confronto (`make eval-stt`) resta utile per scegliere il migliore, non urgente.
+  Analisi, chat, agente e instradamento sono già passati a `gpt-6-luna` ([MODEL-EVALUATION.md](MODEL-EVALUATION.md)).
 
 - **La chiave di esempio `my-secret-key` è l'unica API key del DB di sviluppo**, esposto su internet dal tunnel:
   vedi §6, primo punto.

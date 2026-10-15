@@ -355,3 +355,69 @@ async def test_a_failed_preload_does_not_stop_startup(monkeypatch):
     monkeypatch.setattr(composio_provider, "_import_sdk", broken)
     monkeypatch.setattr(composio_provider.settings, "composio_api_key", "ak_test")
     await composio_provider.preload_sdk()
+
+
+class CountingClient(StubClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.list_calls = 0
+        self.tools_calls = 0
+
+    def _list(self, **kw):
+        self.list_calls += 1
+        return super()._list(**kw)
+
+    def _tools_get(self, user_id, **kw):
+        self.tools_calls += 1
+        return super()._tools_get(user_id, **kw)
+
+
+async def test_connected_apps_are_kept_for_a_minute_and_refreshed_after_a_disconnect(
+    monkeypatch,
+):
+    client = CountingClient(active=["gmail"])
+    p = ComposioActionProvider(client=client)
+
+    assert await p.connected_toolkits("u1") == ["gmail"]
+    assert await p.connected_toolkits("u1") == ["gmail"]
+    assert client.list_calls == 1
+
+    await p.disconnect("u1", "gmail")
+    client.active = []
+    calls = client.list_calls
+    assert await p.connected_toolkits("u1") == []
+    assert client.list_calls == calls + 1
+
+    now = composio_provider.time.monotonic()
+    monkeypatch.setattr(
+        composio_provider.time,
+        "monotonic",
+        lambda: now + composio_provider.CONNECTED_CACHE_SECONDS + 1,
+    )
+    await p.connected_toolkits("u1")
+    assert client.list_calls == calls + 2
+
+
+async def test_execute_checks_again_before_saying_an_app_is_not_connected():
+    client = CountingClient(active=[], execute_result={"successful": True, "data": {}})
+    p = ComposioActionProvider(client=client)
+    assert await p.connected_toolkits("u1") == []  # remembered: nothing connected
+
+    client.active = [_ns(id="ca_gmail", toolkit=_ns(slug="gmail"), status="ACTIVE")]
+    result = await p.execute("u1", "GMAIL_FETCH_EMAILS", {})
+
+    assert result.ok is True
+
+
+async def test_tool_schemas_are_kept_per_set_of_toolkits():
+    client = CountingClient(active=["gmail"])
+    p = ComposioActionProvider(client=client)
+
+    first = await p.tools_for("u1", ["gmail"])
+    first[0]["changed"] = True  # callers get copies
+    again = await p.tools_for("u1", ["gmail"])
+
+    assert "changed" not in again[0]
+    calls = client.tools_calls
+    await p.tools_for("u1", ["gmail", "googlecalendar"])
+    assert client.tools_calls > calls

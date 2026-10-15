@@ -283,7 +283,7 @@ def test_might_need_tools_matches_email_spellings(text):
 
 
 @pytest.mark.asyncio
-async def test_agent_gets_the_connected_toolkits_without_listing_again(env):
+async def test_agent_gets_only_the_apps_the_request_names(env):
     class CountingProvider(FakeActionProvider):
         listed = 0
 
@@ -294,6 +294,15 @@ async def test_agent_gets_the_connected_toolkits_without_listing_again(env):
     env.provider = CountingProvider(connected={"gmail", "asana"})
     await _ask(env, "riassumimi le ultime mail")
     assert CountingProvider.listed == 0
+    # Only Gmail's tools: a smaller prompt, a faster answer
+    assert env.agent_calls[0][1]["connected_toolkits"] == ["gmail"]
+
+
+@pytest.mark.asyncio
+async def test_agent_gets_every_connected_app_when_none_is_named(env):
+    env.provider = FakeActionProvider(connected={"gmail", "asana"})
+    env.llm.intent = {"needs_apps": True, "apps": []}
+    await _ask(env, "riassumimi le ultime mail")
     assert sorted(env.agent_calls[0][1]["connected_toolkits"]) == ["asana", "gmail"]
 
 

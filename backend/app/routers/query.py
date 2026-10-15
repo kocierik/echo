@@ -410,7 +410,7 @@ async def _answer_query(
                 source="chat",
                 provider=provider,
                 llm=llm_service,
-                connected_toolkits=connected,
+                connected_toolkits=route.apps or connected,
             )
             pending = outcome.pending_action
             extra: dict = {"actions": True}
