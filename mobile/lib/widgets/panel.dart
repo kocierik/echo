@@ -58,16 +58,23 @@ final class PanelHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    // Title and note share the row; a long note wraps on its side
     return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Expanded(
+        Flexible(
           child: Semantics(
             header: true,
             child: Text(title, style: textTheme.titleMedium),
           ),
         ),
-        if (trailing != null) Text(trailing!, style: textTheme.bodySmall),
+        if (trailing != null) ...[
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(trailing!, textAlign: TextAlign.end, style: textTheme.bodySmall),
+          ),
+        ],
         if (actionLabel != null && onAction != null)
           TextButton(
             key: actionKey,

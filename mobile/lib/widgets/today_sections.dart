@@ -1,20 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../models/action_models.dart';
+import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatting.dart';
 import 'action_card.dart';
 import 'conversation_card.dart';
-import '../utils/formatting.dart';
+import 'device_card.dart';
+import 'panel.dart';
 import 'sections.dart';
 import 'task_tile.dart';
 
 /// Tasks for Today: overdue and due today first, then the ones created today
 /// (so a misheard one can be dropped while it is fresh).
 List<TaskItem> todayTasks(List<TaskItem> open, DateTime now) {
-  // Promises have their own section
+  // Promises are added by [todayTodo]
   open = open.where((t) => !t.isPromise).toList();
   final today = dayOf(now);
   bool due(TaskItem t) => t.dueDate != null && !dayOf(t.dueDate!).isAfter(today);
@@ -40,13 +43,136 @@ List<TaskItem> openPromises(List<TaskItem> open, DateTime now) {
   return [...old, ...dated, ...rest];
 }
 
+/// "To do today": the promises that are due, waiting too long or made today,
+/// then today's tasks. The other promises wait on the Tasks page.
+List<TaskItem> todayTodo(List<TaskItem> open, DateTime now) {
+  final today = dayOf(now);
+  bool forToday(TaskItem t) {
+    final due = t.dueDate;
+    if (due != null) return !dayOf(due).isAfter(today);
+    final created = t.createdAt;
+    return created != null &&
+        (dayOf(created) == today || now.difference(created) > stalePromise);
+  }
+
+  return [...openPromises(open, now).where(forToday), ...todayTasks(open, now)];
+}
+
 /// Today's conversations (and one still going), newest first.
 List<ConversationCard> todayConversations(List<ConversationCard> all, DateTime now) {
   final today = dayOf(now);
   return all.where((c) => c.isOpen || dayOf(c.startedAt) == today).toList();
 }
 
-/// "Needs you": actions waiting for a Confirm. Hidden when there are none.
+/// "3 conversations, 1 h 5 min".
+String dayTotals(List<ConversationCard> conversations) {
+  final count = conversations.length;
+  final total = conversations.fold(Duration.zero, (sum, c) => sum + c.duration);
+  return [
+    count == 1 ? '1 conversation' : '$count conversations',
+    if (total.inMinutes > 0) formatDuration(total),
+  ].join(', ');
+}
+
+/// "With Ada, Marco, Luca +2" (null when nobody was named).
+String? peopleLine(List<ConversationCard> conversations) {
+  final people = <String>[];
+  for (final c in conversations) {
+    for (final name in c.people) {
+      if (!people.contains(name)) people.add(name);
+    }
+  }
+  if (people.isEmpty) return null;
+  final more = people.length > 3 ? ' +${people.length - 3}' : '';
+  return 'With ${people.take(3).join(', ')}$more';
+}
+
+/// What is wrong with the wearable, and the way to fix it. Nothing while it
+/// works: the pill in the header says how it is.
+final class DeviceProblemPanel extends StatelessWidget {
+  const DeviceProblemPanel({
+    required this.state,
+    this.pendingBytes = 0,
+    this.onAction,
+    this.busy = false,
+    this.error,
+    super.key,
+  });
+
+  final DeviceConnectionState state;
+
+  /// Speech still on the wearable.
+  final int pendingBytes;
+  final VoidCallback? onAction;
+  final bool busy;
+  final String? error;
+
+  static bool shows(DeviceConnectionState state) => switch (state) {
+        DeviceConnectionState.offline ||
+        DeviceConnectionState.error ||
+        DeviceConnectionState.bluetoothOff ||
+        DeviceConnectionState.unpaired =>
+          true,
+        _ => false,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final (title, body, action) = switch (state) {
+      DeviceConnectionState.unpaired => (
+          'No Echo paired',
+          'Pair your Echo and it starts remembering your day.',
+          'Pair Echo',
+        ),
+      DeviceConnectionState.bluetoothOff => (
+          'Bluetooth is off',
+          'Turn it on in Control Center to reach Echo.',
+          null,
+        ),
+      _ => (
+          'Echo is offline',
+          'What it hears stays on Echo and arrives when it reconnects.',
+          'Reconnect Echo',
+        ),
+    };
+    if (!shows(state)) return const SizedBox.shrink();
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final waiting = pendingSpeechLabel(pendingBytes);
+    return Panel(
+      key: const Key('device-problem'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            liveRegion: true,
+            child: Text(title, style: textTheme.titleMedium),
+          ),
+          const SizedBox(height: 4),
+          Text(body, style: textTheme.bodyMedium?.copyWith(color: palette.text2)),
+          if (waiting != null) ...[
+            const SizedBox(height: 4),
+            Text(waiting, style: textTheme.bodySmall),
+          ],
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(error!, style: textTheme.bodyMedium?.copyWith(color: palette.red)),
+          ],
+          if (action != null && onAction != null) ...[
+            const SizedBox(height: 12),
+            FilledButton(
+              key: const Key('device-action'),
+              onPressed: busy ? null : onAction,
+              child: Text(action),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Needs you": an orange panel per action waiting for a Confirm.
 final class NeedsYouSection extends StatelessWidget {
   const NeedsYouSection({
     required this.actions,
@@ -68,104 +194,126 @@ final class NeedsYouSection extends StatelessWidget {
       key: const Key('needs-you'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionHeader(title: 'Needs you', trailing: '${actions.length}'),
         for (final action in actions)
-          ActionCard(
-            action: action,
-            busy: busyIds.contains(action.id),
-            onConfirm: () => onConfirm(action),
-            onCancel: () => onCancel(action),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _NeedsYouPanel(
+              action: action,
+              busy: busyIds.contains(action.id),
+              onConfirm: () => onConfirm(action),
+              onCancel: () => onCancel(action),
+            ),
           ),
-        const SizedBox(height: 8),
       ],
     );
   }
 }
 
-/// "Today so far": a one-line recap and today's conversations.
-final class TodayRecapSection extends StatelessWidget {
-  const TodayRecapSection({
-    required this.loading,
-    required this.conversations,
-    required this.error,
-    required this.onRetry,
-    required this.onOpen,
-    required this.onSeeAll,
-    this.maxVisible = 3,
-    super.key,
+final class _NeedsYouPanel extends StatelessWidget {
+  const _NeedsYouPanel({
+    required this.action,
+    required this.busy,
+    required this.onConfirm,
+    required this.onCancel,
   });
 
-  final bool loading;
+  final PendingAction action;
+  final bool busy;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
 
-  /// Today's conversations only.
-  final List<ConversationCard> conversations;
-  final String? error;
-  final VoidCallback onRetry;
-  final void Function(ConversationCard conversation) onOpen;
-  final VoidCallback onSeeAll;
-  final int maxVisible;
+  bool get _pending => action.status == null || action.status == 'pending';
+
+  /// "Gmail, asked by voice".
+  String? get _caption {
+    final parts = [
+      if (action.app case final app?) app,
+      if (action.source == 'voice') 'asked by voice',
+    ];
+    return parts.isEmpty ? null : parts.join(', ');
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _HeaderWithLink(title: 'Today so far', linkKey: 'recap-see-all', onTap: onSeeAll),
-        if (loading)
-          const SectionLoading(key: Key('recap-loading'), label: "Loading today's conversations")
-        else if (error != null)
-          SectionError(message: error!, retryKey: const Key('recap-retry'), onRetry: onRetry)
-        else if (conversations.isEmpty)
-          const SectionEmpty(message: 'No conversations yet today.')
-        else ...[
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              recapLine(conversations),
-              key: const Key('recap-line'),
-              style: Theme.of(context).textTheme.bodySmall,
+    final textTheme = Theme.of(context).textTheme;
+    final label = ActionCard.statusLabel(action.status);
+    return Panel(
+      key: Key('action-card-${action.id}'),
+      color: palette.attention,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Needs you',
+            style: textTheme.labelMedium?.copyWith(
+              color: palette.onAttention,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          for (final conversation in conversations.take(maxVisible))
-            ConversationCardTile(
-              conversation: conversation,
-              // Today's page already has the side margins
-              padding: const EdgeInsets.symmetric(vertical: 10),
-              onTap: () => onOpen(conversation),
-            ),
-          if (conversations.length > maxVisible)
+          const SizedBox(height: 3),
+          Text(
+            action.summary,
+            style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          if (_caption case final caption?) ...[
+            const SizedBox(height: 3),
             Text(
-              '+${conversations.length - maxVisible} more today',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.accent),
+              caption,
+              style: textTheme.bodySmall?.copyWith(color: palette.onAttention2),
+            ),
+          ],
+          const SizedBox(height: 12),
+          if (_pending)
+            // Wraps on narrow screens with large text instead of overflowing
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                FilledButton(
+                  key: Key('action-confirm-${action.id}'),
+                  onPressed: busy ? null : onConfirm,
+                  child: const Text('Confirm'),
+                ),
+                TextButton(
+                  key: Key('action-cancel-${action.id}'),
+                  onPressed: busy ? null : onCancel,
+                  style: TextButton.styleFrom(foregroundColor: palette.onAttention2),
+                  child: const Text('Cancel'),
+                ),
+                if (busy)
+                  SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.onAttention,
+                    ),
+                  ),
+              ],
+            )
+          else if (label != null)
+            Text(
+              label,
+              key: Key('action-status-${action.id}'),
+              style: textTheme.labelLarge?.copyWith(
+                color: switch (action.status) {
+                  'executed' => palette.green,
+                  'failed' => palette.red,
+                  'unknown' => palette.amber,
+                  _ => palette.onAttention2,
+                },
+              ),
             ),
         ],
-      ],
+      ),
     );
   }
 }
 
-/// "3 conversations · 1 h 5 min · with Ada, Marco".
-String recapLine(List<ConversationCard> conversations) {
-  final count = conversations.length;
-  final total = conversations.fold(Duration.zero, (sum, c) => sum + c.duration);
-  final people = <String>[];
-  for (final c in conversations) {
-    for (final name in c.people) {
-      if (!people.contains(name)) people.add(name);
-    }
-  }
-  return [
-    count == 1 ? '1 conversation' : '$count conversations',
-    if (total.inMinutes > 0) formatDuration(total),
-    if (people.isNotEmpty)
-      'with ${people.take(3).join(', ')}${people.length > 3 ? ' +${people.length - 3}' : ''}',
-  ].join(' · ');
-}
-
-/// Tasks due today (or overdue) and the ones created today.
-final class TodayTasksSection extends StatelessWidget {
-  const TodayTasksSection({
+/// "To do today": a few tasks with their checkboxes, the rest on the Tasks page.
+final class TodoPanel extends StatelessWidget {
+  const TodoPanel({
     required this.loading,
     required this.tasks,
     required this.error,
@@ -175,7 +323,7 @@ final class TodayTasksSection extends StatelessWidget {
     required this.onDismiss,
     required this.onSeeAll,
     required this.now,
-    this.maxVisible = 5,
+    this.maxVisible = 3,
     super.key,
   });
 
@@ -193,33 +341,501 @@ final class TodayTasksSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hidden = tasks.length - maxVisible;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _HeaderWithLink(title: 'Tasks', linkKey: 'tasks-see-all', onTap: onSeeAll),
-        if (loading)
-          const SectionLoading(key: Key('tasks-loading'), label: 'Loading tasks')
-        else if (error != null)
-          SectionError(message: error!, retryKey: const Key('tasks-retry'), onRetry: onRetry)
-        else if (tasks.isEmpty)
-          const SectionEmpty(message: 'Nothing due today.')
-        else ...[
-          for (final task in tasks.take(maxVisible))
-            TaskTile(
-              task: task,
-              now: now,
-              busy: busy(task),
-              padding: EdgeInsets.zero,
-              onToggle: () => onToggle(task),
-              onDismiss: task.done ? null : () => onDismiss(task),
+    final textTheme = Theme.of(context).textTheme;
+    // The checkboxes' touch targets reach into the panel's margin, so their
+    // circles line up with the title
+    return Panel(
+      key: const Key('todo-panel'),
+      padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 10, right: 10),
+            child: PanelHeader(
+              title: 'To do today',
+              actionLabel: 'See all',
+              onAction: onSeeAll,
+              actionKey: const Key('tasks-see-all'),
             ),
-          if (hidden > 0)
-            Text(
-              '+$hidden more',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          ),
+          if (loading)
+            const _Inset(child: SectionLoading(key: Key('tasks-loading'), label: 'Loading tasks'))
+          else if (error != null)
+            _Inset(
+              child: SectionError(
+                message: error!,
+                retryKey: const Key('tasks-retry'),
+                onRetry: onRetry,
+              ),
+            )
+          else if (tasks.isEmpty)
+            const _Inset(child: SectionEmpty(message: 'Nothing due today.'))
+          else ...[
+            for (final task in tasks.take(maxVisible))
+              TaskTile(
+                task: task,
+                now: now,
+                busy: busy(task),
+                padding: EdgeInsets.zero,
+                showSource: false,
+                onToggle: () => onToggle(task),
+                onDismiss: task.done ? null : () => onDismiss(task),
+              ),
+            if (hidden > 0)
+              _Inset(
+                child: Text(
+                  hidden == 1 ? '1 more in Tasks' : '$hidden more in Tasks',
+                  key: const Key('tasks-more'),
+                  style: textTheme.bodySmall,
+                ),
+              ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+final class _Inset extends StatelessWidget {
+  const _Inset({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: child);
+}
+
+/// "Your day": the totals, who was there, and today's conversations on a
+/// timeline, ending with the one still being recorded.
+final class YourDayPanel extends StatelessWidget {
+  const YourDayPanel({
+    required this.loading,
+    required this.conversations,
+    required this.error,
+    required this.recording,
+    required this.onRetry,
+    required this.onOpen,
+    required this.onSeeAll,
+    this.maxVisible = 4,
+    super.key,
+  });
+
+  final bool loading;
+
+  /// Today's conversations, newest first.
+  final List<ConversationCard> conversations;
+  final String? error;
+
+  /// The wearable is listening right now.
+  final bool recording;
+  final VoidCallback onRetry;
+  final void Function(ConversationCard conversation) onOpen;
+  final VoidCallback onSeeAll;
+
+  /// Finished conversations shown: the latest ones.
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final finished = conversations.where((c) => !c.isOpen).toList().reversed.toList();
+    final open = conversations.where((c) => c.isOpen).toList();
+    final earlier = finished.length - maxVisible;
+    final visible = earlier > 0 ? finished.sublist(earlier) : finished;
+    final people = peopleLine(conversations);
+    final ready = !loading && error == null && conversations.isNotEmpty;
+    return Panel(
+      key: const Key('your-day'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            title: 'Your day',
+            trailing: ready ? dayTotals(conversations) : null,
+          ),
+          if (ready && people != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                people,
+                key: const Key('recap-line'),
+                style: textTheme.bodyMedium?.copyWith(color: palette.text2),
+              ),
+            ),
+          const SizedBox(height: 8),
+          if (loading)
+            const SectionLoading(key: Key('recap-loading'), label: "Loading today's conversations")
+          else if (error != null)
+            SectionError(message: error!, retryKey: const Key('recap-retry'), onRetry: onRetry)
+          else if (conversations.isEmpty)
+            const SectionEmpty(message: 'No conversations yet today.')
+          else ...[
+            if (earlier > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  earlier == 1 ? '1 earlier today' : '$earlier earlier today',
+                  style: textTheme.bodySmall,
+                ),
+              ),
+            for (final conversation in visible)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _TimelineRow(
+                  label: formatTime(conversation.startedAt),
+                  child: _ConversationBlock(
+                    conversation: conversation,
+                    onTap: () => onOpen(conversation),
+                  ),
+                ),
+              ),
+            for (final conversation in open)
+              _NowRow(recording: recording, onTap: () => onOpen(conversation)),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('recap-see-all'),
+              onPressed: onSeeAll,
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              child: const Text('See the whole day'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A time on the left, its conversation on the right.
+final class _TimelineRow extends StatelessWidget {
+  const _TimelineRow({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 46,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              label,
+              style: textTheme.labelSmall?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(child: child),
       ],
+    );
+  }
+}
+
+/// A conversation as a block on the timeline: teal when it left something to
+/// do, a single line when it was short and with nobody in particular.
+final class _ConversationBlock extends StatelessWidget {
+  const _ConversationBlock({required this.conversation, required this.onTap});
+
+  final ConversationCard conversation;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final c = conversation;
+    final title = conversationTitle(c);
+    final duration = c.duration.inMinutes > 0 ? formatDuration(c.duration) : null;
+    final brief = c.people.isEmpty && c.taskCount == 0 && c.duration < const Duration(minutes: 10);
+    final marked = c.taskCount > 0;
+    final color = brief
+        ? palette.surface2
+        : marked
+            ? palette.accentSoft
+            : palette.tint;
+    final muted = marked ? palette.onAccentSoft : palette.text2;
+    final meta = [
+      if (c.people.isNotEmpty) c.people.take(2).join(', '),
+      if (duration != null) duration,
+    ];
+    final radius = BorderRadius.circular(AppTheme.tileRadius);
+    return Semantics(
+      button: true,
+      label: [title, ...meta].join(', '),
+      excludeSemantics: true,
+      child: Material(
+        color: color,
+        borderRadius: radius,
+        child: InkWell(
+          key: Key('day-${c.id}'),
+          borderRadius: radius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: brief
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.titleSmall,
+                        ),
+                      ),
+                      if (duration != null) ...[
+                        const SizedBox(width: 8),
+                        Text(duration, style: textTheme.bodySmall?.copyWith(color: muted)),
+                      ],
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.titleSmall,
+                      ),
+                      if (c.summary case final summary?) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          summary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(color: muted),
+                        ),
+                      ],
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          meta.join('   '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(color: muted),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Now ——— Recording": the conversation still going.
+final class _NowRow extends StatelessWidget {
+  const _NowRow({required this.recording, required this.onTap});
+
+  final bool recording;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: palette.liveText,
+          fontWeight: FontWeight.w600,
+        );
+    final label = recording ? 'Recording' : 'In progress';
+    return Semantics(
+      button: true,
+      label: 'Conversation going on now, ${label.toLowerCase()}',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const Key('day-now'),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          height: 32,
+          child: Row(
+            children: [
+              SizedBox(width: 52, child: Text('Now', style: style)),
+              Expanded(child: Container(height: 2, color: palette.live)),
+              const SizedBox(width: 8),
+              Text(label, style: style),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// An app Echo can act in, on Today.
+final class ActsInApp {
+  const ActsInApp({required this.name, required this.icon});
+
+  final String name;
+  final IconData icon;
+
+  /// An icon for a connected app (Composio toolkit), by its slug.
+  static IconData iconFor(String slug) => switch (slug.toLowerCase()) {
+        'gmail' || 'outlook' => Icons.mail_outline_rounded,
+        'googlecalendar' => Icons.event_outlined,
+        'googledrive' || 'dropbox' => Icons.folder_outlined,
+        'googledocs' || 'notion' => Icons.description_outlined,
+        'googlesheets' => Icons.table_chart_outlined,
+        'slack' || 'discord' || 'telegram' || 'whatsapp' => Icons.chat_bubble_outline_rounded,
+        'github' || 'gitlab' => Icons.code_rounded,
+        'todoist' || 'asana' || 'linear' || 'trello' => Icons.checklist_rounded,
+        'spotify' => Icons.music_note_outlined,
+        _ => Icons.apps_rounded,
+      };
+}
+
+/// "Echo can act in": the apps it may use, always shown so the user knows it
+/// can do things, not only remember them.
+final class ActsInPanel extends StatelessWidget {
+  const ActsInPanel({
+    required this.apps,
+    required this.onManage,
+    required this.onAdd,
+    this.maxVisible = 4,
+    super.key,
+  });
+
+  final List<ActsInApp> apps;
+  final VoidCallback onManage;
+  final VoidCallback onAdd;
+  final int maxVisible;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final note = switch (apps.length) {
+      0 => 'Connect an app and Echo can send, add and remind for you.',
+      1 => '1 app on',
+      final n => '$n apps on',
+    };
+    return Panel(
+      key: const Key('acts-in'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PanelHeader(
+            title: 'Echo can act in',
+            actionLabel: 'Manage',
+            onAction: onManage,
+            actionKey: const Key('acts-in-manage'),
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(builder: (context, constraints) {
+            // As many apps as fit beside the add tile and a short note
+            final fit = ((constraints.maxWidth - 48 - 12 - 64) / 58).floor();
+            final shown = apps.take(fit.clamp(0, maxVisible));
+            return Row(
+              children: [
+                for (final app in shown) ...[
+                  _AppTile(app: app, onTap: onManage),
+                  const SizedBox(width: 10),
+                ],
+                _AddTile(onTap: onAdd),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    note,
+                    key: const Key('acts-in-note'),
+                    style: textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+final class _AppTile extends StatelessWidget {
+  const _AppTile({required this.app, required this.onTap});
+
+  final ActsInApp app;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final radius = BorderRadius.circular(AppTheme.tileRadius);
+    return Semantics(
+      button: true,
+      label: '${app.name}, on',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: app.name,
+        child: Material(
+          color: palette.background,
+          borderRadius: radius,
+          child: InkWell(
+            borderRadius: radius,
+            onTap: onTap,
+            child: SizedBox.square(
+              dimension: 48,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(app.icon, size: 22, color: palette.accent),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(color: palette.accent, shape: BoxShape.circle),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+final class _AddTile extends StatelessWidget {
+  const _AddTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final radius = BorderRadius.circular(AppTheme.tileRadius);
+    return Semantics(
+      button: true,
+      label: 'Add an app',
+      excludeSemantics: true,
+      child: InkWell(
+        key: const Key('acts-in-add'),
+        borderRadius: radius,
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            border: Border.all(color: palette.text2.withValues(alpha: 0.45), width: 1.5),
+          ),
+          child: Icon(Icons.add_rounded, size: 22, color: palette.text),
+        ),
+      ),
     );
   }
 }
@@ -242,34 +858,27 @@ final class WorkingSection extends StatelessWidget {
       children: [
         for (final item in items)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Material(
-              color: palette.surface,
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                key: Key('working-${item.key}'),
-                borderRadius: BorderRadius.circular(8),
-                onTap: onOpen == null ? null : () => onOpen!(item),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          workingLabel(item),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodyMedium,
-                        ),
-                      ),
-                    ],
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Panel(
+              key: Key('working-${item.key}'),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              onTap: onOpen == null ? null : () => onOpen!(item),
+              child: Row(
+                children: [
+                  SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      workingLabel(item),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -284,193 +893,4 @@ String workingLabel(WorkingItem item) {
     return item.text.isEmpty ? '📷 Taking a photo…' : '📷 Taking a photo: ${item.text}';
   }
   return 'Working on: ${item.text}';
-}
-
-/// Promises the user made, hidden when there are none.
-final class PromisesSection extends StatelessWidget {
-  const PromisesSection({
-    required this.promises,
-    required this.busy,
-    required this.onToggle,
-    required this.onDismiss,
-    required this.now,
-    this.maxVisible = 5,
-    super.key,
-  });
-
-  final List<TaskItem> promises;
-  final bool Function(TaskItem task) busy;
-  final void Function(TaskItem task) onToggle;
-  final void Function(TaskItem task) onDismiss;
-  final DateTime now;
-  final int maxVisible;
-
-  @override
-  Widget build(BuildContext context) {
-    if (promises.isEmpty) return const SizedBox.shrink();
-    final hidden = promises.length - maxVisible;
-    return Column(
-      key: const Key('promises-section'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const SectionHeader(title: 'Promises'),
-        for (final promise in promises.take(maxVisible))
-          TaskTile(
-            task: promise,
-            now: now,
-            busy: busy(promise),
-            padding: EdgeInsets.zero,
-            onToggle: () => onToggle(promise),
-            onDismiss: () => onDismiss(promise),
-          ),
-        if (hidden > 0)
-          Text('+$hidden more', style: Theme.of(context).textTheme.bodySmall),
-      ],
-    );
-  }
-}
-
-/// The digest of the latest finished day, labelled with its day.
-final class DigestSection extends StatefulWidget {
-  const DigestSection({
-    required this.loading,
-    required this.summary,
-    required this.error,
-    required this.onRetry,
-    required this.now,
-    super.key,
-  });
-
-  final bool loading;
-  final DailySummary? summary;
-  final String? error;
-  final VoidCallback onRetry;
-  final DateTime now;
-
-  @override
-  State<DigestSection> createState() => _DigestSectionState();
-}
-
-final class _DigestSectionState extends State<DigestSection> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final digest = widget.summary;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(
-          title: digest == null ? 'Daily summary' : dayLabel(digest.date, widget.now),
-        ),
-        if (widget.loading)
-          const SectionLoading(key: Key('summary-loading'), label: 'Loading the daily summary')
-        else if (widget.error != null)
-          SectionError(
-            message: widget.error!,
-            retryKey: const Key('summary-retry'),
-            onRetry: widget.onRetry,
-          )
-        else if (digest == null)
-          const SectionEmpty(message: 'Echo writes a summary of each day overnight.')
-        else
-          InkWell(
-            key: const Key('summary-content'),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Text(
-                digest.summary,
-                maxLines: _expanded ? null : 4,
-                overflow: _expanded ? null : TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// The latest weekly summary: what the week was about, its highlights, who came up.
-final class WeeklySummarySection extends StatefulWidget {
-  const WeeklySummarySection({required this.week, super.key});
-
-  final WeeklySummary week;
-
-  @override
-  State<WeeklySummarySection> createState() => _WeeklySummarySectionState();
-}
-
-final class _WeeklySummarySectionState extends State<WeeklySummarySection> {
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final week = widget.week;
-    final textTheme = Theme.of(context).textTheme;
-    return Column(
-      key: const Key('weekly-summary'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionHeader(title: 'Week of ${shortDate(week.weekStart)}'),
-        InkWell(
-          key: const Key('weekly-summary-content'),
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  week.summary,
-                  maxLines: _expanded ? null : 4,
-                  overflow: _expanded ? null : TextOverflow.ellipsis,
-                  style: textTheme.bodyMedium,
-                ),
-                if (_expanded)
-                  for (final highlight in week.highlights)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text('• $highlight', style: textTheme.bodyMedium),
-                    ),
-                if (week.people.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Text(
-                      'With ${week.people.take(4).join(', ')}',
-                      style: textTheme.bodySmall,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-final class _HeaderWithLink extends StatelessWidget {
-  const _HeaderWithLink({required this.title, required this.linkKey, required this.onTap});
-
-  final String title;
-  final String linkKey;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: SectionHeader(title: title)),
-        TextButton(
-          key: Key(linkKey),
-          onPressed: onTap,
-          // Text flush with the right edge, like the other section headers
-          style: TextButton.styleFrom(padding: const EdgeInsets.only(left: 12)),
-          child: const Text('See all'),
-        ),
-      ],
-    );
-  }
 }

@@ -1,54 +1,56 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../models/action_models.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
-import '../services/device/firmware_update.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
+import '../services/app/app_runtime.dart';
+import '../services/device/firmware_update.dart';
+import '../services/phone/phone_actions.dart';
+import '../services/phone/phone_calendar.dart';
 import '../theme/app_theme.dart';
-import '../widgets/device_card.dart';
-import '../widgets/privacy_control.dart';
-import '../widgets/today_sections.dart';
-import 'conversation_detail_screen.dart';
-import 'navigation.dart';
-import 'task_editing.dart';
-import 'settings/voice_settings_screen.dart';
 import '../widgets/echo_nav_bar.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
+import '../widgets/today_sections.dart';
+import 'conversation_detail_screen.dart';
+import 'integrations_screen.dart';
+import 'navigation.dart';
+import 'settings/automations_settings_screen.dart';
+import 'settings/voice_settings_screen.dart';
+import 'task_editing.dart';
 
-/// Today: the wearable, what needs a decision, the day so far, what is due,
-/// and the latest daily summary.
+/// Today: what needs a decision, what to do, the day so far, and the apps Echo
+/// can act in. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
-    required this.setMuted,
     required this.onOpenMemories,
     required this.onOpenTasks,
     this.onReconnect,
     this.onPair,
     this.onAsk,
     this.api,
+    this.phoneActions,
     this.segmentUploadedStream,
-    this.onMuteAcknowledged,
     this.openConversation,
     this.onOpenChat,
     this.firmwareUpdate,
     this.onOpenSettings,
     this.headerAction,
+    this.manageAppsBuilder,
+    this.addAppBuilder,
     this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
     super.key,
   });
 
   final DeviceStatus deviceStatus;
-  final Future<void> Function(bool muted) setMuted;
   final Future<void> Function()? onReconnect;
 
   /// Opens pairing when no Echo is paired.
@@ -57,8 +59,10 @@ final class HomeScreen extends StatefulWidget {
   final VoidCallback onOpenTasks;
   final AskCallback? onAsk;
   final TodayApi? api;
+
+  /// Reminders and Calendar on this iPhone; the app's, unless injected.
+  final PhoneActionsService? phoneActions;
   final Stream<Object?>? segmentUploadedStream;
-  final Future<void> Function()? onMuteAcknowledged;
   final ConversationOpener? openConversation;
 
   /// Opens the chat an answer goes to (null: the Voice requests chat).
@@ -71,6 +75,10 @@ final class HomeScreen extends StatefulWidget {
   /// The device pill, in the top right.
   final Widget? headerAction;
 
+  /// "Manage" and "Add an app" in "Echo can act in" (injected in tests).
+  final WidgetBuilder? manageAppsBuilder;
+  final WidgetBuilder? addAppBuilder;
+
   /// How often "Echo is working on it" is checked while something is working.
   final Duration workingPollInterval;
   final DateTime Function() clock;
@@ -80,18 +88,13 @@ final class HomeScreen extends StatefulWidget {
 }
 
 final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
-  static const _muteAcknowledgementTimeout = Duration(seconds: 8);
-
   late final TodayApi _api;
   ApiService? _ownedApi;
   StreamSubscription<Object?>? _uploadSubscription;
 
-  // Microphone
-  Timer? _muteTimeout;
-  String? _privacyError;
-  String? _announcement;
-  bool _privacyBusy = false;
-  bool? _requestedMuted;
+  // Reconnecting the wearable
+  bool _deviceBusy = false;
+  String? _deviceError;
 
   // Sections: each loads on its own, so one failure never blanks the screen
   List<ConversationCard> _conversations = const [];
@@ -104,11 +107,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   String? _tasksError;
   int _tasksGeneration = 0;
 
-  DailySummary? _summary;
-  bool _summaryLoading = true;
-  String? _summaryError;
-
-  WeeklySummary? _week;
+  /// Apps Echo can act in: connected ones, then Reminders and Calendar.
+  List<ActsInApp> _apps = const [];
 
   /// The server recognises voices but has not got the user's own yet.
   bool _ownVoiceMissing = false;
@@ -156,15 +156,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         });
       }
     } catch (_) {}
-    try {
-      final summary = await cached.getLatestDigest();
-      if (mounted && _summaryLoading) {
-        setState(() {
-          _summary = summary;
-          _summaryLoading = false;
-        });
-      }
-    } catch (_) {}
   }
 
   @override
@@ -174,30 +165,16 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(_uploadSubscription?.cancel());
       _subscribeToUploads();
     }
-
-    final requestedMuted = _requestedMuted;
-    if (requestedMuted == null ||
-        oldWidget.deviceStatus == widget.deviceStatus ||
-        !_isRequestedTelemetry(widget.deviceStatus, requestedMuted)) {
-      return;
+    if (oldWidget.deviceStatus.connectionState != widget.deviceStatus.connectionState &&
+        _deviceError != null) {
+      setState(() => _deviceError = null);
     }
-
-    _muteTimeout?.cancel();
-    _requestedMuted = null;
-    _privacyBusy = false;
-    _privacyError = null;
-    _announcement =
-        requestedMuted ? 'Microphone muted' : 'Microphone listening resumed';
-    setState(() {});
-    unawaited(
-        (widget.onMuteAcknowledged ?? HapticFeedback.mediumImpact).call());
   }
 
   @override
   void dispose() {
     _conversationsGeneration++;
     _tasksGeneration++;
-    _muteTimeout?.cancel();
     _workingTimer?.cancel();
     unawaited(_uploadSubscription?.cancel());
     _ownedApi?.dispose();
@@ -218,11 +195,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     await Future.wait([
       _loadConversations(),
       _loadTasks(),
-      _loadSummary(),
       _loadPending(),
-      _loadWeek(),
       _loadWorking(),
       _loadOwnVoice(),
+      _loadApps(),
     ]);
   }
 
@@ -278,24 +254,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     }
   }
 
-  Future<void> _loadSummary() async {
-    setState(() => _summaryError = null);
-    try {
-      final summary = await _api.getLatestDigest();
-      if (!mounted) return;
-      setState(() {
-        _summary = summary;
-        _summaryLoading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _summaryLoading = false;
-        _summaryError = userMessage(error, 'Could not load the daily summary.');
-      });
-    }
-  }
-
   /// Requests being answered: checked again while there are any; when one finishes,
   /// what it may have changed (actions to confirm, tasks) is reloaded.
   Future<void> _loadWorking() async {
@@ -343,14 +301,49 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) unawaited(_loadOwnVoice());
   }
 
-  /// The weekly summary is optional: no section without one (or on a failure).
-  Future<void> _loadWeek() async {
+  PhoneActionsService? get _phoneActions =>
+      widget.phoneActions ?? AppRuntime.maybeCoordinator?.phoneActions;
+
+  /// Connected apps and the iPhone's own: a failure (Composio not set up, the
+  /// server unreachable) just leaves those out.
+  Future<void> _loadApps() async {
+    final apps = <ActsInApp>[];
     final api = _api;
-    if (api is! WeeklySummaryApi) return;
-    try {
-      final week = await (api as WeeklySummaryApi).getLatestWeeklySummary();
-      if (mounted) setState(() => _week = week);
-    } catch (_) {}
+    if (api is ToolkitsApi) {
+      try {
+        final toolkits = await (api as ToolkitsApi).getToolkits();
+        apps.addAll([
+          for (final toolkit in toolkits.where((t) => t.connected))
+            ActsInApp(name: toolkit.name, icon: ActsInApp.iconFor(toolkit.slug)),
+        ]);
+      } catch (_) {}
+    }
+    final phone = _phoneActions;
+    if (phone != null) {
+      for (final (app, name, icon) in const [
+        (PhoneApp.reminders, 'Reminders', Icons.checklist_rounded),
+        (PhoneApp.calendar, 'Calendar', Icons.event_outlined),
+      ]) {
+        try {
+          if (phone.isOn(app) && await phone.access(app) == PhoneAccess.granted) {
+            apps.add(ActsInApp(name: name, icon: icon));
+          }
+        } catch (_) {}
+      }
+    }
+    if (mounted) setState(() => _apps = apps);
+  }
+
+  Future<void> _openApps({required bool add}) async {
+    final builder = add ? widget.addAppBuilder : widget.manageAppsBuilder;
+    final api = _api;
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: builder ??
+          (_) => add
+              ? IntegrationsScreen(api: api is ApiService ? api : null)
+              : AutomationsSettingsScreen(phoneActions: _phoneActions),
+    ));
+    if (mounted) unawaited(_loadApps());
   }
 
   /// Pending actions are optional: a failure just shows none.
@@ -428,82 +421,38 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _refreshAll();
   }
 
-  Future<void> _requestMuted(bool muted) async {
-    if (_privacyBusy) return;
-    setState(() {
-      _requestedMuted = muted;
-      _privacyBusy = true;
-      _privacyError = null;
-      _announcement =
-          muted ? 'Requesting microphone mute' : 'Requesting listening resume';
-    });
-
-    _muteTimeout?.cancel();
-    _muteTimeout = Timer(_muteAcknowledgementTimeout, () {
-      if (!mounted || _requestedMuted != muted) return;
-      setState(() {
-        _requestedMuted = null;
-        _privacyBusy = false;
-        _privacyError = 'Echo did not confirm the microphone change.';
-        _announcement = _privacyError;
-      });
-    });
-
-    try {
-      await widget.setMuted(muted);
-    } catch (_) {
-      if (!mounted || _requestedMuted != muted) return;
-      _muteTimeout?.cancel();
-      setState(() {
-        _requestedMuted = null;
-        _privacyBusy = false;
-        _privacyError = 'Echo could not update the microphone.';
-        _announcement = _privacyError;
-      });
-    }
-  }
-
   Future<void> _reconnect() async {
     final reconnect = widget.onReconnect;
-    if (reconnect == null || _privacyBusy) return;
+    if (reconnect == null || _deviceBusy) return;
     setState(() {
-      _privacyBusy = true;
-      _privacyError = null;
-      _announcement = 'Reconnecting Echo';
+      _deviceBusy = true;
+      _deviceError = null;
     });
     try {
       await reconnect();
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _privacyError = 'Echo could not start reconnecting.';
-        _announcement = _privacyError;
-      });
+      setState(() => _deviceError = 'Echo could not start reconnecting.');
     } finally {
-      if (mounted) setState(() => _privacyBusy = false);
+      if (mounted) setState(() => _deviceBusy = false);
     }
   }
 
-  VoidCallback? _deviceAction(PrivacyControlPresentation presentation) {
-    return switch (presentation) {
-      PrivacyControlPresentation.listening => () =>
-          unawaited(_requestMuted(true)),
-      PrivacyControlPresentation.muted => () => unawaited(_requestMuted(false)),
-      PrivacyControlPresentation.connecting => null,
-      PrivacyControlPresentation.offline =>
+  VoidCallback? _deviceAction(DeviceConnectionState state) {
+    return switch (state) {
+      DeviceConnectionState.unpaired => widget.onPair,
+      DeviceConnectionState.offline || DeviceConnectionState.error =>
         widget.onReconnect == null ? null : () => unawaited(_reconnect()),
-      PrivacyControlPresentation.unpaired => widget.onPair,
+      _ => null,
     };
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final presentation =
-        devicePresentation(widget.deviceStatus.connectionState);
+    final device = widget.deviceStatus;
     final now = widget.clock();
-    final tasks = editedTasks(todayTasks(_openTasks, now));
-    final promises = editedTasks(openPromises(_openTasks, now));
+    final todo = editedTasks(todayTodo(_openTasks, now));
 
     // A Material, not a ColoredBox: row ink splashes paint on it
     return Material(
@@ -524,18 +473,23 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                 child: ListView(
                   key: const Key('today'),
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 24 + EchoShellInsets.bottomOf(context)),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    4,
+                    16,
+                    24 + EchoShellInsets.bottomOf(context),
+                  ),
                   children: [
-                    DeviceCard(
-                      presentation: presentation,
-                      onAction: _deviceAction(presentation),
-                      busy: _privacyBusy,
-                      error: _privacyError,
-                      announcement: _announcement,
-                      batteryPercent: widget.deviceStatus.batteryPercent,
-                      pendingBytes: widget.deviceStatus.bufferBytes,
-                    ),
-                    const SizedBox(height: 12),
+                    if (DeviceProblemPanel.shows(device.connectionState)) ...[
+                      DeviceProblemPanel(
+                        state: device.connectionState,
+                        pendingBytes: device.bufferBytes,
+                        onAction: _deviceAction(device.connectionState),
+                        busy: _deviceBusy,
+                        error: _deviceError,
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     if (_ownVoiceMissing)
                       TipCard(
                         tipKey: 'record_voice',
@@ -576,25 +530,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                       onConfirm: (a) => unawaited(_confirm(a)),
                       onCancel: (a) => unawaited(_cancel(a)),
                     ),
-                    TodayRecapSection(
-                      loading: _conversationsLoading,
-                      conversations: _conversations,
-                      error: _conversationsError,
-                      onRetry: () => unawaited(_loadConversations(showLoading: true)),
-                      onOpen: (c) => unawaited(_openConversation(c)),
-                      onSeeAll: widget.onOpenMemories,
-                    ),
-                    const SizedBox(height: 8),
-                    PromisesSection(
-                      promises: promises,
-                      busy: isTaskBusy,
-                      now: now,
-                      onToggle: (t) => unawaited(toggleTask(t)),
-                      onDismiss: (t) => unawaited(dismissTask(t)),
-                    ),
-                    TodayTasksSection(
+                    TodoPanel(
                       loading: _tasksLoading,
-                      tasks: tasks,
+                      tasks: todo,
                       error: _tasksError,
                       busy: isTaskBusy,
                       now: now,
@@ -603,18 +541,22 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                       onDismiss: (t) => unawaited(dismissTask(t)),
                       onSeeAll: widget.onOpenTasks,
                     ),
-                    const SizedBox(height: 8),
-                    DigestSection(
-                      loading: _summaryLoading,
-                      summary: _summary,
-                      error: _summaryError,
-                      onRetry: () => unawaited(_loadSummary()),
-                      now: now,
+                    const SizedBox(height: 12),
+                    YourDayPanel(
+                      loading: _conversationsLoading,
+                      conversations: _conversations,
+                      error: _conversationsError,
+                      recording: device.connectionState == DeviceConnectionState.listening,
+                      onRetry: () => unawaited(_loadConversations(showLoading: true)),
+                      onOpen: (c) => unawaited(_openConversation(c)),
+                      onSeeAll: widget.onOpenMemories,
                     ),
-                    if (_week != null) ...[
-                      const SizedBox(height: 8),
-                      WeeklySummarySection(week: _week!),
-                    ],
+                    const SizedBox(height: 12),
+                    ActsInPanel(
+                      apps: _apps,
+                      onManage: () => unawaited(_openApps(add: false)),
+                      onAdd: () => unawaited(_openApps(add: true)),
+                    ),
                   ],
                 ),
               ),
@@ -624,13 +566,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       ),
     );
   }
-}
-
-bool _isRequestedTelemetry(DeviceStatus status, bool requestedMuted) {
-  return status.connectionState ==
-      (requestedMuted
-          ? DeviceConnectionState.muted
-          : DeviceConnectionState.listening);
 }
 
 const _weekdays = [
