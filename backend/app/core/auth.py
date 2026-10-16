@@ -37,27 +37,40 @@ def client_address(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _failure_key(request: Request) -> str:
+def client_failure_key(request: Request) -> str:
     return "auth_fail:" + client_address(request)
 
 
-async def _check_not_blocked(redis, key: str) -> None:
+def email_failure_key(email: str) -> str:
+    """Failed sign-ins for one account, whatever the client (the email is not stored)."""
+    return "auth_fail_email:" + hashlib.sha256(email.encode()).hexdigest()[:16]
+
+
+async def blocked_for(redis, key: str) -> int | None:
+    """Seconds left when `key` has reached the failure limit, else None."""
     try:
         failures = await redis.get(key)
         if failures is None or int(failures) < AUTH_FAILURE_LIMIT:
-            return
+            return None
         ttl = await redis.ttl(key)
     except Exception as exc:  # Redis down: never lock everyone out
         logger.warning("auth failure limit unavailable: %s", exc)
+        return None
+    return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
+
+
+async def _check_not_blocked(redis, key: str) -> None:
+    seconds = await blocked_for(redis, key)
+    if seconds is None:
         return
     raise HTTPException(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         detail="Too many invalid API key attempts. Try again later.",
-        headers={"Retry-After": str(ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS)},
+        headers={"Retry-After": str(seconds)},
     )
 
 
-async def _record_failure(redis, key: str) -> None:
+async def record_failure(redis, key: str) -> None:
     try:
         if await redis.incr(key) == 1:
             await redis.expire(key, AUTH_FAILURE_WINDOW_SECONDS)
@@ -65,14 +78,14 @@ async def _record_failure(redis, key: str) -> None:
         logger.warning("auth failure limit unavailable: %s", exc)
 
 
-async def get_current_user_id(
+async def get_current_api_key(
     request: Request,
     api_key: str = Security(api_key_header),
     db: AsyncSession = Depends(get_db),
-) -> UUID:
-    """Validate API key and return the associated user_id."""
+) -> ApiKey:
+    """The key the request was made with (401 when unknown, 429 after too many)."""
     redis = getattr(request.app.state, "redis", None)
-    failure_key = _failure_key(request)
+    failure_key = client_failure_key(request)
     if redis is not None:
         await _check_not_blocked(redis, failure_key)
 
@@ -82,7 +95,7 @@ async def get_current_user_id(
 
     if api_key_record is None:
         if redis is not None:
-            await _record_failure(redis, failure_key)
+            await record_failure(redis, failure_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid API key",
@@ -90,4 +103,13 @@ async def get_current_user_id(
 
     api_key_record.last_used_at = datetime.now(timezone.utc)
 
-    return api_key_record.user_id
+    return api_key_record
+
+
+async def get_current_user_id(
+    request: Request,
+    api_key: str = Security(api_key_header),
+    db: AsyncSession = Depends(get_db),
+) -> UUID:
+    """Validate API key and return the associated user_id."""
+    return (await get_current_api_key(request, api_key=api_key, db=db)).user_id

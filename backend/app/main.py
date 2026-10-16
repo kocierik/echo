@@ -20,6 +20,7 @@ from app.core.rate_limit import limiter
 from app.routers import (
     actions,
     admin,
+    auth,
     chat_sessions,
     conversations,
     device,
@@ -101,6 +102,7 @@ async def correlation_id_middleware(request: Request, call_next):
     return response
 
 # API routes
+app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(segments.router, prefix=settings.api_prefix)
 app.include_router(query.router, prefix=settings.api_prefix)
 app.include_router(conversations.router, prefix=settings.api_prefix)
