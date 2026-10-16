@@ -82,3 +82,4 @@ mobile/devtools_options.yaml
 
 # Evaluation recordings: your voice and the people around you
 backend/evals/data/
+.cache
