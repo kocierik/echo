@@ -100,6 +100,7 @@ mixin ChatEndpoints on ApiClient implements ChatApi {
     final answer = await guard(() async {
       final response = await httpClient.send(request).timeout(requestTimeout);
       if (response.statusCode != 200) {
+        if (response.statusCode == 401) await reportUnauthorized(headers['X-API-Key']);
         throw statusException(
           response.statusCode,
           await response.stream.bytesToString(),
