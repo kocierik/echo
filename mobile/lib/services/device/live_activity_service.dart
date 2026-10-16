@@ -49,9 +49,11 @@ final class LiveActivityState {
 }
 
 /// The wearable on the Lock Screen and in the Dynamic Island (iOS 16.1+), through the
-/// native "echo/live_activity" channel. Updated only when what it shows changes; ended
-/// when nothing is paired or the user turns it off. Elsewhere the channel is missing and
-/// every call is a no-op.
+/// native "echo/live_activity" channel. On Android the same channel drives the foreground
+/// service (EchoStatusService.kt) whose notification shows the same, and which keeps the
+/// Bluetooth link alive in the background. Updated only when what it shows changes; ended
+/// when nothing is paired or (iOS) the user turns it off. Without the channel every call
+/// is a no-op.
 final class LiveActivityService {
   LiveActivityService({
     required DeviceStatus initial,

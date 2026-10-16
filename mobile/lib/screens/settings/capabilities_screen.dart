@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../navigation.dart';
+import '../../services/device/phone_words.dart';
 import 'settings_components.dart';
 
 /// What Echo can do, with examples: the chat ones open Ask with the question.
@@ -58,8 +59,8 @@ final class CapabilitiesScreen extends StatelessWidget {
           child: Text(
             'The answer arrives in the Voice requests chat, with a notification. Reading '
             'and creating run at once; sending to others, changing and deleting wait for '
-            "your Confirm. Reminders and events go to your connected apps, or to this "
-            "iPhone's (Automations → On this iPhone).",
+            'your Confirm. Reminders and events go to your connected apps, or to this '
+            "${PhoneWords.phone}'s (Settings → ${PhoneWords.onThisPhone}).",
             style: textTheme.bodySmall,
           ),
         ),

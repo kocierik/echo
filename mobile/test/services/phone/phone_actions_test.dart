@@ -2,6 +2,7 @@ import 'package:echo_app/models/device_command.dart';
 import 'package:echo_app/services/api/device_api.dart';
 import 'package:echo_app/services/phone/phone_actions.dart';
 import 'package:echo_app/services/phone/phone_calendar.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -156,15 +157,27 @@ void main() {
   });
 
   test('an app turned off, or not allowed, says how to fix it', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final off = await service.run('APPLECALENDAR_LIST_EVENTS', {});
     await choices.set(PhoneApp.calendar, true);
     calendar.accessOf[PhoneApp.calendar] = PhoneAccess.denied;
     final denied = await service.run('APPLECALENDAR_LIST_EVENTS', {});
     final unknown = await service.run('GMAIL_SEND_EMAIL', {});
 
-    expect(off['error'], contains('Settings → Automations → On this iPhone'));
+    expect(off['error'], contains('Settings → On this iPhone'));
     expect(denied['error'], contains('iOS Settings'));
     expect(unknown, {'ok': false, 'error': 'Unknown tool: GMAIL_SEND_EMAIL'});
+  });
+
+  test('on Android the fixes name the phone and Android settings', () async {
+    final off = await service.run('APPLECALENDAR_LIST_EVENTS', {});
+    await choices.set(PhoneApp.calendar, true);
+    calendar.accessOf[PhoneApp.calendar] = PhoneAccess.denied;
+    final denied = await service.run('APPLECALENDAR_LIST_EVENTS', {});
+
+    expect(off['error'], contains('Settings → On this phone'));
+    expect(denied['error'], contains('Android settings'));
   });
 
   group('calendar', () {

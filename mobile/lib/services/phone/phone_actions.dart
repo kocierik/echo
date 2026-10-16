@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/device_command.dart';
 import '../api/device_api.dart';
+import '../device/phone_words.dart';
 import 'phone_calendar.dart';
 
 /// Which of the iPhone's apps the user turned on for Echo (off by default).
@@ -114,10 +115,11 @@ final class PhoneActionsService {
     if (app == null) return _error('Unknown tool: $tool');
     final name = app == PhoneApp.reminders ? 'Reminders' : 'Calendar';
     if (!_choices.isOn(app)) {
-      return _error('$name is turned off in Echo (Settings → Automations → On this iPhone)');
+      return _error('$name is turned off in Echo (Settings → ${PhoneWords.onThisPhone})');
     }
     if (await _calendar.access(app) != PhoneAccess.granted) {
-      return _error('Echo is not allowed to use $name: allow it in iOS Settings → Echo');
+      return _error(
+          'Echo is not allowed to use $name: allow it in ${PhoneWords.systemSettings} → Echo');
     }
     try {
       return switch (tool) {

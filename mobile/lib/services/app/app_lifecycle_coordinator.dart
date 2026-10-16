@@ -22,6 +22,7 @@ import '../device/firmware_update.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
 import '../device/live_activity_service.dart';
+import '../device/phone_words.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
 
@@ -174,7 +175,8 @@ final class AppLifecycleCoordinator {
     final liveActivity = LiveActivityService(
       initial: deviceController.state,
       statuses: deviceController.stateStream,
-      enabled: () => notificationChoices.liveActivity,
+      // On Android it is the foreground service that keeps Echo connected: always on
+      enabled: () => !PhoneWords.isIPhone || notificationChoices.liveActivity,
     )..start();
     final firmwareUpdate = FirmwareUpdateController(
       api: credentialApiService,
