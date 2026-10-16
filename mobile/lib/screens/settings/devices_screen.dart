@@ -134,9 +134,47 @@ final class _DevicesScreenState extends State<DevicesScreen> {
         : 'Signed in ${dayLabel(created, widget.clock())}';
   }
 
+  Widget _row(SignedInDevice device) {
+    final phone = device.platform != null;
+    return SettingsRow(
+      key: Key('device-${device.id}'),
+      icon: !phone
+          ? Icons.key_rounded
+          : device.platform == 'android'
+              ? Icons.phone_android_rounded
+              : Icons.phone_iphone_rounded,
+      title: device.name,
+      subtitle:
+          phone ? _subtitle(device) : 'A key made on the server, for scripts',
+      trailing: _busy.contains(device.id)
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : TextButton(
+              key: Key(device.current
+                  ? 'devices-sign-out'
+                  : 'devices-revoke-${device.id}'),
+              onPressed: () =>
+                  unawaited(device.current ? _signOut() : _revoke(device)),
+              child: Text(device.current ? 'Sign out' : 'Revoke'),
+            ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final devices = _devices;
+    // Phones signed in through the app; keys made on the server (make create-key)
+    // have no platform. This phone counts as a phone even with an old key.
+    final phones = [
+      for (final d in devices ?? const <SignedInDevice>[])
+        if (d.platform != null || d.current) d,
+    ];
+    final keys = [
+      for (final d in devices ?? const <SignedInDevice>[])
+        if (d.platform == null && !d.current) d,
+    ];
     return SettingsPageScaffold(
       title: 'Devices',
       children: [
@@ -159,29 +197,14 @@ final class _DevicesScreenState extends State<DevicesScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else ...[
-          const SettingsSection('SIGNED IN'),
-          for (final device in devices)
-            SettingsRow(
-              key: Key('device-${device.id}'),
-              icon: device.platform == 'android'
-                  ? Icons.phone_android_rounded
-                  : Icons.phone_iphone_rounded,
-              title: device.name,
-              subtitle: _subtitle(device),
-              trailing: _busy.contains(device.id)
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : TextButton(
-                      key: Key(device.current
-                          ? 'devices-sign-out'
-                          : 'devices-revoke-${device.id}'),
-                      onPressed: () => unawaited(
-                          device.current ? _signOut() : _revoke(device)),
-                      child: Text(device.current ? 'Sign out' : 'Revoke'),
-                    ),
-            ),
+          if (phones.isNotEmpty) ...[
+            const SettingsSection('PHONES'),
+            for (final device in phones) _row(device),
+          ],
+          if (keys.isNotEmpty) ...[
+            const SettingsSection('OTHER KEYS'),
+            for (final device in keys) _row(device),
+          ],
         ],
       ],
     );
