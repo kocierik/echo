@@ -1,6 +1,6 @@
 # Echo — Development Commands
 .PHONY: help up down build logs logs-api logs-worker test test-all lint fmt deploy db-reset db-migrate \
-	db-new-migration shell worker create-key revoke-example-key \
+	db-new-migration shell worker create-key create-user set-password revoke-example-key \
 	eval-llm eval-stt-collect eval-stt
 
 help: ## Show this help
@@ -92,6 +92,12 @@ create-key: ## Create an API key and print it once (random unless KEY=... is giv
 	@KEY="$${KEY:-$$(openssl rand -hex 32)}"; \
 	docker compose exec -T postgres psql -U echo -d echo -q -c "INSERT INTO api_keys (user_id, key_hash, name) VALUES ('a0000000-0000-0000-0000-000000000001', encode(sha256('$$KEY'::bytea), 'hex'), 'key-$$(date +%Y%m%d-%H%M%S)') ON CONFLICT DO NOTHING;" && \
 	echo "API key (shown only now): $$KEY"
+
+create-user: ## Create an account (asks the password): make create-user EMAIL=you@example.com [USER_ID=uuid, default the owner's]
+	docker compose exec api python -m app.cli.users create --email "$(EMAIL)" --user-id "$${USER_ID:-a0000000-0000-0000-0000-000000000001}"
+
+set-password: ## Set an account's password (asks it): make set-password EMAIL=you@example.com
+	docker compose exec api python -m app.cli.users set-password --email "$(EMAIL)"
 
 revoke-example-key: ## Delete the README's example key 'my-secret-key' (publicly known)
 	docker compose exec -T postgres psql -U echo -d echo -c "DELETE FROM api_keys WHERE key_hash = encode(sha256('my-secret-key'::bytea), 'hex');"

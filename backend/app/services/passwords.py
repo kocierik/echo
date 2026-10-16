@@ -1,0 +1,64 @@
+"""Account passwords (Argon2id) and the accounts made from the command line.
+
+Registration is closed: accounts are created on the server (app/cli/users.py).
+"""
+
+import uuid
+
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.user import User
+
+MIN_PASSWORD_LENGTH = 10
+
+_hasher = PasswordHasher()
+
+# Checked against when the email is unknown, so the answer takes as long as for a real one
+DUMMY_PASSWORD_HASH = _hasher.hash("echo-no-such-account")
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def hash_password(password: str) -> str:
+    return _hasher.hash(password)
+
+
+def verify_password(password_hash: str, password: str) -> bool:
+    """False for a wrong password and for a hash that is not Argon2."""
+    try:
+        return _hasher.verify(password_hash, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
+
+
+def _check_length(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
+
+
+async def create_user(
+    db: AsyncSession, email: str, password: str, user_id: uuid.UUID | None = None
+) -> User:
+    """A new account; `user_id` attaches it to data that already exists (the owner's)."""
+    email = normalize_email(email)
+    _check_length(password)
+    if await db.scalar(select(User.id).where(User.email == email)) is not None:
+        raise ValueError("email already exists")
+    user = User(id=user_id or uuid.uuid4(), email=email, password_hash=hash_password(password))
+    db.add(user)
+    await db.commit()
+    return user
+
+
+async def set_password(db: AsyncSession, email: str, password: str) -> None:
+    _check_length(password)
+    user = await db.scalar(select(User).where(User.email == normalize_email(email)))
+    if user is None:
+        raise ValueError("no such user")
+    user.password_hash = hash_password(password)
+    await db.commit()

@@ -19,6 +19,7 @@ dependencies = [
     "composio==0.22.0",
     "sherpa-onnx==1.13.8",  # voice fingerprints (speaker embeddings, ONNX on CPU)
     "tzdata==2025.2",  # IANA zones for zoneinfo on platforms without a system tz database
+    "argon2-cffi==23.1.0",  # account passwords (Argon2id)
 ]
 
 [project.optional-dependencies]
