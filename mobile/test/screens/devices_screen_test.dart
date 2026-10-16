@@ -1,0 +1,117 @@
+import 'package:echo_app/models/signed_in_device.dart';
+import 'package:echo_app/screens/settings/devices_screen.dart';
+import 'package:echo_app/services/api/api_exception.dart';
+import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  final now = DateTime(2026, 10, 16, 10);
+
+  Future<void> pump(WidgetTester tester, _FakeDevices api,
+      {Future<void> Function()? signOut}) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: DevicesScreen(
+          api: api, signOut: signOut ?? () async {}, clock: () => now),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('lists phones with this one first', (tester) async {
+    final api = _FakeDevices([
+      SignedInDevice(
+          id: 'old',
+          name: 'Pixel',
+          current: false,
+          platform: 'android',
+          lastUsedAt: DateTime(2026, 10, 15, 20)),
+      const SignedInDevice(
+          id: 'me', name: 'iPhone', current: true, platform: 'ios'),
+    ]);
+
+    await pump(tester, api);
+
+    expect(find.text('This phone'), findsOneWidget);
+    expect(find.text('Last used Yesterday'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('iPhone')).dy,
+      lessThan(tester.getTopLeft(find.text('Pixel')).dy),
+    );
+    expect(find.byKey(const Key('devices-sign-out')), findsOneWidget);
+    expect(find.byKey(const Key('devices-revoke-old')), findsOneWidget);
+  });
+
+  testWidgets('revoke removes the row', (tester) async {
+    final api = _FakeDevices([
+      const SignedInDevice(id: 'me', name: 'iPhone', current: true),
+      const SignedInDevice(id: 'old', name: 'Pixel', current: false),
+    ]);
+    await pump(tester, api);
+
+    await tester.tap(find.byKey(const Key('devices-revoke-old')));
+    await tester.pumpAndSettle();
+    expect(find.text('Revoke Pixel?'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Revoke'));
+    await tester.pumpAndSettle();
+
+    expect(api.revoked, ['old']);
+    expect(find.text('Pixel'), findsNothing);
+    expect(find.text('iPhone'), findsOneWidget);
+  });
+
+  testWidgets('sign out of this phone logs out', (tester) async {
+    var signedOut = 0;
+    final api = _FakeDevices(
+        [const SignedInDevice(id: 'me', name: 'iPhone', current: true)]);
+    await pump(tester, api, signOut: () async => signedOut++);
+
+    await tester.tap(find.byKey(const Key('devices-sign-out')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
+    await tester.pumpAndSettle();
+
+    expect(signedOut, 1);
+  });
+
+  testWidgets('a failed load offers Retry', (tester) async {
+    final api = _FakeDevices(
+        [const SignedInDevice(id: 'me', name: 'iPhone', current: true)])
+      ..failing = true;
+    await pump(tester, api);
+    expect(find.text('Server down'), findsOneWidget);
+
+    api.failing = false;
+    await tester.tap(find.byKey(const Key('devices-retry')));
+    await tester.pumpAndSettle();
+    expect(find.text('iPhone'), findsOneWidget);
+  });
+}
+
+final class _FakeDevices implements DevicesApi {
+  _FakeDevices(this.devices);
+
+  List<SignedInDevice> devices;
+  bool failing = false;
+  final revoked = <String>[];
+
+  @override
+  Future<List<SignedInDevice>> listDevices() async {
+    if (failing) {
+      throw const ApiException(
+        statusCode: 500,
+        code: 'server',
+        message: 'Server down',
+        retryable: true,
+      );
+    }
+    return List.of(devices);
+  }
+
+  @override
+  Future<void> revokeDevice(String id) async => revoked.add(id);
+
+  @override
+  Future<void> signOutThisPhone() async {}
+}

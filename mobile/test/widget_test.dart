@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/session_state.dart';
 import 'package:echo_app/services/app/app_controller.dart';
@@ -41,6 +43,56 @@ void main() {
     expect(find.byKey(const Key('welcome-email')), findsOneWidget);
     expect(find.text('Server URL'), findsNothing);
     expect(find.text('API Key'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a sign-out closes every open page', (tester) async {
+    final preferences = _FakeAppPreferences();
+    final sessions = StreamController<SessionState>.broadcast();
+    addTearDown(sessions.close);
+    final appController = AppController(
+      initialDevice: const DeviceStatus(
+        connectionState: DeviceConnectionState.unpaired,
+      ),
+      deviceStates: const Stream<DeviceStatus>.empty(),
+      initialSession: const SessionState(SessionStatus.loggedIn),
+      sessionStates: sessions.stream,
+      preferences: preferences,
+    );
+    await appController.initialize();
+    addTearDown(appController.dispose);
+    OnboardingController onboarding() => OnboardingController(
+          api: _FakeOnboardingApi(),
+          permissions: _FakeOnboardingPermissions(),
+          pairing: _FakeOnboardingPairing(),
+          preferences: preferences,
+        );
+
+    await tester.pumpWidget(EchoApp(
+      appController: appController,
+      onboardingControllerFactory: onboarding,
+    ));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    // A page open on top, like Settings
+    unawaited(Navigator.of(tester.element(find.byKey(const Key('welcome-email')))).push(
+          PageRouteBuilder<void>(pageBuilder: (_, __, ___) => const Text('A page on top')),
+        ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('A page on top'), findsOneWidget);
+
+    sessions.add(const SessionState(
+      SessionStatus.loggedOut,
+      reason: 'This phone was signed out.',
+    ));
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    expect(find.text('A page on top'), findsNothing);
+    expect(find.text('This phone was signed out.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

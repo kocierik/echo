@@ -21,6 +21,7 @@ import 'integrations_screen.dart';
 import 'settings/appearance_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
 import 'settings/connection_settings_screen.dart';
+import 'settings/devices_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/notification_settings_screen.dart';
@@ -40,6 +41,7 @@ class SettingsScreen extends StatefulWidget {
     this.diagnosticsBuilder,
     this.activityBuilder,
     this.integrationsBuilder,
+    this.devicesBuilder,
     super.key,
   });
 
@@ -54,6 +56,7 @@ class SettingsScreen extends StatefulWidget {
   final WidgetBuilder? diagnosticsBuilder;
   final WidgetBuilder? activityBuilder;
   final WidgetBuilder? integrationsBuilder;
+  final WidgetBuilder? devicesBuilder;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -279,6 +282,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   context,
                   MaterialPageRoute(
                     builder: widget.diagnosticsBuilder ?? (_) => const DeviceMessagesScreen(),
+                  ),
+                ),
+              ),
+              SettingsRow(
+                icon: Icons.devices_rounded,
+                title: 'Devices',
+                subtitle: 'Phones signed in to your account.',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: widget.devicesBuilder ?? (_) => const DevicesScreen(),
                   ),
                 ),
               ),
