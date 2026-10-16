@@ -209,6 +209,26 @@ with a short, redacted argument summary.
 Without `COMPOSIO_API_KEY` these endpoints answer 503 "Composio is not configured" and the chat keeps
 answering from memory only.
 
+## MCP (connected apps)
+
+Claude, Cursor and other assistants can read the user's memory over MCP, read-only:
+`https://<server>/mcp` (Streamable HTTP), with a connected app's key from Settings → Devices →
+**Connect an assistant** (`POST /api/auth/connected-apps`) in `Authorization: Bearer <key>`.
+
+| Tool | Returns |
+|---|---|
+| `search_memory(query, date_from?, date_to?, limit?)` | relevant passages and summaries, with the conversations they come from |
+| `get_conversation(conversation_id)` | title, time, summary, transcript lines with the speaker, photo descriptions, tasks and events |
+| `find_person(name)` | role, what Echo knows, last seen, open tasks, latest conversations |
+| `list_tasks(status?, due_before?)` | tasks and promises with the sentence they came from |
+| `get_day(date)` | the day's summary and conversations |
+| `get_week(week_start)` | the weekly summary, highlights and people |
+
+Nothing can be changed or deleted, no audio or images leave Echo, and text spoken or written by
+people comes back in `quoted` fields. A key has 60 calls a minute; each call is logged
+(`mcp_calls`) and counted for the user's usage. A phone's key does not work here, and a connected
+app's key does not work on the REST API.
+
 ## Project Structure
 
 ```
