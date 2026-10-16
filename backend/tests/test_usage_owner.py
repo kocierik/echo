@@ -119,12 +119,12 @@ async def test_analysis_runs_as_the_segment_owner(monkeypatch):
     owner = uuid.uuid4()
     seen: list = []
 
-    class _Stop(Exception):
+    class _StopError(Exception):
         pass
 
     async def assign(_db, _segment):
         seen.append(usage_owner.get())
-        raise _Stop
+        raise _StopError
 
     monkeypatch.setattr(pipeline_module, "assign_to_conversation", assign)
     pipeline = pipeline_module.AnalysisPipeline(MockLLMService(), MockEmbeddingService())
@@ -134,7 +134,7 @@ async def test_analysis_runs_as_the_segment_owner(monkeypatch):
         recorded_at=datetime.now(timezone.utc),
     )
 
-    with pytest.raises(_Stop):
+    with pytest.raises(_StopError):
         await pipeline.analyze_segment(SimpleNamespace(), segment)
 
     assert seen == [owner]
