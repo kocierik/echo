@@ -88,7 +88,8 @@ request ("Echo, remind me to …") and its answer.
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
 - **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
-  Activity, Notifications, Voices, Appearance (System, Light, Dark), Privacy, What Echo can do,
+  Activity, Notifications, Voices, Language (the language you speak: transcription and
+  dictation), Appearance (System, Light, Dark), Privacy, What Echo can do,
   Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones, revoke), About
   (sign out).
 - BLE relay with automatic reconnect and iOS state restoration; local notifications

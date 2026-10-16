@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import '../../models/signed_in_device.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'build_defaults.dart';
+import '../app/spoken_language.dart';
 import '../device/phone_name.dart';
 
 /// Why signing in failed.
@@ -44,7 +46,7 @@ abstract interface class DevicesApi {
 }
 
 /// Signing in gives this phone its own key; signing out and revoking take keys away.
-mixin AuthEndpoints on ApiClient implements DevicesApi {
+mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
   /// Signs in and keeps the key this phone was given, for the server set in Settings
   /// (development) or the one built into the app.
   ///
@@ -56,20 +58,38 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
   }) =>
       _signInPhone('/api/auth/login', email, password, deviceName);
 
-  /// Creates an account and keeps the key this phone was given in it.
+  /// Creates an account and keeps the key this phone was given in it. [language], the
+  /// one the user speaks, defaults to the phone's.
   Future<void> register({
     required String email,
     required String password,
     String? deviceName,
+    String? language,
   }) =>
-      _signInPhone('/api/auth/register', email, password, deviceName);
+      _signInPhone('/api/auth/register', email, password, deviceName,
+          language: language ?? PlatformDispatcher.instance.locale.languageCode);
+
+  /// The account behind this phone's key.
+  @override
+  Future<AccountInfo> me() async {
+    final response = await get('/api/auth/me');
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
+  /// Changes the language the account speaks.
+  @override
+  Future<AccountInfo> setLanguage(String language) async {
+    final response = await patch('/api/auth/me', body: {'language': language});
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
 
   Future<void> _signInPhone(
     String path,
     String email,
     String password,
-    String? deviceName,
-  ) async {
+    String? deviceName, {
+    String? language,
+  }) async {
     // Signing in again (back from the next step): the key it replaces goes first, so
     // no ghost phone stays in Devices
     if (await credentials.configured) {
@@ -92,6 +112,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
             'password': password,
             'device_name': name,
             'platform': Platform.isIOS ? 'ios' : 'android',
+            if (language != null) 'language': language,
           }),
         ),
         expect: const {200, 400, 401, 403, 409, 429},

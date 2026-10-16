@@ -213,6 +213,7 @@ CREATE TABLE users (
     id UUID PRIMARY KEY,
     email VARCHAR(320) NOT NULL UNIQUE,  -- stored lower-cased
     password_hash TEXT NOT NULL,         -- Argon2id
+    language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

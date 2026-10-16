@@ -251,6 +251,9 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `POST /api/auth/register` — the same body; creates the account (password of 10+ characters) and
   signs the phone in. 409 if the email has an account, 403 with `REGISTRATION_OPEN=false`, at most
   5 accounts an hour from one address.
+- `GET /api/auth/me` → `{email, language}`; `PATCH /api/auth/me` `{language: "en" | "it"}` — the
+  language the account speaks: the wearable's transcription and the app's dictation use it
+  (registration takes the phone's; one Echo does not transcribe yet becomes English).
 - `POST /api/auth/logout` — revokes the key that sent it. `GET /api/auth/devices` — the phones signed
   in and the other keys; `DELETE /api/auth/devices/{id}` — revoke one.
 

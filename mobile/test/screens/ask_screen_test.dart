@@ -437,6 +437,7 @@ final class _FakeVoiceInput implements VoiceInput {
   Future<void> start({
     required ValueChanged<String> onPartial,
     required ValueChanged<String> onFinal,
+    String? language,
   }) async {
     starts++;
     onPartial('ciao Echo');

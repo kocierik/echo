@@ -13,3 +13,5 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
     # Argon2id (app/services/passwords.py)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # The language the user speaks: the wearable's transcription and the app's dictation
+    language: Mapped[str] = mapped_column(String(5), nullable=False, server_default="it")

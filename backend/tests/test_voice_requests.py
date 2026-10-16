@@ -899,6 +899,10 @@ async def _run_stt(monkeypatch, text):
     async def classify(_db, _user_id, _energy):
         return "self"
 
+    async def language(_db, _user_id):
+        return "it"
+
+    monkeypatch.setattr(stt_worker, "account_language", language)
     monkeypatch.setattr(
         stt_worker,
         "get_stt_service",

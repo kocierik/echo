@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
+from app.services.language import SUPPORTED_LANGUAGES
 from app.services.passwords import (
     DUMMY_PASSWORD_HASH,
     MIN_PASSWORD_LENGTH,
@@ -58,6 +59,20 @@ class LoginRequest(BaseModel):
         if not value:
             raise ValueError("device_name must not be blank")
         return value
+
+
+class RegisterRequest(LoginRequest):
+    # The phone's language; one Echo does not transcribe yet falls back to English
+    language: str | None = Field(default=None, max_length=20)
+
+
+class Me(BaseModel):
+    email: str | None
+    language: str
+
+
+class MeUpdate(BaseModel):
+    language: Literal[SUPPORTED_LANGUAGES]  # type: ignore[valid-type]
 
 
 class LoginUser(BaseModel):
@@ -151,7 +166,9 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @router.post("/register", response_model=LoginResponse)
-async def register(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def register(
+    body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)
+):
     """A new account, and this phone signed in to it. Closed with REGISTRATION_OPEN=false."""
     if not settings.registration_open:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Registration is closed.")
@@ -191,7 +208,41 @@ async def register(body: LoginRequest, request: Request, db: AsyncSession = Depe
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists. Sign in instead.",
         ) from error
+    if body.language is not None:
+        spoken = body.language.split("-")[0].split("_")[0].lower()
+        user.language = spoken if spoken in SUPPORTED_LANGUAGES else "en"
+    else:
+        user.language = settings.stt_language
     return await _sign_in_phone(db, user, body)
+
+
+@router.get("/me", response_model=Me)
+async def read_me(
+    current: ApiKey = Depends(get_current_api_key), db: AsyncSession = Depends(get_db)
+):
+    """The account behind this key: its email and the language it speaks."""
+    user = await db.get(User, current.user_id)
+    if user is None:  # a key made with make create-key, before any account
+        return Me(email=None, language=settings.stt_language)
+    return Me(email=user.email, language=user.language)
+
+
+@router.patch("/me", response_model=Me)
+async def update_me(
+    body: MeUpdate,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the language this account speaks."""
+    user = await db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This key has no account yet: create one with make create-user.",
+        )
+    user.language = body.language
+    await db.commit()
+    return Me(email=user.email, language=user.language)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
