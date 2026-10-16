@@ -18,13 +18,14 @@ void main() {
     expect(palette.chrome, const Color(0xFF1F2326));
   });
 
-  test('dark theme: warm graphite, never pure black', () {
+  test('dark theme: near black, panels a step above, never pure black', () {
     final theme = AppTheme.dark;
     final palette = theme.extension<EchoPalette>()!;
 
     expect(theme.brightness, Brightness.dark);
-    expect(palette.background, const Color(0xFF1C1E20));
-    expect(palette.surface, const Color(0xFF26292C));
+    expect(palette.background, const Color(0xFF0E0F10));
+    expect(palette.surface, const Color(0xFF1A1C1E));
+    expect(palette.chrome, const Color(0xFF2A2D31));
     expect(palette.text, const Color(0xFFECEDEA));
     expect(palette.accent, const Color(0xFF6CC4BA));
     expect(palette.live, const Color(0xFFFF7A33));
