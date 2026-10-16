@@ -12,7 +12,8 @@ from tests.conftest import TEST_USER_ID, test_session
 
 async def _rows():
     async with test_session() as db:
-        return (await db.execute(select(LlmUsage).order_by(LlmUsage.kind, LlmUsage.model))).scalars().all()
+        query = select(LlmUsage).order_by(LlmUsage.kind, LlmUsage.model)
+        return (await db.execute(query)).scalars().all()
 
 
 async def test_calls_add_up_in_one_row_per_day_kind_model():

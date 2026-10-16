@@ -25,6 +25,9 @@ class LLMResponse:
     content: str
     model: str
     usage_tokens: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cached_tokens: int | None = None
     tool_calls: list[LLMToolCall] = field(default_factory=list)
 
 

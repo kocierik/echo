@@ -10,6 +10,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.stt_base import STTResult, STTService
+from app.services.usage import record_usage, wav_seconds
 
 DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
 
@@ -65,6 +66,7 @@ class DeepgramSTTService(STTService):
                 content=audio_data,
             )
             response.raise_for_status()
+        await record_usage("stt", self.model, input_units=wav_seconds(audio_data))
 
         data = response.json()
 
