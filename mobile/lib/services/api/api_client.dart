@@ -38,6 +38,11 @@ abstract class ApiClient {
         credentials = credentialStore ?? SharedPreferencesApiCredentialStore(),
         _ownsClient = client == null;
 
+  /// Every 401 a request did not expect, from any instance: the stored key no longer
+  /// opens the server (revoked from another phone), so the session signs out.
+  static Stream<void> get unauthorized => _unauthorized.stream;
+  static final _unauthorized = StreamController<void>.broadcast();
+
   @protected
   final http.Client httpClient;
   @protected
@@ -208,7 +213,7 @@ abstract class ApiClient {
 
   /// Sends a multipart request within [uploadTimeout].
   @protected
-  Future<({int statusCode, String body})> upload(http.MultipartRequest request) {
+  Future<({int statusCode, String body})> upload(http.MultipartRequest request) async {
     Future<({int statusCode, String body})> transfer() async {
       final streamed = await httpClient.send(request);
       return (
@@ -217,7 +222,9 @@ abstract class ApiClient {
       );
     }
 
-    return guard(() => transfer().timeout(uploadTimeout));
+    final result = await guard(() => transfer().timeout(uploadTimeout));
+    if (result.statusCode == 401) _unauthorized.add(null);
+    return result;
   }
 
   /// Runs [request] within [timeout] (default [requestTimeout]); a status outside
@@ -233,6 +240,7 @@ abstract class ApiClient {
     final response =
         await guard(() => request().timeout(timeout ?? requestTimeout));
     if (!expect.contains(response.statusCode)) {
+      if (response.statusCode == 401) _unauthorized.add(null);
       throw statusException(response.statusCode, response.body);
     }
     return ApiResponse(

@@ -118,6 +118,8 @@ final class AppLifecycleCoordinator {
       ),
     );
     final sessionController = SessionController(
+      // A key revoked from another phone signs this one out
+      unauthorized: ApiClient.unauthorized,
       bleStopper: DeviceControllerBleStopper(deviceController),
       apiCredentials: ApiServiceCredentialsClearer(credentialApiService),
       deviceIdentity: DeviceIdentityStoreClearer(identityStore),
