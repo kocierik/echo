@@ -173,7 +173,9 @@ async def test_the_evening_recap_only_when_asked_and_after_a_day_with_conversati
     assert await n.upcoming_notices(db_session, TEST_USER_ID, now=now, evening=True) == []
 
     conversation, _ = await make_conversation(db_session, started_at=at(TODAY, 10), texts=())
-    db_session.add(make_entity(conversation, "task", "Comprare il pane"))
+    task = make_entity(conversation, "task", "Comprare il pane")
+    task.created_at = at(TODAY, 10)  # on the test's day, not the day the suite runs
+    db_session.add(task)
     await db_session.commit()
 
     assert await n.upcoming_notices(db_session, TEST_USER_ID, now=now) == []  # off by default
