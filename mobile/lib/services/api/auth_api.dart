@@ -8,7 +8,21 @@ import 'build_defaults.dart';
 import '../device/phone_name.dart';
 
 /// Why signing in failed.
-enum SignInFailure { wrongCredentials, tooManyAttempts, noConnection, server }
+enum SignInFailure {
+  wrongCredentials,
+  tooManyAttempts,
+  noConnection,
+  server,
+
+  /// Creating an account: the email has one already.
+  accountExists,
+
+  /// Creating an account: the server does not take new ones.
+  registrationClosed,
+
+  /// Creating an account: a bad email or a short password (the message says which).
+  invalid,
+}
 
 final class SignInException implements Exception {
   const SignInException(this.reason, this.message);
@@ -39,7 +53,23 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
     required String email,
     required String password,
     String? deviceName,
-  }) async {
+  }) =>
+      _signInPhone('/api/auth/login', email, password, deviceName);
+
+  /// Creates an account and keeps the key this phone was given in it.
+  Future<void> register({
+    required String email,
+    required String password,
+    String? deviceName,
+  }) =>
+      _signInPhone('/api/auth/register', email, password, deviceName);
+
+  Future<void> _signInPhone(
+    String path,
+    String email,
+    String password,
+    String? deviceName,
+  ) async {
     // Signing in again (back from the next step): the key it replaces goes first, so
     // no ghost phone stays in Devices
     if (await credentials.configured) {
@@ -52,10 +82,10 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
     final name = deviceName ?? await phoneName();
     final ApiResponse response;
     try {
-      // 401 and 429 are answers here, not a revoked key
+      // These are answers here, not a revoked key
       response = await send(
         () => httpClient.post(
-          Uri.parse('$server/api/auth/login'),
+          Uri.parse('$server$path'),
           headers: const {'Content-Type': 'application/json'},
           body: jsonEncode({
             'email': email.trim(),
@@ -64,7 +94,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
             'platform': Platform.isIOS ? 'ios' : 'android',
           }),
         ),
-        expect: const {200, 401, 429},
+        expect: const {200, 400, 401, 403, 409, 429},
         shape: JsonShape.map,
       );
     } on ApiException catch (error) {
@@ -79,14 +109,28 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
             );
     }
     final data = response.data as Map<String, dynamic>;
+    final detail = data['detail'];
+    String said(String fallback) => detail is String && detail.isNotEmpty ? detail : fallback;
     switch (response.statusCode) {
       case 401:
         throw const SignInException(SignInFailure.wrongCredentials, 'Wrong email or password.');
       case 429:
         throw SignInException(
           SignInFailure.tooManyAttempts,
-          data['detail'] as String? ?? 'Too many attempts. Try again later.',
+          said('Too many attempts. Try again later.'),
         );
+      case 409:
+        throw SignInException(
+          SignInFailure.accountExists,
+          said('An account with this email already exists. Sign in instead.'),
+        );
+      case 403:
+        throw SignInException(
+          SignInFailure.registrationClosed,
+          said('Registration is closed.'),
+        );
+      case 400:
+        throw SignInException(SignInFailure.invalid, said('Check your email and password.'));
     }
     final key = data['api_key'];
     if (key is! String || key.isEmpty) {

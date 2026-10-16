@@ -14,6 +14,9 @@ abstract interface class OnboardingApi {
 
   /// Throws [SignInException] with the message to show.
   Future<void> signIn(String email, String password);
+
+  /// A new account, this phone signed in to it; throws [SignInException].
+  Future<void> register(String email, String password);
 }
 
 abstract interface class OnboardingPermissions {
@@ -39,12 +42,14 @@ final class OnboardingState {
     required this.voiceDenied,
     required this.paired,
     this.showWelcome = true,
+    this.creatingAccount = false,
     this.error,
   });
 
   const OnboardingState.initial()
       : step = OnboardingStep.signIn,
         showWelcome = true,
+        creatingAccount = false,
         busy = true,
         initialized = false,
         completed = false,
@@ -63,6 +68,9 @@ final class OnboardingState {
 
   /// On [OnboardingStep.signIn]: the welcome, until "Continue with email".
   final bool showWelcome;
+
+  /// On the email form: creating an account rather than signing in.
+  final bool creatingAccount;
   final String? error;
 
   OnboardingState copyWith({
@@ -74,6 +82,7 @@ final class OnboardingState {
     bool? voiceDenied,
     bool? paired,
     bool? showWelcome,
+    bool? creatingAccount,
     Object? error = _unchanged,
   }) {
     return OnboardingState(
@@ -85,6 +94,7 @@ final class OnboardingState {
       voiceDenied: voiceDenied ?? this.voiceDenied,
       paired: paired ?? this.paired,
       showWelcome: showWelcome ?? this.showWelcome,
+      creatingAccount: creatingAccount ?? this.creatingAccount,
       error: identical(error, _unchanged) ? this.error : error as String?,
     );
   }
@@ -211,7 +221,28 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     value = value.copyWith(showWelcome: true, error: null);
   }
 
-  Future<void> signIn(String email, String password) async {
+  /// The email form switches to creating an account…
+  void showCreateAccount() {
+    if (_disposed || value.busy || value.step != OnboardingStep.signIn) return;
+    value = value.copyWith(creatingAccount: true, showWelcome: false, error: null);
+  }
+
+  /// …and back to signing in.
+  void showSignIn() {
+    if (_disposed || value.busy || value.step != OnboardingStep.signIn) return;
+    value = value.copyWith(creatingAccount: false, error: null);
+  }
+
+  Future<void> signIn(String email, String password) => _enter(email, password, _api.signIn);
+
+  Future<void> createAccount(String email, String password) =>
+      _enter(email, password, _api.register);
+
+  Future<void> _enter(
+    String email,
+    String password,
+    Future<void> Function(String email, String password) call,
+  ) async {
     if (value.busy || _disposed) return;
     final address = email.trim();
     if (address.isEmpty || password.isEmpty) {
@@ -220,7 +251,7 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     }
     _setBusy();
     try {
-      await _api.signIn(address, password);
+      await call(address, password);
       if (_disposed) return;
       await _persistHighest(OnboardingStep.signIn);
       if (_disposed) return;
