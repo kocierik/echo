@@ -82,8 +82,9 @@ Prerequisiti, prima di dare memorie e azioni a sistemi esterni o di far agire Ec
 - [ ] Consumo per utente: i token di ogni chiamata registrati per utente, quote mensili (oggi tutti usano la
       chiave OpenAI del server senza limiti, e la registrazione è aperta)
 - [ ] Prezzi (da fissare dopo la misura dei costi): come Omi e Plaud, a minuti al mese in tre fasce (gratis
-      ~300 min, intermedia, Unlimited ~30 $/mese); finito il budget, decidere se rallentare l'elaborazione
-      senza perdere nulla (come Omi) o bloccare. Più avanti un gateway (LiteLLM) con una chiave virtuale e un
+      ~300 min, intermedia, Unlimited ~30 $/mese); finito il budget si rallenta senza perdere nulla, come Omi
+      (deciso il 16/10): l'audio si salva sempre, l'elaborazione aspetta (o va in differita) fino al mese dopo
+      o a una ricarica. Più avanti un gateway (LiteLLM) con una chiave virtuale e un
       budget per utente. Trascrizione sul telefono (come il piano gratis di Omi): rimandata
 - [ ] Costi più bassi (deciso il 16/10: prima misurare quanto costa un giorno di Echo, voce per voce): il lavoro
       non urgente (estrazione, riassunti, digest) con l'API Batch a metà prezzo; la chat sugli abbonamenti degli
@@ -124,8 +125,10 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 ### Fase 8 — Nuove funzioni (idee del 16/10)
 - [ ] Echo riconosce chi hai davanti: quando una voce nota parla, sul telefono "Marco: l'ultima volta ti ha
       detto che aspettava l'esito dell'esame" (dopo circa un minuto: la voce si riconosce sul server)
-- [ ] Ricordare le persone per te: compleanni dal calendario (Google o del telefono) con quello che Echo sa
-      della persona ("ama i gialli")
+- [ ] Ricordare le persone per te: compleanni e qualunque evento del calendario (Google o del telefono) con
+      quello che Echo sa delle persone coinvolte ("ama i gialli"); allarga il briefing che oggi arriva 10 minuti
+      prima di un incontro: anche gli eventi di tutto il giorno, con qualche giorno di anticipo quando serve
+      (un regalo)
 - [ ] Domande che nessun'altra app sa fare, mostrate in "What Echo can do" ("Quando ho visto Marco l'ultima
       volta?", "Quante volte ho promesso di chiamare mia madre?")
 - [ ] Il primo giorno: un riepilogo che sorprende entro 24 ore (da provare sui dati veri prima di deciderlo)

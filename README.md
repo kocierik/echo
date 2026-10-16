@@ -1,10 +1,10 @@
 # Echo — Second Brain AI Wearable
 
-An open-source wearable that listens for speech, transcribes it, extracts structured knowledge and
+A wearable that listens for speech, transcribes it, extracts structured knowledge and
 builds a personal memory you can query in natural language — and, when you ask, acts on your other
 apps (email, calendar, chat, tasks, notes).
 
-Current phase: **core beta** — an iPhone, a wearable and a self-hosted backend, with email accounts so
+Current phase: **core beta** — an iPhone, a wearable and a backend run by Echo for its users, with email accounts so
 each person has their own memory; the Android app builds from the same code but is not yet tested
 ([spec](docs/superpowers/specs/2026-10-01-core-beta-design.md), [project status](docs/PROJECT-STATUS.md)).
 
@@ -415,4 +415,4 @@ Feature designs: [Composio actions](docs/superpowers/specs/2026-10-13-composio-a
 
 ## License
 
-Open source — license TBD.
+Proprietary: Echo is not open source. All rights reserved.
