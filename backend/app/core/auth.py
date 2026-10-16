@@ -68,20 +68,26 @@ async def blocked_for(redis, key: str) -> int | None:
     return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
 
 
-async def reserve_attempt(redis, key: str) -> int | None:
+async def reserve_attempt(
+    redis,
+    key: str,
+    *,
+    limit: int = AUTH_FAILURE_LIMIT,
+    window: int = AUTH_FAILURE_WINDOW_SECONDS,
+) -> int | None:
     """Counts an attempt before it is checked, so a burst of simultaneous attempts
     cannot all slip under the limit: seconds left when it is over, else None."""
     try:
         count = await redis.incr(key)
         if count == 1:
-            await redis.expire(key, AUTH_FAILURE_WINDOW_SECONDS)
-        if count <= AUTH_FAILURE_LIMIT:
+            await redis.expire(key, window)
+        if count <= limit:
             return None
         ttl = await redis.ttl(key)
     except Exception as exc:  # Redis down: never lock everyone out
         logger.warning("auth failure limit unavailable: %s", exc)
         return None
-    return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
+    return ttl if ttl > 0 else window
 
 
 async def release_attempt(redis, key: str) -> None:

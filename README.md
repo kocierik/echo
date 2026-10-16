@@ -123,8 +123,9 @@ make set-password EMAIL=you@example.com    # to change it later (it asks whether
 make create-user EMAIL=ada@example.com NEW=1   # another person, with their own memories
 ```
 
-Registration is closed: accounts are created only on the server. `create-user` attaches the
-account to the existing owner, so data recorded before stays yours. Signing in on a phone gives
+Others can create their own account from the app (each with separate memories); set
+`REGISTRATION_OPEN=false` in `.env` to close that. `create-user` attaches the account to the
+existing owner, so data recorded before stays yours. Signing in on a phone gives
 that phone its own API key; Settings → Devices lists the phones and revokes one.
 
 For scripts and plain HTTP, `make create-key` still prints a key once. The examples below use `my-secret-key` (`make create-key KEY=my-secret-key`) for local testing
@@ -355,6 +356,7 @@ All `/api` endpoints require the `X-API-Key` header.
 | `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser |
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | Starts the tunnel service ([guide](docs/CLOUDFLARE-TUNNEL.md)) |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
+| `REGISTRATION_OPEN` | `true` | Anyone with the app can create an account; `false` closes it (accounts then only with `make create-user`) |
 
 ## Development
 

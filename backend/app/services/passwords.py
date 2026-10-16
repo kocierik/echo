@@ -43,9 +43,15 @@ def _check_length(password: str) -> None:
 
 
 async def create_user(
-    db: AsyncSession, email: str, password: str, user_id: uuid.UUID | None = None
+    db: AsyncSession,
+    email: str,
+    password: str,
+    user_id: uuid.UUID | None = None,
+    *,
+    password_hash: str | None = None,
 ) -> User:
-    """A new account; `user_id` attaches it to data that already exists (the owner's)."""
+    """A new account; `user_id` attaches it to data that already exists (the owner's).
+    `password_hash`, when the caller hashed `password` already (off the event loop)."""
     email = normalize_email(email)
     _check_length(password)
     if await db.scalar(select(User.id).where(User.email == email)) is not None:
@@ -54,7 +60,11 @@ async def create_user(
         raise ValueError(
             "this user already has an account; for another person, leave out the user id"
         )
-    user = User(id=user_id or uuid.uuid4(), email=email, password_hash=hash_password(password))
+    user = User(
+        id=user_id or uuid.uuid4(),
+        email=email,
+        password_hash=password_hash or hash_password(password),
+    )
     db.add(user)
     await db.commit()
     return user
