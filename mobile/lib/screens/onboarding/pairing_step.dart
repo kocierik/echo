@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/echo_device_mark.dart';
 
 final class PairingStep extends StatelessWidget {
   const PairingStep({
@@ -19,38 +20,10 @@ final class PairingStep extends StatelessWidget {
         ? 'Echo paired and ready'
         : busy
             ? 'Looking for Echo nearby...'
-            : 'Keep Echo charged, awake, and close to this phone.';
+            : 'Turn it on and keep it close to the phone. Its light blinks while it waits.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Center(
-          child: SizedBox(
-            width: 176,
-            height: 176,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                _Ring(size: 176, color: palette.border),
-                _Ring(size: 126, color: palette.border),
-                Container(
-                  width: 76,
-                  height: 76,
-                  decoration: BoxDecoration(
-                    color: palette.surface2,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: palette.accent, width: 2),
-                  ),
-                  child: Icon(
-                    paired ? Icons.check_rounded : Icons.watch_outlined,
-                    size: 34,
-                    color: paired ? palette.green : palette.accent,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
         Text('Pair your Echo', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 8),
         Semantics(
@@ -58,24 +31,43 @@ final class PairingStep extends StatelessWidget {
           child: Text(
             status,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: palette.text2,
+                  color: paired ? palette.green : palette.text2,
                 ),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 28),
+        Center(
+          child: SizedBox.square(
+            dimension: 200,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                _Ring(size: 200, color: palette.border),
+                EchoDeviceMark(size: 112, breathing: !paired),
+                if (paired)
+                  Positioned(
+                    right: 36,
+                    bottom: 36,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(color: palette.green, shape: BoxShape.circle),
+                      child: Icon(Icons.check_rounded, color: palette.background, size: 22),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
         const _PairingNote(
           icon: Icons.bluetooth_searching_rounded,
           text: 'Pairing may open a system confirmation.',
         ),
-        const SizedBox(height: 12),
-        const _PairingNote(
-          icon: Icons.lock_outline_rounded,
-          text: 'The saved device identity enables secure reconnects.',
-        ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         const _PairingNote(
           icon: Icons.schedule_rounded,
-          text: 'No Echo with you? Skip for now and pair it later in Settings > Device.',
+          text: 'No Echo with you? Pair it later from Settings.',
         ),
       ],
     );

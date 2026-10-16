@@ -21,12 +21,10 @@ final class PermissionsStep extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.shield_outlined, size: 32, color: palette.accent),
-        const SizedBox(height: 24),
-        Text('Permissions', style: Theme.of(context).textTheme.headlineLarge),
+        Text('What Echo needs', style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 8),
         Text(
-          'Choose what Echo can use. Bluetooth is required; alerts and voice Ask can stay off.',
+          'Bluetooth to reach the wearable. The rest is up to you, and you can change it later.',
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: palette.text2,
               ),
@@ -39,24 +37,24 @@ final class PermissionsStep extends StatelessWidget {
             const _PermissionRow(
               icon: Icons.bluetooth_rounded,
               title: 'Bluetooth',
-              detail: 'Required to find and stay connected to your wearable.',
+              detail: 'Required, to stay connected to Echo.',
               required: true,
             ),
-            Divider(height: 25, color: palette.border),
+            Divider(height: 17, color: palette.border),
             _PermissionRow(
               icon: Icons.notifications_none_rounded,
               title: 'Notifications',
               detail: notificationDenied
                   ? 'Off. Echo will continue without disconnect alerts.'
-                  : 'Optional alerts for disconnects and upload problems.',
+                  : 'Before meetings, and for promises you made.',
             ),
-            Divider(height: 25, color: palette.border),
+            Divider(height: 17, color: palette.border),
             _PermissionRow(
               icon: Icons.mic_none_rounded,
               title: 'Microphone',
               detail: voiceDenied
                   ? 'Off. Typed Ask remains available.'
-                  : 'Optional, used only when you start voice Ask.',
+                  : 'Only to dictate a question by holding Ask.',
             ),
             ],
           ),
