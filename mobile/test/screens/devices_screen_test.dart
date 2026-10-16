@@ -87,6 +87,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('iPhone'), findsOneWidget);
   });
+
+  testWidgets('keys made on the server are listed apart from the phones', (tester) async {
+    final api = _FakeDevices([
+      const SignedInDevice(id: 'me', name: 'iPhone 15 Pro', current: true, platform: 'ios'),
+      const SignedInDevice(id: 'script', name: 'key-20261001-101500', current: false),
+    ]);
+
+    await pump(tester, api);
+
+    expect(find.text('PHONES'), findsOneWidget);
+    expect(find.text('OTHER KEYS'), findsOneWidget);
+    expect(find.text('A key made on the server, for scripts'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('OTHER KEYS')).dy,
+      greaterThan(tester.getTopLeft(find.text('iPhone 15 Pro')).dy),
+    );
+    expect(find.byKey(const Key('devices-revoke-script')), findsOneWidget);
+  });
 }
 
 final class _FakeDevices implements DevicesApi {
