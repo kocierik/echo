@@ -257,7 +257,59 @@ Added by the user on 16/10, independent of Tasks 1–8. Today the camera button 
 - [ ] **Step 4: Run** the backend test, `flutter analyze`, `flutter test` — expect PASS.
 - [ ] **Step 5: Commit** `feat(mobile): take the photo with the phone when the wearable cannot`.
 
-### Task 10: Close the loop
+### Task 10: Questions about Echo, and questions that are not about the memory
+
+Added by the user on 16/10: "cosa sai fare?" in Ask answers "Non ho ancora informazioni nella memoria per rispondere a questa domanda." The memory prompt (`rag_system_prompt`) says "Answer ONLY from the provided context", and an empty retrieval returns the fixed `no_results_message`; the intent check runs only when `might_need_tools` matches. Decided (Claude's call, check it): **no extra model call on normal questions.** The memory prompt learns what Echo is and may answer two more kinds of question itself; an empty retrieval asks the model with that prompt and no context instead of returning the fixed text. Memory answers stay grounded: nothing about the user's past is ever invented.
+
+**Files:**
+- Create: `backend/app/services/about_echo.py`
+- Modify: `backend/app/services/memory_answers.py`, `backend/app/routers/query.py` (empty-context branch near line 448), `backend/app/workers/voice_requests.py` (near line 128), `backend/evals/cases/answers.json`
+- Test: `backend/tests/test_about_echo.py`
+
+**Interfaces:**
+- Produces:
+  - `def about_echo(connected_apps: list[str], phone_apps: list[str], camera: bool) -> str` — English text the prompt embeds: what Echo does (remembers conversations, answers about them, people, tasks and promises, daily and weekly summaries, acts in the connected apps — listed by name — and in the phone's Reminders/Calendar when on, photos when there is a camera, "Echo, …" voice requests), with 3–4 example questions and where things are in the app (Settings → Apps, Settings → Voices, What Echo can do).
+  - `rag_system_prompt(date_range, about: str = "") -> str`: adds the `about` text and these rules: (1) a question about Echo itself or how to use it → answer from "About Echo"; (2) a general question not about the user's life (a definition, a calculation, a translation) → answer briefly from general knowledge and say it does not come from their memory; (3) a question about the user's past with no support in the context → say so, never guess; always in the question's language.
+  - The empty-context branch (chat and voice) calls the query model with that prompt and the question (no context); `no_results_message` stays only as the fallback when that call fails.
+
+- [ ] **Step 1: Write the failing tests** (`MockLLMService` capturing messages):
+  - `test_the_memory_prompt_knows_what_echo_is`: the system prompt contains the connected apps' names and "What Echo can do".
+  - `test_an_empty_memory_asks_the_model_instead_of_a_fixed_text`: `POST /api/query {"question": "cosa sai fare?"}` with empty retrieval → the mock's reply is the answer, not `_NO_RESULTS["it"]`.
+  - `test_a_failing_model_falls_back_to_the_fixed_text`.
+  - `test_voice_requests_use_the_same_rules` (pattern of `test_voice_requests.py`).
+  - Evals (`answers.json`, real model, not in CI): "cosa sai fare?" → mentions memory and apps; "come collego Gmail?" → Settings → Apps; "quanto fa il 15% di 80?" → 12 and says it is not from memory; "cosa mi ha detto Marco ieri?" with empty context → says it does not know.
+- [ ] **Step 2: Run** `sh bt.sh tests/test_about_echo.py` — expect FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** `sh bt.sh tests/test_about_echo.py tests/test_query.py tests/test_query_with_mocks.py tests/test_voice_requests.py` — PASS; then `make eval-llm SUITE=answers` once (real calls) and note the result in the commit message.
+- [ ] **Step 5: Commit** `feat(server): Echo answers questions about itself and general ones`.
+
+### Task 11: The language you speak
+
+Added by the user on 16/10: dictating in Ask (holding the Ask button) understands only English. `SpeechToTextVoiceInput.start` (`mobile/lib/services/chat/voice_input.dart`) calls `listen` without a `localeId`, so the phone's system language is used. The same gap exists on the server: `settings.stt_language` (`"it"`) is one language for every account (`app/workers/stt.py:132`), wrong for a sold product, and the voice sample to read in Settings → Voices (`enrollmentText`) is English only. Decided (Claude's call, check it): **one language per account**, "the language you speak", used by the wearable's transcription and by dictation; English and Italian for now (the languages `LANGUAGE_NAMES` knows).
+
+**Files:**
+- Create: `backend/alembic/versions/019_user_language.py`, `backend/tests/test_user_language.py`, `mobile/lib/screens/settings/language_settings_screen.dart`
+- Modify: `backend/app/models/user.py` (`language`), `backend/app/routers/auth.py` (register body, `GET`/`PATCH /api/auth/me`), `backend/app/workers/stt.py` (the segment owner's language), `mobile/lib/services/chat/voice_input.dart`, `mobile/lib/services/api/auth_api.dart`, `mobile/lib/screens/settings_screen.dart` (a "Language" row), `mobile/lib/screens/settings/voice_settings_screen.dart` (Italian sample text), `mobile/lib/services/onboarding/onboarding_controller.dart` (send the phone's language at registration)
+- Test: `mobile/test/services/chat/voice_input_test.dart`, `mobile/test/screens/language_settings_test.dart`
+
+**Interfaces:**
+- Produces:
+  - `users.language varchar(5) not null default 'it'` (existing accounts keep today's behaviour); `SUPPORTED_LANGUAGES = ("en", "it")`.
+  - `POST /api/auth/register` accepts optional `language` (else `settings.stt_language`); `GET /api/auth/me` → `{"email", "language"}`; `PATCH /api/auth/me {"language"}` → 200, 422 for an unsupported one.
+  - STT worker: `language = user.language or settings.stt_language` for the segment's owner (one query per segment, or cached per user for the worker's life).
+  - App: `VoiceInput.start({required onPartial, required onFinal, String? language})`; `SpeechToTextVoiceInput` picks, from `_speech.locales()`, the first locale whose id starts with the language (`it` → `it_IT`/`it-IT`) and passes it as `localeId`; none found → system default.
+  - Settings → **Language** ("The language you speak. Echo transcribes and takes dictation in it."): English, Italiano; saved with `PATCH /api/auth/me` and kept locally for dictation.
+  - `enrollmentText` becomes a map by language; the screen shows the one for the account's language (the Italian text written to the same ~20 s length).
+
+- [ ] **Step 1: Write the failing tests**:
+  - Backend: `test_register_keeps_the_phones_language`, `test_me_reads_and_changes_the_language`, `test_an_unsupported_language_is_refused`, `test_stt_uses_the_owners_language` (two users, `it` and `en`; a spy STT records `language`).
+  - App: `voice_input_test.dart` — with fake locales `[en_US, it_IT]` and language `it`, `listen` gets `localeId: 'it_IT'`; with no Italian locale, no `localeId`. `language_settings_test.dart` — choosing Italiano calls `PATCH /api/auth/me` and the dictation uses it next time.
+- [ ] **Step 2: Run** — expect FAIL.
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run** `sh bt.sh tests/test_user_language.py tests/test_worker_pipeline.py tests/test_auth_register.py`, `flutter analyze`, `flutter test` — PASS.
+- [ ] **Step 5: Commit** `feat: the language you speak, for transcription and dictation`.
+
+### Task 12: Close the loop
 
 **Files:**
 - Modify: `docs/ROADMAP.md` (Fase 7: tick usage, scopes, MCP step 1), `docs/PROJECT-STATUS.md` (§2 backend and app, test counts, the cost report, "MCP solo con chiave; OAuth da fare")
