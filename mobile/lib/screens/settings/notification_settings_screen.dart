@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/app/notification_scheduler.dart';
+import '../../services/device/phone_words.dart';
 import 'settings_components.dart';
 
 /// Few notifications, each one switchable: briefings and promises on, the evening off.
@@ -62,7 +63,7 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
           title: 'Before a meeting',
           subtitle: '10 minutes before, when you have tasks, a promise or a recent '
               'conversation with someone there. From Google Calendar, or from the '
-              "iPhone's calendar (Automations → On this iPhone).",
+              "${PhoneWords.phone}'s calendar (Settings → ${PhoneWords.onThisPhone}).",
           value: _choices.briefings,
         ),
         _row(
@@ -84,14 +85,22 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
           'phone while Echo is in use.',
         ),
         const SettingsSection('ON THE LOCK SCREEN'),
-        _row(
-          key: NotificationPreferences.liveActivityKey,
-          icon: Icons.phone_iphone_rounded,
-          title: 'Live Activity',
-          subtitle: 'Whether Echo is listening, its battery and the speech waiting to sync, '
-              'on the Lock Screen and in the Dynamic Island.',
-          value: _choices.liveActivity,
-        ),
+        if (PhoneWords.isIPhone)
+          _row(
+            key: NotificationPreferences.liveActivityKey,
+            icon: Icons.phone_iphone_rounded,
+            title: 'Live Activity',
+            subtitle: 'Whether Echo is listening, its battery and the speech waiting to sync, '
+                'on the Lock Screen and in the Dynamic Island.',
+            value: _choices.liveActivity,
+          )
+        else
+          // The foreground service (EchoStatusService.kt) cannot run without its notification
+          const SettingsMessage(
+            'While Echo is paired, a silent notification shows whether it is listening, its '
+            'battery and the speech waiting to sync. Android needs it to keep Echo connected '
+            'while the app is in the background.',
+          ),
       ],
     );
   }

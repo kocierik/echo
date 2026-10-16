@@ -1,12 +1,14 @@
 # Echo Mobile App
 
-Flutter companion app for the Echo wearable (iOS-first core beta). It relays audio
+Flutter companion app for the Echo wearable, for iOS and Android. It relays audio
 from the wearable over BLE to the backend and lets you browse, correct and query
 your memory.
 
 ## Setup
 
-1. Install [Flutter](https://docs.flutter.dev/get-started/install) (3.x+) and, for iOS, Xcode + CocoaPods.
+1. Install [Flutter](https://docs.flutter.dev/get-started/install) (3.x+) and, for iOS, Xcode + CocoaPods;
+   for Android, JDK 17 and the Android SDK (platform 36; Gradle fetches the NDK), then
+   `flutter config --android-sdk <sdk> --jdk-dir <jdk>`.
 2. Run:
 
 ```bash
@@ -19,7 +21,26 @@ flutter run
 
 Both are versioned; the bundle/application id is `com.kocierik.echo`. `ios/Runner/Info.plist` must
 keep `UIBackgroundModes` → `bluetooth-central` and the Bluetooth, microphone and speech usage
-descriptions. Set your signing team in Xcode; Android release signing is not configured yet.
+descriptions. Set your signing team in Xcode; Android release signing is not configured yet
+(`flutter build apk --debug` works, signed with the debug key).
+
+On Android (`android/app/src/main/kotlin/com/kocierik/echo/`):
+
+- **`EchoEngine.kt`** keeps one Flutter engine for the process: the activity borrows it and does
+  not destroy it, so the Dart side (Bluetooth relay, uploads, commands) keeps running after the
+  app leaves the screen or is swiped away from the recent apps.
+- **`EchoStatusService.kt`** is a foreground service (type `connectedDevice`) with a silent
+  notification: listening, muted or offline, battery and minutes waiting to sync. It is the
+  `echo/live_activity` channel of iOS, always on while a wearable is paired, and what keeps
+  Android from stopping the app in the background. Android 12+ starts it only while the app is
+  on screen and Bluetooth is allowed; once started, updates in the background only change the
+  notification.
+- **`CalendarBridge.kt`** answers the `echo/eventkit` channel of iOS with the phone's calendar
+  (CalendarContract). Android has no system Reminders app: reminders are unavailable, and
+  Settings → On this phone offers the calendar only.
+- The `echo/device` channel names the phone ("Google Pixel 8") and opens Echo's App info page.
+- Scheduled notifications come back after a restart (`ScheduledNotificationBootReceiver`); they
+  are inexact, so Android may deliver one a few minutes late.
 
 ## Configuration
 
@@ -82,7 +103,8 @@ request ("Echo, remind me to …") and its answer.
 - **Live Activity** (iOS 16.1+, `ios/EchoActivity` widget extension): listening, muted or
   offline, battery and minutes waiting to sync, on the lock screen and in the Dynamic Island.
   Updated locally by the app over the `echo/live_activity` channel (no push); off in
-  Settings → Notifications.
+  Settings → Notifications. On Android the same channel drives the status notification, which
+  cannot be turned off (see above).
 
 ## Architecture
 

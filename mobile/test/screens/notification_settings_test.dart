@@ -30,4 +30,28 @@ void main() {
     expect(at(NotificationPreferences.eveningKey).value, isTrue);
     expect(changes, 1);
   });
+
+  Future<void> pump(WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: NotificationSettingsScreen(preferences: preferences, onChanged: () {}),
+    ));
+  }
+
+  testWidgets('the iPhone has the Live Activity switch', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(const Key(NotificationPreferences.liveActivityKey)), findsOneWidget);
+    expect(find.textContaining('On this iPhone'), findsOneWidget);
+  }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('Android explains the status notification instead', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(const Key(NotificationPreferences.liveActivityKey)), findsNothing);
+    expect(find.textContaining('keep Echo connected'), findsOneWidget);
+    expect(find.textContaining('iPhone'), findsNothing);
+  });
 }

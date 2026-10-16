@@ -123,10 +123,10 @@ told otherwise. When no event id is known, find the event by title and day by li
 events first.
 """
 
-_PHONE_RULES = """- Reminders and Calendar on the user's iPhone (applereminders, applecalendar): \
+_PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
 when the user asks to be reminded of something at a time, create a reminder due then (the \
-iPhone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
-iPhone's calendar unless the user names another calendar app.
+phone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
+phone's calendar unless the user names another calendar app.
 """
 
 

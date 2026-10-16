@@ -211,17 +211,24 @@ async def test_with_iphone_apps_each_provider_runs_its_own_tools(redis):
         await alone.execute(USER, "GMAIL_SEND_EMAIL", {})
 
 
-def test_the_router_names_the_iphone_apps_only_when_they_are_on():
+def test_the_router_names_the_phone_apps_only_when_they_are_on():
     section = _apps_section(["gmail", "applereminders"], APP_NAMES)
-    assert "applereminders (Apple Reminders)" in section
+    assert "applereminders (Phone Reminders)" in section
     assert "applereminders" not in section.split("NOT connected")[1]
 
     on = _parse_intent(
-        {"needs_apps": True, "apps": ["Apple Reminders"]}, ["applereminders"], APP_NAMES
+        {"needs_apps": True, "apps": ["Phone Reminders"]}, ["applereminders"], APP_NAMES
     )
     assert on.apps == ["applereminders"]
-    off = _parse_intent({"needs_apps": True, "apps": ["Apple Reminders"]}, ["gmail"], APP_NAMES)
-    assert off.apps == [] and off.unresolved == ["Apple Reminders"]
+    off = _parse_intent({"needs_apps": True, "apps": ["Phone Reminders"]}, ["gmail"], APP_NAMES)
+    assert off.apps == [] and off.unresolved == ["Phone Reminders"]
+
+
+def test_the_model_hears_of_a_phone_not_an_iphone():
+    # The calendar runs on Android phones too: the answer must not say "your iPhone"
+    words = repr(phone.TOOLS) + repr(phone.PHONE_APP_NAMES) + _system_prompt(phone_apps=True)
+    assert "iPhone" not in words
+    assert "Apple" not in words
 
 
 def test_reminder_requests_are_checked_for_apps():
