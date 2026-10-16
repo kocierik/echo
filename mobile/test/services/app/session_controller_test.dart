@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:echo_app/services/app/session_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -66,6 +68,47 @@ void main() {
     expect(controller.state.error, contains('disconnect failed'));
     expect(controller.state.error, contains('secure delete failed'));
   });
+  test('many 401s sign out once', () async {
+    final calls = <String>[];
+    final unauthorized = StreamController<void>.broadcast();
+    addTearDown(unauthorized.close);
+    final controller = _controller(calls, unauthorized: unauthorized.stream);
+    addTearDown(controller.dispose);
+
+    unauthorized
+      ..add(null)
+      ..add(null)
+      ..add(null);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(calls, ['ble', 'api', 'identity', 'cache']);
+    expect(controller.state.loggedOut, isTrue);
+    expect(controller.state.reason, 'This phone was signed out.');
+  });
+
+  test('a phone signed back in can be signed out again', () async {
+    final calls = <String>[];
+    final controller = _controller(calls);
+    addTearDown(controller.dispose);
+    await controller.logout();
+
+    controller.markSignedIn();
+    expect(controller.state.loggedIn, isTrue);
+    expect(controller.state.reason, isNull);
+    await controller.logout();
+
+    expect(calls, ['ble', 'api', 'identity', 'cache', 'ble', 'api', 'identity', 'cache']);
+    expect(controller.state.loggedOut, isTrue);
+  });
+
+  test('a plain logout has no reason', () async {
+    final controller = _controller(<String>[]);
+    addTearDown(controller.dispose);
+
+    await controller.logout();
+
+    expect(controller.state.reason, isNull);
+  });
 }
 
 SessionController _controller(
@@ -74,8 +117,10 @@ SessionController _controller(
   Object? apiError,
   Object? identityError,
   Object? cacheError,
+  Stream<void>? unauthorized,
 }) {
   return SessionController(
+    unauthorized: unauthorized,
     bleStopper: _BleStopper(calls, bleError),
     apiCredentials: _Clearer(calls, 'api', apiError),
     deviceIdentity: _Clearer(calls, 'identity', identityError),

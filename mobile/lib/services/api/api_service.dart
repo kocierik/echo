@@ -1,5 +1,6 @@
 import 'actions_api.dart';
 import 'api_client.dart';
+import 'auth_api.dart';
 import 'chat_api.dart';
 import 'device_api.dart';
 import 'memory_api.dart';
@@ -9,7 +10,8 @@ import 'voice_api.dart';
 import 'wearable_api.dart';
 
 export 'actions_api.dart';
-export 'api_client.dart' show JsonShape;
+export 'api_client.dart' show ApiClient, JsonShape;
+export 'auth_api.dart';
 export 'api_credentials.dart';
 export 'chat_api.dart';
 export 'device_api.dart';
@@ -29,7 +31,8 @@ class ApiService extends ApiClient
         DeviceEndpoints,
         VoiceEndpoints,
         NotificationEndpoints,
-        WearableEndpoints
+        WearableEndpoints,
+        AuthEndpoints
     implements TodayApi {
   ApiService({
     super.client,

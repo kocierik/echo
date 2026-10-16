@@ -32,24 +32,32 @@ final class SessionController {
     required ApiCredentialsClearer apiCredentials,
     required DeviceIdentityClearer deviceIdentity,
     required SessionCacheClearer sessionCache,
+    Stream<void>? unauthorized,
   })  : _bleStopper = bleStopper,
         _apiCredentials = apiCredentials,
         _deviceIdentity = deviceIdentity,
-        _sessionCache = sessionCache;
+        _sessionCache = sessionCache {
+    _unauthorized = unauthorized?.listen((_) => unawaited(signOutRevoked()));
+  }
+
+  /// Said on the welcome after a key was revoked from another phone.
+  static const revokedReason = 'This phone was signed out.';
 
   final ActiveBleStopper _bleStopper;
   final ApiCredentialsClearer _apiCredentials;
   final DeviceIdentityClearer _deviceIdentity;
   final SessionCacheClearer _sessionCache;
   final _stateController = StreamController<SessionState>.broadcast();
+  StreamSubscription<void>? _unauthorized;
 
   SessionState _state = const SessionState(SessionStatus.loggedIn);
   SessionState get state => _state;
   Stream<SessionState> get stream => _stateController.stream;
 
-  Future<void> logout() async {
+  /// Signs this phone out: its key on the server, then everything on the phone.
+  Future<void> logout({String? reason}) async {
     if (_state.loggingOut || _state.loggedOut) return;
-    _setState(const SessionState(SessionStatus.loggingOut));
+    _setState(SessionState(SessionStatus.loggingOut, reason: reason));
 
     final errors = <String>[];
     await _attempt('BLE stop', _bleStopper.stop, errors);
@@ -58,16 +66,29 @@ final class SessionController {
     await _attempt('session cache', _sessionCache.clear, errors);
 
     if (errors.isEmpty) {
-      _setState(const SessionState(SessionStatus.loggedOut));
+      _setState(SessionState(SessionStatus.loggedOut, reason: reason));
     } else {
       _setState(SessionState(
         SessionStatus.cleanupFailed,
         error: 'Logout cleanup failed: ${errors.join('; ')}',
+        reason: reason,
       ));
     }
   }
 
-  Future<void> dispose() => _stateController.close();
+  /// The key was revoked from another phone: sign out once, saying why.
+  Future<void> signOutRevoked() => logout(reason: revokedReason);
+
+  /// Signed in again (the first run is done): a later logout or revoked key counts.
+  void markSignedIn() {
+    if (_state.loggedIn) return;
+    _setState(const SessionState(SessionStatus.loggedIn));
+  }
+
+  Future<void> dispose() async {
+    await _unauthorized?.cancel();
+    await _stateController.close();
+  }
 
   Future<void> _attempt(
     String label,
@@ -92,8 +113,15 @@ final class ApiServiceCredentialsClearer implements ApiCredentialsClearer {
 
   final ApiService _apiService;
 
+  /// Deletes the phone's key on the server first; not reaching it never blocks the
+  /// logout on the phone.
   @override
-  Future<void> clear() => _apiService.clearConfiguration();
+  Future<void> clear() async {
+    try {
+      await _apiService.signOutThisPhone();
+    } catch (_) {}
+    await _apiService.clearConfiguration();
+  }
 }
 
 final class DeviceIdentityStoreClearer implements DeviceIdentityClearer {

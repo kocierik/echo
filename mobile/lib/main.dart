@@ -228,7 +228,11 @@ class _AppRouterState extends State<AppRouter> {
     if (!_onboardingComplete) {
       return OnboardingScreen(
         controller: _onboardingController,
-        onComplete: () => setState(() => _onboardingComplete = true),
+        onComplete: () {
+          // Signed in again after a logout: the next one counts
+          widget.sessionController?.markSignedIn();
+          setState(() => _onboardingComplete = true);
+        },
       );
     }
     return MainShell(
