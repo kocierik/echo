@@ -2,14 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../api/auth_api.dart';
 import '../app/app_preferences.dart';
 
-enum OnboardingStep { backend, permissions, pairing, privacy }
+/// The first run, in order. The first four keep their indexes (the stored progress
+/// predates sign-in, when the first step was the server).
+enum OnboardingStep { signIn, permissions, pairing, privacy, firstResult }
 
 abstract interface class OnboardingApi {
   Future<bool> isConfigured();
-  Future<bool> validateCredentials(String serverUrl, String apiKey);
-  Future<void> configure(String serverUrl, String apiKey);
+
+  /// Throws [SignInException] with the message to show.
+  Future<void> signIn(String email, String password);
 }
 
 abstract interface class OnboardingPermissions {
@@ -34,11 +38,13 @@ final class OnboardingState {
     required this.notificationDenied,
     required this.voiceDenied,
     required this.paired,
+    this.showWelcome = true,
     this.error,
   });
 
   const OnboardingState.initial()
-      : step = OnboardingStep.backend,
+      : step = OnboardingStep.signIn,
+        showWelcome = true,
         busy = true,
         initialized = false,
         completed = false,
@@ -54,6 +60,9 @@ final class OnboardingState {
   final bool notificationDenied;
   final bool voiceDenied;
   final bool paired;
+
+  /// On [OnboardingStep.signIn]: the welcome, until "Continue with email".
+  final bool showWelcome;
   final String? error;
 
   OnboardingState copyWith({
@@ -64,6 +73,7 @@ final class OnboardingState {
     bool? notificationDenied,
     bool? voiceDenied,
     bool? paired,
+    bool? showWelcome,
     Object? error = _unchanged,
   }) {
     return OnboardingState(
@@ -74,6 +84,7 @@ final class OnboardingState {
       notificationDenied: notificationDenied ?? this.notificationDenied,
       voiceDenied: voiceDenied ?? this.voiceDenied,
       paired: paired ?? this.paired,
+      showWelcome: showWelcome ?? this.showWelcome,
       error: identical(error, _unchanged) ? this.error : error as String?,
     );
   }
@@ -123,7 +134,8 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
       final completionStored = _preferences.getBool(completedKey) ?? false;
 
       if (!configured) {
-        _setReady(OnboardingStep.backend);
+        _setReady(OnboardingStep.signIn);
+        value = value.copyWith(showWelcome: true);
         return;
       }
 
@@ -139,9 +151,9 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
       }
 
       var effectiveHighest = highest;
-      if (effectiveHighest < OnboardingStep.backend.index) {
-        await _persistHighest(OnboardingStep.backend);
-        effectiveHighest = OnboardingStep.backend.index;
+      if (effectiveHighest < OnboardingStep.signIn.index) {
+        await _persistHighest(OnboardingStep.signIn);
+        effectiveHighest = OnboardingStep.signIn.index;
       }
       if (_disposed) return;
       if (effectiveHighest < OnboardingStep.permissions.index) {
@@ -179,7 +191,7 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     } catch (_) {
       if (_disposed) return;
       value = value.copyWith(
-        step: OnboardingStep.backend,
+        step: OnboardingStep.signIn,
         busy: false,
         initialized: true,
         completed: false,
@@ -188,26 +200,29 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     }
   }
 
-  Future<void> submitBackend(String serverUrl, String apiKey) async {
+  /// From the welcome to the email form.
+  void continueWithEmail() {
+    if (_disposed || value.step != OnboardingStep.signIn) return;
+    value = value.copyWith(showWelcome: false, error: null);
+  }
+
+  void backToWelcome() {
+    if (_disposed || value.busy || value.step != OnboardingStep.signIn) return;
+    value = value.copyWith(showWelcome: true, error: null);
+  }
+
+  Future<void> signIn(String email, String password) async {
     if (value.busy || _disposed) return;
-    final server = serverUrl.trim();
-    final key = apiKey.trim();
-    if (server.isEmpty || key.isEmpty) {
-      value = value.copyWith(error: 'Server URL and API key are required.');
+    final address = email.trim();
+    if (address.isEmpty || password.isEmpty) {
+      value = value.copyWith(error: 'Enter your email and password.');
       return;
     }
-
     _setBusy();
     try {
-      final valid = await _api.validateCredentials(server, key);
+      await _api.signIn(address, password);
       if (_disposed) return;
-      if (!valid) {
-        _setError('Connection failed. Check the server URL and API key.');
-        return;
-      }
-      await _api.configure(server, key);
-      if (_disposed) return;
-      await _persistHighest(OnboardingStep.backend);
+      await _persistHighest(OnboardingStep.signIn);
       if (_disposed) return;
       value = value.copyWith(
         step: OnboardingStep.permissions,
@@ -215,8 +230,10 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
         completed: false,
         error: null,
       );
+    } on SignInException catch (error) {
+      _setError(error.message);
     } catch (_) {
-      _setError('Connection failed. Check the server URL and try again.');
+      _setError('Echo could not sign you in. Try again.');
     }
   }
 
@@ -316,6 +333,20 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     }
   }
 
+  /// The last setup step: a paired Echo can show a first result, else setup is done.
+  Future<void> finishPrivacy() async {
+    if (value.busy || _disposed) return;
+    if (!value.paired) return complete();
+    try {
+      await _persistHighest(OnboardingStep.privacy);
+    } catch (_) {
+      _setError('Echo could not finish setup. Try again.');
+      return;
+    }
+    if (_disposed) return;
+    value = value.copyWith(step: OnboardingStep.firstResult, error: null);
+  }
+
   Future<void> complete() async {
     if (value.busy || _disposed) return;
     _setBusy();
@@ -335,9 +366,12 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
   }
 
   void goBack() {
-    if (value.busy || _disposed || value.step == OnboardingStep.backend) return;
+    if (value.busy || _disposed) return;
+    if (value.step == OnboardingStep.signIn) return backToWelcome();
+    // Back from permissions is the email form, already filled in
     value = value.copyWith(
       step: OnboardingStep.values[value.step.index - 1],
+      showWelcome: false,
       error: null,
     );
   }
