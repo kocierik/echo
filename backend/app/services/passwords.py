@@ -7,9 +7,10 @@ import uuid
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.api_key import ApiKey
 from app.models.user import User
 
 MIN_PASSWORD_LENGTH = 10
@@ -49,16 +50,29 @@ async def create_user(
     _check_length(password)
     if await db.scalar(select(User.id).where(User.email == email)) is not None:
         raise ValueError("email already exists")
+    if user_id is not None and await db.get(User, user_id) is not None:
+        raise ValueError(
+            "this user already has an account; for another person, leave out the user id"
+        )
     user = User(id=user_id or uuid.uuid4(), email=email, password_hash=hash_password(password))
     db.add(user)
     await db.commit()
     return user
 
 
-async def set_password(db: AsyncSession, email: str, password: str) -> None:
+async def set_password(
+    db: AsyncSession, email: str, password: str, *, sign_out_devices: bool = False
+) -> int:
+    """Changes the password; with `sign_out_devices` every key of the account goes too
+    (after a suspected leak). Returns how many keys were deleted."""
     _check_length(password)
     user = await db.scalar(select(User).where(User.email == normalize_email(email)))
     if user is None:
         raise ValueError("no such user")
     user.password_hash = hash_password(password)
+    signed_out = 0
+    if sign_out_devices:
+        result = await db.execute(delete(ApiKey).where(ApiKey.user_id == user.id))
+        signed_out = result.rowcount or 0
     await db.commit()
+    return signed_out

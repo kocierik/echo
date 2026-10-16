@@ -93,10 +93,14 @@ create-key: ## Create an API key and print it once (random unless KEY=... is giv
 	docker compose exec -T postgres psql -U echo -d echo -q -c "INSERT INTO api_keys (user_id, key_hash, name) VALUES ('a0000000-0000-0000-0000-000000000001', encode(sha256('$$KEY'::bytea), 'hex'), 'key-$$(date +%Y%m%d-%H%M%S)') ON CONFLICT DO NOTHING;" && \
 	echo "API key (shown only now): $$KEY"
 
-create-user: ## Create an account (asks the password): make create-user EMAIL=you@example.com [USER_ID=uuid, default the owner's]
-	docker compose exec api python -m app.cli.users create --email "$(EMAIL)" --user-id "$${USER_ID:-a0000000-0000-0000-0000-000000000001}"
+create-user: ## Create an account (asks the password): make create-user EMAIL=you@example.com [NEW=1 for another person]
+	@if [ -n "$(NEW)" ]; then \
+		docker compose exec api python -m app.cli.users create --email "$(EMAIL)"; \
+	else \
+		docker compose exec api python -m app.cli.users create --email "$(EMAIL)" --user-id "$${USER_ID:-a0000000-0000-0000-0000-000000000001}"; \
+	fi
 
-set-password: ## Set an account's password (asks it): make set-password EMAIL=you@example.com
+set-password: ## Set an account's password (asks it, and whether to sign out every device): make set-password EMAIL=you@example.com
 	docker compose exec api python -m app.cli.users set-password --email "$(EMAIL)"
 
 revoke-example-key: ## Delete the README's example key 'my-secret-key' (publicly known)

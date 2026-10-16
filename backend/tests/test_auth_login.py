@@ -196,3 +196,11 @@ async def test_a_revoked_phone_can_sign_in_again_from_the_same_address(client, d
     neighbour = await client.get("/api/conversations", headers={"X-API-Key": other} | home)
     assert again.status_code == 200
     assert neighbour.status_code == 200
+
+
+async def test_a_blank_device_name_is_rejected(client, db_session):
+    await _owner(db_session)
+
+    response = await client.post("/api/auth/login", json=_login(name="   "))
+
+    assert response.status_code == 422
