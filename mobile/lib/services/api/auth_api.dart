@@ -39,8 +39,26 @@ final class SignInException implements Exception {
 }
 
 /// The phones signed in to the account (Settings → Devices).
+/// A connected app's key, shown once, and where to point the assistant.
+final class ConnectedAppKey {
+  const ConnectedAppKey({
+    required this.id,
+    required this.name,
+    required this.apiKey,
+    required this.mcpUrl,
+  });
+
+  final String id;
+  final String name;
+  final String apiKey;
+  final String mcpUrl;
+}
+
 abstract interface class DevicesApi {
   Future<List<SignedInDevice>> listDevices();
+
+  /// A read-only key for an assistant, over MCP.
+  Future<ConnectedAppKey> connectApp(String name);
   Future<void> revokeDevice(String id);
   Future<void> signOutThisPhone();
 }
@@ -186,4 +204,24 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
 
   @override
   Future<void> revokeDevice(String id) => delete('/api/auth/devices/$id');
+
+  @override
+  Future<ConnectedAppKey> connectApp(String name) async {
+    final response = await post(
+      '/api/auth/connected-apps',
+      body: {'name': name},
+      expect: const {201},
+    );
+    final stored = await credentials.serverUrl;
+    final server = stored.isEmpty ? BuildDefaults.serverUrl : stored;
+    return parse(response.data, (data) {
+      final json = data as Map<String, dynamic>;
+      return ConnectedAppKey(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        apiKey: json['api_key'] as String,
+        mcpUrl: '$server/mcp',
+      );
+    });
+  }
 }

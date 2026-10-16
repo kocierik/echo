@@ -313,7 +313,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SettingsRow(
                 icon: Icons.devices_rounded,
                 title: 'Devices',
-                subtitle: 'Phones signed in to your account.',
+                subtitle: 'Phones, and assistants that read your memory.',
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
