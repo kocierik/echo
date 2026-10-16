@@ -10,6 +10,7 @@ import '../services/device/phone_words.dart';
 import '../services/app/network_policy.dart';
 import '../services/onboarding/onboarding_controller.dart';
 import '../services/app/session_controller.dart';
+import '../services/app/spoken_language.dart';
 import '../models/app_view_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/device_instrument.dart';
@@ -26,6 +27,7 @@ import 'settings/devices_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/notification_settings_screen.dart';
+import 'settings/language_settings_screen.dart';
 import 'settings/voice_settings_screen.dart';
 import 'settings/settings_components.dart';
 
@@ -99,8 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _push(Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+  Future<void> _push(Widget page) async {
+    await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => page));
   }
 
   bool _muteBusy = false;
@@ -234,7 +236,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.record_voice_over_outlined,
                 title: 'Voices',
                 subtitle: 'Your voice, and the people Echo recognises.',
-                onTap: () => _push(const VoiceSettingsScreen()),
+                onTap: () => _push(VoiceSettingsScreen(
+                  language: _preferences.getString(SpokenLanguageStore.key),
+                )),
+              ),
+              SettingsRow(
+                key: const Key('settings-language'),
+                icon: Icons.translate_rounded,
+                title: 'Language',
+                subtitle: spokenLanguages[_preferences.getString(SpokenLanguageStore.key)] ??
+                    'The language you speak.',
+                onTap: () async {
+                  await _push(LanguageSettingsScreen(
+                    store: SpokenLanguageStore(
+                      api: (widget.apiServiceFactory ?? ApiService.new)(),
+                      preferences: _preferences,
+                    ),
+                  ));
+                  if (mounted) setState(() {});
+                },
               ),
               ValueListenableBuilder(
                 valueListenable: _appController,

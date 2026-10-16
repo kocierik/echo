@@ -97,7 +97,9 @@ final class ChatController extends ChangeNotifier {
     ChatClock? clock,
     String Function()? requestIdFactory,
     PhotoTaker? photoTaker,
+    Future<String?> Function()? spokenLanguage,
   })  : _api = api,
+        _spokenLanguage = spokenLanguage,
         _photoTaker = photoTaker,
         _voiceInput = voiceInput,
         _clock = clock ?? DateTime.now,
@@ -105,6 +107,9 @@ final class ChatController extends ChangeNotifier {
 
   final ChatApi _api;
   final PhotoTaker? _photoTaker;
+
+  /// The language the user speaks, for dictation (SpokenLanguageStore.current).
+  final Future<String?> Function()? _spokenLanguage;
   final VoiceInput _voiceInput;
   final ChatClock _clock;
   final String Function() _newRequestId;
@@ -479,11 +484,13 @@ final class ChatController extends ChangeNotifier {
         }
         return;
       }
+      final language = await _spokenLanguage?.call();
       if (!_isVoiceCurrent(generation)) return;
       _emit(_state.copyWith(listening: true));
       await _voiceInput.start(
         onPartial: (text) => _onVoiceText(generation, text),
         onFinal: (text) => _onVoiceText(generation, text),
+        language: language,
       );
     } catch (error) {
       if (!_isVoiceCurrent(generation)) return;

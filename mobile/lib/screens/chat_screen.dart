@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../services/api/api_service.dart';
+import '../services/app/spoken_language.dart';
 import '../services/chat/chat_controller.dart';
 import '../services/device/photo_service.dart';
 import '../services/chat/voice_input.dart';
@@ -70,6 +72,18 @@ final class _ChatScreenState extends State<ChatScreen> {
   final _scrollController = ScrollController();
   int _messageCount = 0;
 
+  /// The language the user speaks, for dictation (kept on the phone, else the account's).
+  Future<String?> _spokenLanguage() async {
+    final api = _api;
+    if (api is! AccountApi) return null;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      return SpokenLanguageStore(api: api as AccountApi, preferences: preferences).current();
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -86,6 +100,7 @@ final class _ChatScreenState extends State<ChatScreen> {
         api: _api,
         voiceInput: widget.voiceInput ?? SpeechToTextVoiceInput(),
         photoTaker: widget.photoTaker,
+        spokenLanguage: _spokenLanguage,
       );
       _ownsController = true;
     }

@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  _languageTests();
+
   test('signIn stores the issued key for the build server', () async {
     late http.Request sent;
     final store = _Store();
@@ -275,6 +277,40 @@ void main() {
 
     final limited = await failure(429, 'Too many accounts from here. Try again in 60 minutes.');
     expect(limited.reason, SignInFailure.tooManyAttempts);
+  });
+}
+
+void _languageTests() {
+  test('register sends the language the user speaks', () async {
+    late http.Request sent;
+    final api = _api(_Store(), (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"k","device_id":"d","user":{"id":"u","email":"ada@example.com"}}',
+        200,
+      );
+    });
+
+    await api.register(
+      email: 'ada@example.com', password: 'whatever long', deviceName: 'x', language: 'it');
+
+    expect((jsonDecode(sent.body) as Map)['language'], 'it');
+  });
+
+  test('me reads the account, setLanguage changes it', () async {
+    final calls = <String>[];
+    final api = _api(_Store(server: 'https://echo.test', key: 'k'), (request) async {
+      calls.add('${request.method} ${request.url.path} ${request.body}');
+      return http.Response('{"email":"ada@example.com","language":"it"}', 200);
+    });
+
+    final me = await api.me();
+    final changed = await api.setLanguage('it');
+
+    expect(me.language, 'it');
+    expect(me.email, 'ada@example.com');
+    expect(changed.language, 'it');
+    expect(calls, ['GET /api/auth/me ', 'PATCH /api/auth/me {"language":"it"}']);
   });
 }
 

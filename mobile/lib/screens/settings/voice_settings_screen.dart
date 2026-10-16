@@ -1,30 +1,46 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/voice.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
+import '../../services/app/spoken_language.dart';
 import '../../theme/app_theme.dart';
 import 'settings_components.dart';
 
-/// The text read aloud to record the user's voice (~20 s at a normal pace).
-const enrollmentText =
-    'Hi Echo, this is my voice. Today is a nice day and I have a lot to do: write a few '
-    'emails, call a friend, buy some bread and maybe take a walk in the park. When I talk '
-    'with the people around me, I want you to know when I am the one speaking and when '
-    'someone else is.';
+/// The text read aloud to record the user's voice (~20 s at a normal pace), in the
+/// language they speak: reading a foreign text sounds unlike their voice.
+const enrollmentTexts = {
+  'en': 'Hi Echo, this is my voice. Today is a nice day and I have a lot to do: write a few '
+      'emails, call a friend, buy some bread and maybe take a walk in the park. When I talk '
+      'with the people around me, I want you to know when I am the one speaking and when '
+      'someone else is.',
+  'it': 'Ciao Echo, questa è la mia voce. Oggi è una bella giornata e ho molte cose da '
+      'fare: scrivere qualche email, chiamare un amico, comprare il pane e magari fare una '
+      'passeggiata nel parco. Quando parlo con le persone intorno a me, voglio che tu '
+      'sappia quando sto parlando io e quando parla qualcun altro.',
+};
+
+/// The text to read for [language]; English for any other.
+String enrollmentTextFor(String? language) =>
+    enrollmentTexts[language] ?? enrollmentTexts['en']!;
 
 /// Known voices: the user's own, recorded here, and the people named in transcripts.
 final class VoiceSettingsScreen extends StatefulWidget {
   const VoiceSettingsScreen({
     this.api,
+    this.language,
     this.clock = DateTime.now,
     this.wait = Future<void>.delayed,
     super.key,
   });
 
   final VoiceApi? api;
+
+  /// The language the user speaks: the text to read is in it.
+  final String? language;
   final DateTime Function() clock;
 
   /// Between enrollment checks (injectable for tests).
@@ -38,6 +54,7 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   late final VoiceApi _api;
   ApiService? _ownedApi;
   VoiceProfiles? _voices;
+  String? _language;
   String? _error;
   bool _loading = true;
 
@@ -45,7 +62,17 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   void initState() {
     super.initState();
     _api = widget.api ?? (_ownedApi = ApiService());
+    _language = widget.language;
+    if (_language == null) unawaited(_loadLanguage());
     unawaited(_load());
+  }
+
+  /// The language kept on the phone (Settings → Language), for the text to read.
+  Future<void> _loadLanguage() async {
+    try {
+      final saved = (await SharedPreferences.getInstance()).getString(SpokenLanguageStore.key);
+      if (mounted && saved != null) setState(() => _language = saved);
+    } catch (_) {}
   }
 
   @override
@@ -75,7 +102,12 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
 
   Future<void> _record() async {
     final learned = await Navigator.of(context).push<bool>(MaterialPageRoute(
-      builder: (_) => VoiceEnrollmentScreen(api: _api, clock: widget.clock, wait: widget.wait),
+      builder: (_) => VoiceEnrollmentScreen(
+        api: _api,
+        language: _language,
+        clock: widget.clock,
+        wait: widget.wait,
+      ),
     ));
     if (learned == true) await _load();
   }
@@ -200,6 +232,7 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
 final class VoiceEnrollmentScreen extends StatefulWidget {
   const VoiceEnrollmentScreen({
     required this.api,
+    this.language,
     this.clock = DateTime.now,
     this.wait = Future<void>.delayed,
     this.minimumReading = const Duration(seconds: 15),
@@ -208,6 +241,9 @@ final class VoiceEnrollmentScreen extends StatefulWidget {
   });
 
   final VoiceApi api;
+
+  /// The language the user speaks: the text to read is in it (English by default).
+  final String? language;
   final DateTime Function() clock;
   final Future<void> Function(Duration) wait;
   final Duration minimumReading;
@@ -319,7 +355,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
               borderRadius: BorderRadius.circular(AppTheme.panelRadius),
             ),
             child: Text(
-              enrollmentText,
+              enrollmentTextFor(widget.language),
               style: textTheme.bodyLarge?.copyWith(fontSize: 18, height: 1.5),
             ),
           ),
