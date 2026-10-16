@@ -77,6 +77,7 @@ async def setup_database():
             text("DELETE FROM api_keys WHERE key_hash <> :keep"), {"keep": TEST_API_KEY_HASH}
         )
         await conn.execute(text("DELETE FROM firmware_releases"))
+        await conn.execute(text("DELETE FROM llm_usage"))
         await conn.execute(text("DELETE FROM photos"))
         await conn.execute(text("DELETE FROM weekly_digests"))
         await conn.execute(text("DELETE FROM digests"))

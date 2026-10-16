@@ -327,3 +327,20 @@ CREATE TABLE firmware_releases (
     image BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- ============================================================
+-- LLM USAGE: model work per user and day, for the cost of Echo (Migration 017)
+-- ============================================================
+CREATE TABLE llm_usage (
+    id UUID PRIMARY KEY,
+    user_id UUID,                 -- null: work no one owned (logged)
+    day DATE NOT NULL,            -- UTC
+    kind VARCHAR(32) NOT NULL,    -- stt, embedding, llm_analysis, llm_query, llm_intent, llm_vision, voice_embedding
+    model VARCHAR(100) NOT NULL,
+    calls INT NOT NULL DEFAULT 0,
+    input_units BIGINT NOT NULL DEFAULT 0,   -- tokens; seconds of audio for stt
+    output_units BIGINT NOT NULL DEFAULT 0,
+    cached_units BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT uq_llm_usage_day UNIQUE NULLS NOT DISTINCT (user_id, day, kind, model)
+);
