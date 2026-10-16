@@ -7,8 +7,11 @@ the work it measures.
 """
 
 import contextlib
+import io
 import logging
+import math
 import uuid
+import wave
 from collections.abc import Iterator
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -43,7 +46,7 @@ async def record_usage(
     input_units: int = 0,
     output_units: int = 0,
     cached_units: int = 0,
-    session_factory=async_session,
+    session_factory=None,
 ) -> None:
     """Adds one call and its units to today's row (UTC) for the owner, kind and model."""
     owner = usage_owner.get()
@@ -71,8 +74,17 @@ async def record_usage(
         },
     )
     try:
-        async with session_factory() as db:
+        async with (session_factory or async_session)() as db:
             await db.execute(statement)
             await db.commit()
     except Exception:
         logger.warning("Could not record model usage (%s, %s)", kind, model, exc_info=True)
+
+
+def wav_seconds(wav_bytes: bytes) -> int:
+    """Whole seconds of audio in a WAV, rounded up (what transcription is billed by)."""
+    try:
+        with wave.open(io.BytesIO(wav_bytes), "rb") as audio:
+            return math.ceil(audio.getnframes() / audio.getframerate())
+    except Exception:
+        return 0

@@ -4,6 +4,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.stt_base import STTResult, STTService
+from app.services.usage import record_usage, wav_seconds
 
 
 class OpenAISTTService(STTService):
@@ -54,6 +55,7 @@ class OpenAISTTService(STTService):
             kwargs["prompt"] = prompt
 
         response = await self.client.audio.transcriptions.create(**kwargs)
+        await record_usage("stt", self.model, input_units=wav_seconds(audio_data))
 
         return STTResult(
             text=response.text,
