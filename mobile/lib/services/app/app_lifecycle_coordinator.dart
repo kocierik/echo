@@ -22,6 +22,7 @@ import '../device/firmware_update.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
 import '../device/live_activity_service.dart';
+import '../device/phone_camera.dart';
 import '../device/phone_words.dart';
 
 typedef LifecycleObserverCallback = void Function(WidgetsBindingObserver);
@@ -147,7 +148,12 @@ final class AppLifecycleCoordinator {
       if (payload != null) appController.handleNotificationPayload(payload);
     }
     // Wearable camera: JPEGs from the wearable (TAKE_PHOTO comes with the commands)
-    final photoService = PhotoService(api: credentialApiService, device: bleService);
+    final photoService = PhotoService(
+      api: credentialApiService,
+      device: bleService,
+      // The camera button still works without the wearable (not connected, muted)
+      phoneCamera: ImagePickerPhoneCamera(),
+    );
     bleService.photoUploader = photoService.uploadFromDevice;
     bleService.onPhotoFailed = photoService.onDeviceFailure;
     // Reminders and Calendar on this iPhone, when the user turned them on

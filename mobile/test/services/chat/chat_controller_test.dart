@@ -87,6 +87,18 @@ void main() {
       expect(controller.state.sending, isFalse);
     });
 
+    test('a cancelled phone camera leaves nothing behind', () async {
+      taker.error = const PhotoCancelledException();
+      controller.setComposerText('Cos\'è?');
+
+      await controller.takePhoto();
+
+      expect(controller.state.messages, isEmpty);
+      expect(controller.state.error, isNull);
+      expect(controller.state.sending, isFalse);
+      expect(controller.state.composerText, 'Cos\'è?');
+    });
+
     test('no camera button without a photo taker', () {
       final plain = ChatController(api: api, voiceInput: voice);
       expect(plain.canTakePhotos, isFalse);

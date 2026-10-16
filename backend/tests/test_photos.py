@@ -595,3 +595,21 @@ async def test_voice_working_lists_requests_and_photos_on_their_way(client, auth
         ("photo", "Che pianta è?"),
     ]
     assert items[1]["session_id"] == photo["chat_session_id"]
+
+
+@pytest.mark.asyncio
+async def test_a_photo_from_the_phone_is_accepted_and_analysed(client, auth_headers, db_session):
+    response = await client.post(
+        "/api/photos", headers=auth_headers, json={"question": "Cos'è?", "source": "phone"}
+    )
+    assert response.status_code == 201
+    photo = response.json()
+    await _upload(client, auth_headers, photo["id"])
+
+    done = await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), VisionLLM(), Embeddings()
+    )
+
+    assert done is True
+    assert (await _photo(db_session, photo["id"])).source == "phone"
+

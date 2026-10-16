@@ -54,6 +54,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Echo uses the camera when you ask it about something in front of you.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Echo needs microphone access for voice commands</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
