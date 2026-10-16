@@ -4,6 +4,7 @@ import '../models/segment.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/panel.dart';
 
 class TranscriptDetailScreen extends StatefulWidget {
   const TranscriptDetailScreen({
@@ -110,72 +111,85 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       children: [
-        Text(
-          'TRANSCRIPT',
-          style: TextStyle(
-            color: palette.text2,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('transcript-text-field'),
-          controller: _textController,
-          enabled: !_busy,
-          minLines: 5,
-          maxLines: null,
-          textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(
-            hintText: 'Transcript text',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        if (_textIsEmpty) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Transcript text is required.',
-            key: const Key('transcript-text-error'),
-            style: TextStyle(color: palette.red, fontSize: 12),
-          ),
-        ],
-        const SizedBox(height: 24),
-        Text(
-          'SPEAKER',
-          style: TextStyle(
-            color: palette.text2,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Semantics(
-          label: 'Speaker',
-          child: SegmentedButton<String>(
-            key: const Key('speaker-selector'),
-            segments: const [
-              ButtonSegment(
-                value: 'self',
-                label: Text('You', key: Key('speaker-self')),
+        // The text and who said it, in one panel
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+            Text(
+              'TRANSCRIPT',
+              style: TextStyle(
+                color: palette.text2,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
-              ButtonSegment(
-                value: 'other',
-                label: Text('Other', key: Key('speaker-other')),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key('transcript-text-field'),
+              controller: _textController,
+              enabled: !_busy,
+              minLines: 5,
+              maxLines: null,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'Transcript text',
+                filled: true,
+                fillColor: palette.surface2,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+                  borderSide: BorderSide.none,
+                ),
               ),
-              ButtonSegment(
-                value: 'unknown',
-                label: Text('Unknown', key: Key('speaker-unknown')),
+            ),
+            if (_textIsEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Transcript text is required.',
+                key: const Key('transcript-text-error'),
+                style: TextStyle(color: palette.red, fontSize: 12),
               ),
             ],
-            selected: {_speaker},
-            onSelectionChanged: _busy
-                ? null
-                : (selection) {
-                    setState(() {
-                      _speaker = selection.single;
-                      _saveError = null;
-                    });
-                  },
+            const SizedBox(height: 24),
+            Text(
+              'SPEAKER',
+              style: TextStyle(
+                color: palette.text2,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Semantics(
+              label: 'Speaker',
+              child: SegmentedButton<String>(
+                key: const Key('speaker-selector'),
+                segments: const [
+                  ButtonSegment(
+                    value: 'self',
+                    label: Text('You', key: Key('speaker-self')),
+                  ),
+                  ButtonSegment(
+                    value: 'other',
+                    label: Text('Other', key: Key('speaker-other')),
+                  ),
+                  ButtonSegment(
+                    value: 'unknown',
+                    label: Text('Unknown', key: Key('speaker-unknown')),
+                  ),
+                ],
+                selected: {_speaker},
+                onSelectionChanged: _busy
+                    ? null
+                    : (selection) {
+                        setState(() {
+                          _speaker = selection.single;
+                          _saveError = null;
+                        });
+                      },
+              ),
+            ),
+            ],
           ),
         ),
         if (_correctionResult != null) ...[
@@ -464,11 +478,10 @@ class _StatusPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: palette.surface,
-        border: Border.all(color: palette.border),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
       ),
       child: Row(
         children: [
@@ -508,7 +521,7 @@ class _ErrorPanel extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.surface,
         border: Border.all(color: palette.red),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
       ),
       child: Row(
         children: [
