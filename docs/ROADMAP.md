@@ -142,9 +142,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       Il parcheggio è il primo; poi le cose (passaporto), le liste (vini, libri), le spese.
       Mockup approvati il 16/10 (tela, riga "Saved"): un pannello in Memories, la pagina Saved, la cosa salvata
       con "The moment", parcheggio a voce
-- [ ] Posti: "Echo, salvami questo posto" → Saved, gruppo Places (solo quando lo chiedi, deciso il 16/10).
-      Più avanti, attivabile in Privacy e spento di default, il posto di ogni conversazione e foto. Niente
-      storico automatico dei posti visitati. Indirizzo dal telefono (gratis); nome del locale da Apple Maps su
+- [ ] Posti: "Echo, salvami questo posto" → Saved, gruppo Places. La posizione si legge SOLO quando l'utente
+      chiede di salvare qualcosa (il parcheggio, un posto, una cosa con il suo posto), mai in automatico su
+      conversazioni e foto, e niente storico dei posti visitati (deciso il 16/10). Indirizzo dal telefono (gratis); nome del locale da Apple Maps su
       iPhone, su Android dalla foto o con Google Places (a pagamento)
 - [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
   - [ ] **"Dove ho parcheggiato"** (la preferita): "Echo, ricordati dove ho parcheggiato" salva la posizione del
