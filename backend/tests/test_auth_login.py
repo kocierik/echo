@@ -1,5 +1,7 @@
 """Signing in gives a phone its own key; signing out and revoking take it away."""
 
+import asyncio
+
 from sqlalchemy import select
 
 from app.core import auth
@@ -158,3 +160,39 @@ async def test_revoke_other_device_and_404_for_foreign_id(client, db_session):
     ada_now = await client.get("/api/conversations", headers={"X-API-Key": ada["api_key"]})
     assert pixel_now.status_code == 401
     assert ada_now.status_code == 200
+
+
+async def test_concurrent_wrong_logins_are_limited(client, db_session):
+    await _owner(db_session)
+
+    answers = await asyncio.gather(
+        *[client.post("/api/auth/login", json=_login(password=f"wrong {i}")) for i in range(30)]
+    )
+
+    codes = [a.status_code for a in answers]
+    assert codes.count(401) <= auth.AUTH_FAILURE_LIMIT
+    assert codes.count(429) >= 30 - auth.AUTH_FAILURE_LIMIT
+
+
+async def test_a_revoked_phone_can_sign_in_again_from_the_same_address(client, db_session):
+    await _owner(db_session)
+    home = {"CF-Connecting-IP": "198.51.100.20"}
+    phone = (await client.post("/api/auth/login", json=_login(), headers=home)).json()
+    other = (
+        await client.post("/api/auth/login", json=_login(name="Pixel"), headers=home)
+    ).json()["api_key"]
+    await client.delete(
+        f"/api/auth/devices/{phone['device_id']}", headers={"X-API-Key": other} | home
+    )
+
+    # The revoked phone, still open, fires a burst of requests with its dead key
+    for _ in range(auth.AUTH_FAILURE_LIMIT + 3):
+        dead = await client.get(
+            "/api/conversations", headers={"X-API-Key": phone["api_key"]} | home
+        )
+        assert dead.status_code == 401
+
+    again = await client.post("/api/auth/login", json=_login(), headers=home)
+    neighbour = await client.get("/api/conversations", headers={"X-API-Key": other} | home)
+    assert again.status_code == 200
+    assert neighbour.status_code == 200
