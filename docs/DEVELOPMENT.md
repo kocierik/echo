@@ -110,13 +110,16 @@ The wearable talks only BLE to the phone ([ADR 0006](adr/0006-ble-relay-through-
 such as `VAD_ENERGY_THRESHOLD` are in `src/config.h`.
 
 Updates without the cable ([ADR 0009](adr/0009-firmware-updates-over-ble.md)): raise
-`FIRMWARE_VERSION_*` in `src/config.h`, then from the repository root
+`FIRMWARE_VERSION_*` in `src/config.h`, then from the repository root, where the server's
+containers run,
 
 ```bash
-ECHO_API_KEY=... make firmware-release NOTES="what changed"   # ECHO_URL defaults to localhost:8000
+make firmware-release NOTES="what changed"
 ```
 
-builds the firmware and publishes it to the server. The app shows "Update Echo" in
+builds the firmware and publishes it inside the api container (`app/cli/firmware.py`). There is
+no upload endpoint: with registration open, any account could otherwise push a firmware to every
+wearable. The app shows "Update Echo" in
 Settings → Device details; the wearable keeps the new firmware only once the app reconnects to it, and
 goes back to the previous one otherwise. The first firmware with updates (0.5.0) is flashed with
 the cable.

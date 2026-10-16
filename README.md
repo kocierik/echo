@@ -338,8 +338,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `GET /api/photos/{id}` (status, answer), `GET /api/photos/{id}/image` (the JPEG).
 
 ### Firmware
-- `POST /api/firmware` (multipart `version`, `notes`, `image`) — publish a build; `make firmware-release`
-  builds and publishes the version in `firmware/src/config.h`.
+- Publishing is not an endpoint: `make firmware-release`, run where the server's containers run,
+  builds the version in `firmware/src/config.h` and publishes it inside the api container.
 - `GET /api/firmware/latest` — the highest version published; `GET /api/firmware/{version}/image`
   — its image, which the app sends to the wearable.
 
