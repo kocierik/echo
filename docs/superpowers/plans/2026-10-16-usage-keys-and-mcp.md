@@ -269,7 +269,7 @@ Added by the user on 16/10: "cosa sai fare?" in Ask answers "Non ho ancora infor
 **Interfaces:**
 - Produces:
   - `def about_echo(connected_apps: list[str], phone_apps: list[str], camera: bool) -> str` — English text the prompt embeds: what Echo does (remembers conversations, answers about them, people, tasks and promises, daily and weekly summaries, acts in the connected apps — listed by name — and in the phone's Reminders/Calendar when on, photos when there is a camera, "Echo, …" voice requests), with 3–4 example questions and where things are in the app (Settings → Apps, Settings → Voices, What Echo can do).
-  - `rag_system_prompt(date_range, about: str = "") -> str`: adds the `about` text and these rules: (1) a question about Echo itself or how to use it → answer from "About Echo"; (2) a general question not about the user's life (a definition, a calculation, a translation) → answer briefly from general knowledge and say it does not come from their memory; (3) a question about the user's past with no support in the context → say so, never guess; always in the question's language.
+  - `rag_system_prompt(date_range, about: str = "") -> str`: adds the `about` text and these rules: (1) a question about Echo itself or how to use it → answer from "About Echo"; (2) a general question not about the user's life (a definition, a calculation, a translation) → answer briefly from general knowledge and say it does not come from their memory; (3) a question about the user's past with no support in the context → say so, never guess; (4) a question that needs live information (weather, news, scores, today's prices) → say Echo cannot see live information, never make it up, and offer what it can (whether the user talked about it); always in the question's language.
   - The empty-context branch (chat and voice) calls the query model with that prompt and the question (no context); `no_results_message` stays only as the fallback when that call fails.
 
 - [ ] **Step 1: Write the failing tests** (`MockLLMService` capturing messages):
@@ -277,7 +277,7 @@ Added by the user on 16/10: "cosa sai fare?" in Ask answers "Non ho ancora infor
   - `test_an_empty_memory_asks_the_model_instead_of_a_fixed_text`: `POST /api/query {"question": "cosa sai fare?"}` with empty retrieval → the mock's reply is the answer, not `_NO_RESULTS["it"]`.
   - `test_a_failing_model_falls_back_to_the_fixed_text`.
   - `test_voice_requests_use_the_same_rules` (pattern of `test_voice_requests.py`).
-  - Evals (`answers.json`, real model, not in CI): "cosa sai fare?" → mentions memory and apps; "come collego Gmail?" → Settings → Apps; "quanto fa il 15% di 80?" → 12 and says it is not from memory; "cosa mi ha detto Marco ieri?" with empty context → says it does not know.
+  - Evals (`answers.json`, real model, not in CI): "cosa sai fare?" → mentions memory and apps; "come collego Gmail?" → Settings → Apps; "quanto fa il 15% di 80?" → 12 and says it is not from memory; "cosa mi ha detto Marco ieri?" with empty context → says it does not know; "che tempo fa domani a Milano?" → says it cannot see live information, gives no forecast.
 - [ ] **Step 2: Run** `sh bt.sh tests/test_about_echo.py` — expect FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** `sh bt.sh tests/test_about_echo.py tests/test_query.py tests/test_query_with_mocks.py tests/test_voice_requests.py` — PASS; then `make eval-llm SUITE=answers` once (real calls) and note the result in the commit message.
