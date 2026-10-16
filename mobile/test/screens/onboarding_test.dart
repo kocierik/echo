@@ -625,7 +625,15 @@ void main() {
     });
 
     testWidgets('without an answer it says the result will be on Today', (tester) async {
-      await pumpFirstResult(tester);
+      final voice = await pumpFirstResult(tester);
+      voice.working = [
+        WorkingItem(
+          key: 'voice:1',
+          kind: 'voice',
+          text: 'Echo, remind me to call Giulia',
+          since: DateTime.utc(2026, 10, 16, 9),
+        ),
+      ];
 
       for (var second = 0; second <= 32; second += 2) {
         await tester.pump(const Duration(seconds: 2));
