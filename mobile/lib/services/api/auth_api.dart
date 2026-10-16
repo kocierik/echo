@@ -21,8 +21,15 @@ final class SignInException implements Exception {
   String toString() => 'SignInException($reason): $message';
 }
 
+/// The phones signed in to the account (Settings → Devices).
+abstract interface class DevicesApi {
+  Future<List<SignedInDevice>> listDevices();
+  Future<void> revokeDevice(String id);
+  Future<void> signOutThisPhone();
+}
+
 /// Signing in gives this phone its own key; signing out and revoking take keys away.
-mixin AuthEndpoints on ApiClient {
+mixin AuthEndpoints on ApiClient implements DevicesApi {
   /// Signs in and keeps the key this phone was given, for the server set in Settings
   /// (development) or the one built into the app.
   Future<void> signIn({required String email, required String password}) async {
@@ -74,11 +81,13 @@ mixin AuthEndpoints on ApiClient {
   }
 
   /// Deletes this phone's key on the server; an already revoked key counts as done.
+  @override
   Future<void> signOutThisPhone() async {
     await post('/api/auth/logout', expect: const {204, 401}, decode: false);
   }
 
   /// The phones signed in to this account, this one marked.
+  @override
   Future<List<SignedInDevice>> listDevices() async {
     final response = await get('/api/auth/devices', shape: JsonShape.list);
     return parse(response.data, (data) {
@@ -89,5 +98,6 @@ mixin AuthEndpoints on ApiClient {
     });
   }
 
+  @override
   Future<void> revokeDevice(String id) => delete('/api/auth/devices/$id');
 }

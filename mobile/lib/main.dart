@@ -171,6 +171,13 @@ class _AppRouterState extends State<AppRouter> {
     super.initState();
     _onboardingController = widget.onboardingControllerFactory();
     _initializeOnboarding(_onboardingController, _onboardingGeneration);
+    if (widget.appController.value.session.loggedOut) {
+      // Signed out (here, or revoked from another phone): close every page left
+      // open on top, Settings included, so the welcome is what shows
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+      });
+    }
   }
 
   Future<void> _initializeOnboarding(

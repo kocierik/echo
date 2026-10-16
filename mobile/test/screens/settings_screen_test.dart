@@ -80,6 +80,7 @@ void main() {
         activityBuilder: (_) => const Scaffold(body: Text('Activity route')),
         integrationsBuilder: (_) =>
             const Scaffold(body: Text('Integrations route')),
+        devicesBuilder: (_) => const Scaffold(body: Text('Devices route')),
       ),
     ));
     await tester.pumpAndSettle();
@@ -102,6 +103,7 @@ void main() {
       'What Echo can do',
       'Server connection',
       'Diagnostics',
+      'Devices',
       'About',
     ];
     final tops = <double>[];
@@ -148,6 +150,14 @@ void main() {
     await tester.tap(find.text('Apps'));
     await tester.pumpAndSettle();
     expect(find.text('Integrations route'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Integrations route'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text('Devices'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Devices'));
+    await tester.pumpAndSettle();
+    expect(find.text('Devices route'), findsOneWidget);
   });
 
   testWidgets('Mute Echo asks the wearable, which then confirms', (tester) async {
