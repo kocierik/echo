@@ -199,11 +199,22 @@ CREATE TABLE api_keys (
     user_id UUID NOT NULL,
     key_hash TEXT NOT NULL,
     name TEXT NOT NULL DEFAULT 'default',
+    platform VARCHAR(20),  -- "ios"/"android" for keys given at sign-in (Migration 015)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_used_at TIMESTAMPTZ
 );
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys (key_hash);
+
+-- ============================================================
+-- USERS: accounts; signing in gives a phone its own API key (Migration 015)
+-- ============================================================
+CREATE TABLE users (
+    id UUID PRIMARY KEY,
+    email VARCHAR(320) NOT NULL UNIQUE,  -- stored lower-cased
+    password_hash TEXT NOT NULL,         -- Argon2id
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- ============================================================
 -- QUERY FEEDBACK: user ratings on RAG answers (Migration 003)
@@ -302,3 +313,16 @@ ALTER TABLE segments ADD COLUMN voice_embedding vector(256);
 ALTER TABLE segments ADD COLUMN voice_profile_id UUID REFERENCES voice_profiles(id) ON DELETE SET NULL;
 ALTER TABLE segments ADD COLUMN voice_similarity FLOAT;
 ALTER TABLE segments ADD COLUMN voice_match VARCHAR(10);      -- auto | suggested | confirmed
+
+-- ============================================================
+-- FIRMWARE RELEASES: wearable firmware for updates over BLE (Migration 014)
+-- ============================================================
+CREATE TABLE firmware_releases (
+    id UUID PRIMARY KEY,
+    version VARCHAR(20) NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    sha256 VARCHAR(64) NOT NULL,
+    notes TEXT,
+    image BYTEA NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

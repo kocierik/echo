@@ -1,0 +1,15 @@
+from sqlalchemy import String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
+
+
+class User(UUIDPrimaryKey, TimestampMixin, Base):
+    """An account: signing in with it gives a phone its own API key."""
+
+    __tablename__ = "users"
+
+    # Stored stripped and lower-cased (normalize_email)
+    email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    # Argon2id (app/services/passwords.py)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
