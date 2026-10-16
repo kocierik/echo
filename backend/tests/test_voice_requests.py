@@ -1213,3 +1213,24 @@ async def test_worker_marks_the_request_working_while_answering(worker):
 
     assert redis.working_seen == [(str(wake.id), "riassumimi le mail")]
     assert redis.keys[WORKING_KEY.format(user_id=USER_ID)] == {}  # cleared once answered
+
+
+@pytest.mark.asyncio
+async def test_a_voice_request_runs_as_the_segment_owner(worker):
+    from app.services.usage import usage_owner
+
+    seen = []
+    answer = worker.llm.complete_json
+
+    async def spied(messages, temperature=0.1):
+        seen.append(usage_owner.get())
+        return await answer(messages, temperature)
+
+    worker.llm.complete_json = spied
+    usage_owner.set(None)
+    wake = _seg("Echo, cosa mi ha detto Marco ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert seen and set(seen) == {USER_ID}

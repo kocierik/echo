@@ -52,6 +52,7 @@ from app.services.memory_answers import answer_without_memory, rag_system_prompt
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
+from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,7 @@ async def _process(
     db: AsyncSession, redis_client, segment_id: uuid.UUID, claim: _Claim
 ) -> bool:
     segment = await db.get(Segment, segment_id)
+    usage_owner.set(segment.user_id if segment is not None else None)
     if segment is None or segment.transcription is None:
         logger.warning(f"[Voice] Segment {segment_id} not found or not transcribed")
         return True

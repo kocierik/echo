@@ -28,6 +28,7 @@ from app.services.transcription_enhancer import (
     is_meaningful_transcription,
     speaker_prefix,
 )
+from app.services.usage import usage_owner
 from app.services.voice_embedding import embed_voice
 from app.services.voice_profiles import list_profiles, recognize
 from app.workers.dead_letter import push_to_dead_letter
@@ -107,6 +108,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
         _, segment_id_bytes = result
         segment_id = uuid.UUID(segment_id_bytes.decode())
         logger.info(f"Processing STT for segment {segment_id}")
+        usage_owner.set(None)  # until the segment is known
 
         async with async_session() as db:
             segment = None
@@ -115,6 +117,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 if claimed_audio is None:
                     continue
                 segment, audio_data = claimed_audio
+                usage_owner.set(segment.user_id)
 
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)

@@ -24,6 +24,7 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import generate_conversation_summary
 from app.services.llm_openai import get_llm_analysis_service
+from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
@@ -61,6 +62,7 @@ async def summarize_closed_conversations(
         conversations = result.scalars().all()
 
         for conversation in conversations:
+            usage_owner.set(conversation.user_id)
             texts_result = await db.execute(
                 select(Transcription.text)
                 .join(Segment, Segment.id == Transcription.segment_id)

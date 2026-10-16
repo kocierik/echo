@@ -35,6 +35,7 @@ from app.services.device_commands import push_device_command
 from app.services.entity_mentions import record_mentions
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
+from app.services.usage import usage_owner
 
 logger = logging.getLogger(__name__)
 
@@ -366,6 +367,8 @@ async def analyse_photo(
         .execution_options(populate_existing=True)
     )
     photo = result.scalar_one_or_none()
+    if photo is not None:
+        usage_owner.set(photo.user_id)
     if photo is None or photo.status != "received":
         return False
     image = photo.image
