@@ -93,6 +93,8 @@ Future<void> _draw(
   await tester.pumpWidget(
     MaterialApp(
       theme: dark ? AppTheme.dark : AppTheme.light,
+      // No cross-fade: the frame drawn is the new theme, not halfway to it
+      themeAnimationDuration: Duration.zero,
       debugShowCheckedModeBanner: false,
       home: Center(
         child: RepaintBoundary(
