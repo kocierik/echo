@@ -201,7 +201,8 @@ CREATE TABLE api_keys (
     name TEXT NOT NULL DEFAULT 'default',
     platform VARCHAR(20),  -- "ios"/"android" for keys given at sign-in (Migration 015)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at TIMESTAMPTZ
+    last_used_at TIMESTAMPTZ,
+    scope VARCHAR(10) NOT NULL DEFAULT 'full'  -- full: REST API; read: connected apps, MCP only (018)
 );
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys (key_hash);

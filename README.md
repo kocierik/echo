@@ -254,6 +254,10 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `GET /api/auth/me` → `{email, language}`; `PATCH /api/auth/me` `{language: "en" | "it"}` — the
   language the account speaks: the wearable's transcription and the app's dictation use it
   (registration takes the phone's; one Echo does not transcribe yet becomes English).
+- `POST /api/auth/connected-apps` (`{name}`) → `{id, name, api_key}`: a **read-only** key for an
+  assistant (Claude, Cursor…), shown once, at most 10 per account. It works only on the MCP
+  server; the REST API answers it 403 "This key is for connected apps only." Listed by
+  `GET /api/auth/devices` with `scope: "read"` (phones and scripts are `"full"`), revoked the same way.
 - `POST /api/auth/logout` — revokes the key that sent it. `GET /api/auth/devices` — the phones signed
   in and the other keys; `DELETE /api/auth/devices/{id}` — revoke one.
 

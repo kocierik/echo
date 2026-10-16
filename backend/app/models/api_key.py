@@ -17,6 +17,8 @@ class ApiKey(UUIDPrimaryKey, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, default="default")
     # "ios" or "android" for keys given at sign-in; None for keys made with make create-key
     platform: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # "full": the REST API (phones, scripts); "read": connected apps, on the MCP server only
+    scope: Mapped[str] = mapped_column(String(10), nullable=False, server_default="full")
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

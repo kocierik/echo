@@ -12,7 +12,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
@@ -90,6 +90,8 @@ class SignedInDevice(BaseModel):
     id: str
     name: str
     platform: str | None
+    # "full" (phones, scripts) or "read" (connected apps)
+    scope: str = "full"
     created_at: datetime | None
     last_used_at: datetime | None
     current: bool
@@ -274,12 +276,59 @@ async def list_devices(
             id=str(key.id),
             name=key.name,
             platform=key.platform,
+            scope=key.scope,
             created_at=key.created_at,
             last_used_at=key.last_used_at,
             current=key.id == current.id,
         )
         for key in keys
     ]
+
+
+MAX_CONNECTED_APPS = 10
+
+
+class ConnectAppRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class ConnectedApp(BaseModel):
+    id: str
+    name: str
+    # Shown once: only its hash is kept
+    api_key: str
+
+
+@router.post(
+    "/connected-apps", response_model=ConnectedApp, status_code=status.HTTP_201_CREATED
+)
+async def connect_app(
+    body: ConnectAppRequest,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """A read-only key for an assistant (Claude, Cursor…): it reads the memory over MCP and
+    can do nothing else. Listed with the devices and revoked like them."""
+    count = await db.scalar(
+        select(func.count())
+        .select_from(ApiKey)
+        .where(ApiKey.user_id == current.user_id, ApiKey.scope == "read")
+    )
+    if count >= MAX_CONNECTED_APPS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"At most {MAX_CONNECTED_APPS} connected apps.",
+        )
+    key = secrets.token_urlsafe(32)
+    record = ApiKey(
+        user_id=current.user_id,
+        key_hash=hash_api_key(key),
+        name=body.name.strip() or "Connected app",
+        scope="read",
+    )
+    db.add(record)
+    await db.commit()
+    return ConnectedApp(id=str(record.id), name=record.name, api_key=key)
 
 
 @router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
