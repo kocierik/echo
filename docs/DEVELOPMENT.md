@@ -74,6 +74,21 @@ cd firmware && pio test -e native
 `make eval-llm` and `make eval-stt` compare models on Echo's own tasks with real API calls
 (cents per run); results and deadlines are in [MODEL-EVALUATION.md](MODEL-EVALUATION.md).
 
+## What Echo costs
+
+Every paid model call is counted per user and day in `llm_usage` (tokens for the language
+and embedding models, seconds of audio for transcription), owned by the key's user during a
+request and by the row's user in each worker job (`app/services/usage.py`).
+
+```bash
+make usage            # the last 7 days; make usage DAYS=30
+```
+
+prints, per user, each day's cost, the average day, the cost per kind of work, the cost per
+hour of speech and the Composio actions run. Prices are in `backend/app/usage_prices.py`, read
+from public aggregators on 16/10 and **not verified** against OpenAI's and Deepgram's pricing
+pages: check them before setting customer prices. A model without a price shows `?`.
+
 ## Database migrations (Alembic)
 
 - An empty database is created by `alembic upgrade head` alone: 001 creates the extensions
