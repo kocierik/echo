@@ -95,6 +95,77 @@ void main() {
     expect(find.text('This phone was signed out.'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('signing in again does not rebuild the app from scratch', (tester) async {
+    final preferences = _FakeAppPreferences();
+    final sessions = StreamController<SessionState>.broadcast();
+    addTearDown(sessions.close);
+    final appController = AppController(
+      initialDevice: const DeviceStatus(connectionState: DeviceConnectionState.unpaired),
+      deviceStates: const Stream<DeviceStatus>.empty(),
+      initialSession: const SessionState(SessionStatus.loggedIn),
+      sessionStates: sessions.stream,
+      preferences: preferences,
+    );
+    await appController.initialize();
+    addTearDown(appController.dispose);
+    var made = 0;
+    OnboardingController onboarding() {
+      made++;
+      return OnboardingController(
+        api: _FakeOnboardingApi(),
+        permissions: _FakeOnboardingPermissions(),
+        pairing: _FakeOnboardingPairing(),
+        preferences: preferences,
+      );
+    }
+
+    await tester.pumpWidget(EchoApp(appController: appController, onboardingControllerFactory: onboarding));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(made, 1);
+
+    sessions.add(const SessionState(SessionStatus.loggedOut));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(made, 2); // setup starts over
+
+    sessions.add(const SessionState(SessionStatus.loggedIn));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(made, 2); // back in: nothing is thrown away
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed cleanup after a revoked key says so and offers to retry',
+      (tester) async {
+    final preferences = _FakeAppPreferences();
+    final appController = AppController(
+      initialDevice: const DeviceStatus(connectionState: DeviceConnectionState.unpaired),
+      deviceStates: const Stream<DeviceStatus>.empty(),
+      initialSession: const SessionState(
+        SessionStatus.cleanupFailed,
+        error: 'Logout cleanup failed: API credentials: keychain locked',
+        reason: 'This phone was signed out.',
+      ),
+      sessionStates: const Stream<SessionState>.empty(),
+      preferences: preferences,
+    );
+    await appController.initialize();
+    addTearDown(appController.dispose);
+
+    await tester.pumpWidget(EchoApp(
+      appController: appController,
+      onboardingControllerFactory: () => OnboardingController(
+        api: _FakeOnboardingApi(),
+        permissions: _FakeOnboardingPermissions(),
+        pairing: _FakeOnboardingPairing(),
+        preferences: preferences,
+      ),
+    ));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('This phone was signed out.'), findsOneWidget);
+    expect(find.byKey(const Key('signed-out-retry')), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
 
 final class _FakeAppPreferences implements AppPreferences {
