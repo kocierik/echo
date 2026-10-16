@@ -1,4 +1,3 @@
 {
-  "ECHO_SERVER_URL": "https://echo.man.ovh",
-  "ECHO_API_KEY": "your-api-key"
+  "ECHO_SERVER_URL": "https://echo.man.ovh"
 }

@@ -16,7 +16,7 @@ what is left.
 cp .env.example .env          # set OPENAI_API_KEY (and COMPOSIO_API_KEY for actions)
 docker compose up --build -d
 make db-migrate               # Alembic creates extensions, tables and indexes
-make create-key               # prints a random API key once: put it in the app
+make create-user EMAIL=you@example.com   # your account: the app signs in with it
 curl http://localhost:8000/health
 ```
 
@@ -41,7 +41,9 @@ Skipping the migrations leaves the code ahead of the database: see [Troubleshoot
 | `make db-migrate` | `alembic upgrade head` on the `echo` database |
 | `make db-new-migration MSG="..."` | Autogenerate a migration from the models |
 | `make db-reset` | Drop and recreate the schema (**deletes all data**) |
-| `make create-key` | Create an API key; random unless `KEY=...` is given, printed only once |
+| `make create-user EMAIL=…` | Create an account (asks the password); attaches to the owner's existing data unless `USER_ID=…` |
+| `make set-password EMAIL=…` | Set an account's password (asks it) |
+| `make create-key` | Create an API key for scripts; random unless `KEY=...` is given, printed only once |
 | `make revoke-example-key` | Delete the README's example key `my-secret-key` |
 | `make test-all` | All backend tests in the api container, on `echo_test` |
 | `make test` | DB-free backend unit tests |
@@ -88,12 +90,13 @@ cd firmware && pio test -e native
 
 ```bash
 cd mobile
-cp dart_defines.example.json dart_defines.json   # git-ignored: server URL and API key
+cp dart_defines.example.json dart_defines.json   # git-ignored: the server URL
 flutter run --dart-define-from-file=dart_defines.json
 ```
 
-The values prefill the onboarding (the server URL defaults to `https://echo.man.ovh`). Pairing can
-be skipped and done later from Settings → Device. Details in [mobile/README.md](../mobile/README.md).
+The app signs in to that server (default `https://echo.man.ovh`) with an account made by
+`make create-user`; no key is compiled in. Pairing can be skipped and done later from
+Settings → Device. Details in [mobile/README.md](../mobile/README.md).
 
 ## Firmware
 

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Echo's graphite ground (dark theme), behind the launch mark -->
+    <color name="launch_background">#1C1E20</color>
+</resources>
