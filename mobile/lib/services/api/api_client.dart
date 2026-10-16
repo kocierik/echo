@@ -43,6 +43,14 @@ abstract class ApiClient {
   static Stream<void> get unauthorized => _unauthorized.stream;
   static final _unauthorized = StreamController<void>.broadcast();
 
+  /// A 401 for the key the request carried: reported only while that key is still
+  /// the stored one (a request sent before signing in again says nothing).
+  @protected
+  Future<void> reportUnauthorized(String? sentKey) async {
+    final current = (await credentials.headers)['X-API-Key'];
+    if (sentKey == null || sentKey == current) _unauthorized.add(null);
+  }
+
   @protected
   final http.Client httpClient;
   @protected
@@ -82,6 +90,7 @@ abstract class ApiClient {
     final headers = await credentials.headers;
     return send(
       () => httpClient.get(target, headers: headers),
+      sentKey: headers['X-API-Key'],
       expect: expect,
       shape: shape,
     );
@@ -105,6 +114,7 @@ abstract class ApiClient {
         headers: headers,
         body: body == null ? null : jsonEncode(body),
       ),
+      sentKey: headers['X-API-Key'],
       expect: expect,
       shape: shape,
       decode: decode,
@@ -123,6 +133,7 @@ abstract class ApiClient {
     final headers = await credentials.headers;
     return send(
       () => httpClient.patch(target, headers: headers, body: jsonEncode(body)),
+      sentKey: headers['X-API-Key'],
       expect: expect,
       shape: shape,
     );
@@ -140,6 +151,7 @@ abstract class ApiClient {
     final headers = await credentials.headers;
     return send(
       () => httpClient.put(target, headers: headers, body: jsonEncode(body)),
+      sentKey: headers['X-API-Key'],
       expect: expect,
       shape: shape,
       decode: decode,
@@ -152,6 +164,7 @@ abstract class ApiClient {
     final headers = await credentials.headers;
     await send(
       () => httpClient.delete(target, headers: headers),
+      sentKey: headers['X-API-Key'],
       expect: expect,
       decode: false,
     );
@@ -174,6 +187,7 @@ abstract class ApiClient {
     try {
       final response = await send(
         () => httpClient.get(Uri.parse(key), headers: headers),
+        sentKey: headers['X-API-Key'],
         expect: const {200},
         shape: shape,
       );
@@ -198,6 +212,7 @@ abstract class ApiClient {
       () => httpClient.get(target, headers: headers).timeout(queryTimeout),
     );
     if (response.statusCode != 200) {
+      if (response.statusCode == 401) await reportUnauthorized(headers['X-API-Key']);
       throw statusException(response.statusCode, response.body);
     }
     return response.bodyBytes;
@@ -223,7 +238,7 @@ abstract class ApiClient {
     }
 
     final result = await guard(() => transfer().timeout(uploadTimeout));
-    if (result.statusCode == 401) _unauthorized.add(null);
+    if (result.statusCode == 401) await reportUnauthorized(request.headers['X-API-Key']);
     return result;
   }
 
@@ -233,6 +248,7 @@ abstract class ApiClient {
   Future<ApiResponse> send(
     Future<http.Response> Function() request, {
     required Set<int> expect,
+    String? sentKey,
     bool decode = true,
     JsonShape shape = JsonShape.any,
     Duration? timeout,
@@ -240,7 +256,9 @@ abstract class ApiClient {
     final response =
         await guard(() => request().timeout(timeout ?? requestTimeout));
     if (!expect.contains(response.statusCode)) {
-      if (response.statusCode == 401) _unauthorized.add(null);
+      if (response.statusCode == 401) {
+        await reportUnauthorized(sentKey ?? response.request?.headers['X-API-Key']);
+      }
       throw statusException(response.statusCode, response.body);
     }
     return ApiResponse(

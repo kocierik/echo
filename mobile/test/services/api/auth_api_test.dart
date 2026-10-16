@@ -165,6 +165,70 @@ void main() {
 
     await api.signOutThisPhone();
   });
+
+  test('signing in again first signs out the old key', () async {
+    final calls = <String>[];
+    final store = _Store(server: 'https://echo.test', key: 'old');
+    final api = _api(store, (request) async {
+      calls.add('${request.method} ${request.url.path} ${request.headers['X-API-Key']}');
+      if (request.url.path == '/api/auth/logout') return http.Response('', 204);
+      return http.Response(
+        '{"api_key":"new","device_id":"d","user":{"id":"u","email":"e@x.y"}}',
+        200,
+      );
+    });
+
+    await api.signIn(email: 'e@x.y', password: 'whatever');
+
+    expect(calls, ['POST /api/auth/logout old', 'POST /api/auth/login null']);
+    expect(store.saved?.$2, 'new');
+  });
+
+  test('a 401 for a key already replaced is not reported', () async {
+    final events = <void>[];
+    final subscription = ApiClient.unauthorized.listen(events.add);
+    addTearDown(subscription.cancel);
+    final store = _Store(server: 'https://echo.test', key: 'old');
+    final api = _api(store, (_) async {
+      // Signed in again while this request was on its way
+      store.key = 'new';
+      return http.Response('{"detail":"Invalid API key"}', 401);
+    });
+
+    await expectLater(api.listDevices(), throwsA(anything));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events, isEmpty);
+  });
+
+  test('downloads and the chat stream report a 401 too', () async {
+    final events = <void>[];
+    final subscription = ApiClient.unauthorized.listen(events.add);
+    addTearDown(subscription.cancel);
+    final api = _api(_Store(server: 'https://echo.test', key: 'k'),
+        (_) async => http.Response('{"detail":"Invalid API key"}', 401));
+
+    await expectLater(api.exportData(), throwsA(anything));
+    await expectLater(api.query('hi', onToken: (_) {}), throwsA(anything));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events, hasLength(2));
+  });
+
+  test('signIn names the phone by its model', () async {
+    late http.Request sent;
+    final api = _api(_Store(), (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"k","device_id":"d","user":{"id":"u","email":"e@x.y"}}',
+        200,
+      );
+    });
+
+    await api.signIn(email: 'e@x.y', password: 'whatever', deviceName: 'iPhone 15 Pro');
+
+    expect((jsonDecode(sent.body) as Map)['device_name'], 'iPhone 15 Pro');
+  });
 }
 
 ApiService _api(_Store store, Future<http.Response> Function(http.Request) answer) {
@@ -175,7 +239,7 @@ final class _Store implements ApiCredentialStore {
   _Store({this.server = '', this.key});
 
   final String server;
-  final String? key;
+  String? key;
   (String, String)? saved;
 
   @override

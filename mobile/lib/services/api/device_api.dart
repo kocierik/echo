@@ -25,6 +25,7 @@ mixin DeviceEndpoints on ApiClient implements DeviceCommandsApi, PhoneAppsApi {
     final headers = await credentials.headers;
     final response = await send(
       () => httpClient.get(target, headers: headers),
+      sentKey: headers['X-API-Key'],
       expect: const {200},
       shape: JsonShape.map,
       // The server holds the request open for up to `wait`

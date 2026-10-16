@@ -5,6 +5,7 @@ import '../../models/signed_in_device.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'build_defaults.dart';
+import '../device/phone_name.dart';
 
 /// Why signing in failed.
 enum SignInFailure { wrongCredentials, tooManyAttempts, noConnection, server }
@@ -32,9 +33,23 @@ abstract interface class DevicesApi {
 mixin AuthEndpoints on ApiClient implements DevicesApi {
   /// Signs in and keeps the key this phone was given, for the server set in Settings
   /// (development) or the one built into the app.
-  Future<void> signIn({required String email, required String password}) async {
+  ///
+  /// [deviceName] names the phone in Devices; by default its model.
+  Future<void> signIn({
+    required String email,
+    required String password,
+    String? deviceName,
+  }) async {
+    // Signing in again (back from the next step): the key it replaces goes first, so
+    // no ghost phone stays in Devices
+    if (await credentials.configured) {
+      try {
+        await signOutThisPhone();
+      } catch (_) {}
+    }
     final stored = await credentials.serverUrl;
     final server = stored.isEmpty ? BuildDefaults.serverUrl : stored;
+    final name = deviceName ?? await phoneName();
     final ApiResponse response;
     try {
       // 401 and 429 are answers here, not a revoked key
@@ -45,7 +60,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
           body: jsonEncode({
             'email': email.trim(),
             'password': password,
-            'device_name': Platform.isIOS ? 'iPhone' : 'Android phone',
+            'device_name': name,
             'platform': Platform.isIOS ? 'ios' : 'android',
           }),
         ),
@@ -83,7 +98,13 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
   /// Deletes this phone's key on the server; an already revoked key counts as done.
   @override
   Future<void> signOutThisPhone() async {
-    await post('/api/auth/logout', expect: const {204, 401}, decode: false);
+    // Short: logging out must not hang on an unreachable server
+    await post(
+      '/api/auth/logout',
+      expect: const {204, 401},
+      decode: false,
+      timeout: const Duration(seconds: 3),
+    );
   }
 
   /// The phones signed in to this account, this one marked.
