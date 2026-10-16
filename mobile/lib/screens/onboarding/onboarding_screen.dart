@@ -2,10 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../services/api/build_defaults.dart';
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
-import 'backend_step.dart';
+import 'email_sign_in_step.dart';
 import 'pairing_step.dart';
 import 'permissions_step.dart';
 import 'welcome_step.dart';
@@ -25,8 +24,8 @@ final class OnboardingScreen extends StatefulWidget {
 }
 
 final class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _serverController = TextEditingController(text: BuildDefaults.serverUrl);
-  final _apiKeyController = TextEditingController(text: BuildDefaults.apiKey);
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   @override
   void initState() {
@@ -44,23 +43,28 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   void dispose() {
-    _serverController.dispose();
-    _apiKeyController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handlePrimary(OnboardingState state) async {
     switch (state.step) {
-      case OnboardingStep.backend:
-        await widget.controller.submitBackend(
-          _serverController.text,
-          _apiKeyController.text,
+      case OnboardingStep.signIn:
+        await widget.controller.signIn(
+          _emailController.text,
+          _passwordController.text,
         );
       case OnboardingStep.permissions:
         await widget.controller.requestPermissions();
       case OnboardingStep.pairing:
         await widget.controller.pair();
       case OnboardingStep.privacy:
+        await widget.controller.finishPrivacy();
+        if (mounted && widget.controller.value.completed) {
+          widget.onComplete();
+        }
+      case OnboardingStep.firstResult:
         await widget.controller.complete();
         if (mounted && widget.controller.value.completed) {
           widget.onComplete();
@@ -73,6 +77,26 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
     return ValueListenableBuilder<OnboardingState>(
       valueListenable: widget.controller,
       builder: (context, state, child) {
+        if (state.initialized && state.step == OnboardingStep.signIn && state.showWelcome) {
+          return Scaffold(
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Spacer(),
+                    FilledButton(
+                      key: const Key('welcome-email'),
+                      onPressed: widget.controller.continueWithEmail,
+                      child: const Text('Continue with email'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
         return Scaffold(
           body: SafeArea(
             child: Padding(
@@ -112,10 +136,11 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Widget _step(OnboardingState state) {
     return switch (state.step) {
-      OnboardingStep.backend => BackendStep(
-          serverController: _serverController,
-          apiKeyController: _apiKeyController,
+      OnboardingStep.signIn => EmailSignInStep(
+          emailController: _emailController,
+          passwordController: _passwordController,
           enabled: !state.busy,
+          onSubmit: () => unawaited(_handlePrimary(state)),
         ),
       OnboardingStep.permissions => PermissionsStep(
           backgroundExplanation:
@@ -128,6 +153,10 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
           paired: state.paired,
         ),
       OnboardingStep.privacy => const WelcomeStep(),
+      OnboardingStep.firstResult => Text(
+          'Try it now',
+          style: Theme.of(context).textTheme.headlineLarge,
+        ),
     };
   }
 
@@ -183,7 +212,7 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: const Text('Skip for now'),
               ),
             ),
-          if (state.step != OnboardingStep.backend)
+          if (state.step != OnboardingStep.firstResult)
             SizedBox(
               height: 44,
               child: TextButton.icon(
@@ -199,10 +228,11 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
 
   String _primaryLabel(OnboardingStep step) {
     return switch (step) {
-      OnboardingStep.backend => 'Connect backend',
+      OnboardingStep.signIn => 'Sign in',
       OnboardingStep.permissions => 'Allow and continue',
       OnboardingStep.pairing => 'Pair Echo',
       OnboardingStep.privacy => 'Start using Echo',
+      OnboardingStep.firstResult => 'Go to Today',
     };
   }
 }
@@ -235,7 +265,7 @@ final class _OnboardingHeader extends StatelessWidget {
               // Takes the free space and shortens on narrow screens with large text
               Expanded(
                 child: Text(
-                  'Step ${step.index + 1} of ${OnboardingStep.values.length}',
+                  'Step ${step.index + 1} of ${4}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
@@ -246,14 +276,14 @@ final class _OnboardingHeader extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Semantics(
-            label: 'Onboarding progress: step ${step.index + 1} of 4',
+            label: 'Onboarding progress: step ${step.index.clamp(0, 3) + 1} of 4',
             child: Row(
-              children: List.generate(OnboardingStep.values.length, (index) {
+              children: List.generate(4, (index) {
                 return Expanded(
                   child: Container(
                     height: 4,
                     margin: EdgeInsets.only(
-                      right: index == OnboardingStep.values.length - 1 ? 0 : 6,
+                      right: index == 4 - 1 ? 0 : 6,
                     ),
                     decoration: BoxDecoration(
                       color: index <= step.index ? palette.accent : palette.border,

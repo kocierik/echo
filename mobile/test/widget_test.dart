@@ -2,6 +2,7 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/session_state.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/services/onboarding/onboarding_controller.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo_app/main.dart';
@@ -33,10 +34,10 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Connect your backend'), findsOneWidget);
-    expect(find.text('Server URL'), findsOneWidget);
-    expect(find.text('API Key'), findsOneWidget);
-    expect(find.text('Connect backend'), findsOneWidget);
+    // A fresh install opens on the welcome; no server or key is ever asked
+    expect(find.byKey(const Key('welcome-email')), findsOneWidget);
+    expect(find.text('Server URL'), findsNothing);
+    expect(find.text('API Key'), findsNothing);
   });
 }
 
@@ -73,15 +74,10 @@ final class _FakeAppPreferences implements AppPreferences {
 
 final class _FakeOnboardingApi implements OnboardingApi {
   @override
-  Future<void> configure(String serverUrl, String apiKey) async {}
-
-  @override
   Future<bool> isConfigured() async => false;
 
   @override
-  Future<bool> validateCredentials(String serverUrl, String apiKey) async {
-    return true;
-  }
+  Future<void> signIn(String email, String password) async {}
 }
 
 final class _FakeOnboardingPermissions implements OnboardingPermissions {

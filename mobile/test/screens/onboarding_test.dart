@@ -1,6 +1,6 @@
 import 'package:echo_app/screens/onboarding/onboarding_screen.dart';
 import 'package:echo_app/services/app/app_preferences.dart';
-import 'package:echo_app/services/api/build_defaults.dart';
+import 'package:echo_app/services/api/auth_api.dart';
 import 'package:echo_app/services/onboarding/onboarding_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -8,39 +8,120 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('OnboardingController', () {
-    test('fresh install starts at backend without requesting permissions',
-        () async {
+    test('a fresh install starts on the welcome', () async {
       final fixture = _Fixture();
 
       await fixture.controller.initialize();
 
-      expect(fixture.controller.value.step, OnboardingStep.backend);
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(fixture.controller.value.showWelcome, isTrue);
       expect(fixture.permissions.totalCalls, 0);
     });
 
-    test('invalid backend stays put and a valid retry advances', () async {
+    test('the email form opens from the welcome and goes back to it', () async {
       final fixture = _Fixture();
       await fixture.controller.initialize();
-      fixture.api.valid = false;
 
-      await fixture.controller.submitBackend('https://echo.test', 'bad-key');
+      fixture.controller.continueWithEmail();
+      expect(fixture.controller.value.showWelcome, isFalse);
+      fixture.controller.backToWelcome();
+      expect(fixture.controller.value.showWelcome, isTrue);
+    });
 
-      expect(fixture.controller.value.step, OnboardingStep.backend);
-      expect(fixture.controller.value.error, isNotNull);
-      fixture.api.valid = true;
-      await fixture.controller.submitBackend('https://echo.test', 'good-key');
+    test('empty fields ask for both', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+
+      await fixture.controller.signIn('  ', '');
+
+      expect(fixture.controller.value.error, 'Enter your email and password.');
+      expect(fixture.api.signInCalls, 0);
+    });
+
+    test('signIn reports no connection, not wrong password', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+      fixture.api.signInError = const SignInException(
+        SignInFailure.noConnection,
+        'No connection. Check your internet and try again.',
+      );
+
+      await fixture.controller.signIn('erik@example.com', 'correct horse');
+
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(fixture.controller.value.busy, isFalse);
+      expect(
+        fixture.controller.value.error,
+        'No connection. Check your internet and try again.',
+      );
+    });
+
+    test('a valid sign-in advances to permissions and keeps the progress', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+      fixture.controller.continueWithEmail();
+
+      await fixture.controller.signIn(' erik@example.com ', 'correct horse');
+
+      expect(fixture.api.signIns, [('erik@example.com', 'correct horse')]);
       expect(fixture.controller.value.step, OnboardingStep.permissions);
-      expect(fixture.api.configureCalls, 1);
+      expect(fixture.controller.value.error, isNull);
       expect(
         fixture.preferences.getInt(OnboardingController.highestStepKey),
-        OnboardingStep.backend.index,
+        OnboardingStep.signIn.index,
       );
+    });
+
+    test('goBack from permissions returns to the email form, not the welcome', () async {
+      final fixture = _Fixture(configured: true, highestStep: OnboardingStep.signIn.index);
+      await fixture.controller.initialize();
+      expect(fixture.controller.value.step, OnboardingStep.permissions);
+
+      fixture.controller.goBack();
+
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(fixture.controller.value.showWelcome, isFalse);
+    });
+
+    test('a completed legacy install skips sign-in', () async {
+      // The owner's phone before the update: a pasted key, setup done
+      final fixture = _Fixture(
+        configured: true,
+        hasIdentity: true,
+        highestStep: 3,
+        completed: true,
+      );
+
+      await fixture.controller.initialize();
+
+      expect(fixture.controller.value.completed, isTrue);
+      expect(fixture.api.signInCalls, 0);
+    });
+
+    test('privacy goes to first result only when paired', () async {
+      final paired = _Fixture(
+        configured: true,
+        hasIdentity: true,
+        highestStep: OnboardingStep.pairing.index,
+      );
+      await paired.controller.initialize();
+      await paired.controller.finishPrivacy();
+      expect(paired.controller.value.step, OnboardingStep.firstResult);
+      expect(paired.controller.value.completed, isFalse);
+
+      final unpaired = _Fixture(
+        configured: true,
+        highestStep: OnboardingStep.pairing.index,
+      );
+      await unpaired.controller.initialize();
+      await unpaired.controller.finishPrivacy();
+      expect(unpaired.controller.value.completed, isTrue);
     });
 
     test('Bluetooth denial blocks remaining permission requests', () async {
       final fixture = _Fixture(
         configured: true,
-        highestStep: OnboardingStep.backend.index,
+        highestStep: OnboardingStep.signIn.index,
       );
       fixture.permissions.bluetoothGranted = false;
       await fixture.controller.initialize();
@@ -58,7 +139,7 @@ void main() {
     test('notification denial proceeds in degraded mode', () async {
       final fixture = _Fixture(
         configured: true,
-        highestStep: OnboardingStep.backend.index,
+        highestStep: OnboardingStep.signIn.index,
       );
       fixture.permissions.notificationGranted = false;
       await fixture.controller.initialize();
@@ -77,7 +158,7 @@ void main() {
     test('voice denial proceeds with voice Ask unavailable', () async {
       final fixture = _Fixture(
         configured: true,
-        highestStep: OnboardingStep.backend.index,
+        highestStep: OnboardingStep.signIn.index,
       );
       fixture.permissions.voiceGranted = false;
       await fixture.controller.initialize();
@@ -91,7 +172,7 @@ void main() {
     test('back navigation does not lower persisted progress', () async {
       final fixture = _Fixture(
         configured: true,
-        highestStep: OnboardingStep.backend.index,
+        highestStep: OnboardingStep.signIn.index,
       );
       await fixture.controller.initialize();
       await fixture.controller.requestPermissions();
@@ -108,11 +189,11 @@ void main() {
     test('persisted progress resumes every incomplete step', () async {
       final backend = _Fixture();
       await backend.controller.initialize();
-      expect(backend.controller.value.step, OnboardingStep.backend);
+      expect(backend.controller.value.step, OnboardingStep.signIn);
 
       final permissions = _Fixture(
         configured: true,
-        highestStep: OnboardingStep.backend.index,
+        highestStep: OnboardingStep.signIn.index,
       );
       await permissions.controller.initialize();
       expect(permissions.controller.value.step, OnboardingStep.permissions);
@@ -197,7 +278,8 @@ void main() {
 
       await fixture.controller.initialize();
 
-      expect(fixture.controller.value.step, OnboardingStep.backend);
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(fixture.controller.value.showWelcome, isTrue);
       expect(fixture.controller.value.completed, isFalse);
     });
 
@@ -282,7 +364,7 @@ void main() {
       (tester) async {
     final fixture = _Fixture(
       configured: true,
-      highestStep: OnboardingStep.backend.index,
+      highestStep: OnboardingStep.signIn.index,
     );
 
     await _pumpOnboarding(tester, fixture.controller);
@@ -293,9 +375,9 @@ void main() {
 
   testWidgets('final CTA persists and invokes completion callback',
       (tester) async {
+    // Without a paired Echo there is no first result to wait for
     final fixture = _Fixture(
       configured: true,
-      hasIdentity: true,
       highestStep: OnboardingStep.pairing.index,
     );
     var completed = false;
@@ -327,17 +409,18 @@ void main() {
     expect(find.byKey(const Key('onboarding-skip-pairing')), findsNothing);
   });
 
-  testWidgets('prefills the backend URL from the build defaults',
+  testWidgets('a fresh install asks to sign in, never for a server',
       (tester) async {
     final fixture = _Fixture();
 
     await _pumpOnboarding(tester, fixture.controller);
+    await tester.tap(find.byKey(const Key('welcome-email')));
+    await tester.pumpAndSettle();
 
-    expect(
-      find.widgetWithText(TextField, BuildDefaults.serverUrl),
-      findsOneWidget,
-    );
-    expect(BuildDefaults.serverUrl, 'https://echo.man.ovh');
+    expect(find.byKey(const Key('sign-in-email')), findsOneWidget);
+    expect(find.byKey(const Key('sign-in-password')), findsOneWidget);
+    expect(find.textContaining('https://'), findsNothing);
+    expect(find.textContaining('API key'), findsNothing);
   });
 
   testWidgets('fits a 320 wide screen at 1.3 text scale', (tester) async {
@@ -354,7 +437,7 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Connect backend'), findsOneWidget);
+    expect(find.byKey(const Key('welcome-email')), findsOneWidget);
   });
 }
 
@@ -412,20 +495,18 @@ final class _FakeApi implements OnboardingApi {
   _FakeApi({required this.configured});
 
   bool configured;
-  bool valid = true;
-  int configureCalls = 0;
+  SignInException? signInError;
+  final signIns = <(String, String)>[];
+
+  int get signInCalls => signIns.length;
 
   @override
   Future<bool> isConfigured() async => configured;
 
   @override
-  Future<bool> validateCredentials(String serverUrl, String apiKey) async {
-    return valid;
-  }
-
-  @override
-  Future<void> configure(String serverUrl, String apiKey) async {
-    configureCalls++;
+  Future<void> signIn(String email, String password) async {
+    signIns.add((email, password));
+    if (signInError case final error?) throw error;
     configured = true;
   }
 }

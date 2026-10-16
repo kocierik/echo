@@ -11,13 +11,8 @@ final class ApiServiceOnboardingApi implements OnboardingApi {
   Future<bool> isConfigured() => _api.isConfigured();
 
   @override
-  Future<bool> validateCredentials(String serverUrl, String apiKey) {
-    return _api.validateCredentials(serverUrl, apiKey);
-  }
-
-  @override
-  Future<void> configure(String serverUrl, String apiKey) {
-    return _api.configure(serverUrl, apiKey);
+  Future<void> signIn(String email, String password) {
+    return _api.signIn(email: email, password: password);
   }
 }
 
