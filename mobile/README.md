@@ -23,23 +23,25 @@ descriptions. Set your signing team in Xcode; Android release signing is not con
 
 ## Configuration
 
-On first launch the onboarding asks for:
-- **Server URL:** your Echo backend, prefilled with `https://echo.man.ovh`
-- **API Key:** your Echo API key
+On first launch the app shows a welcome and signs in with an Echo account (email and password,
+made on the server with `make create-user`). Signing in gives this phone its own API key, kept in
+the Keychain / Android Keystore; Settings → Devices signs it out or revokes other phones. Apple
+and Google sign-in are shown and say they are coming.
 
-Both can be compiled in so the onboarding only needs a tap on Continue. Copy
-`dart_defines.example.json` to `dart_defines.json` (git-ignored), put your key in it and run:
+The server address is built in: `https://echo.man.ovh` unless `dart_defines.json` (git-ignored, a
+copy of `dart_defines.example.json`) says otherwise:
 
 ```bash
 flutter run --dart-define-from-file=dart_defines.json
 flutter build ios --dart-define-from-file=dart_defines.json
 ```
 
-A key compiled in can be read from the app binary: keep such builds for your own devices.
+No key is ever compiled in. Settings → Server connection can point a development build elsewhere.
 
-The onboarding then requests Bluetooth, notification and microphone permissions and pairs the
-wearable. Without the wearable at hand, **Skip for now** finishes the setup; pair it later from
-Settings → Device → **Pair Echo**.
+After signing in the app requests Bluetooth, notification and microphone permissions and pairs the
+wearable. Without the wearable at hand, **I don't have it with me** finishes the setup; pair it
+later from Settings → Device → **Pair Echo**. With a paired Echo, setup ends with a first voice
+request ("Echo, remind me to …") and its answer.
 
 ## Features
 

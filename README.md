@@ -115,13 +115,18 @@ docker compose exec api python -m alembic upgrade head
 
 (`make db-reset` does the same.)
 
-### 4. Create an API key
+### 4. Create your account
 
 ```bash
-make create-key              # prints a random key once
+make create-user EMAIL=you@example.com     # asks the password (10+ characters) twice
+make set-password EMAIL=you@example.com    # to change it later
 ```
 
-The examples below use `my-secret-key` (`make create-key KEY=my-secret-key`) for local testing
+Registration is closed: accounts are created only on the server. `create-user` attaches the
+account to the existing owner, so data recorded before stays yours. Signing in on a phone gives
+that phone its own API key; Settings → Devices lists the phones and revokes one.
+
+For scripts and plain HTTP, `make create-key` still prints a key once. The examples below use `my-secret-key` (`make create-key KEY=my-secret-key`) for local testing
 only: that key is public, so never keep it on a backend reachable from the internet
 (`make revoke-example-key` deletes it; `make deploy` warns while it is active).
 
@@ -132,9 +137,10 @@ cd firmware && pio run -t upload        # XIAO ESP32-S3 Sense
 cd ../mobile && flutter run             # see mobile/README.md
 ```
 
-The app onboarding asks for the server URL and API key (both can be compiled in, see
-[mobile/README.md](mobile/README.md)), requests permissions and pairs the wearable; pairing can be
-skipped and done later from Settings → Device. To expose a home server, see
+The app opens on a welcome and signs in with that email and password (the server address is
+built into the app, see [mobile/README.md](mobile/README.md)). It then requests permissions, pairs
+the wearable and ends with a first voice request; pairing can be skipped and done later from
+Settings → Device. To expose a home server, see
 [docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md).
 
 Without hardware, the [simulator](simulator/README.md) or plain HTTP can send audio:
