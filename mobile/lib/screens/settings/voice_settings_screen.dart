@@ -182,11 +182,12 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
                   onPressed: () => unawaited(_delete(voice)),
                 ),
               ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, 0),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Text(
               'Voice fingerprints stay on your server and are made only when you record or '
               'name a voice.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
         ],
@@ -312,13 +313,15 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
           ),
           const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: palette.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: palette.border),
+              borderRadius: BorderRadius.circular(AppTheme.panelRadius),
             ),
-            child: Text(enrollmentText, style: textTheme.titleMedium?.copyWith(height: 1.5)),
+            child: Text(
+              enrollmentText,
+              style: textTheme.bodyLarge?.copyWith(fontSize: 18, height: 1.5),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
