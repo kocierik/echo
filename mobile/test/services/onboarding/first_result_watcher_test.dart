@@ -36,20 +36,57 @@ void main() {
     expect(api.calls, calls);
   });
 
-  testWidgets('gives up after 30 seconds without an answer', (tester) async {
+  testWidgets('the 30 seconds start when Echo hears the request',
+      (tester) async {
+    final api = _FakeVoiceApi(serverNow: opened);
+    var now = opened;
+    final watcher = _watcher(api, () => now);
+    Future<void> wait(int seconds) async {
+      for (var s = 0; s < seconds; s += 2) {
+        now = now.add(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 2));
+      }
+    }
+
+    await watcher.start();
+    // Reading the screen, picking up Echo: no clock running yet
+    await wait(40);
+    expect(watcher.value.gaveUp, isFalse);
+
+    api.working = [_working('Echo, remind me to call Giulia')];
+    await wait(28);
+    expect(watcher.value.heard, 'Echo, remind me to call Giulia');
+    expect(watcher.value.gaveUp, isFalse);
+
+    await wait(4);
+    expect(watcher.value.gaveUp, isTrue);
+    expect(watcher.value.heard, 'Echo, remind me to call Giulia');
+    // Still watching for a late answer: stop it before the test ends
+    watcher.dispose();
+  });
+
+  testWidgets('a late answer still replaces the fallback', (tester) async {
     final api = _FakeVoiceApi(serverNow: opened);
     var now = opened;
     final watcher = _watcher(api, () => now);
     addTearDown(watcher.dispose);
 
     await watcher.start();
-    for (var second = 0; second < 30; second += 2) {
+    api.working = [_working('Echo, remind me to call Giulia')];
+    for (var s = 0; s < 34; s += 2) {
       now = now.add(const Duration(seconds: 2));
       await tester.pump(const Duration(seconds: 2));
     }
-
     expect(watcher.value.gaveUp, isTrue);
-    expect(watcher.value.answer, isNull);
+
+    api.answers = [
+      _answer('Done: call Giulia.', opened.add(const Duration(seconds: 40)))
+    ];
+    now = now.add(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+
+    expect(watcher.value.answer, 'Done: call Giulia.');
+    expect(watcher.value.gaveUp, isFalse);
   });
 
   testWidgets('ignores answers from before the screen opened', (tester) async {

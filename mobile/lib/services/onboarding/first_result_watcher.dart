@@ -21,7 +21,8 @@ final class FirstResultState {
 }
 
 /// The first run's last screen: watches for the first voice request the user makes,
-/// then for its answer, for a while.
+/// then for its answer: about 30 seconds after hearing it, it says the answer will be
+/// on Today, and keeps watching while the screen is open.
 final class FirstResultWatcher extends ValueNotifier<FirstResultState> {
   FirstResultWatcher({
     required VoiceWorkingApi working,
@@ -47,7 +48,11 @@ final class FirstResultWatcher extends ValueNotifier<FirstResultState> {
   final DateTime Function() _clock;
 
   Timer? _timer;
-  DateTime? _startedAt;
+  bool _started = false;
+
+  /// When Echo was first heard: the patience counts from there, not from the
+  /// screen opening (the user may take a while to speak).
+  DateTime? _heardAt;
 
   /// Answers after this moment, in the server's time (the phone's clock may differ).
   DateTime? _since;
@@ -55,8 +60,8 @@ final class FirstResultWatcher extends ValueNotifier<FirstResultState> {
   bool _disposed = false;
 
   Future<void> start() async {
-    if (_startedAt != null) return;
-    _startedAt = _clock();
+    if (_started) return;
+    _started = true;
     try {
       _since = (await _updates.getVoiceUpdates(null)).now;
     } catch (_) {
@@ -73,6 +78,7 @@ final class FirstResultWatcher extends ValueNotifier<FirstResultState> {
       final working = await _working.getVoiceWorking();
       final request = working.where((item) => !item.isPhoto).firstOrNull;
       if (!_disposed && request != null && value.heard == null) {
+        _heardAt = _clock();
         value = FirstResultState(heard: request.text);
       }
       final updates = await _updates.getVoiceUpdates(_since);
@@ -87,10 +93,11 @@ final class FirstResultWatcher extends ValueNotifier<FirstResultState> {
     } finally {
       _checking = false;
     }
-    if (_disposed) return;
-    if (_clock().difference(_startedAt!) >= patience) {
+    if (_disposed || value.gaveUp) return;
+    final heardAt = _heardAt;
+    // Gives up on waiting, not on watching: a late answer still replaces the fallback
+    if (heardAt != null && _clock().difference(heardAt) >= patience) {
       value = FirstResultState(heard: value.heard, gaveUp: true);
-      _timer?.cancel();
     }
   }
 
