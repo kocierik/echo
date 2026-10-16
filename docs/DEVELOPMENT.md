@@ -89,6 +89,24 @@ hour of speech and the Composio actions run. Prices are in `backend/app/usage_pr
 from public aggregators on 16/10 and **not verified** against OpenAI's and Deepgram's pricing
 pages: check them before setting customer prices. A model without a price shows `?`.
 
+## Connecting an assistant over MCP
+
+Create a key in the app (Settings → Devices → **Connect an assistant**) or with
+`POST /api/auth/connected-apps`; it is shown once. Then:
+
+```bash
+# Claude Code
+claude mcp add --transport http echo https://echo.man.ovh/mcp --header "Authorization: Bearer <key>"
+```
+
+```json
+// Cursor: ~/.cursor/mcp.json
+{"mcpServers": {"echo": {"url": "https://echo.man.ovh/mcp", "headers": {"Authorization": "Bearer <key>"}}}}
+```
+
+claude.ai and ChatGPT connectors need OAuth, not built yet. The server is `app/mcp/` (mcp SDK
+1.30: 2.x needs Starlette 1.x, which FastAPI 0.115 does not take).
+
 ## Database migrations (Alembic)
 
 - An empty database is created by `alembic upgrade head` alone: 001 creates the extensions

@@ -17,6 +17,7 @@ from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
 from app.core.rate_limit import limiter
+from app.mcp import tools as _mcp_tools  # noqa: F401  (registers the tools)
 from app.mcp.server import mcp_endpoint
 from app.routers import (
     actions,
