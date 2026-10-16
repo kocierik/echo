@@ -1,6 +1,6 @@
 # Echo — Roadmap
 
-> Aggiornata al 15/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> Aggiornata al 16/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
 > Il piano nasce dal confronto con i concorrenti (Omi, Bee, Plaud, Limitless, occhiali con fotocamera) del
 > 15/10/2026: prima non perdere niente, poi sfruttare ciò che solo Echo ha (fotocamera, voci, server tuo),
 > poi far arrivare Echo da te e rendere l'app immediata.
@@ -10,8 +10,13 @@
 Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 
 ### Fase 0 — Prerequisiti (utente)
-- [ ] Sostituire la chiave API di esempio (`make create-key`, poi `make revoke-example-key`)
-- [ ] Caricare il firmware, reinstallare l'app, registrare la propria voce (Settings → Voices)
+- [ ] `make deploy` (installa `argon2-cffi`, applica le migrazioni) e riavvio dell'API
+- [ ] Il proprio account: `make create-user EMAIL=…` (si aggancia ai dati già registrati), poi accedere dall'app
+      (Settings → Devices mostra i telefoni collegati)
+- [ ] Revocare la chiave di esempio pubblica (`make revoke-example-key`) e togliere `ECHO_API_KEY` da
+      `mobile/dart_defines.json` (non è più usata)
+- [ ] Caricare il firmware 0.5.0 via cavo (l'ultima volta: i successivi arrivano via Bluetooth), reinstallare
+      l'app, registrare la propria voce (Settings → Voices), provare Promemoria e Calendario
 - [ ] Una giornata d'uso vero: i dati servono per misure e tarature della Fase 1
 
 ### Fase 1 — Non perdere niente (firmware)
@@ -43,6 +48,23 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       batteria e minuti in attesa di sync; aggiornata dall'app, senza push. Spegnibile in Settings → Notifications
 - [x] Condividere una conversazione (testo/Markdown); export di tutti i dati in JSON (Settings → Privacy)
 
+### Fase 5 — App nuova e primo avvio (16/10)
+- [x] Nuova interfaccia "A + C": pannelli su un fondo quieto, font Archivo; tre schede Today | Ask | Memories con
+      il pulsante Ask rotondo al centro (tenuto premuto detta la domanda); la pillola del dispositivo in ogni
+      intestazione (tocco = Settings, pressione lunga = muto); Tasks diventa una pagina di Today
+- [x] Today in pannelli (Needs you, To do today, Your day sulla linea del tempo, Echo can act in), Ask con
+      risposte in pannelli e fonti visibili, Memories con settimana, ieri, persone e giorni in pannelli,
+      Settings con il dispositivo disegnato in alto; anche le pagine di dettaglio e l'onboarding
+- [x] Tema scuro quasi nero (`#0E0F10`), tema "System" di default
+- [x] Primo avvio: schermata di avvio nei colori di Echo, benvenuto animato (il dispositivo "cattura" le parole),
+      accesso con email e password, permessi, abbinamento, privacy e un primo risultato con un comando vocale
+      ([design](superpowers/specs/2026-10-16-first-run-and-sign-in-design.md))
+- [x] Account: ogni telefono ha la sua chiave (revocabile da Settings → Devices), password Argon2, tentativi
+      limitati; registrazione dall'app (chiudibile con `REGISTRATION_OPEN=false`); niente più server e chiave da
+      inserire a mano
+- [ ] Accedi con Apple e Google: i pulsanti ci sono ("in arrivo"); servono l'account sviluppatore Apple a
+      pagamento e un client OAuth Google
+
 ### Fase 6 — Piattaforma
 - [x] Aggiornamento del firmware senza cavo: `make firmware-release` → server → app → Bluetooth, con
       controllo SHA-256 e ritorno automatico alla versione precedente ([ADR 0009](adr/0009-firmware-updates-over-ble.md))
@@ -65,8 +87,8 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
   memoria, nessuna foto conservata sul dispositivo (ADR 0007).
 - **Azioni:** Gmail, Calendar, Slack, Telegram, Todoist, Notion via Composio, conferma per ciò che tocca altri,
   registro; richieste vocali "Echo, …".
-- **App:** Today / Memories / Tasks / Ask, chat in streaming con fonti, batteria del dispositivo, onboarding con
-  pairing rimandabile, tema chiaro/scuro.
+- **App:** Today / Ask / Memories (Tasks da Today), chat in streaming con fonti, batteria del dispositivo,
+  aggiornamento del firmware via Bluetooth, account con accesso e registrazione, tema chiaro/scuro.
 - **Modelli:** `gpt-6-luna` per ogni ruolo (analisi, chat, agente, instradamento, visione), Deepgram Nova-3,
   banco di prova per sceglierli ([MODEL-EVALUATION.md](MODEL-EVALUATION.md)).
 
@@ -75,7 +97,13 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - Firmware: wake word sul dispositivo, risparmio energetico (light sleep tra i frame VAD), feedback aptico.
 - Memoria: filtro per tipo di entità ("i miei task aperti con Marco"), raggruppamento per argomento.
 - Provider alternativi e locali: Whisper/LLM/embedding self-hosted, Claude, Gemini.
-- Deploy: Compose di produzione (TLS, backup), script per VPS.
+- Deploy: il server su un VPS in Europa con backup notturni cifrati (oggi gira sul Mac: se è spento, Echo non
+  funziona); più avanti un Postgres gestito (backup puntuali, repliche) quando ci saranno clienti.
+- Account per la vendita: verifica dell'email e recupero della password via email (serve un servizio di invio),
+  verifica in due passaggi, Accedi con Apple/Google.
+- Android: provare la build (manca l'SDK su questo Mac), equivalenti di Promemoria/Calendario e della Live
+  Activity, background.
 - Modalità consenso basata sulla voce (testo completo solo per te e per le voci registrate): utile
   quando Echo avrà altri utenti o con le voci collaudate nell'uso reale.
-- Multi-utente: registrazione, isolamento dei dati, più dispositivi, plugin di terze parti.
+- Multi-utente: account, registrazione e dati separati per utente ci sono; restano quote e costi per utente
+  (oggi tutti usano la chiave OpenAI del server), più dispositivi Echo per account, plugin di terze parti.
