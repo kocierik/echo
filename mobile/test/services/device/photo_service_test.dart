@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:echo_app/models/device_command.dart';
 import 'package:echo_app/models/photo.dart';
 import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/services/device/phone_camera.dart';
 import 'package:echo_app/services/device/photo_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,6 +23,73 @@ void main() {
   });
 
   tearDown(() => service.dispose());
+
+  group('the phone camera, when the wearable cannot take it', () {
+    late _FakeCamera camera;
+
+    setUp(() {
+      camera = _FakeCamera();
+      service.dispose();
+      service = PhotoService(api: api, device: device, phoneCamera: camera, sleep: (_) async {});
+    });
+
+    test('a ready wearable still takes it', () async {
+      await service.takePhoto(question: 'Cos\'è?');
+
+      expect(device.takePhotos, 1);
+      expect(camera.captures, 0);
+      expect(api.sources, ['app']);
+    });
+
+    test('not connected, muted or without a camera: the phone takes it', () async {
+      for (final setup in [
+        () => device.connected = false,
+        () => device.muted = true,
+        () => device.cameraReady = false,
+      ]) {
+        device
+          ..connected = true
+          ..muted = false
+          ..cameraReady = true;
+        setup();
+        final before = api.uploads.length;
+
+        final photo =
+            await service.takePhoto(question: 'Che pianta è?', chatSessionId: 's1');
+
+        expect(api.uploads.length, before + 1);
+        expect(api.uploads.last.$1, photo.id);
+        expect(api.uploads.last.$2, 3);
+        expect(api.sources.last, 'phone');
+        expect(api.requests.last, ('Che pianta è?', 's1'));
+      }
+      expect(device.takePhotos, 0);
+      expect(service.pendingPhotoId, isNull);
+    });
+
+    test('a cancelled camera asks nothing of the server', () async {
+      device.connected = false;
+      camera.cancel = true;
+
+      await expectLater(
+        service.takePhoto(question: 'x'),
+        throwsA(isA<PhotoCancelledException>()),
+      );
+      expect(api.requests, isEmpty);
+    });
+
+    test('a photo already on its way from the wearable is still busy', () async {
+      await service.takePhoto();
+      device.connected = false;
+
+      await expectLater(
+        service.takePhoto(),
+        throwsA(isA<PhotoUnavailableException>()
+            .having((e) => e.reason, 'reason', 'busy')),
+      );
+      expect(camera.captures, 0);
+    });
+  });
 
   group('the camera button', () {
     test('asks the backend, then the wearable', () async {
@@ -150,6 +218,17 @@ void main() {
   });
 }
 
+final class _FakeCamera implements PhoneCamera {
+  int captures = 0;
+  bool cancel = false;
+
+  @override
+  Future<Uint8List?> capture() async {
+    captures++;
+    return cancel ? null : Uint8List.fromList([1, 2, 3]);
+  }
+}
+
 final class _FakeDevice implements PhotoDevice {
   @override
   bool cameraReady = true;
@@ -169,6 +248,7 @@ final class _FakeDevice implements PhotoDevice {
 
 final class _FakePhotoApi implements PhotoApi {
   final requests = <(String?, String?)>[];
+  final sources = <String>[];
   final buttonRequests = <bool>[];
   final uploads = <(String, int, DateTime)>[];
   final failures = <(String, String)>[];
@@ -181,8 +261,10 @@ final class _FakePhotoApi implements PhotoApi {
     String? question,
     String? chatSessionId,
     bool fromWearableButton = false,
+    String source = 'app',
   }) async {
     buttonRequests.add(fromWearableButton);
+    sources.add(source);
     requests.add((question, chatSessionId));
     return PhotoInfo(
         id: 'p${requests.length}',

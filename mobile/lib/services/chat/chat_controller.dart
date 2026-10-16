@@ -317,6 +317,14 @@ final class ChatController extends ChangeNotifier {
       } else {
         _emit(_state.copyWith(sending: false));
       }
+    } on PhotoCancelledException {
+      // The phone's camera closed without a photo: as if nothing had been tapped
+      if (!_isCurrent(generation)) return;
+      _emit(_state.copyWith(
+        messages: [..._state.messages]..removeLast(),
+        composerText: question,
+        sending: false,
+      ));
     } catch (error) {
       if (!_isCurrent(generation)) return;
       final message = error is PhotoUnavailableException

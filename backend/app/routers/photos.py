@@ -51,7 +51,8 @@ class PhotoRequest(BaseModel):
     question: str | None = Field(default=None, max_length=500)
     # "app" (the camera button in Ask) or "button" (the wearable's own button: the user is
     # not looking at the phone, so the answer is notified)
-    source: Literal["app", "button"] = "app"
+    # "phone": taken with the phone's camera when the wearable could not
+    source: Literal["app", "button", "phone"] = "app"
     # The chat the photo is asked from; the "Voice requests" chat when omitted
     chat_session_id: uuid.UUID | None = None
 
