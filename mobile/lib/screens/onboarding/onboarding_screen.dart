@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/onboarding/first_result_watcher.dart';
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/onboarding_progress.dart';
 import 'email_sign_in_step.dart';
+import 'first_result_step.dart';
 import 'pairing_step.dart';
 import 'permissions_step.dart';
 import 'privacy_step.dart';
@@ -16,6 +18,7 @@ final class OnboardingScreen extends StatefulWidget {
     required this.controller,
     required this.onComplete,
     this.notice,
+    this.firstResultWatcher,
     super.key,
   });
 
@@ -24,6 +27,10 @@ final class OnboardingScreen extends StatefulWidget {
 
   /// Shown on the welcome: why the phone was signed out, when it was not by choice.
   final String? notice;
+
+  /// Watches for the first voice request and its answer; without it the last
+  /// step only explains what to try.
+  final FirstResultWatcher Function()? firstResultWatcher;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -171,10 +178,8 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
           paired: state.paired,
         ),
       OnboardingStep.privacy => const PrivacyStep(),
-      OnboardingStep.firstResult => Text(
-          'Try it now',
-          style: Theme.of(context).textTheme.headlineLarge,
-        ),
+      OnboardingStep.firstResult =>
+        FirstResultStep(createWatcher: widget.firstResultWatcher),
     };
   }
 

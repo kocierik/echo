@@ -21,6 +21,7 @@ import 'services/device/device_ble_port.dart';
 import 'services/device/device_controller.dart';
 import 'services/device/device_identity_store.dart';
 import 'services/onboarding/onboarding_adapters.dart';
+import 'services/onboarding/first_result_watcher.dart';
 import 'services/onboarding/onboarding_controller.dart';
 import 'services/onboarding/onboarding_permissions_service.dart';
 import 'services/app/network_policy.dart';
@@ -229,6 +230,10 @@ class _AppRouterState extends State<AppRouter> {
       return OnboardingScreen(
         controller: _onboardingController,
         notice: widget.appController.value.session.reason,
+        firstResultWatcher: () {
+          final api = ApiService();
+          return FirstResultWatcher(working: api, updates: api, onDispose: api.dispose);
+        },
         onComplete: () {
           // Signed in again after a logout: the next one counts
           widget.sessionController?.markSignedIn();

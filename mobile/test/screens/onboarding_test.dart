@@ -1,6 +1,11 @@
 import 'package:echo_app/screens/onboarding/onboarding_screen.dart';
 import 'package:echo_app/services/app/app_preferences.dart';
-import 'package:echo_app/services/api/auth_api.dart';
+import 'package:echo_app/models/action_models.dart';
+import 'package:echo_app/models/chat_session.dart';
+import 'package:echo_app/models/today_insights.dart';
+import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/services/chat/voice_updates_service.dart';
+import 'package:echo_app/services/onboarding/first_result_watcher.dart';
 import 'package:echo_app/services/onboarding/onboarding_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -573,6 +578,90 @@ void main() {
       expect(find.text('This phone was signed out.'), findsOneWidget);
     });
   });
+
+  group('first result', () {
+    Future<_FakeVoice> pumpFirstResult(WidgetTester tester) async {
+      final voice = _FakeVoice();
+      final fixture = _Fixture(
+        configured: true,
+        hasIdentity: true,
+        highestStep: OnboardingStep.pairing.index,
+      );
+      await _pumpOnboarding(
+        tester,
+        fixture.controller,
+        settle: false,
+        firstResultWatcher: () => FirstResultWatcher(working: voice, updates: voice),
+      );
+      await tester.pumpAndSettle();
+      await fixture.controller.finishPrivacy();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      return voice;
+    }
+
+    testWidgets('shows what Echo heard, then what it understood', (tester) async {
+      final voice = await pumpFirstResult(tester);
+      expect(find.text('Try it now'), findsOneWidget);
+
+      voice.working = [
+        WorkingItem(
+          key: 'voice:1',
+          kind: 'voice',
+          text: 'Echo, remind me to call Giulia on Friday at six',
+          since: DateTime.utc(2026, 10, 16, 9),
+        ),
+      ];
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('Echo, remind me to call Giulia on Friday at six'), findsOneWidget);
+
+      voice.answer = 'Done: call Giulia, Friday at 18:00.';
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('Done: call Giulia, Friday at 18:00.'), findsOneWidget);
+      expect(find.text('Go to Today'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('without an answer it says the result will be on Today', (tester) async {
+      await pumpFirstResult(tester);
+
+      for (var second = 0; second <= 32; second += 2) {
+        await tester.pump(const Duration(seconds: 2));
+      }
+      await tester.pump();
+
+      expect(
+        find.text("Echo is still working on it. You'll find it on Today."),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+}
+
+/// The voice endpoints the first result watches.
+final class _FakeVoice implements VoiceWorkingApi, VoiceUpdatesApi {
+  List<WorkingItem> working = [];
+  String? answer;
+  final _opened = DateTime.utc(2026, 10, 16, 9);
+
+  @override
+  Future<List<WorkingItem>> getVoiceWorking() async => List.of(working);
+
+  @override
+  Future<VoiceUpdates> getVoiceUpdates(DateTime? since) async => VoiceUpdates(
+        messages: [
+          if (since != null && answer != null)
+            ChatSessionMessage(
+              role: 'assistant',
+              content: answer!,
+              timestamp: _opened.add(const Duration(seconds: 5)),
+            ),
+        ],
+        now: _opened,
+      );
 }
 
 /// The welcome moves for ever: still by default, so pumpAndSettle settles.
@@ -585,6 +674,7 @@ Future<void> _pumpOnboarding(
   ThemeMode themeMode = ThemeMode.light,
   String? notice,
   bool settle = true,
+  FirstResultWatcher Function()? firstResultWatcher,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -600,6 +690,7 @@ Future<void> _pumpOnboarding(
           controller: controller,
           onComplete: onComplete ?? () {},
           notice: notice,
+          firstResultWatcher: firstResultWatcher,
         ),
       ),
     ),
