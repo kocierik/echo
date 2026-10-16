@@ -71,6 +71,7 @@ async def setup_database():
     async with test_engine.begin() as conn:
         # Clean up test data (but keep schema for next test)
         await conn.execute(text("DELETE FROM pending_actions"))
+        await conn.execute(text("DELETE FROM action_log"))
         await conn.execute(text("DELETE FROM users"))
         # Keys given at sign-in; the fixture's own key stays
         await conn.execute(
