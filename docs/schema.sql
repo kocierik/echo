@@ -345,3 +345,16 @@ CREATE TABLE llm_usage (
     cached_units BIGINT NOT NULL DEFAULT 0,
     CONSTRAINT uq_llm_usage_day UNIQUE NULLS NOT DISTINCT (user_id, day, kind, model)
 );
+
+
+-- ============================================================
+-- MCP CALLS: tool calls by connected apps (Migration 019)
+-- ============================================================
+CREATE TABLE mcp_calls (
+    id UUID PRIMARY KEY,
+    api_key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    tool VARCHAR(40) NOT NULL,
+    summary VARCHAR(200) NOT NULL DEFAULT '',  -- redacted: tool and argument names
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_mcp_calls_api_key_id ON mcp_calls(api_key_id);
