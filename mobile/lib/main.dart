@@ -228,6 +228,7 @@ class _AppRouterState extends State<AppRouter> {
     if (!_onboardingComplete) {
       return OnboardingScreen(
         controller: _onboardingController,
+        notice: widget.appController.value.session.reason,
         onComplete: () {
           // Signed in again after a logout: the next one counts
           widget.sessionController?.markSignedIn();

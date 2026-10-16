@@ -54,7 +54,44 @@ final class EmailSignInStep extends StatelessWidget {
           onSubmitted: (_) => onSubmit(),
           decoration: const InputDecoration(labelText: 'Password'),
         ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('sign-in-forgot'),
+            onPressed: () => _forgot(context),
+            style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 4)),
+            child: const Text('Forgot your password?'),
+          ),
+        ),
       ],
+    );
+  }
+
+  Future<void> _forgot(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'For now, a password is reset by whoever runs your Echo server.',
+                style: Theme.of(sheetContext).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 20),
+              FilledButton(
+                onPressed: () => Navigator.pop(sheetContext),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

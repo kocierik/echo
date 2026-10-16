@@ -369,7 +369,7 @@ void main() {
 
     await _pumpOnboarding(tester, fixture.controller);
 
-    expect(find.text('Permissions'), findsOneWidget);
+    expect(find.text('What Echo needs'), findsOneWidget);
     expect(fixture.permissions.totalCalls, 0);
   });
 
@@ -439,27 +439,177 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('welcome-email')), findsOneWidget);
   });
+
+  group('welcome and sign-in', () {
+    testWidgets('Apple and Google say they are coming', (tester) async {
+      await _pumpOnboarding(tester, _Fixture().controller);
+
+      await tester.tap(find.byKey(const Key('welcome-apple')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Sign in with Apple is coming soon. For now, continue with email.'),
+        findsOneWidget,
+      );
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('welcome-google')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Sign in with Google is coming soon. For now, continue with email.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('email form signs in and shows the server\'s message on failure',
+        (tester) async {
+      final fixture = _Fixture();
+      fixture.api.signInError = const SignInException(
+        SignInFailure.wrongCredentials,
+        'Wrong email or password.',
+      );
+      await _pumpOnboarding(tester, fixture.controller);
+      await tester.tap(find.byKey(const Key('welcome-email')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('sign-in-email')), 'erik@example.com');
+      await tester.enterText(find.byKey(const Key('sign-in-password')), 'not it');
+      await tester.tap(find.byKey(const Key('sign-in-submit')));
+      await tester.pumpAndSettle();
+
+      expect(fixture.api.signIns, [('erik@example.com', 'not it')]);
+      expect(find.text('Wrong email or password.'), findsOneWidget);
+
+      fixture.api.signInError = null;
+      await tester.tap(find.byKey(const Key('sign-in-submit')));
+      await tester.pumpAndSettle();
+      expect(fixture.controller.value.step, OnboardingStep.permissions);
+    });
+
+    testWidgets('forgot password explains the reset', (tester) async {
+      await _pumpOnboarding(tester, _Fixture().controller);
+      await tester.tap(find.byKey(const Key('welcome-email')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('sign-in-forgot')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('For now, a password is reset by whoever runs your Echo server.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('reduced motion keeps the welcome still and shows both memories',
+        (tester) async {
+      await _pumpOnboarding(tester, _Fixture().controller);
+
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(find.text('Both options, Thu'), findsOneWidget);
+      expect(find.text('Lunch, Tue 13:00'), findsOneWidget);
+      expect(find.text('Your day,\nremembered.'), findsOneWidget);
+
+      // With motion on, the welcome keeps animating
+      await tester.pumpWidget(const SizedBox());
+      await _pumpOnboarding(
+        tester,
+        _Fixture().controller,
+        disableAnimations: false,
+        settle: false,
+      );
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('the welcome fits 320x640 at 1.3 text scale, light and dark',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+        await _pumpOnboarding(
+          tester,
+          _Fixture().controller,
+          textScaler: const TextScaler.linear(1.3),
+          themeMode: mode,
+          notice: 'This phone was signed out.',
+        );
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('progress shows steps 1–4 on email, permissions, pairing and privacy',
+        (tester) async {
+      final fixture = _Fixture();
+      await _pumpOnboarding(tester, fixture.controller);
+      expect(find.byKey(const Key('onboarding-progress')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('welcome-email')));
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Step 1 of 4'), findsOneWidget);
+
+      await fixture.controller.signIn('erik@example.com', 'correct horse');
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Step 2 of 4'), findsOneWidget);
+
+      await fixture.controller.requestPermissions();
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Step 3 of 4'), findsOneWidget);
+
+      await fixture.controller.skipPairing();
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel('Step 4 of 4'), findsOneWidget);
+    });
+
+    testWidgets('a revoked phone sees why on the welcome', (tester) async {
+      await _pumpOnboarding(
+        tester,
+        _Fixture().controller,
+        notice: 'This phone was signed out.',
+      );
+
+      expect(find.text('This phone was signed out.'), findsOneWidget);
+    });
+  });
 }
 
+/// The welcome moves for ever: still by default, so pumpAndSettle settles.
 Future<void> _pumpOnboarding(
   WidgetTester tester,
   OnboardingController controller, {
   VoidCallback? onComplete,
   TextScaler textScaler = TextScaler.noScaling,
+  bool disableAnimations = true,
+  ThemeMode themeMode = ThemeMode.light,
+  String? notice,
+  bool settle = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: themeMode,
       home: MediaQuery(
-        data: MediaQueryData(textScaler: textScaler),
+        data: MediaQueryData(
+          textScaler: textScaler,
+          disableAnimations: disableAnimations,
+        ),
         child: OnboardingScreen(
           controller: controller,
           onComplete: onComplete ?? () {},
+          notice: notice,
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump();
+  }
 }
 
 final class _Fixture {

@@ -4,20 +4,26 @@ import 'package:flutter/material.dart';
 
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/onboarding_progress.dart';
 import 'email_sign_in_step.dart';
 import 'pairing_step.dart';
 import 'permissions_step.dart';
+import 'privacy_step.dart';
 import 'welcome_step.dart';
 
 final class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({
     required this.controller,
     required this.onComplete,
+    this.notice,
     super.key,
   });
 
   final OnboardingController controller;
   final VoidCallback onComplete;
+
+  /// Shown on the welcome: why the phone was signed out, when it was not by choice.
+  final String? notice;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -77,54 +83,66 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
     return ValueListenableBuilder<OnboardingState>(
       valueListenable: widget.controller,
       builder: (context, state, child) {
-        if (state.initialized && state.step == OnboardingStep.signIn && state.showWelcome) {
+        if (!state.initialized) {
           return Scaffold(
-            body: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Spacer(),
-                    FilledButton(
-                      key: const Key('welcome-email'),
-                      onPressed: widget.controller.continueWithEmail,
-                      child: const Text('Continue with email'),
-                    ),
-                  ],
-                ),
+            body: Center(
+              child: Semantics(
+                label: 'Loading setup progress',
+                liveRegion: true,
+                child: const CircularProgressIndicator(),
               ),
             ),
           );
         }
+        if (state.step == OnboardingStep.signIn && state.showWelcome) {
+          return WelcomeStep(
+            onEmail: widget.controller.continueWithEmail,
+            notice: widget.notice,
+          );
+        }
+        final setupStep = state.step == OnboardingStep.firstResult
+            ? null
+            : state.step.index + 1;
         return Scaffold(
           body: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _OnboardingHeader(step: state.step),
-                  Expanded(
-                    child: state.initialized
-                        ? SingleChildScrollView(
-                            padding: const EdgeInsets.only(top: 28, bottom: 20),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 180),
-                              child: KeyedSubtree(
-                                key: ValueKey(state.step),
-                                child: _step(state),
-                              ),
-                            ),
-                          )
-                        : Center(
-                            child: Semantics(
-                              label: 'Loading setup progress',
-                              liveRegion: true,
-                              child: const CircularProgressIndicator(),
+                  if (setupStep != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          Transform.translate(
+                            offset: const Offset(-10, 0),
+                            child: IconButton(
+                              key: const Key('onboarding-back'),
+                              tooltip: 'Back',
+                              onPressed:
+                                  state.busy ? null : widget.controller.goBack,
+                              icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                                  size: 20),
                             ),
                           ),
+                          Expanded(child: OnboardingProgress(step: setupStep)),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(top: 28, bottom: 20),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: KeyedSubtree(
+                          key: ValueKey(state.step),
+                          child: _step(state),
+                        ),
+                      ),
+                    ),
                   ),
-                  if (state.initialized) _actionArea(state: state),
+                  _actionArea(state: state),
                 ],
               ),
             ),
@@ -152,7 +170,7 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
           busy: state.busy,
           paired: state.paired,
         ),
-      OnboardingStep.privacy => const WelcomeStep(),
+      OnboardingStep.privacy => const PrivacyStep(),
       OnboardingStep.firstResult => Text(
           'Try it now',
           style: Theme.of(context).textTheme.headlineLarge,
@@ -163,62 +181,73 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
   Widget _actionArea({required OnboardingState state}) {
     final palette = EchoPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 12),
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (state.error case final error?)
             Semantics(
               liveRegion: true,
-              label: 'Error: $error',
-              child: Container(
-                width: double.infinity,
+              child: Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   error,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: palette.red,
                       ),
                 ),
               ),
             ),
+          if (state.step == OnboardingStep.signIn)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lock_outline_rounded,
+                      size: 18, color: palette.text2),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This phone gets its own key. You can sign it out later from '
+                      'Settings, without touching your other devices.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           SizedBox(
-            width: double.infinity,
-            height: 48,
+            height: 54,
             child: FilledButton(
+              key: state.step == OnboardingStep.signIn
+                  ? const Key('sign-in-submit')
+                  : const Key('onboarding-primary'),
               onPressed: state.busy ? null : () => _handlePrimary(state),
               child: state.busy
                   ? Semantics(
                       label: 'Working',
                       liveRegion: true,
-                      child: const SizedBox(
-                        width: 20,
-                        height: 20,
+                      child: SizedBox.square(
+                        dimension: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: palette.background,
                         ),
                       ),
                     )
-                  : Text(_primaryLabel(state.step)),
+                  : Text(_primaryLabel(state)),
             ),
           ),
           if (state.step == OnboardingStep.pairing && !state.paired)
             SizedBox(
-              height: 44,
+              height: 48,
               child: TextButton(
                 key: const Key('onboarding-skip-pairing'),
                 onPressed: state.busy ? null : widget.controller.skipPairing,
-                child: const Text('Skip for now'),
-              ),
-            ),
-          if (state.step != OnboardingStep.firstResult)
-            SizedBox(
-              height: 44,
-              child: TextButton.icon(
-                onPressed: state.busy ? null : widget.controller.goBack,
-                icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                label: const Text('Back'),
+                style: TextButton.styleFrom(foregroundColor: palette.text),
+                child: const Text("I don't have it with me"),
               ),
             ),
         ],
@@ -226,76 +255,14 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  String _primaryLabel(OnboardingStep step) {
-    return switch (step) {
+  String _primaryLabel(OnboardingState state) {
+    return switch (state.step) {
       OnboardingStep.signIn => 'Sign in',
       OnboardingStep.permissions => 'Allow and continue',
       OnboardingStep.pairing => 'Pair Echo',
-      OnboardingStep.privacy => 'Start using Echo',
+      OnboardingStep.privacy =>
+        state.paired ? 'Start listening' : 'Start using Echo',
       OnboardingStep.firstResult => 'Go to Today',
     };
-  }
-}
-
-final class _OnboardingHeader extends StatelessWidget {
-  const _OnboardingHeader({required this.step});
-
-  final OnboardingStep step;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 4),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: palette.green,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text('Echo', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(width: 10),
-              // Takes the free space and shortens on narrow screens with large text
-              Expanded(
-                child: Text(
-                  'Step ${step.index + 1} of ${4}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Semantics(
-            label: 'Onboarding progress: step ${step.index.clamp(0, 3) + 1} of 4',
-            child: Row(
-              children: List.generate(4, (index) {
-                return Expanded(
-                  child: Container(
-                    height: 4,
-                    margin: EdgeInsets.only(
-                      right: index == 4 - 1 ? 0 : 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: index <= step.index ? palette.accent : palette.border,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }

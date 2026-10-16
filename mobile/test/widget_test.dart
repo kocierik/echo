@@ -32,12 +32,16 @@ void main() {
       appController: appController,
       onboardingControllerFactory: () => onboardingController,
     ));
-    await tester.pumpAndSettle();
+    // The welcome keeps moving: step through the loading instead of settling
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
 
     // A fresh install opens on the welcome; no server or key is ever asked
     expect(find.byKey(const Key('welcome-email')), findsOneWidget);
     expect(find.text('Server URL'), findsNothing);
     expect(find.text('API Key'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
   });
 }
 
