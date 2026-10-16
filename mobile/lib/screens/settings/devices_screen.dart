@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../models/signed_in_device.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
+import 'connect_app_sheet.dart';
 import '../../services/app/app_runtime.dart';
 import '../../utils/formatting.dart';
 import 'settings_components.dart';
@@ -90,7 +91,9 @@ final class _DevicesScreenState extends State<DevicesScreen> {
   Future<void> _revoke(SignedInDevice device) async {
     final confirmed = await _confirm(
       'Revoke ${device.name}?',
-      'It will have to sign in again.',
+      device.isConnectedApp
+          ? 'It will lose access to your memory.'
+          : 'It will have to sign in again.',
       'Revoke',
     );
     if (!confirmed || !mounted) return;
@@ -134,18 +137,48 @@ final class _DevicesScreenState extends State<DevicesScreen> {
         : 'Signed in ${dayLabel(created, widget.clock())}';
   }
 
+  /// Asks a name, creates a read-only key for it, then shows the setup once.
+  Future<void> _connectApp() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (_) => const _NameDialog(),
+    );
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      final app = await _api.connectApp(name);
+      if (!mounted) return;
+      unawaited(_load());
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (_) => ConnectAppSheet(app: app),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(userMessage(error, 'Could not connect it.'))),
+      );
+    }
+  }
+
   Widget _row(SignedInDevice device) {
     final phone = device.platform != null;
     return SettingsRow(
       key: Key('device-${device.id}'),
-      icon: !phone
-          ? Icons.key_rounded
-          : device.platform == 'android'
-              ? Icons.phone_android_rounded
-              : Icons.phone_iphone_rounded,
+      icon: device.isConnectedApp
+          ? Icons.hub_outlined
+          : !phone
+              ? Icons.key_rounded
+              : device.platform == 'android'
+                  ? Icons.phone_android_rounded
+                  : Icons.phone_iphone_rounded,
       title: device.name,
-      subtitle:
-          phone ? _subtitle(device) : 'A key made on the server, for scripts',
+      subtitle: device.isConnectedApp
+          ? 'Reads your memory, cannot change it'
+          : phone
+              ? _subtitle(device)
+              : 'A key made on the server, for scripts',
       trailing: _busy.contains(device.id)
           ? const SizedBox.square(
               dimension: 20,
@@ -171,9 +204,13 @@ final class _DevicesScreenState extends State<DevicesScreen> {
       for (final d in devices ?? const <SignedInDevice>[])
         if (d.platform != null || d.current) d,
     ];
+    final apps = [
+      for (final d in devices ?? const <SignedInDevice>[])
+        if (d.isConnectedApp) d,
+    ];
     final keys = [
       for (final d in devices ?? const <SignedInDevice>[])
-        if (d.platform == null && !d.current) d,
+        if (d.platform == null && !d.current && !d.isConnectedApp) d,
     ];
     return SettingsPageScaffold(
       title: 'Devices',
@@ -201,11 +238,75 @@ final class _DevicesScreenState extends State<DevicesScreen> {
             const SettingsSection('PHONES'),
             for (final device in phones) _row(device),
           ],
+          const SettingsSection('CONNECTED APPS'),
+          for (final device in apps) _row(device),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                key: const Key('connect-app'),
+                onPressed: () => unawaited(_connectApp()),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Connect an assistant'),
+              ),
+            ),
+          ),
           if (keys.isNotEmpty) ...[
             const SettingsSection('OTHER KEYS'),
             for (final device in keys) _row(device),
           ],
         ],
+      ],
+    );
+  }
+}
+
+
+/// The name of a new connected app ("Claude Code"), to find it in the list later.
+final class _NameDialog extends StatefulWidget {
+  const _NameDialog();
+
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+final class _NameDialogState extends State<_NameDialog> {
+  final _names = TextEditingController(text: 'Claude Code');
+
+  @override
+  void dispose() {
+    _names.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Connect an assistant'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('It will read your memory and change nothing. Name it to find it '
+              'here later.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _names,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_names.text.trim()),
+          child: const Text('Create'),
+        ),
       ],
     );
   }

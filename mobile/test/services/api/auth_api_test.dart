@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  _connectAppTests();
+
   _languageTests();
 
   test('signIn stores the issued key for the build server', () async {
@@ -311,6 +313,31 @@ void _languageTests() {
     expect(me.email, 'ada@example.com');
     expect(changed.language, 'it');
     expect(calls, ['GET /api/auth/me ', 'PATCH /api/auth/me {"language":"it"}']);
+  });
+}
+
+void _connectAppTests() {
+  test('connectApp asks for a read key and builds the MCP address', () async {
+    late http.Request sent;
+    final api = _api(_Store(server: 'https://echo.test', key: 'k'), (request) async {
+      sent = request;
+      return http.Response('{"id":"a1","name":"Claude Code","api_key":"rk"}', 201);
+    });
+
+    final app = await api.connectApp('Claude Code');
+
+    expect(sent.url.path, '/api/auth/connected-apps');
+    expect(jsonDecode(sent.body), {'name': 'Claude Code'});
+    expect(app.apiKey, 'rk');
+    expect(app.mcpUrl, 'https://echo.test/mcp');
+  });
+
+  test('without a server in Settings, the address is the built-in one', () async {
+    final api = _api(_Store(key: 'k'), (request) async {
+      return http.Response('{"id":"a1","name":"Cursor","api_key":"rk"}', 201);
+    });
+
+    expect((await api.connectApp('Cursor')).mcpUrl, '${BuildDefaults.serverUrl}/mcp');
   });
 }
 

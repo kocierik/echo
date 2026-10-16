@@ -90,7 +90,9 @@ request ("Echo, remind me to …") and its answer.
 - **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
   Activity, Notifications, Voices, Language (the language you speak: transcription and
   dictation), Appearance (System, Light, Dark), Privacy, What Echo can do,
-  Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones, revoke), About
+  Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones; connected apps:
+  **Connect an assistant** gives Claude Code or Cursor a read-only key and the lines to paste;
+  revoke either), About
   (sign out).
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
