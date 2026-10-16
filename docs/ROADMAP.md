@@ -73,14 +73,18 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       e i promemoria prima delle riunioni usano anche il calendario dell'iPhone
       ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md))
 - [ ] Test di 2 ore della core beta su iPhone ([checklist](BETA-GATE-CHECKLIST.md)) e test batteria di 12 ore
-- [ ] Android: app per Android in corso il 16/10 (servizio in primo piano con notifica di stato, calendario del
-      telefono, testi "phone"); da compilare e provare su un telefono con il dispositivo
+- [x] Android: servizio in primo piano con notifica di stato, calendario del telefono, testi "phone";
+      `flutter build apk --debug` passa (16/10)
+- [ ] Android: provare su un telefono con il dispositivo (Bluetooth in background, calendario)
 
 ### Fase 7 — Echo fuori da Echo: MCP e un agente per utente (in discussione)
 Prerequisiti, prima di dare memorie e azioni a sistemi esterni o di far agire Echo da solo:
-- [ ] Chiavi con permessi (`read` / `full`): oggi ogni chiave può leggere, cancellare e agire
-- [ ] Consumo per utente: i token di ogni chiamata registrati per utente, quote mensili (oggi tutti usano la
-      chiave OpenAI del server senza limiti, e la registrazione è aperta)
+- [x] Chiavi con permessi (16/10): `full` per telefoni e script, `read` per le app collegate (solo MCP; la
+      REST risponde 403)
+- [x] Consumo per utente (16/10): token e secondi di audio di ogni chiamata, per utente e giorno
+      (`llm_usage`); `make usage` dà il costo di un giorno e di un'ora di parlato. Prezzi in
+      `backend/app/usage_prices.py`, da verificare sulle pagine ufficiali
+- [ ] Quote mensili per utente (dopo i prezzi)
 - [ ] Prezzi (da fissare dopo la misura dei costi): come Omi e Plaud, a minuti al mese in tre fasce (gratis
       ~300 min, intermedia, Unlimited ~30 $/mese); finito il budget si rallenta senza perdere nulla, come Omi
       (deciso il 16/10): l'audio si salva sempre, l'elaborazione aspetta (o va in differita) fino al mese dopo
@@ -93,8 +97,10 @@ Prerequisiti, prima di dare memorie e azioni a sistemi esterni o di far agire Ec
       non si possono usare fuori dalle app di Anthropic
 
 MCP — le memorie di Echo dentro Claude, ChatGPT e altri assistenti:
-- [ ] Server MCP remoto (`/mcp`, Streamable HTTP) con strumenti di sola lettura: cercare nelle memorie, una
-      conversazione, persone, task e promesse, riassunti del giorno e della settimana
+- [x] Server MCP remoto (16/10; `/mcp`, Streamable HTTP, SDK 1.30) con sei strumenti di sola lettura:
+      `search_memory`, `get_conversation`, `find_person`, `list_tasks`, `get_day`, `get_week`; testo delle
+      persone in campi `quoted`; 60 chiamate al minuto per chiave; registro in `mcp_calls`. In Settings →
+      Devices: **Connect an assistant** (chiave, indirizzo, righe per Claude Code e Cursor)
 - [ ] Entrambi i casi d'uso (deciso il 16/10): consultare Echo mentre scrivi altrove (connettori di claude.ai e
       ChatGPT, OAuth 2.1, con "Connected apps" in Settings per vedere e revocare) e un assistente che lavora per
       te e consulta le memorie da solo (Claude Code, Claude Desktop, Cursor: chiave di sola lettura nell'header,
@@ -135,9 +141,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 
 ### Correzioni segnalate il 16/10 (piano usage-keys-and-mcp, Task 10 e 11)
-- [ ] "Cosa sai fare?" in Ask risponde "non ho informazioni nella memoria": Echo deve sapere cosa sa fare,
+- [x] (16/10) "Cosa sai fare?" in Ask risponde "non ho informazioni nella memoria": Echo deve sapere cosa sa fare,
       rispondere alle domande generali dicendo che non vengono dalla memoria, e non inventare mai il passato
-- [ ] La dettatura in Ask capisce solo l'inglese: una lingua per account ("la lingua che parli"), usata dalla
+- [x] (16/10) La dettatura in Ask capisce solo l'inglese: una lingua per account ("la lingua che parli"), usata dalla
       trascrizione del dispositivo e dalla dettatura; testo da leggere in Settings → Voices anche in italiano
 
 ### Fase 8 — Nuove funzioni (idee del 16/10)
@@ -177,7 +183,7 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
   - [ ] Documenti con scadenza: bollette, lettere, biglietti di treno/aereo → task o evento con la data giusta,
         senza tenere IBAN e codici nella memoria
   - [ ] Azioni dalla foto: locandina → evento in calendario, QR code → link, rete Wi-Fi
-  - [ ] Foto dal telefono quando il dispositivo non può (non collegato, senza fotocamera, in muto): il pulsante
+  - [x] (16/10) Foto dal telefono quando il dispositivo non può (non collegato, senza fotocamera, in muto): il pulsante
         della fotocamera in Ask apre la fotocamera del telefono (richiesta del 16/10; piano usage-keys-and-mcp, Task 9)
   - [ ] Traduzione al volo (menu, cartelli) tra gli esempi di "What Echo can do"
   - [ ] Doppia pressione del pulsante = "salva e basta" (nessuna risposta), singola = chiedi
