@@ -215,7 +215,7 @@ async def _authorize_metrics(request: Request) -> None:
     api_key = request.headers.get("x-api-key")
     if api_key:
         async with async_session() as db:
-            await get_current_user_id(api_key=api_key, db=db)
+            await get_current_user_id(request, api_key=api_key, db=db)
         return
     raise HTTPException(status_code=401, detail="Not authenticated")
 

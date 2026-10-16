@@ -134,7 +134,9 @@ async def test_devices_lists_own_keys_and_marks_current(client, db_session):
     assert {"iPhone", "Pixel"} <= names and "Ada" not in names
     assert [d["current"] for d in devices if d["name"] == "iPhone"] == [True]
     assert all(not d["current"] for d in devices if d["name"] != "iPhone")
-    assert all(set(d) == {"id", "name", "platform", "created_at", "last_used_at", "current"}
+    assert all(set(d) == {
+        "id", "name", "platform", "scope", "created_at", "last_used_at", "current"
+    }
                for d in devices)
 
 
