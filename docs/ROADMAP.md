@@ -81,6 +81,15 @@ Prerequisiti, prima di dare memorie e azioni a sistemi esterni o di far agire Ec
 - [ ] Chiavi con permessi (`read` / `full`): oggi ogni chiave può leggere, cancellare e agire
 - [ ] Consumo per utente: i token di ogni chiamata registrati per utente, quote mensili (oggi tutti usano la
       chiave OpenAI del server senza limiti, e la registrazione è aperta)
+- [ ] Prezzi (da fissare dopo la misura dei costi): come Omi e Plaud, a minuti al mese in tre fasce (gratis
+      ~300 min, intermedia, Unlimited ~30 $/mese); finito il budget, decidere se rallentare l'elaborazione
+      senza perdere nulla (come Omi) o bloccare. Più avanti un gateway (LiteLLM) con una chiave virtuale e un
+      budget per utente. Trascrizione sul telefono (come il piano gratis di Omi): rimandata
+- [ ] Costi più bassi (deciso il 16/10: prima misurare quanto costa un giorno di Echo, voce per voce): il lavoro
+      non urgente (estrazione, riassunti, digest) con l'API Batch a metà prezzo; la chat sugli abbonamenti degli
+      utenti (MCP per Claude e ChatGPT; "Sign in with ChatGPT" per Ask se OpenAI accetta Echo, modulo di
+      interesse per i prodotti ospitati); trascrizione in proprio se è la voce più cara. Gli abbonamenti Claude
+      non si possono usare fuori dalle app di Anthropic
 
 MCP — le memorie di Echo dentro Claude, ChatGPT e altri assistenti:
 - [ ] Server MCP remoto (`/mcp`, Streamable HTTP) con strumenti di sola lettura: cercare nelle memorie, una
@@ -95,6 +104,10 @@ Un agente per utente — Echo che lavora per te anche quando non glielo chiedi. 
 azioni di oggi, in Python) e per ogni utente un profilo nel database; idee prese da eve (Vercel), pi e valet
 senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [ ] Istruzioni personali ("chiamami Erik, rispondi breve, il lavoro è su Slack") usate da chat, voce e briefing
+- [ ] Memoria a grafo: fatti tra persone e cose (soggetto → relazione → oggetto, con "vero da/a" e la frase
+      da cui viene) in Postgres, niente database a grafo; nella ricerca si seguono i legami per 1-2 passi
+- [ ] Esperimento "Cosa so di te" (16/10: da vedere se funziona): un profilo di fatti stabili, visibile e
+      correggibile in Settings, usato in ogni risposta; niente deduzioni su salute, politica, religione, vita sessuale
 - [ ] Incarichi ricorrenti ("ogni venerdì alle 17 mandami su Slack i task aperti della settimana"), creati a voce
       o in Ask, visibili e spegnibili in Settings; ogni esecuzione nell'Activity
 - [ ] Regole a evento ("quando prometto qualcosa a un cliente, crea un task in Todoist"); azioni verso altri
@@ -109,8 +122,21 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 
 ### Fase 8 — Nuove funzioni (idee del 16/10)
+- [ ] Echo riconosce chi hai davanti: quando una voce nota parla, sul telefono "Marco: l'ultima volta ti ha
+      detto che aspettava l'esito dell'esame" (dopo circa un minuto: la voce si riconosce sul server)
+- [ ] Ricordare le persone per te: compleanni dal calendario (Google o del telefono) con quello che Echo sa
+      della persona ("ama i gialli")
+- [ ] Domande che nessun'altra app sa fare, mostrate in "What Echo can do" ("Quando ho visto Marco l'ultima
+      volta?", "Quante volte ho promesso di chiamare mia madre?")
+- [ ] Il primo giorno: un riepilogo che sorprende entro 24 ore (da provare sui dati veri prima di deciderlo)
+- Scartate per ora: "conti in sospeso" (li coprono i task), "un anno fa oggi"
 - [ ] Cosa aspetto dagli altri: le promesse fatte a te ("Marco mi manda il preventivo venerdì"), con un
       promemoria se non arriva; "Non parli con Luca da 2 mesi" nella pagina della persona
+- [ ] **Saved** (deciso il 16/10): le cose da ritrovare, non da fare (quelle restano task, Promemoria, Todoist).
+      Un nuovo tipo di elemento accanto a task, idee e note, con foto, posizione del telefono, campi (importo…) e
+      il suo momento (conversazione, persone, posto); salvato solo quando lo chiedi, a voce, in Ask o con il
+      pulsante; strumenti per l'agente (salva, trova, somma, togli); una pagina in Memories accanto a People.
+      Il parcheggio è il primo; poi le cose (passaporto), le liste (vini, libri), le spese
 - [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
   - [ ] **"Dove ho parcheggiato"** (la preferita): "Echo, ricordati dove ho parcheggiato" salva la posizione del
         telefono, solo sul telefono (come Promemoria/Calendario, un comando che l'app esegue); "Dov'è la
