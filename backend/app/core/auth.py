@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.api_key import ApiKey
+from app.services.usage import usage_owner
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,8 @@ async def get_current_api_key(
         )
 
     api_key_record.last_used_at = datetime.now(timezone.utc)
+    # The model calls of this request are counted for the key's user (services/usage.py)
+    usage_owner.set(api_key_record.user_id)
 
     return api_key_record
 

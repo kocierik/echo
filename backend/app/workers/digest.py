@@ -29,6 +29,7 @@ from app.models.transcription import Transcription
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.temporal import conversation_overlaps
+from app.services.usage import usage_owner
 from app.services.weekly_digest import generate_weekly_digest, week_bounds, week_start_of
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import retry_with_backoff
@@ -77,6 +78,7 @@ async def generate_digest_for_date(
     Returns:
         Digest object if content was found, None if the day was empty.
     """
+    usage_owner.set(user_id)
     # Check if digest already exists
     existing = await db.execute(
         select(Digest)

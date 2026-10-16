@@ -21,6 +21,7 @@ from app.services.chunking import chunk_text
 from app.services.embedding_base import EmbeddingService
 from app.services.entity_mentions import record_mentions, release_conversation
 from app.services.llm_base import LLMService
+from app.services.usage import usage_owner
 from app.workers.retry import retry_with_backoff
 
 
@@ -48,6 +49,7 @@ async def reanalyse_conversation(
         conversation = conversation_result.scalar_one_or_none()
         if conversation is None:
             return ConversationReanalysisResult(found=False)
+        usage_owner.set(conversation.user_id)
 
         transcription_result = await db.execute(
             select(Transcription.id, Transcription.text, Segment.recorded_at)

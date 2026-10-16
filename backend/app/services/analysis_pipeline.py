@@ -19,6 +19,7 @@ from app.services.embedding_base import EmbeddingService
 from app.services.entity_consolidation import consolidate_entities
 from app.services.entity_mentions import record_mentions
 from app.services.llm_base import LLMMessage, LLMService
+from app.services.usage import usage_owner
 from app.workers.retry import retry_with_backoff
 
 
@@ -39,6 +40,7 @@ class AnalysisPipeline:
         db: AsyncSession,
         segment: Segment,
     ) -> AnalysisResult:
+        usage_owner.set(segment.user_id)
         transcription = segment.transcription
         if transcription is None:
             return AnalysisResult(0, 0, 0)
