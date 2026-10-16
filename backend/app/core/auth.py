@@ -20,6 +20,10 @@ api_key_header = APIKeyHeader(name="X-API-Key")
 AUTH_FAILURE_LIMIT = 10
 AUTH_FAILURE_WINDOW_SECONDS = 15 * 60
 
+# A key deleted (signed out, revoked) is remembered this long: the phone that still
+# holds it may fire a burst of requests, and those must not lock out its address
+REVOKED_KEY_SECONDS = 24 * 3600
+
 
 def hash_api_key(key: str) -> str:
     """Hash an API key with SHA-256."""
@@ -41,6 +45,11 @@ def client_failure_key(request: Request) -> str:
     return "auth_fail:" + client_address(request)
 
 
+def login_failure_key(request: Request) -> str:
+    """Failed sign-ins from a client, apart from failed keys (a revoked phone's)."""
+    return "login_fail:" + client_address(request)
+
+
 def email_failure_key(email: str) -> str:
     """Failed sign-ins for one account, whatever the client (the email is not stored)."""
     return "auth_fail_email:" + hashlib.sha256(email.encode()).hexdigest()[:16]
@@ -57,6 +66,49 @@ async def blocked_for(redis, key: str) -> int | None:
         logger.warning("auth failure limit unavailable: %s", exc)
         return None
     return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
+
+
+async def reserve_attempt(redis, key: str) -> int | None:
+    """Counts an attempt before it is checked, so a burst of simultaneous attempts
+    cannot all slip under the limit: seconds left when it is over, else None."""
+    try:
+        count = await redis.incr(key)
+        if count == 1:
+            await redis.expire(key, AUTH_FAILURE_WINDOW_SECONDS)
+        if count <= AUTH_FAILURE_LIMIT:
+            return None
+        ttl = await redis.ttl(key)
+    except Exception as exc:  # Redis down: never lock everyone out
+        logger.warning("auth failure limit unavailable: %s", exc)
+        return None
+    return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
+
+
+async def release_attempt(redis, key: str) -> None:
+    """Gives back an attempt that succeeded."""
+    try:
+        await redis.decr(key)
+    except Exception as exc:
+        logger.warning("auth failure limit unavailable: %s", exc)
+
+
+def _revoked_key(key_hash: str) -> str:
+    return "revoked_key:" + key_hash
+
+
+async def remember_revoked(redis, key_hash: str) -> None:
+    """A deleted key: its phone's later 401s do not count as failed attempts."""
+    try:
+        await redis.set(_revoked_key(key_hash), "1", ex=REVOKED_KEY_SECONDS)
+    except Exception as exc:
+        logger.warning("revoked key not remembered: %s", exc)
+
+
+async def _was_revoked(redis, key_hash: str) -> bool:
+    try:
+        return await redis.get(_revoked_key(key_hash)) is not None
+    except Exception:
+        return False
 
 
 async def _check_not_blocked(redis, key: str) -> None:
@@ -94,7 +146,7 @@ async def get_current_api_key(
     api_key_record = result.scalar_one_or_none()
 
     if api_key_record is None:
-        if redis is not None:
+        if redis is not None and not await _was_revoked(redis, key_hash):
             await record_failure(redis, failure_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

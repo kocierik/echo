@@ -32,6 +32,10 @@ class InMemoryRedis:
         self.values[key] = int(self.values.get(key, 0)) + 1
         return self.values[key]
 
+    async def decr(self, key):
+        self.values[key] = int(self.values.get(key, 0)) - 1
+        return self.values[key]
+
     async def expire(self, key, seconds):
         self.ttls[key] = seconds
 

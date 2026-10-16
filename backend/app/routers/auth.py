@@ -13,14 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
-    blocked_for,
-    client_failure_key,
     email_failure_key,
     get_current_api_key,
     hash_api_key,
-    record_failure,
+    login_failure_key,
+    release_attempt,
+    remember_revoked,
+    reserve_attempt,
 )
 from app.core.database import get_db
 from app.models.api_key import ApiKey
@@ -69,26 +71,38 @@ def _too_many(seconds: int) -> HTTPException:
     )
 
 
+async def _forget(request: Request, key: ApiKey) -> None:
+    """Remembers a deleted key, so its phone's later requests are not failed attempts."""
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        await remember_revoked(redis, key.key_hash)
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """A new key for this phone, shown once. Wrong email and wrong password look the same."""
     redis = getattr(request.app.state, "redis", None)
     email = normalize_email(body.email)
-    limits = [client_failure_key(request), email_failure_key(email)]
+    # Counted before the check (a burst cannot slip under the limit), per client and
+    # per account; given back when the password is right
+    limits = [login_failure_key(request), email_failure_key(email)]
     if redis is not None:
         for key in limits:
-            seconds = await blocked_for(redis, key)
+            seconds = await reserve_attempt(redis, key)
             if seconds is not None:
                 raise _too_many(seconds)
 
     user = await db.scalar(select(User).where(User.email == email))
-    # An unknown email still costs a password check, so timing tells nothing
-    valid = verify_password(user.password_hash if user else DUMMY_PASSWORD_HASH, body.password)
+    # An unknown email still costs a password check, so timing tells nothing. Argon2 is
+    # slow on purpose: off the event loop, so other requests keep flowing
+    valid = await run_in_threadpool(
+        verify_password, user.password_hash if user else DUMMY_PASSWORD_HASH, body.password
+    )
     if user is None or not valid:
-        if redis is not None:
-            for key in limits:
-                await record_failure(redis, key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=WRONG_CREDENTIALS)
+    if redis is not None:
+        for key in limits:
+            await release_attempt(redis, key)
 
     key = secrets.token_urlsafe(32)
     record = ApiKey(
@@ -108,9 +122,12 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
-    current: ApiKey = Depends(get_current_api_key), db: AsyncSession = Depends(get_db)
+    request: Request,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
 ):
     """Signs this phone out: its key stops working."""
+    await _forget(request, current)
     await db.delete(current)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -143,6 +160,7 @@ async def list_devices(
 @router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_device(
     device_id: uuid.UUID,
+    request: Request,
     current: ApiKey = Depends(get_current_api_key),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,5 +168,6 @@ async def revoke_device(
     key = await db.get(ApiKey, device_id)
     if key is None or key.user_id != current.user_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Device not found")
+    await _forget(request, key)
     await db.delete(key)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
