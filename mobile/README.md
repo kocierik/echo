@@ -40,14 +40,17 @@ No key is ever compiled in. Settings → Server connection can point a developme
 
 After signing in the app requests Bluetooth, notification and microphone permissions and pairs the
 wearable. Without the wearable at hand, **I don't have it with me** finishes the setup; pair it
-later from Settings → Device → **Pair Echo**. With a paired Echo, setup ends with a first voice
+later from the device at the top of Settings. With a paired Echo, setup ends with a first voice
 request ("Echo, remind me to …") and its answer.
 
 ## Features
 
-- **Today:** one device card (mute/resume, reconnect, or **Pair Echo** without a device); **Needs
-  you** with actions waiting for a Confirm (voice requests too); today so far (conversations,
-  minutes, people); tasks due today or created today; the latest daily summary, by its day.
+- **Three tabs, Today | Ask | Memories**, with the round Ask button in the middle (hold it to dictate a
+  question) and the device pill in every header (tap: Settings; long press: mute).
+- **Today:** the device only when something is wrong (offline, not paired, Bluetooth off); **Needs
+  you** with actions waiting for a Confirm (voice requests too); **To do today** (promises and tasks,
+  at most three; the Tasks page from there); **Your day**, today's conversations on a timeline;
+  **Echo can act in**, the connected apps. The daily and weekly summaries open Memories.
 - **Memories:** conversations by day with emoji, title, summary, people and tasks (Live while
   Echo is still listening); search across titles, summaries, transcripts and extracted entities.
   The detail has a Summary (tasks with the sentence they came from, events with **Add to
@@ -63,15 +66,17 @@ request ("Echo, remind me to …") and its answer.
   your latest conversations and people; follow-ups, resumable history, feedback;
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
-- **Settings:** device, connection policy (Wi-Fi only), privacy, Automations (Integrations
-  through Composio and the Activity log), diagnostics, appearance, logout.
+- **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
+  Activity, Notifications, Voices, Appearance (System, Light, Dark), Privacy, What Echo can do,
+  Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones, revoke), About
+  (sign out).
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
   (shown the next time the app wakes up).
-- **On this iPhone** (Settings → Automations): Echo creates and reads reminders and events in
+- **On this iPhone** (Settings → On this iPhone): Echo creates and reads reminders and events in
   the iPhone's Reminders and Calendar when asked (EventKit, `ios/Runner/EventKit`), and the
   calendar's next meetings get briefings ([ADR 0010](../docs/adr/0010-iphone-reminders-and-calendar.md)).
-- **Firmware updates** over Bluetooth (Settings → Device, protocol 4): the latest firmware
+- **Firmware updates** over Bluetooth (Settings → Device details, protocol 4): the latest firmware
   published on the server, checked by SHA-256 on the phone and on the wearable
   ([ADR 0009](../docs/adr/0009-firmware-updates-over-ble.md)).
 - **Live Activity** (iOS 16.1+, `ios/EchoActivity` widget extension): listening, muted or

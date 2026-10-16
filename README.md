@@ -4,7 +4,8 @@ An open-source wearable that listens for speech, transcribes it, extracts struct
 builds a personal memory you can query in natural language — and, when you ask, acts on your other
 apps (email, calendar, chat, tasks, notes).
 
-Current phase: **core beta** — one user, one iPhone, one wearable, one self-hosted backend
+Current phase: **core beta** — an iPhone, a wearable and a self-hosted backend, with email accounts so
+each person has their own memory; the Android app builds from the same code but is not yet tested
 ([spec](docs/superpowers/specs/2026-10-01-core-beta-design.md), [project status](docs/PROJECT-STATUS.md)).
 
 ## What Echo does
@@ -16,7 +17,8 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
   searches the memory (RAG), first in the conversations of the people the question names, and answers
   in the language of the question. Each day and each week get a summary on Today.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
-  Echo uses your connected apps through [Composio](https://composio.dev). Reading and creating run
+  Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
+Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
   right away; sending to other people, modifying and deleting wait for a **Confirm** tap in the app.
   Nothing happens from speech that is not addressed to Echo.
 - **Voice requests.** Start a sentence with "Echo, …" (also "Eco", "Hey/Ehi Echo") while wearing the
@@ -32,6 +34,9 @@ Current phase: **core beta** — one user, one iPhone, one wearable, one self-ho
   wearable's button (a long press mutes): the wearable's camera
   takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
   the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
+- **Updates itself.** A firmware version published to the server is offered in Settings → Device
+  details and sent to the wearable over Bluetooth; if the new version cannot reach the app, the
+  wearable goes back to the previous one ([ADR 0009](docs/adr/0009-firmware-updates-over-ble.md)).
 
 ## Architecture
 
@@ -139,10 +144,10 @@ cd firmware && pio run -t upload        # XIAO ESP32-S3 Sense
 cd ../mobile && flutter run             # see mobile/README.md
 ```
 
-The app opens on a welcome and signs in with that email and password (the server address is
-built into the app, see [mobile/README.md](mobile/README.md)). It then requests permissions, pairs
-the wearable and ends with a first voice request; pairing can be skipped and done later from
-Settings → Device. To expose a home server, see
+The app opens on a welcome and signs in with that email and password, or creates an account (the
+server address is built into the app, see [mobile/README.md](mobile/README.md)). It then requests
+permissions, pairs the wearable, explains what Echo keeps and ends with a first voice request;
+pairing can be skipped and done later from Settings. To expose a home server, see
 [docs/CLOUDFLARE-TUNNEL.md](docs/CLOUDFLARE-TUNNEL.md).
 
 Without hardware, the [simulator](simulator/README.md) or plain HTTP can send audio:
@@ -157,10 +162,11 @@ curl -X POST http://localhost:8000/api/segments \
 
 ### 6. Connect your apps (optional)
 
-With `COMPOSIO_API_KEY` set, open **Settings → Automations → Integrations** in the app and tap
+With `COMPOSIO_API_KEY` set, open **Settings → Apps** in the app and tap
 **Connect** next to Gmail, Google Calendar, Slack, Telegram, Todoist or Notion (or search for other
 apps). You log in with the provider in the browser; Composio keeps the account tokens. See
-[Actions](#actions-composio).
+[Actions](#actions-composio). The iPhone's Reminders and Calendar need no Composio: turn them on in
+**Settings → On this iPhone**.
 
 ## Actions (Composio)
 
@@ -187,8 +193,8 @@ check the app before trying again.
 
 **Privacy and audit.** Composio receives only the tool arguments (never audio or full transcripts) and
 holds the account tokens; email or message contents that Echo reads are sent to OpenAI to write the
-answer and are not stored in Echo's memory. Every executed call is recorded in **Settings → Automations
-→ Activity** with a short, redacted argument summary.
+answer and are not stored in Echo's memory. Every executed call is recorded in **Settings → Activity**
+with a short, redacted argument summary.
 
 **Endpoints** (all under `/api/actions`, `X-API-Key` required):
 - `GET /toolkits?query=` — toolkits with their connection state.
@@ -219,7 +225,7 @@ echo/
 │   ├── superpowers/      # Design specs and implementation plans
 │   └── schema.sql        # Reference only: Alembic creates the database
 ├── firmware/             # ESP32-S3 (Arduino + NimBLE), native unit tests in test/
-├── mobile/               # Flutter app (iOS-first), native projects in ios/ and android/
+├── mobile/               # Flutter app for iOS and Android, native projects in ios/ and android/
 ├── backend/
 │   ├── app/
 │   │   ├── core/         # config, auth, database, logging, circuit breaker, timezone
@@ -230,13 +236,23 @@ echo/
 │   │   └── workers/      # Worker entry, voice requests, reanalysis, summaries, digest, retention
 │   ├── alembic/          # Migrations
 │   └── tests/
-├── scripts/deploy.sh     # make deploy
+├── scripts/              # deploy.sh (make deploy), firmware-release.sh (make firmware-release)
 └── simulator/            # Device simulator (Python)
 ```
 
 ## API Reference
 
-All `/api` endpoints require the `X-API-Key` header.
+All `/api` endpoints require the `X-API-Key` header, except signing in and creating an account.
+
+### Accounts
+- `POST /api/auth/login` (`{email, password, device_name, platform}`) → `{api_key, device_id, user}`:
+  a new key for this phone, shown once (the server keeps only its hash). 401 for a wrong email or
+  password; 429 after 10 failures in 15 minutes from one address or for one email.
+- `POST /api/auth/register` — the same body; creates the account (password of 10+ characters) and
+  signs the phone in. 409 if the email has an account, 403 with `REGISTRATION_OPEN=false`, at most
+  5 accounts an hour from one address.
+- `POST /api/auth/logout` — revokes the key that sent it. `GET /api/auth/devices` — the phones signed
+  in and the other keys; `DELETE /api/auth/devices/{id}` — revoke one.
 
 ### Segments
 - `POST /api/segments` — ingest an ADPCM Segment (multipart `audio`, max 5 MB). Headers:
@@ -300,6 +316,7 @@ All `/api` endpoints require the `X-API-Key` header.
 - `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
   schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),
   already filtered: only when there is something to do, at most 3 a day, none from 22 to 8.
+  `POST` with the same query takes the iPhone calendar's next events, so they get briefings too.
 
 ### Voices
 - `GET /api/voice-profiles` — the user's voice and the named voices (`fingerprints_enabled` false
@@ -312,11 +329,19 @@ All `/api` endpoints require the `X-API-Key` header.
 ### Camera
 - `POST /api/photos` (`{"question"?, "chat_session_id"?}`) — the app's camera button: a photo
   request whose answer goes to that chat (or Voice requests). Voice requests create their own.
-- `GET /api/device/commands?wait=0..25` — long poll for the wearable's commands
-  (`{"commands": [{"type": "take_photo", "photo_id", "expires_at"}]}`), relayed by the app.
+- `GET /api/device/commands?wait=0..25` — long poll for the phone's and the wearable's commands:
+  `take_photo` (relayed to the wearable) and `phone_action` (Reminders or Calendar, run by the app,
+  which answers with `POST /api/device/commands/{id}/result`). `PUT /api/device/phone-apps`
+  (`{reminders, calendar}`) — which of them the app has turned on.
 - `PUT /api/photos/{id}/image` — the JPEG (multipart `image`, header `X-Captured-At`); idempotent.
 - `POST /api/photos/{id}/failure` (`{"reason": "muted|not_connected|no_camera|capture_failed|busy"}`).
 - `GET /api/photos/{id}` (status, answer), `GET /api/photos/{id}/image` (the JPEG).
+
+### Firmware
+- `POST /api/firmware` (multipart `version`, `notes`, `image`) — publish a build; `make firmware-release`
+  builds and publishes the version in `firmware/src/config.h`.
+- `GET /api/firmware/latest` — the highest version published; `GET /api/firmware/{version}/image`
+  — its image, which the app sends to the wearable.
 
 ### Operations
 - `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
@@ -381,8 +406,11 @@ See [docs/adr/](docs/adr/) for architectural decision records:
 - [0006 — BLE relay through the phone](docs/adr/0006-ble-relay-through-phone.md)
 - [0007 — Camera photos on request](docs/adr/0007-camera-photos-on-request.md)
 - [0008 — Voice fingerprints](docs/adr/0008-voice-fingerprints.md)
+- [0009 — Firmware updates over BLE](docs/adr/0009-firmware-updates-over-ble.md)
+- [0010 — iPhone Reminders and Calendar](docs/adr/0010-iphone-reminders-and-calendar.md)
 
 Feature designs: [Composio actions](docs/superpowers/specs/2026-10-13-composio-actions-design.md),
+[first run and sign-in](docs/superpowers/specs/2026-10-16-first-run-and-sign-in-design.md),
 [core beta](docs/superpowers/specs/2026-10-01-core-beta-design.md).
 
 ## License
