@@ -229,6 +229,53 @@ void main() {
 
     expect((jsonDecode(sent.body) as Map)['device_name'], 'iPhone 15 Pro');
   });
+
+  test('register creates the account and keeps the phone signed in', () async {
+    late http.Request sent;
+    final store = _Store();
+    final api = _api(store, (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"new-account-key","device_id":"d","user":{"id":"u","email":"ada@example.com"}}',
+        200,
+      );
+    });
+
+    await api.register(email: ' ada@example.com ', password: 'correct horse', deviceName: 'Pixel 8');
+
+    expect(sent.url.path, '/api/auth/register');
+    final body = jsonDecode(sent.body) as Map<String, dynamic>;
+    expect(body['email'], 'ada@example.com');
+    expect(body['device_name'], 'Pixel 8');
+    expect(store.saved?.$2, 'new-account-key');
+  });
+
+  test('register explains a taken email, a closed server and what to fix', () async {
+    Future<SignInException> failure(int status, String detail) async {
+      final api = _api(_Store(), (_) async => http.Response(jsonEncode({'detail': detail}), status));
+      try {
+        await api.register(email: 'ada@example.com', password: 'whatever long', deviceName: 'x');
+      } on SignInException catch (error) {
+        return error;
+      }
+      fail('register did not throw');
+    }
+
+    final taken = await failure(409, 'An account with this email already exists. Sign in instead.');
+    expect(taken.reason, SignInFailure.accountExists);
+    expect(taken.message, 'An account with this email already exists. Sign in instead.');
+
+    final closed = await failure(403, 'Registration is closed.');
+    expect(closed.reason, SignInFailure.registrationClosed);
+    expect(closed.message, 'Registration is closed.');
+
+    final invalid = await failure(400, 'Use at least 10 characters for the password.');
+    expect(invalid.reason, SignInFailure.invalid);
+    expect(invalid.message, 'Use at least 10 characters for the password.');
+
+    final limited = await failure(429, 'Too many accounts from here. Try again in 60 minutes.');
+    expect(limited.reason, SignInFailure.tooManyAttempts);
+  });
 }
 
 ApiService _api(_Store store, Future<http.Response> Function(http.Request) answer) {
