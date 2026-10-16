@@ -32,8 +32,8 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
 | Componente | Tecnologia | Test |
 |---|---|---|
 | `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 12 suite Unity native, 109 test (protocollo, transfer, bond, mute, pulsante, OTA, buffer, foto) |
-| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 553 test (servizi + widget, ~1 min), `flutter analyze` pulito |
-| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2 | 667 test pytest (~30 s), ruff pulito |
+| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 581 test (servizi + widget, ~4 min), `flutter analyze` pulito |
+| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2, MCP SDK 1.30 | 735 test pytest (~2 min), ruff pulito |
 | `simulator/` | Python, simula il device via HTTP | — |
 
 Fase attuale: **Core Beta** ([spec](superpowers/specs/2026-10-01-core-beta-design.md)): un utente, un iPhone,
@@ -105,6 +105,14 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   nel DB), `logout`, `devices`, revoca; password Argon2 controllate fuori dal loop; tentativi falliti contati prima
   del controllo, per indirizzo e per email (10 in 15 minuti); al massimo 5 registrazioni l'ora per indirizzo;
   `REGISTRATION_OPEN=false` chiude la registrazione; `make create-user` / `make set-password` dal server.
+- **Costi** (`app/services/usage.py`): ogni chiamata a pagamento (trascrizione, embedding, i quattro ruoli
+  dei modelli) è contata per utente e giorno in `llm_usage`; `make usage` stampa il costo di un giorno, per
+  tipo di lavoro, e il costo di un'ora di parlato. I prezzi (`app/usage_prices.py`) sono da verificare.
+- **App collegate e MCP** (`app/mcp/`): chiavi `read` per Claude, Cursor e simili, solo su `/mcp`; sei
+  strumenti di sola lettura sulle memorie; la REST rifiuta quelle chiavi (403).
+- **Domande su Echo e fuori tema**: le istruzioni del modello sanno cosa sa fare Echo; domande generali con
+  risposta breve "non dalla memoria", nessuna invenzione sul passato né su informazioni in tempo reale.
+- **La lingua che parli**: una per account (inglese o italiano), per la trascrizione e la dettatura.
 - **Promemoria e Calendario dell'iPhone** ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md)): l'agente li usa
   tramite comandi all'app (EventKit), senza Composio.
 - `POST /api/segments`: ingest idempotente (hash audio + `recorded_at`), limite 5 MB, rate limit 60/min.
@@ -214,6 +222,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
+- **Da applicare sul server** (`make deploy`): migrazioni 016–019 (lingua, consumi, permessi delle chiavi,
+  chiamate MCP) e l'immagine con l'SDK MCP. Prima di allora `make usage` e `/mcp` non funzionano lì.
+- **MCP solo con chiave:** claude.ai e ChatGPT vogliono OAuth, da fare; Claude Desktop non è verificato.
 - **Account appena fatti:** registrazione e accesso sono provati solo dai test. Sul server serve `make deploy`
   e il proprio account (`make create-user`). Mancano conferma dell'email, recupero password via email, Apple e
   Google. Con la registrazione aperta chiunque trovi il server può crearsi un account e usare la chiave OpenAI del
