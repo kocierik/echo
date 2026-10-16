@@ -139,7 +139,13 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       Un nuovo tipo di elemento accanto a task, idee e note, con foto, posizione del telefono, campi (importo…) e
       il suo momento (conversazione, persone, posto); salvato solo quando lo chiedi, a voce, in Ask o con il
       pulsante; strumenti per l'agente (salva, trova, somma, togli); una pagina in Memories accanto a People.
-      Il parcheggio è il primo; poi le cose (passaporto), le liste (vini, libri), le spese
+      Il parcheggio è il primo; poi le cose (passaporto), le liste (vini, libri), le spese.
+      Mockup approvati il 16/10 (tela, riga "Saved"): un pannello in Memories, la pagina Saved, la cosa salvata
+      con "The moment", parcheggio a voce
+- [ ] Posti: "Echo, salvami questo posto" → Saved, gruppo Places (solo quando lo chiedi, deciso il 16/10).
+      Più avanti, attivabile in Privacy e spento di default, il posto di ogni conversazione e foto. Niente
+      storico automatico dei posti visitati. Indirizzo dal telefono (gratis); nome del locale da Apple Maps su
+      iPhone, su Android dalla foto o con Google Places (a pagamento)
 - [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
   - [ ] **"Dove ho parcheggiato"** (la preferita): "Echo, ricordati dove ho parcheggiato" salva la posizione del
         telefono, solo sul telefono (come Promemoria/Calendario, un comando che l'app esegue); "Dov'è la
