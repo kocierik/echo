@@ -73,6 +73,67 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       e i promemoria prima delle riunioni usano anche il calendario dell'iPhone
       ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md))
 - [ ] Test di 2 ore della core beta su iPhone ([checklist](BETA-GATE-CHECKLIST.md)) e test batteria di 12 ore
+- [ ] Android: app per Android in corso il 16/10 (servizio in primo piano con notifica di stato, calendario del
+      telefono, testi "phone"); da compilare e provare su un telefono con il dispositivo
+
+### Fase 7 — Echo fuori da Echo: MCP e un agente per utente (in discussione)
+Prerequisiti, prima di dare memorie e azioni a sistemi esterni o di far agire Echo da solo:
+- [ ] Chiavi con permessi (`read` / `full`): oggi ogni chiave può leggere, cancellare e agire
+- [ ] Consumo per utente: i token di ogni chiamata registrati per utente, quote mensili (oggi tutti usano la
+      chiave OpenAI del server senza limiti, e la registrazione è aperta)
+
+MCP — le memorie di Echo dentro Claude, ChatGPT e altri assistenti:
+- [ ] Server MCP remoto (`/mcp`, Streamable HTTP) con strumenti di sola lettura: cercare nelle memorie, una
+      conversazione, persone, task e promesse, riassunti del giorno e della settimana
+- [ ] Entrambi i casi d'uso (deciso il 16/10): consultare Echo mentre scrivi altrove (connettori di claude.ai e
+      ChatGPT, OAuth 2.1, con "Connected apps" in Settings per vedere e revocare) e un assistente che lavora per
+      te e consulta le memorie da solo (Claude Code, Claude Desktop, Cursor: chiave di sola lettura nell'header,
+      la prima da fare)
+- [ ] Più avanti, strumenti che scrivono (creare un task, segnare una promessa come fatta), mai cancellazioni
+
+Un agente per utente — Echo che lavora per te anche quando non glielo chiedi. Un solo motore (l'agente delle
+azioni di oggi, in Python) e per ogni utente un profilo nel database; idee prese da eve (Vercel), pi e valet
+senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
+- [ ] Istruzioni personali ("chiamami Erik, rispondi breve, il lavoro è su Slack") usate da chat, voce e briefing
+- [ ] Incarichi ricorrenti ("ogni venerdì alle 17 mandami su Slack i task aperti della settimana"), creati a voce
+      o in Ask, visibili e spegnibili in Settings; ogni esecuzione nell'Activity
+- [ ] Regole a evento ("quando prometto qualcosa a un cliente, crea un task in Todoist"); azioni verso altri
+      sempre con Confirm
+- [ ] Dati del proprio agente: quote, storico delle esecuzioni, pausa di tutti gli incarichi
+- [ ] Esecuzioni durevoli: ogni passo salvato, un incarico interrotto (riavvio, deploy) riprende da dove era
+- [ ] Decisioni veloci (instradamento, "è un comando per Echo?", scelta degli strumenti): prima misurare i tempi
+      reali di ogni passo; con molti strumenti (client MCP) scegliere i pertinenti con gli embedding che già
+      abbiamo; poi valutare un modello di decisione dedicato come Jev (TypeSafe AI) con `make eval-llm` sui casi
+      in italiano. Le conferme restano regole nel codice, mai una probabilità di un modello
+- [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
+      proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
+
+### Fase 8 — Nuove funzioni (idee del 16/10)
+- [ ] Cosa aspetto dagli altri: le promesse fatte a te ("Marco mi manda il preventivo venerdì"), con un
+      promemoria se non arriva; "Non parli con Luca da 2 mesi" nella pagina della persona
+- [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
+  - [ ] **"Dove ho parcheggiato"** (la preferita): "Echo, ricordati dove ho parcheggiato" salva la posizione del
+        telefono, solo sul telefono (come Promemoria/Calendario, un comando che l'app esegue); "Dov'è la
+        macchina?" risponde con indirizzo e un link alla mappa. Resta finché non salvi un nuovo parcheggio, al
+        massimo una settimana, con "Found it" per toglierla (deciso il 16/10; capire da solo che riparti, più avanti). La foto è facoltativa (piano e colonna in un parcheggio coperto). Da verificare: su iPhone
+        la posizione con l'app in background può richiedere il permesso "Sempre"
+  - [ ] "Dove ho messo il passaporto / le chiavi": "Echo, il passaporto è qui" → "Dov'è il passaporto?" risponde
+        con la foto e il posto (la descrizione è già nella memoria: manca il comando e la risposta con la foto)
+  - [ ] Scontrini → spese strutturate (negozio, importo, data, categoria): "quanto ho speso questa settimana?"
+  - [ ] Liste "salva questo": vini, libri, prodotti, posti ("cos'era quel vino del ristorante di sabato?")
+  - [ ] Documenti con scadenza: bollette, lettere, biglietti di treno/aereo → task o evento con la data giusta,
+        senza tenere IBAN e codici nella memoria
+  - [ ] Azioni dalla foto: locandina → evento in calendario, QR code → link, rete Wi-Fi
+  - [ ] Traduzione al volo (menu, cartelli) tra gli esempi di "What Echo can do"
+  - [ ] Doppia pressione del pulsante = "salva e basta" (nessuna risposta), singola = chiedi
+  - [ ] Le foto in "Your day" e nel riepilogo della settimana
+  - Già fatto: risposta sulla foto, descrizione nella memoria, foto agganciata alla conversazione in corso
+    (lavagne e slide in riunione), task ed eventi dalle foto, biglietti da visita → People
+  - Esclusi: riconoscimento dei volti (dati biometrici) e scatti automatici continui (batteria, consenso di chi
+    è intorno)
+- [ ] Resoconto della riunione da inviare: decisioni e cose da fare, "Invia ai partecipanti" con Confirm
+- [ ] App web: cercare e leggere le memorie dal computer
+- [ ] "Echo Wrapped" settimanale: con chi hai parlato di più, quanto, gli argomenti ricorrenti
 
 ## Già fatto
 
@@ -101,8 +162,6 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
   funziona); più avanti un Postgres gestito (backup puntuali, repliche) quando ci saranno clienti.
 - Account per la vendita: verifica dell'email e recupero della password via email (serve un servizio di invio),
   verifica in due passaggi, Accedi con Apple/Google.
-- Android: provare la build (manca l'SDK su questo Mac), equivalenti di Promemoria/Calendario e della Live
-  Activity, background.
 - Modalità consenso basata sulla voce (testo completo solo per te e per le voci registrate): utile
   quando Echo avrà altri utenti o con le voci collaudate nell'uso reale.
 - Multi-utente: account, registrazione e dati separati per utente ci sono; restano quote e costi per utente
