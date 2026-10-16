@@ -2,10 +2,15 @@
 memory has nothing. Shared by chat (app.routers.query), voice requests and the evals.
 """
 
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
-from app.services.language import detect_language
+from app.services.language import clear_language, detect_language
+from app.services.llm_base import LLMMessage, LLMService
 from app.services.temporal import DateRange
+
+logger = logging.getLogger(__name__)
 
 
 def format_date_filter(date_range: DateRange | None) -> dict | None:
@@ -37,8 +42,40 @@ def describe_period(date_range: DateRange) -> str:
     return f"until {date_range.date_to.strftime('%d/%m/%Y')}"
 
 
-def rag_system_prompt(date_range: DateRange | None) -> str:
-    """System prompt for memory answers, written in the question's language."""
+_KINDS_OF_QUESTION = (
+    "Not every question is about the user's memory. Tell which kind it is:\n"
+    "1. About Echo itself or how to use it: answer from 'About Echo' below.\n"
+    "2. A general question, not about the user's life (a definition, a calculation, a "
+    "translation): answer briefly from general knowledge and say it does not come from "
+    "their memory.\n"
+    "3. About the user's past (what was said, who, when, what they promised): answer only "
+    "from the context; when the context does not support an answer, say so and never guess.\n"
+    "4. Something that needs live information (weather, news, scores, today's prices): "
+    "say Echo cannot see live information, never make it up, and offer what it can, such "
+    "as whether the user talked about it."
+)
+
+
+# Last, so they are not lost after the longer text about Echo
+_LAST_RULES = (
+    "Name Echo's screens and buttons exactly as written above, in English (the app is in "
+    "English): 'Settings → Apps', never a translation. Answer in the language of the "
+    "user's question, even when the context or these instructions are in another language."
+)
+
+
+_LANGUAGE_NAMES = {"en": "English", "it": "Italian"}
+
+
+def rag_system_prompt(
+    date_range: DateRange | None, about: str = "", language: str | None = None
+) -> str:
+    """System prompt for memory answers, written in the question's language.
+
+    `about` (services.about_echo) lets it answer questions about Echo itself; `language`
+    (`clear_language` of the question) is spelled out, since transcripts in another
+    language pull the answer towards theirs.
+    """
     prompt = (
         "You are a personal assistant. The user asks about their own memory: "
         "past conversations, ideas, tasks and people they mentioned. "
@@ -54,8 +91,13 @@ def rag_system_prompt(date_range: DateRange | None) -> str:
         "previous conversation to understand what the user refers to. "
         "Always answer in the same language as the user's question."
     )
+    if about:
+        prompt += f"\n\n{_KINDS_OF_QUESTION}\n\nAbout Echo:\n{about}\n\n{_LAST_RULES}"
     if date_range:
         prompt += f"\n\nNote: results are filtered to the period {describe_period(date_range)}."
+    if language in _LANGUAGE_NAMES:
+        name = _LANGUAGE_NAMES[language]
+        prompt += f"\n\nThe question is in {name}: answer in {name}."
     return prompt
 
 
@@ -79,3 +121,35 @@ def no_results_message(question: str, date_range: DateRange | None) -> str:
     """Reply when memory has nothing relevant, in the question's language."""
     messages = _NO_RESULTS_IN_PERIOD if date_range else _NO_RESULTS
     return messages[detect_language(question)]
+
+
+async def answer_without_memory(
+    llm: LLMService,
+    question: str,
+    history: list[dict],
+    date_range: DateRange | None,
+    about: str,
+    on_token: Callable[[str], Awaitable[None]] | None = None,
+) -> str:
+    """Nothing in memory: the model answers with the prompt's rules and no context (a
+    question about Echo, a general one), or says it does not know. The fixed text only
+    when the model fails before writing anything."""
+    prompt = rag_system_prompt(date_range, about, clear_language(question))
+    messages = [LLMMessage(role="system", content=prompt)]
+    messages.extend(LLMMessage(role=m["role"], content=m["content"]) for m in history)
+    messages.append(
+        LLMMessage(role="user", content=f"(Nothing found in memory.)\n\nQuestion: {question}")
+    )
+    pieces: list[str] = []
+    try:
+        if on_token is None:
+            return (await llm.complete(messages, temperature=0.3)).content
+        async for piece in llm.stream(messages, temperature=0.3):
+            pieces.append(piece)
+            await on_token(piece)
+        return "".join(pieces)
+    except Exception:
+        if pieces:
+            raise
+        logger.warning("Answer without memory failed; using the fixed text", exc_info=True)
+        return no_results_message(question, date_range)

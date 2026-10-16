@@ -105,15 +105,17 @@ async def test_a_memory_answer_streams_then_completes(client, auth_headers, db_s
 
 
 @pytest.mark.asyncio
-async def test_without_memory_the_answer_arrives_whole(client, auth_headers):
+async def test_without_memory_the_model_still_answers_in_pieces(client, auth_headers):
+    # It may be a question about Echo or a general one (test_about_echo.py)
     with _patched(_StreamingLLM)[0], _patched(_StreamingLLM)[1]:
         response = await client.post(
             "/api/query/stream", headers=auth_headers, json={"question": "Cosa ho fatto ieri?"}
         )
 
     events = _events(response.text)
-    assert [kind for kind, _ in events] == ["done"]
-    assert events[0][1]["sources"] == []
+    assert [kind for kind, _ in events] == ["token", "token", "token", "done"]
+    assert events[-1][1]["answer"] == "".join(PIECES)
+    assert events[-1][1]["sources"] == []
 
 
 @pytest.mark.asyncio

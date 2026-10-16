@@ -634,11 +634,11 @@ async def test_worker_memory_fallback_without_results(worker):
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
+    # Nothing in memory: the model still answers, knowing what Echo is (never a guess
+    # about the past: the prompt's rules)
     answer = _voice_session(worker).messages[-1]
-    assert answer["content"] == (
-        "Non ho trovato informazioni nella memoria per il periodo indicato. "
-        "Prova a riformulare la domanda o a estendere il periodo."
-    )
+    assert answer["content"] == "Risposta dalla memoria"
+    assert "About Echo" in worker.llm.call_log[-1][0].content
 
 
 @pytest.mark.asyncio
