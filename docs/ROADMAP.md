@@ -126,6 +126,10 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       con 22+ strumenti (memorie, conversazioni, task, calendario, Gmail, ricerca web) che sceglie cosa
       chiamare e cita le fonti (docs.omi.me, Chat System Architecture). Per Echo: un agente che ha la memoria
       come strumento, riusando i sei strumenti MCP; da pesare la latenza e il costo in più per domanda
+- [ ] Idee da Wispr Flow (16/10; app di dettatura senza API, non integrabile): dettatura di Ask trascritta sul
+      server con lo stesso modello del dispositivo (più precisa su nomi e italiano, costa per minuto: dopo la
+      misura dei costi); un caso di prova per i messaggi dettati con ripensamenti ("alle 8, anzi alle 8 e
+      mezza" → "alle 8:30") quando l'agente scrive per l'utente
 - [ ] Idea: ricerca web nella chat (lo strumento di ricerca integrato di OpenAI), con un costo per chiamata
 - [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
