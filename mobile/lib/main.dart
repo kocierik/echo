@@ -105,7 +105,6 @@ class EchoApp extends StatelessWidget {
           darkTheme: AppTheme.dark,
           themeMode: controller.themeMode,
           home: AppRouter(
-            key: ValueKey(state.session.loggedOut),
             appController: controller,
             deviceController: shellDeviceController,
             sessionController: shellSessionController,
@@ -171,13 +170,22 @@ class _AppRouterState extends State<AppRouter> {
     super.initState();
     _onboardingController = widget.onboardingControllerFactory();
     _initializeOnboarding(_onboardingController, _onboardingGeneration);
-    if (widget.appController.value.session.loggedOut) {
-      // Signed out (here, or revoked from another phone): close every page left
-      // open on top, Settings included, so the welcome is what shows
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
-      });
+    _signedOut = widget.appController.value.session.loggedOut;
+    widget.appController.addListener(_onAppState);
+  }
+
+  bool _signedOut = false;
+
+  /// Signed out (here, or revoked from another phone): setup starts over and every
+  /// page left open on top closes, Settings included. Signing in again changes
+  /// nothing here: the first run hands over to the app it already built.
+  void _onAppState() {
+    final signedOut = widget.appController.value.session.loggedOut;
+    if (signedOut && !_signedOut && mounted) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      unawaited(_restartOnboarding(resumePairingIfConfigured: false));
     }
+    _signedOut = signedOut;
   }
 
   Future<void> _initializeOnboarding(
@@ -195,7 +203,7 @@ class _AppRouterState extends State<AppRouter> {
     });
   }
 
-  Future<void> _restartOnboarding() async {
+  Future<void> _restartOnboarding({bool resumePairingIfConfigured = true}) async {
     final generation = ++_onboardingGeneration;
     final previous = _onboardingController;
     final replacement = widget.onboardingControllerFactory();
@@ -210,12 +218,13 @@ class _AppRouterState extends State<AppRouter> {
     await _initializeOnboarding(
       replacement,
       generation,
-      resumePairingIfConfigured: true,
+      resumePairingIfConfigured: resumePairingIfConfigured,
     );
   }
 
   @override
   void dispose() {
+    widget.appController.removeListener(_onAppState);
     _onboardingController.dispose();
     super.dispose();
   }
@@ -231,6 +240,15 @@ class _AppRouterState extends State<AppRouter> {
             child: const CircularProgressIndicator(),
           ),
         ),
+      );
+    }
+    final session = widget.appController.value.session;
+    if (session.cleanupFailed && session.reason != null) {
+      // Signed out from elsewhere, but the phone could not be cleared: say so
+      return _SignedOutRetry(
+        reason: session.reason!,
+        error: session.error,
+        onRetry: widget.sessionController?.signOutRevoked,
       );
     }
     if (!_onboardingComplete) {
@@ -256,6 +274,51 @@ class _AppRouterState extends State<AppRouter> {
       preferences: widget.preferences,
       segmentUploadedStream: widget.segmentUploadedStream,
       onRequireOnboarding: _restartOnboarding,
+    );
+  }
+}
+
+/// The phone was signed out from another, but clearing it failed: why, and a retry.
+final class _SignedOutRetry extends StatelessWidget {
+  const _SignedOutRetry({required this.reason, this.error, this.onRetry});
+
+  final String reason;
+  final String? error;
+  final Future<void> Function()? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final palette = EchoPalette.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(reason, style: textTheme.headlineLarge),
+              const SizedBox(height: 12),
+              Text(
+                'Echo could not finish clearing this phone. Try again; if it keeps '
+                'failing, delete and reinstall the app.',
+                style: textTheme.bodyMedium?.copyWith(color: palette.text2),
+              ),
+              if (error != null) ...[
+                const SizedBox(height: 8),
+                Text(error!, style: textTheme.bodySmall),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(
+                key: const Key('signed-out-retry'),
+                onPressed: onRetry == null ? null : () => unawaited(onRetry!()),
+                child: const Text('Try again'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

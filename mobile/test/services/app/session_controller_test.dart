@@ -109,6 +109,28 @@ void main() {
 
     expect(controller.state.reason, isNull);
   });
+
+  test('a logout the server did not hear says so', () async {
+    final calls = <String>[];
+    final controller = _controller(calls, apiError: const ServerSignOutFailed());
+    addTearDown(controller.dispose);
+
+    await controller.logout();
+
+    expect(calls, ['ble', 'api', 'identity', 'cache']);
+    expect(controller.state.loggedOut, isTrue);
+    expect(controller.state.reason, ServerSignOutFailed.notice);
+  });
+
+  test('a revoked sign-out keeps its reason when the server is unreachable', () async {
+    final controller = _controller(<String>[], apiError: const ServerSignOutFailed());
+    addTearDown(controller.dispose);
+
+    await controller.signOutRevoked();
+
+    expect(controller.state.loggedOut, isTrue);
+    expect(controller.state.reason, SessionController.revokedReason);
+  });
 }
 
 SessionController _controller(

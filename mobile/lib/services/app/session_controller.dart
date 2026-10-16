@@ -11,7 +11,18 @@ import '../api/response_cache.dart';
 export '../../models/session_state.dart';
 
 abstract interface class ApiCredentialsClearer {
+  /// Throws [ServerSignOutFailed] when the phone was cleared but the server
+  /// could not be told.
   Future<void> clear();
+}
+
+/// The phone signed out, but its key could not be deleted on the server: it keeps
+/// working there until revoked from another phone.
+final class ServerSignOutFailed implements Exception {
+  const ServerSignOutFailed();
+
+  static const notice = "Signed out here, but Echo's server could not be reached. "
+      'Revoke this phone from Settings → Devices on another one.';
 }
 
 abstract interface class DeviceIdentityClearer {
@@ -60,8 +71,17 @@ final class SessionController {
     _setState(SessionState(SessionStatus.loggingOut, reason: reason));
 
     final errors = <String>[];
+    var serverMissed = false;
     await _attempt('BLE stop', _bleStopper.stop, errors);
-    await _attempt('API credentials', _apiCredentials.clear, errors);
+    await _attempt('API credentials', () async {
+      try {
+        await _apiCredentials.clear();
+      } on ServerSignOutFailed {
+        serverMissed = true;
+      }
+    }, errors);
+    // A reason given (a revoked key) wins: that key is dead on the server anyway
+    reason ??= serverMissed ? ServerSignOutFailed.notice : null;
     await _attempt('device identity', _deviceIdentity.clear, errors);
     await _attempt('session cache', _sessionCache.clear, errors);
 
@@ -117,10 +137,14 @@ final class ApiServiceCredentialsClearer implements ApiCredentialsClearer {
   /// logout on the phone.
   @override
   Future<void> clear() async {
+    var reached = true;
     try {
       await _apiService.signOutThisPhone();
-    } catch (_) {}
+    } catch (_) {
+      reached = false;
+    }
     await _apiService.clearConfiguration();
+    if (!reached) throw const ServerSignOutFailed();
   }
 }
 
