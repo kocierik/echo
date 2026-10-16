@@ -37,3 +37,13 @@ def detect_language(text: str) -> Language:
     italian = sum(word in _ITALIAN for word in words)
     english = sum(word in _ENGLISH for word in words)
     return "it" if italian > english else "en"
+
+
+def clear_language(text: str) -> Language | None:
+    """The language when the words say it clearly; None when they do not ("ciao")."""
+    words = _WORD.findall((text or "").lower())
+    italian = sum(word in _ITALIAN for word in words)
+    english = sum(word in _ENGLISH for word in words)
+    if italian == english:
+        return None
+    return "it" if italian > english else "en"

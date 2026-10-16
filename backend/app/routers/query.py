@@ -25,19 +25,20 @@ from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
+from app.services.about_echo import about_echo_for
 from app.services.chat_history import (
     get_session_history,
     load_persisted_history,
     record_turn,
 )
 from app.services.embedding_openai import get_embedding_service
-from app.services.language import detect_language
+from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_intent_service, get_llm_query_service
 from app.services.memory_answers import (
+    answer_without_memory,
     as_utc,
     format_date_filter,
-    no_results_message,
     rag_system_prompt,
 )
 from app.services.memory_retrieval import retrieve_memory_context
@@ -444,15 +445,17 @@ async def _answer_query(
         embedding_service=get_embedding_service(),
     )
 
+    about = await about_echo_for(redis_client, user_id)
     if not memory.context:
-        no_result_msg = no_results_message(body.question, date_range)
-        # Save to history even for empty results
-        await record_turn(
-            redis_client, db, user_id, session_id, history, body.question, no_result_msg
+        # A question about Echo or a general one still gets an answer (the prompt's rules)
+        answer = await answer_without_memory(
+            llm_service, body.question, history, date_range, about, on_token
         )
+        # Save to history even for empty results
+        await record_turn(redis_client, db, user_id, session_id, history, body.question, answer)
 
         return QueryResponse(
-            answer=no_result_msg,
+            answer=answer,
             sources=[],
             session_id=session_id,
             date_filter=format_date_filter(date_range),
@@ -462,7 +465,7 @@ async def _answer_query(
     sources = [SourceChunk(**src) for src in memory.sources]
 
     # 7. Generate answer via LLM (with conversation history)
-    system_prompt = rag_system_prompt(date_range)
+    system_prompt = rag_system_prompt(date_range, about, clear_language(body.question))
 
     messages = [LLMMessage(role="system", content=system_prompt)]
 

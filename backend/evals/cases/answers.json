@@ -1,11 +1,149 @@
 {
   "context": "Relevant conversation summaries:\n- [13/10/2026 12:30] Lunch with Ada about Atlas: Ada wants to launch Atlas in November; the user will send her the budget by Friday and involve Marco for the design.\n- [12/10/2026 20:15] Dinner plans: pizza on Saturday at 8 pm with Giulia and Marco at Da Gino.\n\nStructured knowledge:\n- person: Marco Rossi (designer, works on Atlas)\n- task: Mandare il budget ad Ada (due 2026-10-16)\n- event: Cena da Gino (2026-10-17 20:00)\n\n---\n\n[Altri] Allora Atlas lo lanciamo a novembre, mi serve il budget entro venerdì.\n\n---\n\n[Tu] Per il design coinvolgiamo Marco, lui conosce già il progetto.\n\n---\n\n[Altri] Sabato alle otto da Gino, prenoto io per quattro.",
   "cases": [
-    {"id": "fact-it", "question": "Quando vuole lanciare Atlas Ada?", "language": "it", "must": ["novembre"]},
-    {"id": "fact-en", "question": "When does Ada want to launch Atlas?", "language": "en", "must": ["november"]},
-    {"id": "deadline", "question": "Entro quando devo mandare il budget e a chi?", "language": "it", "must": ["venerdi", "ada"]},
-    {"id": "person", "question": "Chi segue il design di Atlas?", "language": "it", "must": ["marco"]},
-    {"id": "event", "question": "Dove e a che ora è la cena di sabato?", "language": "it", "must": ["gino"], "any": [["8", "otto", "20"]]},
-    {"id": "not-in-memory", "question": "Che cosa mi ha detto Luca sulle ferie?", "language": "it", "forbid": ["agosto", "luglio", "settimane"], "any": [["non", "nessun"]]}
+    {
+      "id": "fact-it",
+      "question": "Quando vuole lanciare Atlas Ada?",
+      "language": "it",
+      "must": [
+        "novembre"
+      ]
+    },
+    {
+      "id": "fact-en",
+      "question": "When does Ada want to launch Atlas?",
+      "language": "en",
+      "must": [
+        "november"
+      ]
+    },
+    {
+      "id": "deadline",
+      "question": "Entro quando devo mandare il budget e a chi?",
+      "language": "it",
+      "must": [
+        "venerdi",
+        "ada"
+      ]
+    },
+    {
+      "id": "person",
+      "question": "Chi segue il design di Atlas?",
+      "language": "it",
+      "must": [
+        "marco"
+      ]
+    },
+    {
+      "id": "event",
+      "question": "Dove e a che ora è la cena di sabato?",
+      "language": "it",
+      "must": [
+        "gino"
+      ],
+      "any": [
+        [
+          "8",
+          "otto",
+          "20"
+        ]
+      ]
+    },
+    {
+      "id": "not-in-memory",
+      "question": "Che cosa mi ha detto Luca sulle ferie?",
+      "language": "it",
+      "forbid": [
+        "agosto",
+        "luglio",
+        "settimane"
+      ],
+      "any": [
+        [
+          "non",
+          "nessun"
+        ]
+      ]
+    },
+    {
+      "id": "about-echo-it",
+      "question": "Cosa sai fare?",
+      "language": "it",
+      "empty": true,
+      "any": [
+        [
+          "conversazioni",
+          "ricordo",
+          "memoria",
+          "ricordare"
+        ],
+        [
+          "app",
+          "gmail",
+          "calendar"
+        ]
+      ]
+    },
+    {
+      "id": "connect-gmail-it",
+      "question": "Come collego Gmail?",
+      "language": "it",
+      "empty": true,
+      "must": [
+        "apps"
+      ]
+    },
+    {
+      "id": "general-calc-it",
+      "question": "Quanto fa il 15% di 80?",
+      "language": "it",
+      "empty": true,
+      "must": [
+        "12"
+      ],
+      "any": [
+        [
+          "memoria",
+          "conversazioni",
+          "ricordi"
+        ]
+      ]
+    },
+    {
+      "id": "past-unknown-it",
+      "question": "Cosa mi ha detto Luca del trasloco?",
+      "language": "it",
+      "any": [
+        [
+          "non",
+          "nessuna",
+          "niente",
+          "nessun"
+        ]
+      ],
+      "forbid": [
+        "traslocare"
+      ]
+    },
+    {
+      "id": "live-weather-it",
+      "question": "Che tempo fa domani a Milano?",
+      "language": "it",
+      "empty": true,
+      "any": [
+        [
+          "reale",
+          "posso",
+          "accesso"
+        ]
+      ],
+      "forbid": [
+        "soleggiato",
+        "pioggia",
+        "nuvoloso",
+        "gradi",
+        "sereno"
+      ]
+    }
   ]
 }
