@@ -122,6 +122,12 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 
+### Correzioni segnalate il 16/10 (piano usage-keys-and-mcp, Task 10 e 11)
+- [ ] "Cosa sai fare?" in Ask risponde "non ho informazioni nella memoria": Echo deve sapere cosa sa fare,
+      rispondere alle domande generali dicendo che non vengono dalla memoria, e non inventare mai il passato
+- [ ] La dettatura in Ask capisce solo l'inglese: una lingua per account ("la lingua che parli"), usata dalla
+      trascrizione del dispositivo e dalla dettatura; testo da leggere in Settings → Voices anche in italiano
+
 ### Fase 8 — Nuove funzioni (idee del 16/10)
 - [ ] Echo riconosce chi hai davanti: quando una voce nota parla, sul telefono "Marco: l'ultima volta ti ha
       detto che aspettava l'esito dell'esame" (dopo circa un minuto: la voce si riconosce sul server)
