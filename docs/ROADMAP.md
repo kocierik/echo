@@ -119,6 +119,14 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       reali di ogni passo; con molti strumenti (client MCP) scegliere i pertinenti con gli embedding che già
       abbiamo; poi valutare un modello di decisione dedicato come Jev (TypeSafe AI) con `make eval-llm` sui casi
       in italiano. Le conferme restano regole nel codice, mai una probabilità di un modello
+- [ ] **Da rivedere (16/10): la chat come un agente, stile Omi.** Oggi ogni domanda va alla memoria (ricerca
+      fissa + una risposta) e solo le frasi che nominano un'app passano dal controllo dell'intento; il Task 10
+      del piano usage-keys-and-mcp tappa il buco con le istruzioni del modello. Omi invece classifica ogni
+      domanda (`requires_context`, modello piccolo): senza contesto → risposta diretta; con contesto → un agente
+      con 22+ strumenti (memorie, conversazioni, task, calendario, Gmail, ricerca web) che sceglie cosa
+      chiamare e cita le fonti (docs.omi.me, Chat System Architecture). Per Echo: un agente che ha la memoria
+      come strumento, riusando i sei strumenti MCP; da pesare la latenza e il costo in più per domanda
+- [ ] Idea: ricerca web nella chat (lo strumento di ricerca integrato di OpenAI), con un costo per chiamata
 - [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 
