@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -39,6 +39,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
     device_name: str = Field(min_length=1, max_length=100)
     platform: Literal["ios", "android"]
+
+    @field_validator("device_name")
+    @classmethod
+    def _named(cls, value: str) -> str:
+        """A name the Devices list can show: not only spaces."""
+        value = value.strip()
+        if not value:
+            raise ValueError("device_name must not be blank")
+        return value
 
 
 class LoginUser(BaseModel):
@@ -108,7 +117,7 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     record = ApiKey(
         user_id=user.id,
         key_hash=hash_api_key(key),
-        name=body.device_name.strip(),
+        name=body.device_name,
         platform=body.platform,
     )
     db.add(record)

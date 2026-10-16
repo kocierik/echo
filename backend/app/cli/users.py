@@ -31,8 +31,13 @@ async def _main(args: argparse.Namespace) -> None:
                 user = await create_user(db, args.email, password, user_id=args.user_id)
                 print(f"Created {user.email} ({user.id})")
             else:
-                await set_password(db, args.email, password)
+                answer = input("Sign out every device of this account too? [y/N] ")
+                signed_out = await set_password(
+                    db, args.email, password, sign_out_devices=answer.strip().lower() == "y"
+                )
                 print(f"Password changed for {args.email.strip().lower()}")
+                if signed_out:
+                    print(f"{signed_out} device(s) signed out: they sign in again")
         except ValueError as error:
             sys.exit(str(error).capitalize() + ".")
 

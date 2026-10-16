@@ -119,7 +119,8 @@ docker compose exec api python -m alembic upgrade head
 
 ```bash
 make create-user EMAIL=you@example.com     # asks the password (10+ characters) twice
-make set-password EMAIL=you@example.com    # to change it later
+make set-password EMAIL=you@example.com    # to change it later (it asks whether to sign out every device)
+make create-user EMAIL=ada@example.com NEW=1   # another person, with their own memories
 ```
 
 Registration is closed: accounts are created only on the server. `create-user` attaches the

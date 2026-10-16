@@ -61,3 +61,27 @@ async def _id(db, email):
     from sqlalchemy import select
 
     return (await db.execute(select(User.id).where(User.email == email))).scalar_one()
+
+
+async def test_create_user_for_an_id_that_has_an_account(db_session):
+    await create_user(db_session, "erik@example.com", "long enough pw", user_id=TEST_USER_ID)
+
+    with pytest.raises(ValueError, match="already has an account"):
+        await create_user(db_session, "ada@example.com", "long enough pw", user_id=TEST_USER_ID)
+
+
+async def test_set_password_can_sign_out_every_device(db_session):
+    from sqlalchemy import func, select
+
+    from app.models.api_key import ApiKey
+
+    await create_user(db_session, "erik@example.com", "the old password", user_id=TEST_USER_ID)
+    owner_keys = select(func.count()).select_from(ApiKey).where(ApiKey.user_id == TEST_USER_ID)
+    assert await db_session.scalar(owner_keys) >= 1  # the fixture's key
+
+    signed_out = await set_password(
+        db_session, "erik@example.com", "the new password", sign_out_devices=True
+    )
+
+    assert signed_out >= 1
+    assert await db_session.scalar(owner_keys) == 0

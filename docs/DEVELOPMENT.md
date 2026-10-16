@@ -41,8 +41,8 @@ Skipping the migrations leaves the code ahead of the database: see [Troubleshoot
 | `make db-migrate` | `alembic upgrade head` on the `echo` database |
 | `make db-new-migration MSG="..."` | Autogenerate a migration from the models |
 | `make db-reset` | Drop and recreate the schema (**deletes all data**) |
-| `make create-user EMAIL=…` | Create an account (asks the password); attaches to the owner's existing data unless `USER_ID=…` |
-| `make set-password EMAIL=…` | Set an account's password (asks it) |
+| `make create-user EMAIL=…` | Create an account (asks the password); attaches to the owner's existing data; `NEW=1` for another person |
+| `make set-password EMAIL=…` | Set an account's password (asks it, and whether to sign out every device) |
 | `make create-key` | Create an API key for scripts; random unless `KEY=...` is given, printed only once |
 | `make revoke-example-key` | Delete the README's example key `my-secret-key` |
 | `make test-all` | All backend tests in the api container, on `echo_test` |
