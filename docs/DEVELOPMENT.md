@@ -95,8 +95,8 @@ flutter run --dart-define-from-file=dart_defines.json
 ```
 
 The app signs in to that server (default `https://echo.man.ovh`) with an account made by
-`make create-user`; no key is compiled in. Pairing can be skipped and done later from
-Settings → Device. Details in [mobile/README.md](../mobile/README.md).
+`make create-user`, or one created in the app; no key is compiled in. Pairing can be skipped and
+done later from Settings → Device details. Details in [mobile/README.md](../mobile/README.md).
 
 ## Firmware
 
@@ -117,7 +117,7 @@ ECHO_API_KEY=... make firmware-release NOTES="what changed"   # ECHO_URL default
 ```
 
 builds the firmware and publishes it to the server. The app shows "Update Echo" in
-Settings → Device; the wearable keeps the new firmware only once the app reconnects to it, and
+Settings → Device details; the wearable keeps the new firmware only once the app reconnects to it, and
 goes back to the previous one otherwise. The first firmware with updates (0.5.0) is flashed with
 the cable.
 
@@ -133,8 +133,8 @@ mutes, or resumes listening, and the app follows. It works muted too.
 Battery: the XIAO ESP32-S3 has no battery sense of its own. Solder two 200 kΩ resistors in series
 between BAT+ and GND, with the middle point on A0 (GPIO1), then set `BATTERY_DIVIDER_FITTED 1` in
 `src/config.h` and flash. The firmware averages a reading every 30 s, converts it with a LiPo
-discharge curve and sends the percentage in DEVICE_STATUS; the app shows it on the Today card and
-in Settings → Device. Without the divider (the default) the battery is reported as unknown.
+discharge curve and sends the percentage in DEVICE_STATUS; the app shows it in the device pill and
+in Settings → Device details. Without the divider (the default) the battery is reported as unknown.
 
 ## Running the backend outside Docker
 
