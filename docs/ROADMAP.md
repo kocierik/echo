@@ -159,6 +159,8 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
   - [ ] Documenti con scadenza: bollette, lettere, biglietti di treno/aereo → task o evento con la data giusta,
         senza tenere IBAN e codici nella memoria
   - [ ] Azioni dalla foto: locandina → evento in calendario, QR code → link, rete Wi-Fi
+  - [ ] Foto dal telefono quando il dispositivo non può (non collegato, senza fotocamera, in muto): il pulsante
+        della fotocamera in Ask apre la fotocamera del telefono (richiesta del 16/10; piano usage-keys-and-mcp, Task 9)
   - [ ] Traduzione al volo (menu, cartelli) tra gli esempi di "What Echo can do"
   - [ ] Doppia pressione del pulsante = "salva e basta" (nessuna risposta), singola = chiedi
   - [ ] Le foto in "Your day" e nel riepilogo della settimana
