@@ -1,10 +1,16 @@
-"""Wearable firmware published from the Mac and offered to the app for an update over BLE."""
+"""Wearable firmware published on the server and offered to the app for an update over BLE."""
 
 import hashlib
 
 import pytest
 
-from app.routers.firmware import MAX_IMAGE_BYTES, is_esp32_s3_image, parse_version
+from app.services.firmware import (
+    MAX_IMAGE_BYTES,
+    InvalidFirmwareError,
+    is_esp32_s3_image,
+    parse_version,
+    publish_release,
+)
 
 
 def esp32_s3_image(size: int = 4096, seed: int = 1) -> bytes:
@@ -14,16 +20,9 @@ def esp32_s3_image(size: int = 4096, seed: int = 1) -> bytes:
     return bytes(header) + bytes((seed + i) % 256 for i in range(size - 24))
 
 
-async def publish(client, auth_headers, version, data, notes=None):
-    form = {"version": version}
-    if notes:
-        form["notes"] = notes
-    return await client.post(
-        "/api/firmware",
-        headers=auth_headers,
-        data=form,
-        files={"image": ("firmware.bin", data, "application/octet-stream")},
-    )
+async def publish(db_session, version, data, notes=None):
+    """As `make firmware-release` does, inside the server (not over HTTP)."""
+    return await publish_release(db_session, version, notes, data)
 
 
 def test_versions_are_three_bytes_as_the_wearable_reports_them():
@@ -43,15 +42,15 @@ def test_only_esp32_s3_images_are_accepted():
 
 
 @pytest.mark.asyncio
-async def test_publish_then_the_app_finds_and_downloads_it(client, auth_headers):
+async def test_publish_then_the_app_finds_and_downloads_it(client, auth_headers, db_session):
     assert (await client.get("/api/firmware/latest", headers=auth_headers)).json() == {
         "firmware": None
     }
     data = esp32_s3_image()
 
-    response = await publish(client, auth_headers, "0.5.0", data, notes="Firmware updates")
-    assert response.status_code == 201
-    assert response.json()["sha256"] == hashlib.sha256(data).hexdigest()
+    release, created = await publish(db_session, "0.5.0", data, notes="Firmware updates")
+    assert created
+    assert release.sha256 == hashlib.sha256(data).hexdigest()
 
     latest = (await client.get("/api/firmware/latest", headers=auth_headers)).json()["firmware"]
     assert latest["version"] == "0.5.0"
@@ -67,31 +66,48 @@ async def test_publish_then_the_app_finds_and_downloads_it(client, auth_headers)
 
 
 @pytest.mark.asyncio
-async def test_latest_is_the_highest_version_not_the_last_published(client, auth_headers):
-    await publish(client, auth_headers, "0.10.0", esp32_s3_image(seed=1))
-    await publish(client, auth_headers, "0.9.3", esp32_s3_image(seed=2))
+async def test_latest_is_the_highest_version_not_the_last_published(
+    client, auth_headers, db_session
+):
+    await publish(db_session, "0.10.0", esp32_s3_image(seed=1))
+    await publish(db_session, "0.9.3", esp32_s3_image(seed=2))
 
     latest = (await client.get("/api/firmware/latest", headers=auth_headers)).json()["firmware"]
     assert latest["version"] == "0.10.0"
 
 
 @pytest.mark.asyncio
-async def test_a_version_keeps_its_image(client, auth_headers):
+async def test_a_version_keeps_its_image(db_session):
     data = esp32_s3_image()
-    assert (await publish(client, auth_headers, "0.5.0", data)).status_code == 201
-    # The same build again (a retried upload) is fine
-    assert (await publish(client, auth_headers, "0.5.0", data)).status_code == 200
-    other = await publish(client, auth_headers, "0.5.0", esp32_s3_image(seed=7))
-    assert other.status_code == 409
-    assert "FIRMWARE_VERSION" in other.json()["detail"]
+    assert (await publish(db_session, "0.5.0", data))[1] is True
+    # The same build again (a retried release) is fine
+    assert (await publish(db_session, "0.5.0", data))[1] is False
+    with pytest.raises(InvalidFirmwareError, match="FIRMWARE_VERSION"):
+        await publish(db_session, "0.5.0", esp32_s3_image(seed=7))
 
 
 @pytest.mark.asyncio
-async def test_bad_uploads_are_refused(client, auth_headers):
-    assert (await publish(client, auth_headers, "five", esp32_s3_image())).status_code == 422
-    assert (await publish(client, auth_headers, "0.5.0", b"\x00" * 4096)).status_code == 400
-    too_large = esp32_s3_image(MAX_IMAGE_BYTES + 1)
-    assert (await publish(client, auth_headers, "0.5.0", too_large)).status_code == 413
+async def test_bad_images_are_refused(db_session):
+    with pytest.raises(InvalidFirmwareError, match="major.minor.patch"):
+        await publish(db_session, "five", esp32_s3_image())
+    with pytest.raises(InvalidFirmwareError, match="ESP32-S3"):
+        await publish(db_session, "0.5.0", b"\x00" * 4096)
+    with pytest.raises(InvalidFirmwareError, match="app slot"):
+        await publish(db_session, "0.5.0", esp32_s3_image(MAX_IMAGE_BYTES + 1))
+
+
+@pytest.mark.asyncio
+async def test_no_account_can_publish_over_http(client, auth_headers):
+    # Registration is open: an account must not be able to push firmware to every wearable
+    response = await client.post(
+        "/api/firmware",
+        headers=auth_headers,
+        data={"version": "9.9.9"},
+        files={"image": ("firmware.bin", esp32_s3_image(), "application/octet-stream")},
+    )
+    assert response.status_code in (404, 405)
+    latest = (await client.get("/api/firmware/latest", headers=auth_headers)).json()
+    assert latest == {"firmware": None}
 
 
 @pytest.mark.asyncio

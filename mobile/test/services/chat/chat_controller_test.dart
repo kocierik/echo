@@ -11,6 +11,8 @@ import 'package:echo_app/services/chat/voice_input.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _languageTests();
+
   late _FakeChatApi api;
   late _FakeVoiceInput voice;
   late ChatController controller;
@@ -83,6 +85,18 @@ void main() {
       expect(controller.state.messages, isEmpty);
       expect(controller.state.composerText, 'Cosa vedi?');
       expect(controller.state.sending, isFalse);
+    });
+
+    test('a cancelled phone camera leaves nothing behind', () async {
+      taker.error = const PhotoCancelledException();
+      controller.setComposerText('Cos\'è?');
+
+      await controller.takePhoto();
+
+      expect(controller.state.messages, isEmpty);
+      expect(controller.state.error, isNull);
+      expect(controller.state.sending, isFalse);
+      expect(controller.state.composerText, 'Cos\'è?');
     });
 
     test('no camera button without a photo taker', () {
@@ -751,6 +765,22 @@ final class _FeedbackCall {
   final List<String> chunkIds;
 }
 
+
+void _languageTests() {
+  test('dictation uses the language the user speaks', () async {
+    final voice = _FakeVoiceInput();
+    final controller = ChatController(
+      api: _FakeChatApi(),
+      voiceInput: voice,
+      spokenLanguage: () async => 'it',
+    );
+
+    await controller.startVoice();
+
+    expect(voice.language, 'it');
+  });
+}
+
 final class _FakeVoiceInput implements VoiceInput {
   bool isAvailable = true;
   bool permissionGranted = true;
@@ -765,13 +795,17 @@ final class _FakeVoiceInput implements VoiceInput {
   @override
   Future<bool> request() async => permissionGranted;
 
+  String? language;
+
   @override
   Future<void> start({
     required void Function(String) onPartial,
     required void Function(String) onFinal,
+    String? language,
   }) async {
     _onPartial = onPartial;
     _onFinal = onFinal;
+    this.language = language;
   }
 
   @override

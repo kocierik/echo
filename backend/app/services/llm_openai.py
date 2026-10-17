@@ -7,6 +7,38 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.llm_base import LLMMessage, LLMResponse, LLMService, LLMToolCall
+from app.services.usage import record_usage
+
+
+def _chat_units(usage) -> tuple[int, int, int]:
+    """(input, output, cached) tokens of a chat completion's usage."""
+    if usage is None:
+        return 0, 0, 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = getattr(details, "cached_tokens", None) or 0
+    return (
+        getattr(usage, "prompt_tokens", 0) or 0,
+        getattr(usage, "completion_tokens", 0) or 0,
+        cached,
+    )
+
+
+def _responses_units(usage) -> tuple[int, int, int]:
+    """(input, output, cached) tokens of a Responses API usage."""
+    if usage is None:
+        return 0, 0, 0
+    details = getattr(usage, "input_tokens_details", None)
+    cached = getattr(details, "cached_tokens", None) or 0
+    return (
+        getattr(usage, "input_tokens", 0) or 0,
+        getattr(usage, "output_tokens", 0) or 0,
+        cached,
+    )
+
+
+def _with_units(response: LLMResponse, units: tuple[int, int, int]) -> LLMResponse:
+    response.input_tokens, response.output_tokens, response.cached_tokens = units
+    return response
 
 
 def _data_url(image: bytes) -> str:
@@ -59,11 +91,20 @@ class OpenAILLMService(LLMService):
     """
 
     reasoning_effort = ""
+    kind = "llm_analysis"
 
-    def __init__(self, model: str, reasoning_effort: str = ""):
+    def __init__(self, model: str, reasoning_effort: str = "", kind: str = "llm_analysis"):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = model
         self.reasoning_effort = reasoning_effort
+        # What the calls are recorded as (services/usage.py)
+        self.kind = kind
+
+    async def _record(self, units: tuple[int, int, int]) -> None:
+        await record_usage(
+            self.kind, self.model,
+            input_units=units[0], output_units=units[1], cached_units=units[2],
+        )
 
     def _sampling(self, temperature: float) -> dict:
         if self.reasoning_effort:
@@ -78,11 +119,13 @@ class OpenAILLMService(LLMService):
             **self._sampling(temperature),
         )
         choice = response.choices[0]
-        return LLMResponse(
+        units = _chat_units(response.usage)
+        await self._record(units)
+        return _with_units(LLMResponse(
             content=choice.message.content or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
-        )
+        ), units)
 
     async def stream(
         self, messages: list[LLMMessage], temperature: float = 0.3
@@ -91,11 +134,18 @@ class OpenAILLMService(LLMService):
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
             stream=True,
+            # The last chunk then carries the usage
+            stream_options={"include_usage": True},
             **self._sampling(temperature),
         )
+        units = None
         async for chunk in chunks:
+            if getattr(chunk, "usage", None) is not None:
+                units = _chat_units(chunk.usage)
             if chunk.choices and (piece := chunk.choices[0].delta.content):
                 yield piece
+        if units is not None:
+            await self._record(units)
 
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1
@@ -106,6 +156,7 @@ class OpenAILLMService(LLMService):
             response_format={"type": "json_object"},
             **self._sampling(temperature),
         )
+        await self._record(_chat_units(response.usage))
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
 
@@ -120,7 +171,9 @@ class OpenAILLMService(LLMService):
             **self._sampling(temperature),
         )
         message = response.choices[0].message
-        return LLMResponse(
+        units = _chat_units(response.usage)
+        await self._record(units)
+        return _with_units(LLMResponse(
             content=message.content or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
@@ -132,7 +185,7 @@ class OpenAILLMService(LLMService):
                 )
                 for tc in (message.tool_calls or [])
             ],
-        )
+        ), units)
 
 
 def _to_response_items(messages: list[LLMMessage]) -> list[dict]:
@@ -191,10 +244,20 @@ class OpenAIResponsesLLMService(LLMService):
     translated to Responses items.
     """
 
-    def __init__(self, model: str, reasoning_effort: str = ""):
+    kind = "llm_analysis"
+
+    def __init__(self, model: str, reasoning_effort: str = "", kind: str = "llm_analysis"):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.model = model
         self.reasoning_effort = reasoning_effort
+        # What the calls are recorded as (services/usage.py)
+        self.kind = kind
+
+    async def _record(self, units: tuple[int, int, int]) -> None:
+        await record_usage(
+            self.kind, self.model,
+            input_units=units[0], output_units=units[1], cached_units=units[2],
+        )
 
     def _options(self, temperature: float) -> dict:
         if self.reasoning_effort:
@@ -205,11 +268,13 @@ class OpenAIResponsesLLMService(LLMService):
         response = await self.client.responses.create(
             model=self.model, input=_to_response_items(messages), **self._options(temperature)
         )
-        return LLMResponse(
+        units = _responses_units(response.usage)
+        await self._record(units)
+        return _with_units(LLMResponse(
             content=response.output_text or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
-        )
+        ), units)
 
     async def stream(
         self, messages: list[LLMMessage], temperature: float = 0.3
@@ -223,6 +288,9 @@ class OpenAIResponsesLLMService(LLMService):
         async for event in events:
             if event.type == "response.output_text.delta" and event.delta:
                 yield event.delta
+            elif event.type == "response.completed":
+                usage = getattr(getattr(event, "response", None), "usage", None)
+                await self._record(_responses_units(usage))
 
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1
@@ -233,6 +301,7 @@ class OpenAIResponsesLLMService(LLMService):
             text={"format": {"type": "json_object"}},
             **self._options(temperature),
         )
+        await self._record(_responses_units(response.usage))
         return json.loads(response.output_text or "{}")
 
     async def complete_with_tools(
@@ -245,7 +314,9 @@ class OpenAIResponsesLLMService(LLMService):
             tool_choice="auto",
             **self._options(temperature),
         )
-        return LLMResponse(
+        units = _responses_units(response.usage)
+        await self._record(units)
+        return _with_units(LLMResponse(
             content=response.output_text or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
@@ -256,15 +327,18 @@ class OpenAIResponsesLLMService(LLMService):
                 for item in response.output
                 if item.type == "function_call"
             ],
-        )
+        ), units)
 
 
-def openai_llm(model: str, reasoning_effort: str = "", api: str = "chat") -> LLMService:
-    """The OpenAI service for an `api` of "chat" (chat completions) or "responses"."""
+def openai_llm(
+    model: str, reasoning_effort: str = "", api: str = "chat", kind: str = "llm_analysis"
+) -> LLMService:
+    """The OpenAI service for an `api` of "chat" (chat completions) or "responses";
+    `kind` is what its calls are recorded as (services/usage.py)."""
     if api == "responses":
-        return OpenAIResponsesLLMService(model, reasoning_effort)
+        return OpenAIResponsesLLMService(model, reasoning_effort, kind)
     if api == "chat":
-        return OpenAILLMService(model, reasoning_effort)
+        return OpenAILLMService(model, reasoning_effort, kind)
     raise ValueError(f"Unknown OpenAI API: {api}")
 
 
@@ -278,6 +352,7 @@ def get_llm_analysis_service() -> LLMService:
             settings.llm_analysis_model,
             settings.llm_analysis_reasoning_effort,
             settings.llm_analysis_api,
+            kind="llm_analysis",
         )
     raise ValueError(f"Unknown LLM provider: {settings.llm_analysis_provider}")
 
@@ -290,6 +365,7 @@ def get_llm_query_service() -> LLMService:
             settings.llm_query_model,
             settings.llm_query_reasoning_effort,
             settings.llm_query_api,
+            kind="llm_query",
         )
     raise ValueError(f"Unknown LLM provider: {settings.llm_query_provider}")
 
@@ -301,6 +377,7 @@ def get_llm_vision_service() -> LLMService:
         settings.llm_vision_model,
         settings.llm_vision_reasoning_effort,
         settings.llm_vision_api,
+        kind="llm_vision",
     )
 
 
@@ -311,4 +388,5 @@ def get_llm_intent_service() -> LLMService:
         settings.llm_intent_model,
         settings.llm_intent_reasoning_effort,
         settings.llm_intent_api,
+        kind="llm_intent",
     )

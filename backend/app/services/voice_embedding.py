@@ -16,6 +16,7 @@ from array import array
 from pathlib import Path
 
 from app.core.config import settings
+from app.services.usage import record_usage, wav_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,10 @@ async def embed_voice(wav_bytes: bytes) -> list[float] | None:
     if embedder is None:
         return None
     try:
-        return await asyncio.to_thread(embedder.embed_wav, wav_bytes)
+        vector = await asyncio.to_thread(embedder.embed_wav, wav_bytes)
+        # Local and free: counted only to see the load it adds
+        await record_usage("voice_embedding", "sherpa-onnx", input_units=wav_seconds(wav_bytes))
+        return vector
     except Exception:
         logger.warning("Voice fingerprint failed", exc_info=True)
         return None

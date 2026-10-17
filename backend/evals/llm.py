@@ -21,8 +21,9 @@ from pathlib import Path
 
 from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
+from app.services.about_echo import about_echo
 from app.services.analysis_pipeline import extract_entities
-from app.services.language import detect_language
+from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import openai_llm
 from app.services.memory_answers import rag_system_prompt
@@ -141,15 +142,19 @@ async def answers(llm) -> bool:
     suite = json.loads((CASES / "answers.json").read_text(encoding="utf-8"))
     passed, first_total, total_seconds = 0, 0.0, 0.0
     for case in suite["cases"]:
+        # As in production: the prompt knows what Echo is; "empty" = nothing in memory
+        question = case["question"]
+        content = (
+            f"(Nothing found in memory.)\n\nQuestion: {question}"
+            if case.get("empty")
+            else f"Context from memory:\n\n{suite['context']}\n\n---\n\nQuestion: {question}"
+        )
         messages = [
-            LLMMessage(role="system", content=rag_system_prompt(None)),
             LLMMessage(
-                role="user",
-                content=(
-                    f"Context from memory:\n\n{suite['context']}\n\n---\n\n"
-                    f"Question: {case['question']}"
-                ),
+                role="system",
+                content=rag_system_prompt(None, about_echo([]), clear_language(question)),
             ),
+            LLMMessage(role="user", content=content),
         ]
         start = time.perf_counter()
         first = None

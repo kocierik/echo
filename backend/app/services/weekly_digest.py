@@ -20,6 +20,7 @@ from app.models.entity_mention import EntityMention
 from app.models.weekly_digest import WeeklyDigest
 from app.services.llm_base import LLMMessage, LLMService
 from app.services.temporal import conversation_overlaps
+from app.services.usage import usage_owner
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ async def generate_weekly_digest(
     """
     if week_start.weekday() != 0:
         raise ValueError("week_start must be a Monday")
+    usage_owner.set(user_id)
     existing = (
         await db.execute(
             select(WeeklyDigest).where(

@@ -1,12 +1,14 @@
 # Echo Mobile App
 
-Flutter companion app for the Echo wearable (iOS-first core beta). It relays audio
+Flutter companion app for the Echo wearable, for iOS and Android. It relays audio
 from the wearable over BLE to the backend and lets you browse, correct and query
 your memory.
 
 ## Setup
 
-1. Install [Flutter](https://docs.flutter.dev/get-started/install) (3.x+) and, for iOS, Xcode + CocoaPods.
+1. Install [Flutter](https://docs.flutter.dev/get-started/install) (3.x+) and, for iOS, Xcode + CocoaPods;
+   for Android, JDK 17 and the Android SDK (platform 36; Gradle fetches the NDK), then
+   `flutter config --android-sdk <sdk> --jdk-dir <jdk>`.
 2. Run:
 
 ```bash
@@ -19,7 +21,26 @@ flutter run
 
 Both are versioned; the bundle/application id is `com.kocierik.echo`. `ios/Runner/Info.plist` must
 keep `UIBackgroundModes` → `bluetooth-central` and the Bluetooth, microphone and speech usage
-descriptions. Set your signing team in Xcode; Android release signing is not configured yet.
+descriptions. Set your signing team in Xcode; Android release signing is not configured yet
+(`flutter build apk --debug` works, signed with the debug key).
+
+On Android (`android/app/src/main/kotlin/com/kocierik/echo/`):
+
+- **`EchoEngine.kt`** keeps one Flutter engine for the process: the activity borrows it and does
+  not destroy it, so the Dart side (Bluetooth relay, uploads, commands) keeps running after the
+  app leaves the screen or is swiped away from the recent apps.
+- **`EchoStatusService.kt`** is a foreground service (type `connectedDevice`) with a silent
+  notification: listening, muted or offline, battery and minutes waiting to sync. It is the
+  `echo/live_activity` channel of iOS, always on while a wearable is paired, and what keeps
+  Android from stopping the app in the background. Android 12+ starts it only while the app is
+  on screen and Bluetooth is allowed; once started, updates in the background only change the
+  notification.
+- **`CalendarBridge.kt`** answers the `echo/eventkit` channel of iOS with the phone's calendar
+  (CalendarContract). Android has no system Reminders app: reminders are unavailable, and
+  Settings → On this phone offers the calendar only.
+- The `echo/device` channel names the phone ("Google Pixel 8") and opens Echo's App info page.
+- Scheduled notifications come back after a restart (`ScheduledNotificationBootReceiver`); they
+  are inexact, so Android may deliver one a few minutes late.
 
 ## Configuration
 
@@ -40,14 +61,17 @@ No key is ever compiled in. Settings → Server connection can point a developme
 
 After signing in the app requests Bluetooth, notification and microphone permissions and pairs the
 wearable. Without the wearable at hand, **I don't have it with me** finishes the setup; pair it
-later from Settings → Device → **Pair Echo**. With a paired Echo, setup ends with a first voice
+later from the device at the top of Settings. With a paired Echo, setup ends with a first voice
 request ("Echo, remind me to …") and its answer.
 
 ## Features
 
-- **Today:** one device card (mute/resume, reconnect, or **Pair Echo** without a device); **Needs
-  you** with actions waiting for a Confirm (voice requests too); today so far (conversations,
-  minutes, people); tasks due today or created today; the latest daily summary, by its day.
+- **Three tabs, Today | Ask | Memories**, with the round Ask button in the middle (hold it to dictate a
+  question) and the device pill in every header (tap: Settings; long press: mute).
+- **Today:** the device only when something is wrong (offline, not paired, Bluetooth off); **Needs
+  you** with actions waiting for a Confirm (voice requests too); **To do today** (promises and tasks,
+  at most three; the Tasks page from there); **Your day**, today's conversations on a timeline;
+  **Echo can act in**, the connected apps. The daily and weekly summaries open Memories.
 - **Memories:** conversations by day with emoji, title, summary, people and tasks (Live while
   Echo is still listening); search across titles, summaries, transcripts and extracted entities.
   The detail has a Summary (tasks with the sentence they came from, events with **Add to
@@ -63,21 +87,30 @@ request ("Echo, remind me to …") and its answer.
   your latest conversations and people; follow-ups, resumable history, feedback;
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
-- **Settings:** device, connection policy (Wi-Fi only), privacy, Automations (Integrations
-  through Composio and the Activity log), diagnostics, appearance, logout.
+- **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
+  Activity, Notifications, Voices, Language (the language you speak: transcription and
+  dictation), Appearance (System, Light, Dark), Privacy, What Echo can do,
+  Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones; connected apps:
+  **Connect an assistant** gives Claude Code or Cursor a read-only key and the lines to paste;
+  revoke either), About
+  (sign out).
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
   (shown the next time the app wakes up).
-- **On this iPhone** (Settings → Automations): Echo creates and reads reminders and events in
+- **On this iPhone** (Settings → On this iPhone): Echo creates and reads reminders and events in
   the iPhone's Reminders and Calendar when asked (EventKit, `ios/Runner/EventKit`), and the
   calendar's next meetings get briefings ([ADR 0010](../docs/adr/0010-iphone-reminders-and-calendar.md)).
-- **Firmware updates** over Bluetooth (Settings → Device, protocol 4): the latest firmware
+- **Phone camera:** without the wearable (not connected, muted, no camera), the camera button in
+  Ask opens the phone's camera; the photo goes to Echo like the wearable's
+  ([ADR 0007](../docs/adr/0007-camera-photos-on-request.md)).
+- **Firmware updates** over Bluetooth (Settings → Device details, protocol 4): the latest firmware
   published on the server, checked by SHA-256 on the phone and on the wearable
   ([ADR 0009](../docs/adr/0009-firmware-updates-over-ble.md)).
 - **Live Activity** (iOS 16.1+, `ios/EchoActivity` widget extension): listening, muted or
   offline, battery and minutes waiting to sync, on the lock screen and in the Dynamic Island.
   Updated locally by the app over the `echo/live_activity` channel (no push); off in
-  Settings → Notifications.
+  Settings → Notifications. On Android the same channel drives the status notification, which
+  cannot be turned off (see above).
 
 ## Architecture
 

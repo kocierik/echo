@@ -4,6 +4,7 @@ There is no sign-up here: accounts are created on the server (`make create-user`
 """
 
 import math
+import re
 import secrets
 import uuid
 from datetime import datetime
@@ -11,11 +12,12 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import (
+    client_address,
     email_failure_key,
     get_current_api_key,
     hash_api_key,
@@ -24,10 +26,19 @@ from app.core.auth import (
     remember_revoked,
     reserve_attempt,
 )
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
-from app.services.passwords import DUMMY_PASSWORD_HASH, normalize_email, verify_password
+from app.services.language import SUPPORTED_LANGUAGES
+from app.services.passwords import (
+    DUMMY_PASSWORD_HASH,
+    MIN_PASSWORD_LENGTH,
+    create_user,
+    hash_password,
+    normalize_email,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -50,6 +61,20 @@ class LoginRequest(BaseModel):
         return value
 
 
+class RegisterRequest(LoginRequest):
+    # The phone's language; one Echo does not transcribe yet falls back to English
+    language: str | None = Field(default=None, max_length=20)
+
+
+class Me(BaseModel):
+    email: str | None
+    language: str
+
+
+class MeUpdate(BaseModel):
+    language: Literal[SUPPORTED_LANGUAGES]  # type: ignore[valid-type]
+
+
 class LoginUser(BaseModel):
     id: str
     email: str
@@ -65,6 +90,8 @@ class SignedInDevice(BaseModel):
     id: str
     name: str
     platform: str | None
+    # "full" (phones, scripts) or "read" (connected apps)
+    scope: str = "full"
     created_at: datetime | None
     last_used_at: datetime | None
     current: bool
@@ -113,6 +140,11 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         for key in limits:
             await release_attempt(redis, key)
 
+    return await _sign_in_phone(db, user, body)
+
+
+async def _sign_in_phone(db: AsyncSession, user: User, body: LoginRequest) -> LoginResponse:
+    """A new key for this phone, shown once."""
     key = secrets.token_urlsafe(32)
     record = ApiKey(
         user_id=user.id,
@@ -127,6 +159,92 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         device_id=str(record.id),
         user=LoginUser(id=str(user.id), email=user.email),
     )
+
+
+# Accounts made from one address, per hour: a bot cannot make thousands
+REGISTRATIONS_PER_HOUR = 5
+
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+@router.post("/register", response_model=LoginResponse)
+async def register(
+    body: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)
+):
+    """A new account, and this phone signed in to it. Closed with REGISTRATION_OPEN=false."""
+    if not settings.registration_open:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Registration is closed.")
+    email = normalize_email(body.email)
+    if not _EMAIL.match(email):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email.")
+    if len(body.password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Use at least {MIN_PASSWORD_LENGTH} characters for the password.",
+        )
+    redis = getattr(request.app.state, "redis", None)
+    if redis is not None:
+        seconds = await reserve_attempt(
+            redis,
+            "register:" + client_address(request),
+            limit=REGISTRATIONS_PER_HOUR,
+            window=3600,
+        )
+        if seconds is not None:
+            minutes = max(1, math.ceil(seconds / 60))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Too many accounts from here. Try again in {minutes} minutes.",
+                headers={"Retry-After": str(seconds)},
+            )
+    if await db.scalar(select(User.id).where(User.email == email)) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists. Sign in instead.",
+        )
+    hashed = await run_in_threadpool(hash_password, body.password)
+    try:
+        user = await create_user(db, email, body.password, password_hash=hashed)
+    except ValueError as error:  # registered a moment ago by another request
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists. Sign in instead.",
+        ) from error
+    if body.language is not None:
+        spoken = body.language.split("-")[0].split("_")[0].lower()
+        user.language = spoken if spoken in SUPPORTED_LANGUAGES else "en"
+    else:
+        user.language = settings.stt_language
+    return await _sign_in_phone(db, user, body)
+
+
+@router.get("/me", response_model=Me)
+async def read_me(
+    current: ApiKey = Depends(get_current_api_key), db: AsyncSession = Depends(get_db)
+):
+    """The account behind this key: its email and the language it speaks."""
+    user = await db.get(User, current.user_id)
+    if user is None:  # a key made with make create-key, before any account
+        return Me(email=None, language=settings.stt_language)
+    return Me(email=user.email, language=user.language)
+
+
+@router.patch("/me", response_model=Me)
+async def update_me(
+    body: MeUpdate,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the language this account speaks."""
+    user = await db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This key has no account yet: create one with make create-user.",
+        )
+    user.language = body.language
+    await db.commit()
+    return Me(email=user.email, language=user.language)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -158,12 +276,59 @@ async def list_devices(
             id=str(key.id),
             name=key.name,
             platform=key.platform,
+            scope=key.scope,
             created_at=key.created_at,
             last_used_at=key.last_used_at,
             current=key.id == current.id,
         )
         for key in keys
     ]
+
+
+MAX_CONNECTED_APPS = 10
+
+
+class ConnectAppRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class ConnectedApp(BaseModel):
+    id: str
+    name: str
+    # Shown once: only its hash is kept
+    api_key: str
+
+
+@router.post(
+    "/connected-apps", response_model=ConnectedApp, status_code=status.HTTP_201_CREATED
+)
+async def connect_app(
+    body: ConnectAppRequest,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """A read-only key for an assistant (Claude, Cursor…): it reads the memory over MCP and
+    can do nothing else. Listed with the devices and revoked like them."""
+    count = await db.scalar(
+        select(func.count())
+        .select_from(ApiKey)
+        .where(ApiKey.user_id == current.user_id, ApiKey.scope == "read")
+    )
+    if count >= MAX_CONNECTED_APPS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"At most {MAX_CONNECTED_APPS} connected apps.",
+        )
+    key = secrets.token_urlsafe(32)
+    record = ApiKey(
+        user_id=current.user_id,
+        key_hash=hash_api_key(key),
+        name=body.name.strip() or "Connected app",
+        scope="read",
+    )
+    db.add(record)
+    await db.commit()
+    return ConnectedApp(id=str(record.id), name=record.name, api_key=key)
 
 
 @router.delete("/devices/{device_id}", status_code=status.HTTP_204_NO_CONTENT)

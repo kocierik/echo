@@ -6,8 +6,10 @@ wearable writes it next to the running firmware and switches only if it is intac
 
 ## Decision
 
-- **Where the image comes from**: `make firmware-release` builds the firmware and uploads it to
-  the server (`POST /api/firmware`, one image per version, ESP32-S3 images only). The app asks
+- **Where the image comes from**: `make firmware-release` builds the firmware and publishes it
+  inside the server's api container (`app/cli/firmware.py`; one image per version, ESP32-S3
+  images only). There is no upload endpoint: any account can call the API, and registration is
+  open (changed on 16/10; it was `POST /api/firmware`). The app asks
   `GET /api/firmware/latest` at most once an hour and compares it with the version the wearable
   reports in DEVICE_INFO, now sent after every READY.
 - **Started by the user**: Settings → Device shows "Update Echo" (and Today a one-time tip). The

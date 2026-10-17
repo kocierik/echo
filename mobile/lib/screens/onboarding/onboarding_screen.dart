@@ -64,10 +64,17 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
   Future<void> _handlePrimary(OnboardingState state) async {
     switch (state.step) {
       case OnboardingStep.signIn:
-        await widget.controller.signIn(
-          _emailController.text,
-          _passwordController.text,
-        );
+        if (state.creatingAccount) {
+          await widget.controller.createAccount(
+            _emailController.text,
+            _passwordController.text,
+          );
+        } else {
+          await widget.controller.signIn(
+            _emailController.text,
+            _passwordController.text,
+          );
+        }
       case OnboardingStep.permissions:
         await widget.controller.requestPermissions();
       case OnboardingStep.pairing:
@@ -165,6 +172,9 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
           emailController: _emailController,
           passwordController: _passwordController,
           enabled: !state.busy,
+          creatingAccount: state.creatingAccount,
+          onCreateAccount: widget.controller.showCreateAccount,
+          onSignIn: widget.controller.showSignIn,
           onSubmit: () => unawaited(_handlePrimary(state)),
         ),
       OnboardingStep.permissions => PermissionsStep(
@@ -262,7 +272,7 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
 
   String _primaryLabel(OnboardingState state) {
     return switch (state.step) {
-      OnboardingStep.signIn => 'Sign in',
+      OnboardingStep.signIn => state.creatingAccount ? 'Create account' : 'Sign in',
       OnboardingStep.permissions => 'Allow and continue',
       OnboardingStep.pairing => 'Pair Echo',
       OnboardingStep.privacy =>

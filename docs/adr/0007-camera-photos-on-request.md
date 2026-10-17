@@ -32,6 +32,16 @@ effort, in a savepoint: a failure never loses the answer. Transcript reanalysis 
 photos produced. Photos show in the conversation (summary, and in the transcript where they were
 taken) and Memories counts them.
 
+## Phone camera (16/10)
+
+When the wearable cannot take the photo (not connected, muted, no camera), the camera button in
+Ask opens the phone's own camera instead (`PhoneCamera`, image_picker; no CAMERA permission on
+Android, `NSCameraUsageDescription` on iOS). The photo is taken first, so closing the camera
+leaves no request and no chat message; then it is requested with `source: "phone"` and uploaded
+like the wearable's (1280 px, quality 75, under `PHOTO_MAX_BYTES`). A photo already on its way
+from the wearable is still "busy". Voice requests ("Echo, what is this?") stay wearable-only:
+the phone is in a pocket.
+
 ## Considered Options
 
 - **Photos on the wearable's flash or an SD card**: rejected; the user wants nothing kept on the

@@ -14,6 +14,11 @@ final class ApiServiceOnboardingApi implements OnboardingApi {
   Future<void> signIn(String email, String password) {
     return _api.signIn(email: email, password: password);
   }
+
+  @override
+  Future<void> register(String email, String password) {
+    return _api.register(email: email, password: password);
+  }
 }
 
 final class DeviceControllerOnboardingPairing implements OnboardingPairing {

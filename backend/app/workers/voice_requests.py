@@ -39,18 +39,20 @@ from app.actions.voice import (
 )
 from app.core.database import async_session
 from app.models.segment import Segment
+from app.services.about_echo import about_echo_for
 from app.services.embedding_openai import get_embedding_service
-from app.services.language import detect_language
+from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage, LLMService
 from app.services.llm_openai import (
     get_llm_analysis_service,
     get_llm_intent_service,
     get_llm_query_service,
 )
-from app.services.memory_answers import no_results_message, rag_system_prompt
+from app.services.memory_answers import answer_without_memory, rag_system_prompt
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
+from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
 
 logger = logging.getLogger(__name__)
@@ -114,8 +116,10 @@ async def _memory_answer(
     command: str,
     history: list[dict],
     llm: LLMService,
+    about: str = "",
 ) -> str:
-    """RAG answer from the user's memory (no connected app to act on)."""
+    """RAG answer from the user's memory (no connected app to act on); `about` lets it
+    answer questions about Echo itself and general ones."""
     date_range = extract_date_range(command)
     memory = await retrieve_memory_context(
         db,
@@ -125,8 +129,9 @@ async def _memory_answer(
         embedding_service=get_embedding_service(),
     )
     if not memory.context:
-        return no_results_message(command, date_range)
-    messages = [LLMMessage(role="system", content=rag_system_prompt(date_range))]
+        return await answer_without_memory(llm, command, history, date_range, about)
+    prompt = rag_system_prompt(date_range, about, clear_language(command))
+    messages = [LLMMessage(role="system", content=prompt)]
     messages.extend(LLMMessage(role=m["role"], content=m["content"]) for m in history)
     messages.append(
         LLMMessage(
@@ -155,6 +160,7 @@ async def _answer(
     provider = None
     connected: list[str] = []
     llm = get_llm_query_service()
+    about = await about_echo_for(redis_client, user_id)
     try:
         provider = get_action_provider()
     except ActionProviderError:
@@ -166,7 +172,7 @@ async def _answer(
         route = await route_request(get_llm_intent_service(), command, history, [], camera=True)
         if route.kind == "photo":
             return _PhotoRoute()
-        return await _memory_answer(db, user_id, command, history, llm), {}
+        return await _memory_answer(db, user_id, command, history, llm, about), {}
     # Every confirmed voice request goes through the same intent check as chat
     reachable: list[str] | None = None
     try:
@@ -182,7 +188,7 @@ async def _answer(
     if route.kind == "notice":
         return route.notice, {"actions": True}
     if route.kind == "memory":
-        return await _memory_answer(db, user_id, command, history, llm), {}
+        return await _memory_answer(db, user_id, command, history, llm, about), {}
 
     outcome = await run_action_agent(
         db,
@@ -209,6 +215,7 @@ async def _process(
     db: AsyncSession, redis_client, segment_id: uuid.UUID, claim: _Claim
 ) -> bool:
     segment = await db.get(Segment, segment_id)
+    usage_owner.set(segment.user_id if segment is not None else None)
     if segment is None or segment.transcription is None:
         logger.warning(f"[Voice] Segment {segment_id} not found or not transcribed")
         return True

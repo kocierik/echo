@@ -43,6 +43,9 @@ test-all: ## Run all tests in the api container on the echo_test database
 	docker compose exec -T $(TEST_ENV) api python -m alembic upgrade head
 	docker compose exec -T $(TEST_ENV) api python -m pytest tests/ -q -p no:cacheprovider
 
+usage: ## What a day of Echo costs, per user and kind of work: make usage [DAYS=7]
+	docker compose exec -T api python -m app.cli.usage --days "$(or $(DAYS),7)"
+
 eval-llm: ## Evaluate an LLM (real API calls): make eval-llm MODEL=gpt-6-luna EFFORT=none SUITE=all
 	docker compose exec -T api python -m evals.llm --model "$(MODEL)" --suite "$(or $(SUITE),all)" \
 		--reasoning-effort "$(EFFORT)" --api "$(or $(API),chat)"

@@ -65,7 +65,9 @@ class _FakeLLM:
 
 
 def _conversation():
-    return SimpleNamespace(id=uuid.uuid4(), title=None, summary=None, emoji=None)
+    return SimpleNamespace(
+        id=uuid.uuid4(), user_id=uuid.uuid4(), title=None, summary=None, emoji=None
+    )
 
 
 def _patch_direct_retry(monkeypatch):

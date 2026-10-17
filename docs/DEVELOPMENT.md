@@ -74,6 +74,39 @@ cd firmware && pio test -e native
 `make eval-llm` and `make eval-stt` compare models on Echo's own tasks with real API calls
 (cents per run); results and deadlines are in [MODEL-EVALUATION.md](MODEL-EVALUATION.md).
 
+## What Echo costs
+
+Every paid model call is counted per user and day in `llm_usage` (tokens for the language
+and embedding models, seconds of audio for transcription), owned by the key's user during a
+request and by the row's user in each worker job (`app/services/usage.py`).
+
+```bash
+make usage            # the last 7 days; make usage DAYS=30
+```
+
+prints, per user, each day's cost, the average day, the cost per kind of work, the cost per
+hour of speech and the Composio actions run. Prices are in `backend/app/usage_prices.py`, read
+from public aggregators on 16/10 and **not verified** against OpenAI's and Deepgram's pricing
+pages: check them before setting customer prices. A model without a price shows `?`.
+
+## Connecting an assistant over MCP
+
+Create a key in the app (Settings → Devices → **Connect an assistant**) or with
+`POST /api/auth/connected-apps`; it is shown once. Then:
+
+```bash
+# Claude Code
+claude mcp add --transport http echo https://echo.man.ovh/mcp --header "Authorization: Bearer <key>"
+```
+
+```json
+// Cursor: ~/.cursor/mcp.json
+{"mcpServers": {"echo": {"url": "https://echo.man.ovh/mcp", "headers": {"Authorization": "Bearer <key>"}}}}
+```
+
+claude.ai and ChatGPT connectors need OAuth, not built yet. The server is `app/mcp/` (mcp SDK
+1.30: 2.x needs Starlette 1.x, which FastAPI 0.115 does not take).
+
 ## Database migrations (Alembic)
 
 - An empty database is created by `alembic upgrade head` alone: 001 creates the extensions
@@ -95,8 +128,8 @@ flutter run --dart-define-from-file=dart_defines.json
 ```
 
 The app signs in to that server (default `https://echo.man.ovh`) with an account made by
-`make create-user`; no key is compiled in. Pairing can be skipped and done later from
-Settings → Device. Details in [mobile/README.md](../mobile/README.md).
+`make create-user`, or one created in the app; no key is compiled in. Pairing can be skipped and
+done later from Settings → Device details. Details in [mobile/README.md](../mobile/README.md).
 
 ## Firmware
 
@@ -110,14 +143,17 @@ The wearable talks only BLE to the phone ([ADR 0006](adr/0006-ble-relay-through-
 such as `VAD_ENERGY_THRESHOLD` are in `src/config.h`.
 
 Updates without the cable ([ADR 0009](adr/0009-firmware-updates-over-ble.md)): raise
-`FIRMWARE_VERSION_*` in `src/config.h`, then from the repository root
+`FIRMWARE_VERSION_*` in `src/config.h`, then from the repository root, where the server's
+containers run,
 
 ```bash
-ECHO_API_KEY=... make firmware-release NOTES="what changed"   # ECHO_URL defaults to localhost:8000
+make firmware-release NOTES="what changed"
 ```
 
-builds the firmware and publishes it to the server. The app shows "Update Echo" in
-Settings → Device; the wearable keeps the new firmware only once the app reconnects to it, and
+builds the firmware and publishes it inside the api container (`app/cli/firmware.py`). There is
+no upload endpoint: with registration open, any account could otherwise push a firmware to every
+wearable. The app shows "Update Echo" in
+Settings → Device details; the wearable keeps the new firmware only once the app reconnects to it, and
 goes back to the previous one otherwise. The first firmware with updates (0.5.0) is flashed with
 the cable.
 
@@ -133,8 +169,8 @@ mutes, or resumes listening, and the app follows. It works muted too.
 Battery: the XIAO ESP32-S3 has no battery sense of its own. Solder two 200 kΩ resistors in series
 between BAT+ and GND, with the middle point on A0 (GPIO1), then set `BATTERY_DIVIDER_FITTED 1` in
 `src/config.h` and flash. The firmware averages a reading every 30 s, converts it with a LiPo
-discharge curve and sends the percentage in DEVICE_STATUS; the app shows it on the Today card and
-in Settings → Device. Without the divider (the default) the battery is reported as unknown.
+discharge curve and sends the percentage in DEVICE_STATUS; the app shows it in the device pill and
+in Settings → Device details. Without the divider (the default) the battery is reported as unknown.
 
 ## Running the backend outside Docker
 

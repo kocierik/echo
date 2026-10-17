@@ -4,6 +4,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import settings
 from app.services.embedding_base import EmbeddingService
+from app.services.usage import record_usage
 
 
 class OpenAIEmbeddingService(EmbeddingService):
@@ -18,6 +19,7 @@ class OpenAIEmbeddingService(EmbeddingService):
             model=self.model,
             input=text,
         )
+        await record_usage("embedding", self.model, input_units=_tokens(response))
         return response.data[0].embedding
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
@@ -25,7 +27,13 @@ class OpenAIEmbeddingService(EmbeddingService):
             model=self.model,
             input=texts,
         )
+        await record_usage("embedding", self.model, input_units=_tokens(response))
         return [item.embedding for item in response.data]
+
+
+def _tokens(response) -> int:
+    usage = getattr(response, "usage", None)
+    return getattr(usage, "prompt_tokens", 0) or 0
 
 
 # One instance per process: its HTTP connection pool is reused, so a request does not

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/app/app_runtime.dart';
+import '../../services/device/phone_words.dart';
 import '../../services/phone/phone_actions.dart';
 import '../action_log_screen.dart';
 import '../integrations_screen.dart';
@@ -43,9 +44,13 @@ class AutomationsSettingsScreen extends StatelessWidget {
         ),
         if (phoneActions != null)
           SettingsRow(
-            icon: Icons.phone_iphone_rounded,
-            title: 'On this iPhone',
-            subtitle: 'Reminders and Calendar, for Echo to use.',
+            icon: PhoneWords.isIPhone
+                ? Icons.phone_iphone_rounded
+                : Icons.phone_android_rounded,
+            title: PhoneWords.onThisPhone,
+            subtitle: PhoneWords.isIPhone
+                ? 'Reminders and Calendar, for Echo to use.'
+                : 'The calendar, for Echo to use.',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(

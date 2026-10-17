@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/device_command.dart';
 import '../../models/photo.dart';
 import '../api/api_service.dart';
+import 'phone_camera.dart';
 
 /// The wearable as the photo flow sees it.
 abstract interface class PhotoDevice {
@@ -27,6 +28,11 @@ abstract interface class PhotoTaker {
 
   /// Waits until the photo is answered or failed (polling the backend).
   Future<PhotoInfo> waitForAnswer(String photoId);
+}
+
+/// The user closed the phone's camera without a photo: nothing to say.
+final class PhotoCancelledException implements Exception {
+  const PhotoCancelledException();
 }
 
 final class PhotoUnavailableException implements Exception {
@@ -61,16 +67,21 @@ final class PhotoService implements PhotoTaker {
   PhotoService({
     required PhotoApi api,
     required PhotoDevice device,
+    PhoneCamera? phoneCamera,
     this.captureTimeout = const Duration(seconds: 60),
     this.answerTimeout = const Duration(seconds: 90),
     this.pollInterval = const Duration(seconds: 2),
     Future<void> Function(Duration)? sleep,
   })  : _api = api,
         _device = device,
+        _phoneCamera = phoneCamera,
         _sleep = sleep ?? Future<void>.delayed;
 
   final PhotoApi _api;
   final PhotoDevice _device;
+
+  /// Takes the photo when the wearable cannot (not connected, muted, no camera).
+  final PhoneCamera? _phoneCamera;
   final Future<void> Function(Duration) _sleep;
   final Duration captureTimeout;
   final Duration answerTimeout;
@@ -87,13 +98,36 @@ final class PhotoService implements PhotoTaker {
 
   @override
   Future<PhotoInfo> takePhoto({String? question, String? chatSessionId}) async {
-    final reason = _unavailableReason() ?? (_pendingId != null ? 'busy' : null);
-    if (reason != null) throw PhotoUnavailableException(reason);
+    if (_pendingId != null) throw const PhotoUnavailableException('busy');
+    final reason = _unavailableReason();
+    if (reason != null) {
+      final camera = _phoneCamera;
+      if (camera == null) throw PhotoUnavailableException(reason);
+      return _takeWithPhone(camera, question, chatSessionId);
+    }
     final photo = await _api.requestPhoto(
       question: question,
       chatSessionId: chatSessionId,
     );
     await _trigger(photo.id);
+    return photo;
+  }
+
+  /// The phone's camera first, so closing it leaves nothing behind; then the request
+  /// and the upload, as the wearable's photo would go.
+  Future<PhotoInfo> _takeWithPhone(
+    PhoneCamera camera,
+    String? question,
+    String? chatSessionId,
+  ) async {
+    final jpeg = await camera.capture();
+    if (jpeg == null) throw const PhotoCancelledException();
+    final photo = await _api.requestPhoto(
+      question: question,
+      chatSessionId: chatSessionId,
+      source: 'phone',
+    );
+    await _api.uploadPhoto(photo.id, jpeg, DateTime.now().toUtc());
     return photo;
   }
 

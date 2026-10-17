@@ -1,19 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../services/device/phone_words.dart';
 import '../../services/phone/phone_actions.dart';
 import '../../services/phone/phone_calendar.dart';
 import 'settings_components.dart';
 
-/// Settings → Automations → On this iPhone: Reminders and Calendar for Echo.
+/// Settings → On this iPhone (On this phone on Android): Reminders and Calendar for Echo.
+/// Android has no system Reminders app: there only the calendar is offered.
 final class PhoneAppsScreen extends StatefulWidget {
   const PhoneAppsScreen({required this.phoneActions, this.openSettings, super.key});
 
   final PhoneActionsService phoneActions;
 
-  /// Opens Echo's page in iOS Settings (injected in tests).
+  /// Opens Echo's page in iOS or Android settings (injected in tests).
   final Future<void> Function()? openSettings;
 
   @override
@@ -51,7 +54,12 @@ final class _PhoneAppsScreenState extends State<PhoneAppsScreen> {
   Future<void> _openSettings() async {
     final open = widget.openSettings;
     if (open != null) return open();
-    await launchUrl(Uri.parse('app-settings:'));
+    if (PhoneWords.isIPhone) {
+      await launchUrl(Uri.parse('app-settings:'));
+    } else {
+      // MainActivity.kt: Echo's App info page
+      await const MethodChannel('echo/device').invokeMethod<void>('openAppSettings');
+    }
   }
 
   Widget _row(PhoneApp app, {required IconData icon, required String subtitle}) {
@@ -79,21 +87,27 @@ final class _PhoneAppsScreenState extends State<PhoneAppsScreen> {
         .where((app) => _access[app] == PhoneAccess.denied)
         .map((app) => app == PhoneApp.reminders ? 'Reminders' : 'Calendar')
         .toList();
+    final iPhone = PhoneWords.isIPhone;
     final unavailable = _access.values.contains(PhoneAccess.unavailable);
     return SettingsPageScaffold(
-      title: 'On this iPhone',
+      title: PhoneWords.onThisPhone,
       children: [
-        const SettingsMessage(
-          'Echo can add reminders and events to the apps of this iPhone when you ask, '
-          'by voice or in Ask, and read what is in them. A reminder with a time '
-          'alerts you on the iPhone; a meeting in the calendar gets its briefing.',
+        SettingsMessage(
+          iPhone
+              ? 'Echo can add reminders and events to the apps of this iPhone when you ask, '
+                  'by voice or in Ask, and read what is in them. A reminder with a time '
+                  'alerts you on the iPhone; a meeting in the calendar gets its briefing.'
+              : 'Echo can add events to the calendar of this phone when you ask, by voice '
+                  'or in Ask, and read what is in it; a meeting in the calendar gets its '
+                  'briefing. For reminders, connect Todoist or Google Calendar in Apps.',
         ),
         const SettingsSection('APPS'),
-        _row(
-          PhoneApp.reminders,
-          icon: Icons.checklist_rounded,
-          subtitle: '"Echo, remind me to call Ada at 6"',
-        ),
+        if (iPhone)
+          _row(
+            PhoneApp.reminders,
+            icon: Icons.checklist_rounded,
+            subtitle: '"Echo, remind me to call Ada at 6"',
+          ),
         _row(
           PhoneApp.calendar,
           icon: Icons.calendar_today_outlined,
@@ -101,7 +115,8 @@ final class _PhoneAppsScreenState extends State<PhoneAppsScreen> {
         ),
         if (denied.isNotEmpty) ...[
           SettingsMessage(
-            '${denied.join(' and ')}: Echo is not allowed. Allow it in iOS Settings.',
+            '${denied.join(' and ')}: Echo is not allowed. '
+            'Allow it in ${PhoneWords.systemSettings}.',
             error: true,
             key: const Key('phone-apps-denied'),
           ),
@@ -109,18 +124,18 @@ final class _PhoneAppsScreenState extends State<PhoneAppsScreen> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
             child: OutlinedButton(
               onPressed: () => unawaited(_openSettings()),
-              child: const Text('Open iOS Settings'),
+              child: Text('Open ${PhoneWords.systemSettings}'),
             ),
           ),
         ],
-        if (unavailable)
+        if (iPhone && unavailable)
           const SettingsMessage(
             'Reminders and Calendar are not available on this device.',
             error: true,
           ),
-        const SettingsMessage(
-          'They run on this iPhone: Echo reaches them while the app is running, as it '
-          'is while the wearable is connected.',
+        SettingsMessage(
+          'They run on this ${PhoneWords.phone}: Echo reaches them while the app is '
+          'running, as it is while the wearable is connected.',
         ),
       ],
     );

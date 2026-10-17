@@ -17,6 +17,8 @@ from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
 from app.core.rate_limit import limiter
+from app.mcp import tools as _mcp_tools  # noqa: F401  (registers the tools)
+from app.mcp.server import mcp_endpoint
 from app.routers import (
     actions,
     admin,
@@ -121,6 +123,10 @@ app.include_router(voices.router, prefix=settings.api_prefix)
 app.include_router(firmware.router, prefix=settings.api_prefix)
 app.include_router(device.router, prefix=settings.api_prefix)
 
+# Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
+for _mcp_path in ("/mcp", "/mcp/"):
+    app.router.add_route(_mcp_path, mcp_endpoint, methods=["GET", "POST", "DELETE"])
+
 
 @app.get("/health")
 async def health(request: Request):
@@ -215,7 +221,7 @@ async def _authorize_metrics(request: Request) -> None:
     api_key = request.headers.get("x-api-key")
     if api_key:
         async with async_session() as db:
-            await get_current_user_id(api_key=api_key, db=db)
+            await get_current_user_id(request, api_key=api_key, db=db)
         return
     raise HTTPException(status_code=401, detail="Not authenticated")
 

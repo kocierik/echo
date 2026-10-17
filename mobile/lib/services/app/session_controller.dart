@@ -182,6 +182,8 @@ final class SharedPreferencesSessionCacheClearer
     'notify_briefings',
     'notify_promises',
     'notify_evening',
+    // The language the account speaks (SpokenLanguageStore.key)
+    'spoken_language',
   };
 
   final SharedPreferences _preferences;

@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     # Bearer token Prometheus uses for /metrics (without it, /metrics needs an API key)
     metrics_token: str = ""
 
+    # Anyone with the app can create an account (POST /api/auth/register); false closes
+    # it, and accounts are then made only with `make create-user`
+    registration_open: bool = True
+
     # CORS — comma-separated allowed origins (use "*" to allow all)
     cors_origins: str = "*"
 

@@ -1,14 +1,30 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show PlatformDispatcher;
 
 import '../../models/signed_in_device.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'build_defaults.dart';
+import '../app/spoken_language.dart';
 import '../device/phone_name.dart';
 
 /// Why signing in failed.
-enum SignInFailure { wrongCredentials, tooManyAttempts, noConnection, server }
+enum SignInFailure {
+  wrongCredentials,
+  tooManyAttempts,
+  noConnection,
+  server,
+
+  /// Creating an account: the email has one already.
+  accountExists,
+
+  /// Creating an account: the server does not take new ones.
+  registrationClosed,
+
+  /// Creating an account: a bad email or a short password (the message says which).
+  invalid,
+}
 
 final class SignInException implements Exception {
   const SignInException(this.reason, this.message);
@@ -23,14 +39,32 @@ final class SignInException implements Exception {
 }
 
 /// The phones signed in to the account (Settings → Devices).
+/// A connected app's key, shown once, and where to point the assistant.
+final class ConnectedAppKey {
+  const ConnectedAppKey({
+    required this.id,
+    required this.name,
+    required this.apiKey,
+    required this.mcpUrl,
+  });
+
+  final String id;
+  final String name;
+  final String apiKey;
+  final String mcpUrl;
+}
+
 abstract interface class DevicesApi {
   Future<List<SignedInDevice>> listDevices();
+
+  /// A read-only key for an assistant, over MCP.
+  Future<ConnectedAppKey> connectApp(String name);
   Future<void> revokeDevice(String id);
   Future<void> signOutThisPhone();
 }
 
 /// Signing in gives this phone its own key; signing out and revoking take keys away.
-mixin AuthEndpoints on ApiClient implements DevicesApi {
+mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
   /// Signs in and keeps the key this phone was given, for the server set in Settings
   /// (development) or the one built into the app.
   ///
@@ -39,6 +73,40 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
     required String email,
     required String password,
     String? deviceName,
+  }) =>
+      _signInPhone('/api/auth/login', email, password, deviceName);
+
+  /// Creates an account and keeps the key this phone was given in it. [language], the
+  /// one the user speaks, defaults to the phone's.
+  Future<void> register({
+    required String email,
+    required String password,
+    String? deviceName,
+    String? language,
+  }) =>
+      _signInPhone('/api/auth/register', email, password, deviceName,
+          language: language ?? PlatformDispatcher.instance.locale.languageCode);
+
+  /// The account behind this phone's key.
+  @override
+  Future<AccountInfo> me() async {
+    final response = await get('/api/auth/me');
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
+  /// Changes the language the account speaks.
+  @override
+  Future<AccountInfo> setLanguage(String language) async {
+    final response = await patch('/api/auth/me', body: {'language': language});
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
+  Future<void> _signInPhone(
+    String path,
+    String email,
+    String password,
+    String? deviceName, {
+    String? language,
   }) async {
     // Signing in again (back from the next step): the key it replaces goes first, so
     // no ghost phone stays in Devices
@@ -52,19 +120,20 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
     final name = deviceName ?? await phoneName();
     final ApiResponse response;
     try {
-      // 401 and 429 are answers here, not a revoked key
+      // These are answers here, not a revoked key
       response = await send(
         () => httpClient.post(
-          Uri.parse('$server/api/auth/login'),
+          Uri.parse('$server$path'),
           headers: const {'Content-Type': 'application/json'},
           body: jsonEncode({
             'email': email.trim(),
             'password': password,
             'device_name': name,
             'platform': Platform.isIOS ? 'ios' : 'android',
+            if (language != null) 'language': language,
           }),
         ),
-        expect: const {200, 401, 429},
+        expect: const {200, 400, 401, 403, 409, 429},
         shape: JsonShape.map,
       );
     } on ApiException catch (error) {
@@ -79,14 +148,28 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
             );
     }
     final data = response.data as Map<String, dynamic>;
+    final detail = data['detail'];
+    String said(String fallback) => detail is String && detail.isNotEmpty ? detail : fallback;
     switch (response.statusCode) {
       case 401:
         throw const SignInException(SignInFailure.wrongCredentials, 'Wrong email or password.');
       case 429:
         throw SignInException(
           SignInFailure.tooManyAttempts,
-          data['detail'] as String? ?? 'Too many attempts. Try again later.',
+          said('Too many attempts. Try again later.'),
         );
+      case 409:
+        throw SignInException(
+          SignInFailure.accountExists,
+          said('An account with this email already exists. Sign in instead.'),
+        );
+      case 403:
+        throw SignInException(
+          SignInFailure.registrationClosed,
+          said('Registration is closed.'),
+        );
+      case 400:
+        throw SignInException(SignInFailure.invalid, said('Check your email and password.'));
     }
     final key = data['api_key'];
     if (key is! String || key.isEmpty) {
@@ -121,4 +204,24 @@ mixin AuthEndpoints on ApiClient implements DevicesApi {
 
   @override
   Future<void> revokeDevice(String id) => delete('/api/auth/devices/$id');
+
+  @override
+  Future<ConnectedAppKey> connectApp(String name) async {
+    final response = await post(
+      '/api/auth/connected-apps',
+      body: {'name': name},
+      expect: const {201},
+    );
+    final stored = await credentials.serverUrl;
+    final server = stored.isEmpty ? BuildDefaults.serverUrl : stored;
+    return parse(response.data, (data) {
+      final json = data as Map<String, dynamic>;
+      return ConnectedAppKey(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        apiKey: json['api_key'] as String,
+        mcpUrl: '$server/mcp',
+      );
+    });
+  }
 }

@@ -37,3 +37,28 @@ def detect_language(text: str) -> Language:
     italian = sum(word in _ITALIAN for word in words)
     english = sum(word in _ENGLISH for word in words)
     return "it" if italian > english else "en"
+
+
+# The languages Echo transcribes and takes dictation in
+SUPPORTED_LANGUAGES = ("en", "it")
+
+
+async def account_language(db, user_id) -> Language:
+    """The language this account speaks; the server's default without an account row."""
+    from sqlalchemy import select
+
+    from app.core.config import settings
+    from app.models.user import User
+
+    language = await db.scalar(select(User.language).where(User.id == user_id))
+    return language or settings.stt_language
+
+
+def clear_language(text: str) -> Language | None:
+    """The language when the words say it clearly; None when they do not ("ciao")."""
+    words = _WORD.findall((text or "").lower())
+    italian = sum(word in _ITALIAN for word in words)
+    english = sum(word in _ENGLISH for word in words)
+    if italian == english:
+        return None
+    return "it" if italian > english else "en"

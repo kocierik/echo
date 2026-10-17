@@ -15,11 +15,11 @@ import redis.asyncio as redis
 from sqlalchemy import select
 
 from app.actions.voice import find_wake
-from app.core.config import settings
 from app.core.database import async_session
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
+from app.services.language import account_language
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
@@ -28,6 +28,7 @@ from app.services.transcription_enhancer import (
     is_meaningful_transcription,
     speaker_prefix,
 )
+from app.services.usage import usage_owner
 from app.services.voice_embedding import embed_voice
 from app.services.voice_profiles import list_profiles, recognize
 from app.workers.dead_letter import push_to_dead_letter
@@ -107,6 +108,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
         _, segment_id_bytes = result
         segment_id = uuid.UUID(segment_id_bytes.decode())
         logger.info(f"Processing STT for segment {segment_id}")
+        usage_owner.set(None)  # until the segment is known
 
         async with async_session() as db:
             segment = None
@@ -115,6 +117,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 if claimed_audio is None:
                     continue
                 segment, audio_data = claimed_audio
+                usage_owner.set(segment.user_id)
 
                 # Decode ADPCM to WAV for STT
                 wav_data = adpcm_to_wav(audio_data)
@@ -129,7 +132,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                     stt_result = await retry_with_backoff(
                         stt_service.transcribe,
                         wav_data,
-                        language=settings.stt_language,
+                        language=await account_language(db, segment.user_id),
                         prompt=stt_context.prompt or None,
                         keyterms=stt_context.keyterms,
                         operation_name=f"STT segment {segment_id}",

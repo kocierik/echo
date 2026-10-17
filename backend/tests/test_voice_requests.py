@@ -634,11 +634,11 @@ async def test_worker_memory_fallback_without_results(worker):
 
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
+    # Nothing in memory: the model still answers, knowing what Echo is (never a guess
+    # about the past: the prompt's rules)
     answer = _voice_session(worker).messages[-1]
-    assert answer["content"] == (
-        "Non ho trovato informazioni nella memoria per il periodo indicato. "
-        "Prova a riformulare la domanda o a estendere il periodo."
-    )
+    assert answer["content"] == "Risposta dalla memoria"
+    assert "About Echo" in worker.llm.call_log[-1][0].content
 
 
 @pytest.mark.asyncio
@@ -899,6 +899,10 @@ async def _run_stt(monkeypatch, text):
     async def classify(_db, _user_id, _energy):
         return "self"
 
+    async def language(_db, _user_id):
+        return "it"
+
+    monkeypatch.setattr(stt_worker, "account_language", language)
     monkeypatch.setattr(
         stt_worker,
         "get_stt_service",
@@ -1209,3 +1213,24 @@ async def test_worker_marks_the_request_working_while_answering(worker):
 
     assert redis.working_seen == [(str(wake.id), "riassumimi le mail")]
     assert redis.keys[WORKING_KEY.format(user_id=USER_ID)] == {}  # cleared once answered
+
+
+@pytest.mark.asyncio
+async def test_a_voice_request_runs_as_the_segment_owner(worker):
+    from app.services.usage import usage_owner
+
+    seen = []
+    answer = worker.llm.complete_json
+
+    async def spied(messages, temperature=0.1):
+        seen.append(usage_owner.get())
+        return await answer(messages, temperature)
+
+    worker.llm.complete_json = spied
+    usage_owner.set(None)
+    wake = _seg("Echo, cosa mi ha detto Marco ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert seen and set(seen) == {USER_ID}

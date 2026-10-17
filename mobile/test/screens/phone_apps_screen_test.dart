@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+final iPhone = TargetPlatformVariant.only(TargetPlatform.iOS);
+
 void main() {
   late _Calendar calendar;
   late _Server server;
@@ -44,7 +46,7 @@ void main() {
     expect(calendar.requested, [PhoneApp.reminders]);
     expect(switchOf(tester, PhoneApp.reminders).value, isTrue);
     expect(server.reports.last, (reminders: true, calendar: false));
-  });
+  }, variant: iPhone);
 
   testWidgets('an app iOS refused points to iOS Settings', (tester) async {
     calendar.accessOf[PhoneApp.calendar] = PhoneAccess.denied;
@@ -57,7 +59,7 @@ void main() {
     expect(find.byKey(const Key('phone-apps-denied')), findsOneWidget);
     await tester.tap(find.text('Open iOS Settings'));
     expect(opened, 1);
-  });
+  }, variant: iPhone);
 
   testWidgets('Automations leads to it', (tester) async {
     await pump(tester, AutomationsSettingsScreen(phoneActions: service));
@@ -65,6 +67,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(PhoneAppsScreen), findsOneWidget);
+  }, variant: iPhone);
+
+  testWidgets('on Android only the calendar, and a refusal points to Android settings',
+      (tester) async {
+    // Android has no system Reminders app: the bridge says so
+    calendar.accessOf[PhoneApp.reminders] = PhoneAccess.unavailable;
+    calendar.accessOf[PhoneApp.calendar] = PhoneAccess.denied;
+    var opened = 0;
+    await pump(
+      tester,
+      PhoneAppsScreen(phoneActions: service, openSettings: () async => opened++),
+    );
+
+    expect(find.text('On this phone'), findsOneWidget);
+    expect(find.byKey(const Key('phone-app-reminders')), findsNothing);
+    expect(find.byKey(const Key('phone-app-calendar')), findsOneWidget);
+    expect(find.textContaining('iPhone'), findsNothing);
+    expect(find.textContaining('not available on this device'), findsNothing);
+    await tester.tap(find.text('Open Android settings'));
+    expect(opened, 1);
   });
 }
 

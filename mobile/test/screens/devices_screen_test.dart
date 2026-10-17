@@ -4,9 +4,12 @@ import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _connectedAppTests();
+
   final now = DateTime(2026, 10, 16, 10);
 
   Future<void> pump(WidgetTester tester, _FakeDevices api,
@@ -107,6 +110,86 @@ void main() {
   });
 }
 
+void _connectedAppTests() {
+  final now = DateTime(2026, 10, 16, 10);
+
+  Future<void> pump(WidgetTester tester, _FakeDevices api) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: DevicesScreen(api: api, signOut: () async {}, clock: () => now),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('connected apps have their own section', (tester) async {
+    await pump(tester, _FakeDevices([
+      const SignedInDevice(id: 'me', name: 'iPhone', current: true, platform: 'ios'),
+      const SignedInDevice(id: 'cc', name: 'Claude Code', current: false, scope: 'read'),
+    ]));
+
+    expect(find.text('CONNECTED APPS'), findsOneWidget);
+    expect(find.text('OTHER KEYS'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('CONNECTED APPS')).dy,
+      lessThan(tester.getTopLeft(find.text('Claude Code')).dy),
+    );
+    expect(find.text('Reads your memory, cannot change it'), findsOneWidget);
+  });
+
+  testWidgets('connecting an assistant shows its key and setup once', (tester) async {
+    final api = _FakeDevices([
+      const SignedInDevice(id: 'me', name: 'iPhone', current: true, platform: 'ios'),
+    ]);
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    await pump(tester, api);
+
+    await tester.tap(find.byKey(const Key('connect-app')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Claude Code'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+
+    expect(api.connected, ['Claude Code']);
+    expect(find.text('secret-key-123'), findsOneWidget);
+    expect(find.text('https://echo.test/mcp'), findsOneWidget);
+    expect(find.textContaining('claude mcp add --transport http echo https://echo.test/mcp'),
+        findsOneWidget);
+    expect(find.textContaining('"Authorization": "Bearer secret-key-123"'), findsOneWidget);
+    expect(find.text("You won't see this key again."), findsOneWidget);
+
+    await tester.tap(find.text('Copy key'));
+    await tester.pump();
+    expect(copied, 'secret-key-123');
+  });
+
+  testWidgets('a connected app is revoked like a phone', (tester) async {
+    final api = _FakeDevices([
+      const SignedInDevice(id: 'me', name: 'iPhone', current: true, platform: 'ios'),
+      const SignedInDevice(id: 'cc', name: 'Claude Code', current: false, scope: 'read'),
+    ]);
+    await pump(tester, api);
+
+    await tester.tap(find.byKey(const Key('devices-revoke-cc')));
+    await tester.pumpAndSettle();
+    expect(find.text('It will lose access to your memory.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Revoke'));
+    await tester.pumpAndSettle();
+
+    expect(api.revoked, ['cc']);
+  });
+}
+
 final class _FakeDevices implements DevicesApi {
   _FakeDevices(this.devices);
 
@@ -132,4 +215,21 @@ final class _FakeDevices implements DevicesApi {
 
   @override
   Future<void> signOutThisPhone() async {}
+
+  final connected = <String>[];
+
+  @override
+  Future<ConnectedAppKey> connectApp(String name) async {
+    connected.add(name);
+    devices = [
+      ...devices,
+      SignedInDevice(id: 'app-${connected.length}', name: name, current: false, scope: 'read'),
+    ];
+    return ConnectedAppKey(
+      id: 'app-${connected.length}',
+      name: name,
+      apiKey: 'secret-key-123',
+      mcpUrl: 'https://echo.test/mcp',
+    );
+  }
 }

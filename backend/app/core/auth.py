@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.models.api_key import ApiKey
+from app.services.usage import usage_owner
 
 logger = logging.getLogger(__name__)
 
@@ -68,20 +69,26 @@ async def blocked_for(redis, key: str) -> int | None:
     return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
 
 
-async def reserve_attempt(redis, key: str) -> int | None:
+async def reserve_attempt(
+    redis,
+    key: str,
+    *,
+    limit: int = AUTH_FAILURE_LIMIT,
+    window: int = AUTH_FAILURE_WINDOW_SECONDS,
+) -> int | None:
     """Counts an attempt before it is checked, so a burst of simultaneous attempts
     cannot all slip under the limit: seconds left when it is over, else None."""
     try:
         count = await redis.incr(key)
         if count == 1:
-            await redis.expire(key, AUTH_FAILURE_WINDOW_SECONDS)
-        if count <= AUTH_FAILURE_LIMIT:
+            await redis.expire(key, window)
+        if count <= limit:
             return None
         ttl = await redis.ttl(key)
     except Exception as exc:  # Redis down: never lock everyone out
         logger.warning("auth failure limit unavailable: %s", exc)
         return None
-    return ttl if ttl > 0 else AUTH_FAILURE_WINDOW_SECONDS
+    return ttl if ttl > 0 else window
 
 
 async def release_attempt(redis, key: str) -> None:
@@ -153,9 +160,52 @@ async def get_current_api_key(
             detail="Invalid API key",
         )
 
+    if getattr(api_key_record, "scope", "full") != "full":
+        # A connected app's key on the REST API: a real key, used in the wrong place
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This key is for connected apps only.",
+        )
+
     api_key_record.last_used_at = datetime.now(timezone.utc)
+    # The model calls of this request are counted for the key's user (services/usage.py)
+    usage_owner.set(api_key_record.user_id)
 
     return api_key_record
+
+
+async def authenticate_connected_app(request: Request, db: AsyncSession) -> ApiKey:
+    """A connected app's key (`Authorization: Bearer`), for the MCP server only.
+
+    Unknown keys count as failed attempts, as on the REST API; a phone's `full` key is
+    refused, so every app with access is listed and revocable on its own.
+    """
+    redis = getattr(request.app.state, "redis", None)
+    failure_key = client_failure_key(request)
+    if redis is not None:
+        await _check_not_blocked(redis, failure_key)
+
+    header = request.headers.get("authorization", "")
+    token = header[7:].strip() if header[:7].lower() == "bearer " else ""
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing key")
+
+    key_hash = hash_api_key(token)
+    record = (
+        await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
+    ).scalar_one_or_none()
+    if record is None:
+        if redis is not None and not await _was_revoked(redis, key_hash):
+            await record_failure(redis, failure_key)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid key")
+    if record.scope != "read":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Use a connected app's key"
+        )
+
+    record.last_used_at = datetime.now(timezone.utc)
+    usage_owner.set(record.user_id)
+    return record
 
 
 async def get_current_user_id(

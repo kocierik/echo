@@ -13,6 +13,7 @@ abstract interface class PhotoApi {
     String? question,
     String? chatSessionId,
     bool fromWearableButton = false,
+    String source = 'app',
   });
 
   Future<PhotoInfo> getPhoto(String id);
@@ -31,12 +32,14 @@ mixin PhotoEndpoints on ApiClient implements PhotoApi {
     String? question,
     String? chatSessionId,
     bool fromWearableButton = false,
+    String source = 'app',
   }) async {
     final trimmed = question?.trim() ?? '';
+    final from = fromWearableButton ? 'button' : source;
     final response = await post(
       '/api/photos',
       body: {
-        if (fromWearableButton) 'source': 'button',
+        if (from != 'app') 'source': from,
         if (trimmed.isNotEmpty) 'question': trimmed,
         if (chatSessionId != null) 'chat_session_id': chatSessionId,
       },

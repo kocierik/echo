@@ -61,6 +61,43 @@ void main() {
       );
     });
 
+    test('creating an account advances like signing in', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+      fixture.controller.continueWithEmail();
+
+      fixture.controller.showCreateAccount();
+      expect(fixture.controller.value.creatingAccount, isTrue);
+      await fixture.controller.createAccount(' ada@example.com ', 'correct horse');
+
+      expect(fixture.api.registrations, [('ada@example.com', 'correct horse')]);
+      expect(fixture.api.signInCalls, 0);
+      expect(fixture.controller.value.step, OnboardingStep.permissions);
+    });
+
+    test('a taken email offers to sign in instead', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+      fixture.controller
+        ..continueWithEmail()
+        ..showCreateAccount();
+      fixture.api.registerError = const SignInException(
+        SignInFailure.accountExists,
+        'An account with this email already exists. Sign in instead.',
+      );
+
+      await fixture.controller.createAccount('ada@example.com', 'correct horse');
+
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(
+        fixture.controller.value.error,
+        'An account with this email already exists. Sign in instead.',
+      );
+      fixture.controller.showSignIn();
+      expect(fixture.controller.value.creatingAccount, isFalse);
+      expect(fixture.controller.value.error, isNull);
+    });
+
     test('a valid sign-in advances to permissions and keeps the progress', () async {
       final fixture = _Fixture();
       await fixture.controller.initialize();
@@ -579,6 +616,26 @@ void main() {
     });
   });
 
+  testWidgets('create an account from the email screen', (tester) async {
+    final fixture = _Fixture();
+    await _pumpOnboarding(tester, fixture.controller);
+    await tester.tap(find.byKey(const Key('welcome-email')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('sign-in-create-account')));
+    await tester.pumpAndSettle();
+    expect(find.text('Create your account'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('sign-in-email')), 'ada@example.com');
+    await tester.enterText(find.byKey(const Key('sign-in-password')), 'correct horse');
+    await tester.tap(find.byKey(const Key('sign-in-submit')));
+    await tester.pumpAndSettle();
+
+    expect(fixture.api.registrations, [('ada@example.com', 'correct horse')]);
+    expect(fixture.controller.value.step, OnboardingStep.permissions);
+  });
+
   group('first result', () {
     Future<_FakeVoice> pumpFirstResult(WidgetTester tester) async {
       final voice = _FakeVoice();
@@ -756,6 +813,16 @@ final class _FakeApi implements OnboardingApi {
   Future<void> signIn(String email, String password) async {
     signIns.add((email, password));
     if (signInError case final error?) throw error;
+    configured = true;
+  }
+
+  SignInException? registerError;
+  final registrations = <(String, String)>[];
+
+  @override
+  Future<void> register(String email, String password) async {
+    registrations.add((email, password));
+    if (registerError case final error?) throw error;
     configured = true;
   }
 }

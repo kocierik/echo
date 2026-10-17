@@ -1,13 +1,15 @@
-"""Reminders and Calendar on the user's iPhone, as action tools the app runs.
+"""Reminders and Calendar on the user's phone, as action tools the app runs.
 
-The app turns them on (Settings → Automations → On this iPhone) and reports which ones
+The app turns them on (Settings → On this iPhone; On this phone on Android, which has no
+system Reminders app, so only the calendar) and reports which ones
 (`PUT /device/phone-apps`, kept PHONE_APPS_TTL_S and reported again on every wake). A
-call becomes a `phone_action` device command; the app runs it with EventKit and posts the
-result (`POST /device/commands/{id}/result`), which `execute` waits for. A command the
+call becomes a `phone_action` device command; the app runs it (EventKit on the iPhone, the
+calendar provider on Android) and posts the result (`POST /device/commands/{id}/result`),
+which `execute` waits for. A command the
 app never picked up did nothing; one it picked up but did not answer in time may have
 run, so the outcome is unknown and the user is told to check.
 
-`with_phone_apps` adds these tools to Composio's only when the iPhone offers some: without
+`with_phone_apps` adds these tools to Composio's only when the phone offers some: without
 them chat and voice requests work exactly as before.
 """
 
@@ -31,8 +33,8 @@ from app.services.device_commands import DELIVERED_KEY, push_device_command
 logger = logging.getLogger(__name__)
 
 PHONE_APP_NAMES = {
-    "applereminders": "Apple Reminders",
-    "applecalendar": "Apple Calendar",
+    "applereminders": "Phone Reminders",
+    "applecalendar": "Phone Calendar",
 }
 PHONE_APPS_KEY = "phone:apps:{user_id}"
 PHONE_APPS_TTL_S = 14 * 24 * 3600
@@ -63,8 +65,8 @@ TOOLS: dict[str, dict] = {
     for schema in (
         _tool(
             "APPLEREMINDERS_CREATE_REMINDER",
-            "Create a reminder in the Reminders app on the user's iPhone. With a due time "
-            "the iPhone alerts the user at that time.",
+            "Create a reminder in the Reminders app on the user's phone. With a due time "
+            "the phone alerts the user at that time.",
             {
                 "title": {"type": "string", "description": "What to remember, short."},
                 "due": {
@@ -82,7 +84,7 @@ TOOLS: dict[str, dict] = {
         ),
         _tool(
             "APPLEREMINDERS_LIST_REMINDERS",
-            "List the open (not completed) reminders on the user's iPhone, soonest first.",
+            "List the open (not completed) reminders on the user's phone, soonest first.",
             {
                 "due_before": {
                     "type": "string",
@@ -97,7 +99,7 @@ TOOLS: dict[str, dict] = {
         ),
         _tool(
             "APPLECALENDAR_CREATE_EVENT",
-            "Create an event in the Calendar app on the user's iPhone. No invitation is sent.",
+            "Create an event in the Calendar app on the user's phone. No invitation is sent.",
             {
                 "title": {"type": "string"},
                 "start": {
@@ -119,7 +121,7 @@ TOOLS: dict[str, dict] = {
         ),
         _tool(
             "APPLECALENDAR_LIST_EVENTS",
-            "List the events in the Calendar app on the user's iPhone between two times: "
+            "List the events in the Calendar app on the user's phone between two times: "
             "every calendar on the phone, accounts added to it included.",
             {
                 "start": {"type": "string", "description": f"{_LOCAL_TIME} or date."},
@@ -145,11 +147,11 @@ def _text(value) -> str | None:
 
 
 async def phone_apps(redis_client, user_id) -> list[str]:
-    """The iPhone apps the app offers for this user; [] when it never said."""
+    """The phone apps the app offers for this user; [] when it never said."""
     try:
         raw = _text(await redis_client.get(PHONE_APPS_KEY.format(user_id=user_id)))
     except RedisError as exc:
-        raise ActionProviderError("Could not read the iPhone's apps") from exc
+        raise ActionProviderError("Could not read the phone's apps") from exc
     try:
         apps = json.loads(raw) if raw else []
     except ValueError:
@@ -176,7 +178,7 @@ async def record_phone_result(redis_client, user_id, command_id: str, result: di
 
 
 class PhoneActionProvider:
-    """The iPhone's Reminders and Calendar, run by the app (see the module docstring)."""
+    """The phone's Reminders and Calendar, run by the app (see the module docstring)."""
 
     def __init__(self, redis_client):
         self._redis = redis_client
@@ -216,24 +218,24 @@ class PhoneActionProvider:
                 DELIVERED_KEY.format(command_id=command_id)
             )
         except RedisError as exc:
-            raise ActionProviderError("Could not reach the iPhone") from exc
+            raise ActionProviderError("Could not reach the phone") from exc
         if answer is None:
             if delivered:
-                raise ActionOutcomeUnknown("The iPhone did not answer in time")
-            raise ActionProviderError("The iPhone could not be reached: is the Echo app running?")
+                raise ActionOutcomeUnknown("The phone did not answer in time")
+            raise ActionProviderError("The phone could not be reached: is the Echo app running?")
         try:
             result = json.loads(answer[1])
         except (TypeError, ValueError):
-            return ToolResult(ok=False, unknown=True, error="unreadable answer from the iPhone")
+            return ToolResult(ok=False, unknown=True, error="unreadable answer from the phone")
         if result.get("ok") is True:
             return ToolResult(ok=True, data=result.get("data"))
-        return ToolResult(ok=False, error=str(result.get("error") or "The iPhone could not do it"))
+        return ToolResult(ok=False, error=str(result.get("error") or "The phone could not do it"))
 
 
 class WithPhoneApps:
-    """Composio's apps (when configured) and the iPhone's, as one ActionProvider.
+    """Composio's apps (when configured) and the phone's, as one ActionProvider.
 
-    The iPhone's apps are read once, when the request starts; managing connections
+    The phone's apps are read once, when the request starts; managing connections
     (Settings → Automations → Integrations) is Composio's alone.
     """
 
@@ -283,16 +285,16 @@ class WithPhoneApps:
 
 
 async def with_phone_apps(composio, redis_client, user_id) -> object | None:
-    """`composio` (or None), plus the iPhone's apps when the app offers any.
+    """`composio` (or None), plus the phone's apps when the app offers any.
 
     Without them the result is `composio` itself: nothing changes for a user who never
-    turned them on. A Redis failure here only means no iPhone apps for this request.
+    turned them on. A Redis failure here only means no phone apps for this request.
     """
     phone = PhoneActionProvider(redis_client)
     try:
         apps = await phone.connected_toolkits(str(user_id))
     except ActionProviderError:
-        logger.warning("Could not read the iPhone's apps", exc_info=True)
+        logger.warning("Could not read the phone's apps", exc_info=True)
         apps = []
     if not apps:
         return composio

@@ -8,6 +8,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 void main() {
+  _connectAppTests();
+
+  _languageTests();
+
   test('signIn stores the issued key for the build server', () async {
     late http.Request sent;
     final store = _Store();
@@ -228,6 +232,112 @@ void main() {
     await api.signIn(email: 'e@x.y', password: 'whatever', deviceName: 'iPhone 15 Pro');
 
     expect((jsonDecode(sent.body) as Map)['device_name'], 'iPhone 15 Pro');
+  });
+
+  test('register creates the account and keeps the phone signed in', () async {
+    late http.Request sent;
+    final store = _Store();
+    final api = _api(store, (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"new-account-key","device_id":"d","user":{"id":"u","email":"ada@example.com"}}',
+        200,
+      );
+    });
+
+    await api.register(email: ' ada@example.com ', password: 'correct horse', deviceName: 'Pixel 8');
+
+    expect(sent.url.path, '/api/auth/register');
+    final body = jsonDecode(sent.body) as Map<String, dynamic>;
+    expect(body['email'], 'ada@example.com');
+    expect(body['device_name'], 'Pixel 8');
+    expect(store.saved?.$2, 'new-account-key');
+  });
+
+  test('register explains a taken email, a closed server and what to fix', () async {
+    Future<SignInException> failure(int status, String detail) async {
+      final api = _api(_Store(), (_) async => http.Response(jsonEncode({'detail': detail}), status));
+      try {
+        await api.register(email: 'ada@example.com', password: 'whatever long', deviceName: 'x');
+      } on SignInException catch (error) {
+        return error;
+      }
+      fail('register did not throw');
+    }
+
+    final taken = await failure(409, 'An account with this email already exists. Sign in instead.');
+    expect(taken.reason, SignInFailure.accountExists);
+    expect(taken.message, 'An account with this email already exists. Sign in instead.');
+
+    final closed = await failure(403, 'Registration is closed.');
+    expect(closed.reason, SignInFailure.registrationClosed);
+    expect(closed.message, 'Registration is closed.');
+
+    final invalid = await failure(400, 'Use at least 10 characters for the password.');
+    expect(invalid.reason, SignInFailure.invalid);
+    expect(invalid.message, 'Use at least 10 characters for the password.');
+
+    final limited = await failure(429, 'Too many accounts from here. Try again in 60 minutes.');
+    expect(limited.reason, SignInFailure.tooManyAttempts);
+  });
+}
+
+void _languageTests() {
+  test('register sends the language the user speaks', () async {
+    late http.Request sent;
+    final api = _api(_Store(), (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"k","device_id":"d","user":{"id":"u","email":"ada@example.com"}}',
+        200,
+      );
+    });
+
+    await api.register(
+      email: 'ada@example.com', password: 'whatever long', deviceName: 'x', language: 'it');
+
+    expect((jsonDecode(sent.body) as Map)['language'], 'it');
+  });
+
+  test('me reads the account, setLanguage changes it', () async {
+    final calls = <String>[];
+    final api = _api(_Store(server: 'https://echo.test', key: 'k'), (request) async {
+      calls.add('${request.method} ${request.url.path} ${request.body}');
+      return http.Response('{"email":"ada@example.com","language":"it"}', 200);
+    });
+
+    final me = await api.me();
+    final changed = await api.setLanguage('it');
+
+    expect(me.language, 'it');
+    expect(me.email, 'ada@example.com');
+    expect(changed.language, 'it');
+    expect(calls, ['GET /api/auth/me ', 'PATCH /api/auth/me {"language":"it"}']);
+  });
+}
+
+void _connectAppTests() {
+  test('connectApp asks for a read key and builds the MCP address', () async {
+    late http.Request sent;
+    final api = _api(_Store(server: 'https://echo.test', key: 'k'), (request) async {
+      sent = request;
+      return http.Response('{"id":"a1","name":"Claude Code","api_key":"rk"}', 201);
+    });
+
+    final app = await api.connectApp('Claude Code');
+
+    expect(sent.url.path, '/api/auth/connected-apps');
+    expect(jsonDecode(sent.body), {'name': 'Claude Code'});
+    expect(app.apiKey, 'rk');
+    expect(app.mcpUrl, 'https://echo.test/mcp');
+  });
+
+  test('without a server in Settings, the address is the built-in one', () async {
+    final api = _api(_Store(key: 'k'), (request) async {
+      return http.Response('{"id":"a1","name":"Cursor","api_key":"rk"}', 201);
+    });
+
+    expect((await api.connectApp('Cursor')).mcpUrl, '${BuildDefaults.serverUrl}/mcp');
   });
 }
 

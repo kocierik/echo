@@ -201,7 +201,8 @@ CREATE TABLE api_keys (
     name TEXT NOT NULL DEFAULT 'default',
     platform VARCHAR(20),  -- "ios"/"android" for keys given at sign-in (Migration 015)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_used_at TIMESTAMPTZ
+    last_used_at TIMESTAMPTZ,
+    scope VARCHAR(10) NOT NULL DEFAULT 'full'  -- full: REST API; read: connected apps, MCP only (018)
 );
 
 CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys (key_hash);
@@ -213,6 +214,7 @@ CREATE TABLE users (
     id UUID PRIMARY KEY,
     email VARCHAR(320) NOT NULL UNIQUE,  -- stored lower-cased
     password_hash TEXT NOT NULL,         -- Argon2id
+    language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -326,3 +328,33 @@ CREATE TABLE firmware_releases (
     image BYTEA NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+-- ============================================================
+-- LLM USAGE: model work per user and day, for the cost of Echo (Migration 017)
+-- ============================================================
+CREATE TABLE llm_usage (
+    id UUID PRIMARY KEY,
+    user_id UUID,                 -- null: work no one owned (logged)
+    day DATE NOT NULL,            -- UTC
+    kind VARCHAR(32) NOT NULL,    -- stt, embedding, llm_analysis, llm_query, llm_intent, llm_vision, voice_embedding
+    model VARCHAR(100) NOT NULL,
+    calls INT NOT NULL DEFAULT 0,
+    input_units BIGINT NOT NULL DEFAULT 0,   -- tokens; seconds of audio for stt
+    output_units BIGINT NOT NULL DEFAULT 0,
+    cached_units BIGINT NOT NULL DEFAULT 0,
+    CONSTRAINT uq_llm_usage_day UNIQUE NULLS NOT DISTINCT (user_id, day, kind, model)
+);
+
+
+-- ============================================================
+-- MCP CALLS: tool calls by connected apps (Migration 019)
+-- ============================================================
+CREATE TABLE mcp_calls (
+    id UUID PRIMARY KEY,
+    api_key_id UUID NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    tool VARCHAR(40) NOT NULL,
+    summary VARCHAR(200) NOT NULL DEFAULT '',  -- redacted: tool and argument names
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_mcp_calls_api_key_id ON mcp_calls(api_key_id);

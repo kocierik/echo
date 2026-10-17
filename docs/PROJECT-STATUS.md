@@ -1,9 +1,11 @@
-# Echo — Stato del progetto (14/10/2026)
+# Echo — Stato del progetto (16/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
 13–14/10 e la verifica completa sul nuovo PC del 14/10 (tutte e tre le suite eseguite, Composio provato
-dal vivo). Tutto su `origin/main`.
+dal vivo). Aggiornato il 16/10 dopo la nuova interfaccia, il primo avvio con account e registrazione,
+l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. Il dettaglio di quanto resta è
+in [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -29,9 +31,9 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
 
 | Componente | Tecnologia | Test |
 |---|---|---|
-| `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 8 suite Unity native, 79 test (protocollo, stato transfer, bond, mute, overflow, ring buffer) |
-| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 319 test (servizi + widget), `flutter analyze` pulito |
-| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio | 502 test pytest (unitari + integrazione con Postgres), ruff pulito |
+| `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 12 suite Unity native, 109 test (protocollo, transfer, bond, mute, pulsante, OTA, buffer, foto) |
+| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 581 test (servizi + widget, ~4 min), `flutter analyze` pulito |
+| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2, MCP SDK 1.30 | 735 test pytest (~2 min), ruff pulito |
 | `simulator/` | Python, simula il device via HTTP | — |
 
 Fase attuale: **Core Beta** ([spec](superpowers/specs/2026-10-01-core-beta-design.md)): un utente, un iPhone,
@@ -54,20 +56,35 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   (XGA) scattata in un task sul core 0 con il sensore acceso solo per lo scatto, tenuta in RAM fino a `UPLOAD_OK` e
   inviata prima dell'audio; `PHOTO_FAILED` se in muto, occupato, senza fotocamera o se lo scatto fallisce; LED acceso
   durante lo scatto. **Mai provato sull'hardware.**
+- **Pulsante fisico** (D1/GPIO2): pressione breve = foto, lunga = muto/riattiva.
+- **Aggiornamento via Bluetooth** (protocollo 4, [ADR 0009](adr/0009-firmware-updates-over-ble.md)): l'app scarica
+  la versione dal server, la invia a pezzi verificando lo SHA-256; il dispositivo torna alla versione precedente se
+  la nuova non si collega all'app entro 5 minuti. Firmware attuale 0.5.0.
 
 ### App mobile
-- Onboarding a 4 step (server/API key → permessi → pairing → fine): server e chiave precompilabili in build
-  (`--dart-define-from-file`), pairing saltabile e da fare dopo in Settings → Device.
-- Tab Today / Memories / Tasks / Ask + Settings (Device, Connection, Privacy, Automations, Diagnostics, About).
+- **Primo avvio** ([design](superpowers/specs/2026-10-16-first-run-and-sign-in-design.md)): schermata di avvio nei
+  colori di Echo (chiara e scura), benvenuto animato, accesso con email e password o **creazione dell'account**,
+  permessi, abbinamento (rimandabile), privacy, primo risultato con un comando vocale. Il server è fisso nell'app;
+  Apple e Google sono mostrati come "in arrivo".
+- **Account:** ogni telefono riceve una chiave sua (nel Keychain/Keystore); Settings → Devices elenca telefoni e
+  chiavi per gli script, con Sign out e Revoke; una chiave revocata altrove fa uscire il telefono una volta sola e
+  lo dice sul benvenuto.
+- Tre schede **Today | Ask | Memories** con il pulsante Ask rotondo al centro (tenuto premuto detta la domanda) e la
+  **pillola del dispositivo** in ogni intestazione (tocco = Settings, pressione lunga = muto). Tasks è una pagina di
+  Today. Settings: il dispositivo disegnato in alto (Mute Echo, Device details), poi Apps, On this iPhone,
+  Activity, Notifications, Voices, Appearance, Privacy, What Echo can do, Server connection, Diagnostics, Devices,
+  About.
+- Interfaccia "A + C": pannelli su un fondo quieto, font Archivo; tema "System" di default, scuro quasi nero.
 - **Memories:** conversazioni per giorno (emoji, titolo, riassunto, persone, task, "Live"), ricerca sul server,
   dettaglio con Summary (task con la frase d'origine, eventi, idee) e Transcript correggibile.
 - **Tasks:** task aperti per scadenza, completamento con Annulla, "Not a task", conversazione d'origine.
 - **People** (in Memories): persone per ultima volta viste; la pagina di una persona ha ruolo e note, task ed
   eventi che la nominano, conversazioni in cui compare e "Ask about" (nuova chat con la domanda già inviata).
   Anche una conversazione ha "Ask about this conversation".
-- **Today:** scheda del dispositivo (muto/riprendi, riconnetti o **Pair Echo**), **Needs you** con le azioni da
-  confermare (anche quelle vocali), la giornata finora (conversazioni, minuti, persone), task in scadenza o creati
-  oggi (con "Not a task"), l'ultimo riassunto giornaliero con il suo giorno.
+- **Today:** il dispositivo solo se c'è un problema (offline, non abbinato, Bluetooth spento), **Needs you** con
+  le azioni da confermare, **To do today** (promesse e task, massimo tre), **Your day** (le conversazioni di oggi
+  su una linea del tempo, fino a quella in corso), **Echo can act in** (app collegate, Promemoria e Calendario).
+  Riassunto del giorno e della settimana in cima a Memories.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la
@@ -84,6 +101,20 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Tema chiaro/scuro, errori API tipizzati, logout.
 
 ### Backend
+- **Account** (`routers/auth.py`): `POST /api/auth/login` e `/register` danno una chiave per telefono (solo l'hash
+  nel DB), `logout`, `devices`, revoca; password Argon2 controllate fuori dal loop; tentativi falliti contati prima
+  del controllo, per indirizzo e per email (10 in 15 minuti); al massimo 5 registrazioni l'ora per indirizzo;
+  `REGISTRATION_OPEN=false` chiude la registrazione; `make create-user` / `make set-password` dal server.
+- **Costi** (`app/services/usage.py`): ogni chiamata a pagamento (trascrizione, embedding, i quattro ruoli
+  dei modelli) è contata per utente e giorno in `llm_usage`; `make usage` stampa il costo di un giorno, per
+  tipo di lavoro, e il costo di un'ora di parlato. I prezzi (`app/usage_prices.py`) sono da verificare.
+- **App collegate e MCP** (`app/mcp/`): chiavi `read` per Claude, Cursor e simili, solo su `/mcp`; sei
+  strumenti di sola lettura sulle memorie; la REST rifiuta quelle chiavi (403).
+- **Domande su Echo e fuori tema**: le istruzioni del modello sanno cosa sa fare Echo; domande generali con
+  risposta breve "non dalla memoria", nessuna invenzione sul passato né su informazioni in tempo reale.
+- **La lingua che parli**: una per account (inglese o italiano), per la trascrizione e la dettatura.
+- **Promemoria e Calendario dell'iPhone** ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md)): l'agente li usa
+  tramite comandi all'app (EventKit), senza Composio.
 - `POST /api/segments`: ingest idempotente (hash audio + `recorded_at`), limite 5 MB, rate limit 60/min.
 - Worker: STT (OpenAI `gpt-4o-transcribe` o Deepgram) con prompt contestuale, pulizia testo, filtro trascrizioni banali,
   classificazione speaker per energia, retry esponenziale + circuit breaker + dead letter queue.
@@ -191,6 +222,17 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
+- **Da applicare sul server** (`make deploy`): migrazioni 016–019 (lingua, consumi, permessi delle chiavi,
+  chiamate MCP) e l'immagine con l'SDK MCP. Prima di allora `make usage` e `/mcp` non funzionano lì.
+- **MCP solo con chiave:** claude.ai e ChatGPT vogliono OAuth, da fare; Claude Desktop non è verificato.
+- **Account appena fatti:** registrazione e accesso sono provati solo dai test. Sul server serve `make deploy`
+  e il proprio account (`make create-user`). Mancano conferma dell'email, recupero password via email, Apple e
+  Google. Con la registrazione aperta chiunque trovi il server può crearsi un account e usare la chiave OpenAI del
+  server: `REGISTRATION_OPEN=false` la chiude.
+- **Android mai compilato:** su questo Mac manca l'SDK. Non verificati: schermata di avvio Android 12+, canale
+  `echo/device` in `MainActivity.kt`, tutto il resto dell'app. Promemoria/Calendario e Live Activity sono solo iOS.
+- **Nuova interfaccia vista solo nei test:** da guardare sul telefono (spaziature, tema quasi nero).
+- **Il server gira sul Mac:** se è spento o senza rete, Echo non funziona; i backup sono a mano.
 - **Composio provato solo in parte:** il collegamento di Google Calendar funziona; restano da provare una richiesta
   in chat e una a voce, le conferme, Telegram e Todoist, e i tempi reali di una richiesta.
 - **`composio==0.22.0`:** dalla 0.24 dipende da `composio-client` 2.0 (release candidate), che si carica in ~50 s
@@ -205,7 +247,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   installa le dipendenze dev). Guida: [DEVELOPMENT.md](DEVELOPMENT.md).
 - La CI usa `echo_test` e chiavi finte; dopo le correzioni del 14/10 le tre suite passano in locale: l'esito della CI
   va controllato su GitHub Actions.
-- Build Android non verificata su questo PC (manca l'SDK Android).
+- Build Android non verificata su questo PC (manca l'SDK Android): vedi sopra.
 
 ---
 
@@ -227,10 +269,11 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Memoria:** raggruppamento conversazioni per argomento. Impronte vocali fatte ([ADR 0008](adr/0008-voice-fingerprints.md)):
   soglie da calibrare su registrazioni reali; un segmento con più voci prende quella prevalente.
 - **Query:** filtro per tipo di entità nel RAG (la ricerca per persona c'è: prima le conversazioni in cui compare).
-- **Firmware:** OTA, mute fisico (GPIO presente ma inutilizzato), storage offline su microSD. La lettura della batteria
+- **Firmware:** storage offline su microSD (solo se il buffer di ~13 minuti risulta corto). La lettura della batteria
   c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
-- **Multi-utente / OAuth login:** fuori scope beta; l'API key si crea con `make create-key`.
+- **Multi-utente:** account, registrazione e dati separati ci sono; mancano quote/costi per utente, conferma
+  dell'email, recupero password, Apple/Google, più dispositivi Echo per account.
 - **Android in background:** non è un gate della beta.
 
 ---
@@ -251,18 +294,21 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 **Per te:**
 
-1. **Sostituire la chiave di esempio** (subito: il backend è pubblico): `make create-key`, mettere la chiave stampata
-   in `mobile/dart_defines.json` e reinstallare l'app (o inserirla in Settings → Connection), poi
-   `make revoke-example-key`.
-2. **Controllare la CI** su GitHub Actions dopo il push.
-3. **Provare le azioni Composio** dal vivo: una richiesta in chat ("che impegni ho domani?"), una che chiede conferma
-   ("crea un evento con Marco"), una a voce ("Echo, …").
-4. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md).
-5. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
-6. Test batteria 12 h quando arriva l'hardware.
-7. **Provare la fotocamera** (OV3660): caricare il firmware, controllare dal monitor seriale `[Camera] sensor PID`,
-   tempo e peso della foto (`[Camera] photo N bytes in M ms`), poi il pulsante 📷 in Ask e "Echo, cos'è questo?".
-   Misurare consumo e calore durante lo scatto; se il trasferimento è lento, `PHOTO_FRAME_SIZE` → `FRAMESIZE_SVGA`.
+1. **`make deploy`** e riavvio dell'API: installa `argon2-cffi` e applica le migrazioni (la 015 è già applicata).
+2. **Il tuo account:** `make create-user EMAIL=…` (si aggancia ai dati che hai), poi nell'app esci e rientra per
+   avere una chiave tua; **`make revoke-example-key`** per la chiave pubblica `my-secret-key`; togli `ECHO_API_KEY`
+   da `mobile/dart_defines.json`.
+3. **Firmware 0.5.0 via cavo**, reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
+4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero).
+5. **Decidere sulla registrazione aperta**: lasciarla (lo hai scelto) o chiuderla con `REGISTRATION_OPEN=false`.
+6. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.
+7. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md); test batteria di 12 ore.
+8. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
+9. **Provare la fotocamera** (OV3660): monitor seriale `[Camera] sensor PID`, tempo e peso della foto, poi 📷 in
+   Ask e "Echo, cos'è questo?"; misurare consumo e calore.
+10. **Android:** installare l'SDK (o una CI) e provare la build.
+11. Più avanti: spostare il server su un VPS in Europa con backup notturni; account sviluppatore Apple per
+    "Accedi con Apple" e la pubblicazione.
 
-**Per me**, se vuoi: Today senza dispositivo ("Pair Echo"), traduzione delle
-entità estratte.
+**Per me**, se vuoi: equivalenti Android di Promemoria/Calendario, il deploy su VPS (Compose di produzione,
+backup), recupero password via email quando ci sarà un servizio di invio, traduzione delle entità estratte.
