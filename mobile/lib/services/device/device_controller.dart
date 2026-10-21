@@ -19,9 +19,15 @@ final class DeviceController {
     required DeviceBlePort ble,
     required DeviceIdentityStorePort identityStore,
     DeviceRetrySchedule? scheduleRetry,
+    Future<bool> Function()? canConnect,
   })  : _ble = ble,
         _identityStore = identityStore,
-        _scheduleRetry = scheduleRetry ?? _scheduleTimer;
+        _scheduleRetry = scheduleRetry ?? _scheduleTimer,
+        _canConnect = canConnect;
+
+  /// Whether a saved wearable may be reconnected at start: not while no one is signed
+  /// in, since its segments could not be uploaded and it would drop them when full.
+  final Future<bool> Function()? _canConnect;
 
   static const _retryDelays = <Duration>[
     Duration.zero,
@@ -80,6 +86,15 @@ final class DeviceController {
       _setConnectionState(DeviceConnectionState.bluetoothOff);
       return;
     }
+    final canConnect = _canConnect;
+    if (canConnect != null && !await canConnect()) {
+      if (_disposed || generation != _generation) return;
+      // Signed out: as if not paired, so no "disconnected" notice either; pairing
+      // again in the first run connects it
+      _setConnectionState(DeviceConnectionState.unpaired);
+      return;
+    }
+    if (_disposed || generation != _generation) return;
     _beginReconnectCycle();
   }
 

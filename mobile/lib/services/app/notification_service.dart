@@ -66,10 +66,14 @@ final class NotificationService {
     await _port.cancel(disconnectId);
   }
 
+  /// The wearable's memory filled up while its speech could not be synced, and it made
+  /// room by dropping the oldest. [droppedCount]: since the last such notification.
   Future<void> showLoss(int droppedCount) => _port.show(
         id: lossId,
-        title: 'Audio segments lost',
-        body: '$droppedCount audio segments were dropped by the wearable.',
+        title: "Some speech wasn't saved",
+        body: "Echo's memory was full: "
+            '${droppedCount == 1 ? '1 recording was' : '$droppedCount recordings were'} lost. '
+            'Keep your phone near Echo, signed in, so it can sync.',
       );
 
   Future<void> showUploadFailure() => _port.show(

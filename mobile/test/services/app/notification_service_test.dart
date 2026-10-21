@@ -95,6 +95,12 @@ void main() {
       NotificationService.uploadFailureId,
     ]);
     expect(port.shown.first.body, contains('4'));
+    // Why it happened and what to do, not the wearable's internals
+    expect(port.shown.first.title, "Some speech wasn't saved");
+    expect(port.shown.first.body, contains('memory was full'));
+    expect(port.shown.first.body, contains('near Echo'));
+    await service.showLoss(1);
+    expect(port.shown.last.body, contains('1 recording was'));
   });
 
   test('normal transcript completion produces no notification', () async {

@@ -19,6 +19,18 @@ void main() {
       expect(fixture.ble.savedConnectIds, isEmpty);
     });
 
+    test('a saved wearable is not reconnected while no one is signed in', () async {
+      // Signed out (the welcome): segments could not be uploaded, the wearable's
+      // memory would fill and drop them, one notification each
+      final fixture = _Fixture(savedId: 'echo-1', canConnect: false);
+
+      await fixture.controller.start();
+
+      expect(fixture.ble.savedConnectIds, isEmpty);
+      expect(fixture.controller.state.connectionState,
+          DeviceConnectionState.unpaired);
+    });
+
     test('manual pairing saves identity only after the port is ready', () async {
       final fixture = _Fixture();
       final pairing = Completer<String>();
@@ -321,7 +333,7 @@ DeviceTelemetry _telemetry({
 Future<void> _flush() => Future<void>.delayed(Duration.zero);
 
 class _Fixture {
-  _Fixture({String? savedId})
+  _Fixture({String? savedId, bool canConnect = true})
       : ble = _FakeDeviceBlePort(),
         store = _FakeIdentityStore(savedId),
         scheduler = _FakeScheduler() {
@@ -329,6 +341,7 @@ class _Fixture {
       ble: ble,
       identityStore: store,
       scheduleRetry: scheduler.schedule,
+      canConnect: () async => canConnect,
     );
   }
 

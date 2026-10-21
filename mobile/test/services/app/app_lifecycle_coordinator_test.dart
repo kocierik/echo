@@ -18,6 +18,7 @@ void main() {
   late List<WidgetsBindingObserver> observers;
   late AppLifecycleBinding binding;
   var controllerStartCalls = 0;
+  var now = DateTime(2026, 10, 21, 9);
 
   setUp(() async {
     states = StreamController<DeviceStatus>.broadcast(sync: true);
@@ -39,6 +40,7 @@ void main() {
       startController: () async => controllerStartCalls++,
       addObserver: observers.add,
       removeObserver: observers.remove,
+      clock: () => now,
     );
   });
 
@@ -80,12 +82,29 @@ void main() {
       connectionState: DeviceConnectionState.listening,
       droppedSegments: 2,
     ));
+
+    expect(notificationPort.lossCounts, [2]);
+  });
+
+  test('a full wearable dropping one segment after another notifies once', () async {
+    // Each dropped segment sends a new status: one notification each, every one
+    // ringing, was the flood
+    for (var dropped = 1; dropped <= 20; dropped++) {
+      now = now.add(const Duration(seconds: 30));
+      states.add(DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        droppedSegments: dropped,
+      ));
+    }
+    expect(notificationPort.lossCounts, [1]);
+
+    // Half an hour after the last one: the next loss says how many since
+    now = now.add(const Duration(minutes: 30));
     states.add(const DeviceStatus(
       connectionState: DeviceConnectionState.listening,
-      droppedSegments: 5,
+      droppedSegments: 23,
     ));
-
-    expect(notificationPort.lossCounts, [2, 5]);
+    expect(notificationPort.lossCounts, [1, 22]);
   });
 
   test('adopts a reset dropped counter before reporting new loss', () async {
@@ -102,7 +121,14 @@ void main() {
       droppedSegments: 1,
     ));
 
-    expect(notificationPort.lossCounts, [7, 1]);
+    expect(notificationPort.lossCounts, [7]);
+    now = now.add(const Duration(minutes: 31));
+    states.add(const DeviceStatus(
+      connectionState: DeviceConnectionState.listening,
+      droppedSegments: 3,
+    ));
+    // Counted from the reset counter, not from the old one
+    expect(notificationPort.lossCounts, [7, 3]);
   });
 
   test('shows the third upload failure once until a successful upload',

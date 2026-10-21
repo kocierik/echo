@@ -110,15 +110,16 @@ final class AppLifecycleCoordinator {
       networkPolicy: networkPolicy,
     );
     final identityStore = DeviceIdentityStore(preferences);
+    final credentialStore = SharedPreferencesApiCredentialStore(
+      preferences: () async => preferences,
+    );
     final deviceController = DeviceController(
       ble: bleService,
       identityStore: identityStore,
+      // Signed out (the welcome, before an account): the saved wearable is left alone
+      canConnect: () => credentialStore.configured,
     );
-    final credentialApiService = ApiService(
-      credentialStore: SharedPreferencesApiCredentialStore(
-        preferences: () async => preferences,
-      ),
-    );
+    final credentialApiService = ApiService(credentialStore: credentialStore);
     final sessionController = SessionController(
       // A key revoked from another phone signs this one out
       unauthorized: ApiClient.unauthorized,
@@ -245,6 +246,7 @@ final class AppLifecycleCoordinator {
     Future<void> Function()? onWake,
     LifecycleObserverCallback? addObserver,
     LifecycleObserverCallback? removeObserver,
+    DateTime Function()? clock,
   }) async {
     final binding = AppLifecycleBinding(
       initialStatus: initialStatus,
@@ -257,6 +259,7 @@ final class AppLifecycleCoordinator {
       onWake: onWake,
       addObserver: addObserver ?? WidgetsBinding.instance.addObserver,
       removeObserver: removeObserver ?? WidgetsBinding.instance.removeObserver,
+      clock: clock,
     );
     await startController();
     return binding;
@@ -290,12 +293,15 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
     Future<void> Function()? onWake,
     required LifecycleObserverCallback addObserver,
     required LifecycleObserverCallback removeObserver,
+    DateTime Function()? clock,
   })  : _notifications = notifications,
+        _clock = clock ?? DateTime.now,
         _networkAccess = networkAccess,
         _reconnectOnResume = reconnectOnResume,
         _onWake = onWake,
         _removeObserver = removeObserver,
-        _droppedSegments = initialStatus.droppedSegments {
+        _droppedSegments = initialStatus.droppedSegments,
+        _notifiedDropped = initialStatus.droppedSegments {
     _statusSubscription = statusStream.listen(_onStatus);
     _uploadFailureSubscription = uploadFailureStream.listen(_onUploadFailure);
     _segmentUploadedSubscription = segmentUploadedStream.listen((_) {
@@ -313,7 +319,15 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
   late final StreamSubscription<DeviceStatus> _statusSubscription;
   late final StreamSubscription<int> _uploadFailureSubscription;
   late final StreamSubscription<int> _segmentUploadedSubscription;
+  final DateTime Function() _clock;
   int _droppedSegments;
+
+  /// The dropped count the last loss notification covered, and when it was shown: a
+  /// full wearable drops one segment per new one and reports each, so at most one
+  /// notification per [lossNotificationGap], saying how many since the last.
+  int _notifiedDropped;
+  DateTime? _lossNotifiedAt;
+  static const lossNotificationGap = Duration(minutes: 30);
   bool _uploadFailureNotificationShown = false;
   bool _disposed = false;
 
@@ -336,10 +350,18 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
     }
 
     if (status.droppedSegments < _droppedSegments) {
+      // The wearable restarted: its counter starts again from here
       _droppedSegments = status.droppedSegments;
+      _notifiedDropped = status.droppedSegments;
     } else if (status.droppedSegments > _droppedSegments) {
       _droppedSegments = status.droppedSegments;
-      unawaited(_notifications.showLoss(status.droppedSegments));
+      final now = _clock();
+      final last = _lossNotifiedAt;
+      if (last == null || now.difference(last) >= lossNotificationGap) {
+        unawaited(_notifications.showLoss(status.droppedSegments - _notifiedDropped));
+        _notifiedDropped = status.droppedSegments;
+        _lossNotifiedAt = now;
+      }
     }
   }
 
