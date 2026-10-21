@@ -124,16 +124,25 @@ void _connectedAppTests() {
   testWidgets('connected apps have their own section', (tester) async {
     await pump(tester, _FakeDevices([
       const SignedInDevice(id: 'me', name: 'iPhone', current: true, platform: 'ios'),
-      const SignedInDevice(id: 'cc', name: 'Claude Code', current: false, scope: 'read'),
+      SignedInDevice(
+        id: 'cc',
+        name: 'Claude Code',
+        current: false,
+        scope: 'read',
+        lastUsedAt: DateTime(2026, 10, 15, 20),
+      ),
+      const SignedInDevice(id: 'cu', name: 'Cursor', current: false, scope: 'read'),
     ]));
 
     expect(find.text('CONNECTED APPS'), findsOneWidget);
+    // The one sign that an assistant is reading your memory, or a key you forgot
+    expect(find.text('Last used Yesterday · read-only'), findsOneWidget);
+    expect(find.text('Never used · read-only'), findsOneWidget);
     expect(find.text('OTHER KEYS'), findsNothing);
     expect(
       tester.getTopLeft(find.text('CONNECTED APPS')).dy,
       lessThan(tester.getTopLeft(find.text('Claude Code')).dy),
     );
-    expect(find.text('Reads your memory, cannot change it'), findsOneWidget);
   });
 
   testWidgets('connecting an assistant shows its key and setup once', (tester) async {

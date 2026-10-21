@@ -162,6 +162,16 @@ final class _DevicesScreenState extends State<DevicesScreen> {
     }
   }
 
+  /// When an assistant last read the memory: the sign of a key in use, or forgotten.
+  String _appUsed(SignedInDevice device) {
+    final used = device.lastUsedAt;
+    if (used != null) return 'Last used ${dayLabel(used, widget.clock())}';
+    final created = device.createdAt;
+    return created == null
+        ? 'Never used'
+        : 'Created ${dayLabel(created, widget.clock())}, never used';
+  }
+
   Widget _row(SignedInDevice device) {
     final phone = device.platform != null;
     return SettingsRow(
@@ -175,7 +185,7 @@ final class _DevicesScreenState extends State<DevicesScreen> {
                   : Icons.phone_iphone_rounded,
       title: device.name,
       subtitle: device.isConnectedApp
-          ? 'Reads your memory, cannot change it'
+          ? '${_appUsed(device)} · read-only'
           : phone
               ? _subtitle(device)
               : 'A key made on the server, for scripts',
