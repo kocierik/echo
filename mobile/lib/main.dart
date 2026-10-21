@@ -13,6 +13,7 @@ import 'screens/settings_screen.dart';
 import 'screens/memories_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
+import 'services/api/build_defaults.dart';
 import 'services/app/app_controller.dart';
 import 'services/app/app_lifecycle_coordinator.dart';
 import 'services/app/app_runtime.dart';
@@ -347,6 +348,7 @@ OnboardingController _createDefaultOnboardingController(
     },
   );
   return OnboardingController(
+    devAccount: BuildDefaults.devAccount(),
     api: ApiServiceOnboardingApi(api),
     permissions: permissions,
     pairing: pairing,

@@ -1,0 +1,5 @@
+{
+  "ECHO_SERVER_URL": "https://echo.man.ovh",
+  "ECHO_DEV_EMAIL": "test@example.com",
+  "ECHO_DEV_PASSWORD": "a password of 10+ characters"
+}

@@ -109,7 +109,9 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     required OnboardingPairing pairing,
     required AppPreferences preferences,
     VoidCallback? onDispose,
+    ({String email, String password})? devAccount,
   })  : _api = api,
+        _devAccount = devAccount,
         _permissions = permissions,
         _pairing = pairing,
         _preferences = preferences,
@@ -124,6 +126,9 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
   final OnboardingPairing _pairing;
   final AppPreferences _preferences;
   final VoidCallback? _onDispose;
+
+  /// A debug build's test account (BuildDefaults.devAccount): signed in by itself.
+  final ({String email, String password})? _devAccount;
 
   Future<void>? _initializing;
   bool _disposed = false;
@@ -145,6 +150,13 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
 
       if (!configured) {
         _setReady(OnboardingStep.signIn);
+        final dev = _devAccount;
+        if (dev != null) {
+          value = value.copyWith(showWelcome: false);
+          await signIn(dev.email, dev.password);
+          if (_disposed || value.step != OnboardingStep.signIn) return;
+        }
+        // The welcome; after a refused test account, with why
         value = value.copyWith(showWelcome: true);
         return;
       }

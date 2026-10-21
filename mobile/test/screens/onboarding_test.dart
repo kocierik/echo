@@ -23,6 +23,28 @@ void main() {
       expect(fixture.permissions.totalCalls, 0);
     });
 
+    test('a debug build with a test account signs in by itself', () async {
+      final fixture = _Fixture(devAccount: (email: 'dev@echo.test', password: 'dev password'));
+
+      await fixture.controller.initialize();
+
+      expect(fixture.api.signIns, [('dev@echo.test', 'dev password')]);
+      expect(fixture.controller.value.step, OnboardingStep.permissions);
+      expect(fixture.controller.value.showWelcome, isFalse);
+    });
+
+    test('a test account the server refuses falls back to the welcome', () async {
+      final fixture = _Fixture(devAccount: (email: 'dev@echo.test', password: 'wrong'));
+      fixture.api.signInError =
+          const SignInException(SignInFailure.wrongCredentials, 'Wrong email or password.');
+
+      await fixture.controller.initialize();
+
+      expect(fixture.controller.value.step, OnboardingStep.signIn);
+      expect(fixture.controller.value.showWelcome, isTrue);
+      expect(fixture.controller.value.error, contains('Wrong email or password.'));
+    });
+
     test('the email form opens from the welcome and goes back to it', () async {
       final fixture = _Fixture();
       await fixture.controller.initialize();
@@ -774,6 +796,7 @@ final class _Fixture {
     bool hasIdentity = false,
     int? highestStep,
     bool completed = false,
+    ({String email, String password})? devAccount,
   })  : api = _FakeApi(configured: configured),
         permissions = _FakePermissions(),
         pairing = _FakePairing(hasIdentity: hasIdentity),
@@ -787,6 +810,7 @@ final class _Fixture {
       permissions: permissions,
       pairing: pairing,
       preferences: preferences,
+      devAccount: devAccount,
     );
   }
 

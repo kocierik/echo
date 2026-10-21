@@ -59,6 +59,12 @@ flutter build ios --dart-define-from-file=dart_defines.json
 
 No key is ever compiled in. Settings → Server connection can point a development build elsewhere.
 
+To try the app without signing in each time, a **debug** build can sign in by itself with a test
+account: create it on the server (`make create-user EMAIL=test@example.com NEW=1`), copy
+`dart_defines.dev.example.json` to `dart_defines.dev.json` (git-ignored) with its email and
+password, and run `flutter run --dart-define-from-file=dart_defines.dev.json`. Release builds
+never read these values; keep them out of the file used for release builds.
+
 After signing in the app requests Bluetooth, notification and microphone permissions and pairs the
 wearable. Without the wearable at hand, **I don't have it with me** finishes the setup; pair it
 later from the device at the top of Settings. With a paired Echo, setup ends with a first voice

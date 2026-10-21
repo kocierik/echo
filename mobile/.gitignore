@@ -46,3 +46,5 @@ app.*.map.json
 
 # Build-time values (API key): copy dart_defines.example.json
 dart_defines.json
+# A test account a debug build signs in with (dart_defines.dev.example.json)
+dart_defines.dev.json
