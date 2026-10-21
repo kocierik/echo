@@ -401,6 +401,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
+| `WEB_SEARCH_PROVIDER` / `WEB_SEARCHES_PER_DAY` | `openai` / `30` | Web search while answering (`none` turns it off); at the day's cap Echo says it cannot look it up |
 | `USER_TIMEZONE` | `Europe/Rome` | Timezone for relative dates, the digest and calendar requests |
 | `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |

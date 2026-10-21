@@ -119,6 +119,11 @@ class Settings(BaseSettings):
     # Shorter audio gives an unreliable fingerprint
     voice_min_seconds: float = 1.5
 
+    # Web search while answering (services/web_search.py): "openai" or "none"
+    web_search_provider: str = "openai"
+    # Searches per user per UTC day; at the cap, answers say Echo cannot look it up
+    web_searches_per_day: int = 30
+
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"
 

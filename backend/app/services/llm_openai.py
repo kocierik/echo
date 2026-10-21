@@ -8,6 +8,7 @@ from openai import AsyncOpenAI
 from app.core.config import settings
 from app.services.llm_base import LLMMessage, LLMResponse, LLMService, LLMToolCall
 from app.services.usage import record_usage
+from app.services.web_search import OpenAIWebSearch, citations_in, searches_in
 
 
 def _chat_units(usage) -> tuple[int, int, int]:
@@ -112,7 +113,10 @@ class OpenAILLMService(LLMService):
             return {"extra_body": {"reasoning_effort": self.reasoning_effort}}
         return {"temperature": temperature}
 
-    async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:
+    async def complete(
+        self, messages: list[LLMMessage], temperature: float = 0.3, hosted_tools=None
+    ) -> LLMResponse:
+        # Chat completions run no hosted tools (`can_search` is False): ignored
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
@@ -128,7 +132,11 @@ class OpenAILLMService(LLMService):
         ), units)
 
     async def stream(
-        self, messages: list[LLMMessage], temperature: float = 0.3
+        self,
+        messages: list[LLMMessage],
+        temperature: float = 0.3,
+        hosted_tools=None,
+        on_citations=None,
     ) -> AsyncIterator[str]:
         chunks = await self.client.chat.completions.create(
             model=self.model,
@@ -161,7 +169,11 @@ class OpenAILLMService(LLMService):
         return json.loads(content)
 
     async def complete_with_tools(
-        self, messages: list[LLMMessage], tools: list[dict], temperature: float = 0.2
+        self,
+        messages: list[LLMMessage],
+        tools: list[dict],
+        temperature: float = 0.2,
+        hosted_tools=None,
     ) -> LLMResponse:
         response = await self.client.chat.completions.create(
             model=self.model,
@@ -241,10 +253,11 @@ class OpenAIResponsesLLMService(LLMService):
 
     Reasoning models (gpt-6) accept function tools together with a reasoning effort only
     here, not on chat completions. The same messages and tools as the chat service are
-    translated to Responses items.
+    translated to Responses items. Hosted tools (web search) run here only.
     """
 
     kind = "llm_analysis"
+    can_search = True
 
     def __init__(self, model: str, reasoning_effort: str = "", kind: str = "llm_analysis"):
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -264,33 +277,58 @@ class OpenAIResponsesLLMService(LLMService):
             return {"reasoning": {"effort": self.reasoning_effort}}
         return {"temperature": temperature}
 
-    async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:
+    async def _record_searches(self, output) -> list[dict]:
+        """Counts the searches the model ran; returns the pages the answer cites."""
+        if count := searches_in(output):
+            await record_usage("web_search", OpenAIWebSearch.usage_model, input_units=count)
+        return citations_in(output)
+
+    async def complete(
+        self, messages: list[LLMMessage], temperature: float = 0.3, hosted_tools=None
+    ) -> LLMResponse:
+        tools = {"tools": list(hosted_tools)} if hosted_tools else {}
         response = await self.client.responses.create(
-            model=self.model, input=_to_response_items(messages), **self._options(temperature)
+            model=self.model,
+            input=_to_response_items(messages),
+            **tools,
+            **self._options(temperature),
         )
         units = _responses_units(response.usage)
         await self._record(units)
+        citations = await self._record_searches(getattr(response, "output", None))
         return _with_units(LLMResponse(
             content=response.output_text or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
+            citations=citations,
         ), units)
 
     async def stream(
-        self, messages: list[LLMMessage], temperature: float = 0.3
+        self,
+        messages: list[LLMMessage],
+        temperature: float = 0.3,
+        hosted_tools=None,
+        on_citations=None,
     ) -> AsyncIterator[str]:
+        """The answer in pieces; with a search, the stream pauses while it runs, and
+        `on_citations` gets the cited pages once the answer is complete."""
+        tools = {"tools": list(hosted_tools)} if hosted_tools else {}
         events = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
             stream=True,
+            **tools,
             **self._options(temperature),
         )
         async for event in events:
             if event.type == "response.output_text.delta" and event.delta:
                 yield event.delta
             elif event.type == "response.completed":
-                usage = getattr(getattr(event, "response", None), "usage", None)
-                await self._record(_responses_units(usage))
+                response = getattr(event, "response", None)
+                await self._record(_responses_units(getattr(response, "usage", None)))
+                citations = await self._record_searches(getattr(response, "output", None))
+                if on_citations is not None and citations:
+                    on_citations(citations)
 
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1
@@ -305,21 +343,27 @@ class OpenAIResponsesLLMService(LLMService):
         return json.loads(response.output_text or "{}")
 
     async def complete_with_tools(
-        self, messages: list[LLMMessage], tools: list[dict], temperature: float = 0.2
+        self,
+        messages: list[LLMMessage],
+        tools: list[dict],
+        temperature: float = 0.2,
+        hosted_tools=None,
     ) -> LLMResponse:
         response = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
-            tools=[_to_response_tool(tool) for tool in tools],
+            tools=[_to_response_tool(tool) for tool in tools] + list(hosted_tools or []),
             tool_choice="auto",
             **self._options(temperature),
         )
         units = _responses_units(response.usage)
         await self._record(units)
+        citations = await self._record_searches(response.output)
         return _with_units(LLMResponse(
             content=response.output_text or "",
             model=response.model,
             usage_tokens=response.usage.total_tokens if response.usage else None,
+            citations=citations,
             tool_calls=[
                 LLMToolCall(
                     id=item.call_id, name=item.name, arguments=_parse_arguments(item.arguments)

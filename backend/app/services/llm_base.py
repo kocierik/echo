@@ -29,10 +29,20 @@ class LLMResponse:
     output_tokens: int | None = None
     cached_tokens: int | None = None
     tool_calls: list[LLMToolCall] = field(default_factory=list)
+    # Pages a web search found and the answer cites: {"title", "url"} (services/web_search)
+    citations: list[dict] = field(default_factory=list)
 
 
 class LLMService(ABC):
-    """Abstract interface for Large Language Model services."""
+    """Abstract interface for Large Language Model services.
+
+    `complete`, `stream` and `complete_with_tools` of a service that `can_search` also
+    take `hosted_tools` (tools the provider runs itself: web search); `stream` then takes
+    `on_citations`, called with the cited pages once the answer is complete.
+    """
+
+    # Runs hosted tools (services/web_search.py)
+    can_search = False
 
     @abstractmethod
     async def complete(self, messages: list[LLMMessage], temperature: float = 0.3) -> LLMResponse:

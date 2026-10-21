@@ -35,6 +35,8 @@ def cost(model: str, input_units: int, output_units: int, cached_units: int) -> 
         return None
     if price["unit"] == "second":
         return input_units / 60 * price["per_minute"]
+    if price["unit"] == "search":
+        return input_units * price["per_search"]
     fresh = max(input_units - cached_units, 0)
     return (
         fresh * price["input"] + cached_units * price["cached"] + output_units * price["output"]
