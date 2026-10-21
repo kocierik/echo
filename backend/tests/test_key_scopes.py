@@ -114,7 +114,9 @@ async def test_authenticate_connected_app(client, auth_headers, db_session):
     with pytest.raises(HTTPException) as unknown:
         await auth.authenticate_connected_app(_bearer_request(redis, "nope"), db_session)
     assert unknown.value.status_code == 401
-    assert await redis.get("auth_fail:10.0.0.9") == b"1"
+    # Counted apart from the REST API's failures
+    assert await redis.get("mcp_auth_fail:10.0.0.9") == b"1"
+    assert await redis.get("auth_fail:10.0.0.9") is None
 
 
 async def test_a_revoked_connected_app_is_not_counted_as_a_wrong_key(client, auth_headers,
@@ -128,7 +130,7 @@ async def test_a_revoked_connected_app_is_not_counted_as_a_wrong_key(client, aut
             _bearer_request(redis, created["api_key"]), db_session
         )
 
-    assert await redis.get("auth_fail:10.0.0.9") is None
+    assert await redis.get("mcp_auth_fail:10.0.0.9") is None
 
 
 async def test_metrics_accept_a_full_key(client, auth_headers):

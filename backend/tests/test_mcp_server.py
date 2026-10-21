@@ -81,3 +81,13 @@ async def test_the_address_works_with_or_without_the_slash(client, auth_headers,
     response = await client.post(path, headers=headers, json=body)
 
     assert response.status_code == 200
+
+
+async def test_wrong_mcp_keys_never_lock_the_phone_out(client, auth_headers):
+    # A forgotten, revoked app in a config keeps trying: only /mcp may be refused
+    for i in range(12):
+        await rpc(client, f"wrong-{i}", "tools/list")
+
+    assert (await rpc(client, "wrong-last", "tools/list")).status_code == 429
+    assert (await client.get("/api/conversations", headers=auth_headers)).status_code == 200
+

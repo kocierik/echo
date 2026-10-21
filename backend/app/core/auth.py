@@ -46,6 +46,12 @@ def client_failure_key(request: Request) -> str:
     return "auth_fail:" + client_address(request)
 
 
+def mcp_failure_key(request: Request) -> str:
+    """Failed connected-app keys from a client, apart from the REST API's: a revoked app
+    left in an assistant's config keeps retrying, and must never lock the phone out."""
+    return "mcp_auth_fail:" + client_address(request)
+
+
 def login_failure_key(request: Request) -> str:
     """Failed sign-ins from a client, apart from failed keys (a revoked phone's)."""
     return "login_fail:" + client_address(request)
@@ -181,7 +187,7 @@ async def authenticate_connected_app(request: Request, db: AsyncSession) -> ApiK
     refused, so every app with access is listed and revocable on its own.
     """
     redis = getattr(request.app.state, "redis", None)
-    failure_key = client_failure_key(request)
+    failure_key = mcp_failure_key(request)
     if redis is not None:
         await _check_not_blocked(redis, failure_key)
 
