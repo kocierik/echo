@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 5
-#define FIRMWARE_VERSION_PATCH 0
+#define FIRMWARE_VERSION_PATCH 1
 
 // ============================================================
 // Audio Configuration
@@ -30,7 +30,10 @@
 // unless the user spoke very close to the mic. The simulator uses ~500 as the
 // standard default threshold; keep the firmware in the same range for easier
 // calibration in real usage.
-#define VAD_ENERGY_THRESHOLD 500       // RMS energy threshold for speech detection
+// RMS of a frame WITHOUT its constant offset (audio_level.h). Provisional: the raw RMS
+// (offset included, ~1400 on the XIAO Sense mic) made 500 meaningless; calibrate with the
+// serial log "[VAD] idle energy" in silence and while speaking
+#define VAD_ENERGY_THRESHOLD 250
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
 #define VAD_SPEECH_END_FRAMES 25       // Consecutive frames below threshold to stop (~800ms)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include "audio_level.h"
 #include "config.h"
 
 /**
@@ -53,7 +54,6 @@ private:
     uint32_t _lastSilenceDurationMs = 0;
     uint32_t _lastDebugMs = 0;
 
-    uint32_t calculateRMS(const int16_t* samples, size_t count);
 };
 
 // Implementation
@@ -62,7 +62,8 @@ bool VAD::process(const int16_t* samples, size_t count) {
     _speechStarted = false;
     _speechEnded = false;
 
-    _energy = calculateRMS(samples, count);
+    // Without the microphone's constant offset: silence ~0, speech what remains
+    _energy = acRms(samples, count);
     bool frameHasSpeech = (_energy > VAD_ENERGY_THRESHOLD);
 
     if (_state == VAD_SILENCE && millis() - _lastDebugMs > 5000) {
@@ -106,18 +107,6 @@ bool VAD::process(const int16_t* samples, size_t count) {
     }
 
     return (_state == VAD_SPEECH);
-}
-
-uint32_t VAD::calculateRMS(const int16_t* samples, size_t count) {
-    if (count == 0) return 0;
-
-    uint64_t sum = 0;
-    for (size_t i = 0; i < count; i++) {
-        int32_t sample = samples[i];
-        sum += (uint64_t)(sample * sample);
-    }
-
-    return (uint32_t)sqrt((double)sum / count);
 }
 
 void VAD::reset() {
