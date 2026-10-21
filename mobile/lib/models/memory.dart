@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../utils/formatting.dart';
 
 /// A conversation as listed in Memories (`GET /api/conversations`, `/api/search`).
 @immutable
@@ -111,6 +112,14 @@ final class TranscriptLine {
 
   bool get isPending => status == 'pending' || status == 'processing';
   bool get isFailed => status == 'failed';
+
+  /// Transcribed, and nothing was said: noise, or a microphone sending no sound. Not
+  /// shown (a line still pending or failed is).
+  bool get isEmpty {
+    if (isPending || isFailed) return false;
+    final said = text;
+    return said == null || cleanTranscript(said).isEmpty;
+  }
 }
 
 /// Something Echo extracted: a person, task, event, idea or note.
@@ -200,7 +209,8 @@ final class ConversationDetail {
       card: ConversationCard.fromJson(json),
       lines: List.unmodifiable(
         (json['transcriptions'] as List<dynamic>? ?? const [])
-            .map((item) => TranscriptLine.fromJson(item as Map<String, dynamic>)),
+            .map((item) => TranscriptLine.fromJson(item as Map<String, dynamic>))
+            .where((line) => !line.isEmpty),
       ),
       entities: List.unmodifiable(
         (json['entities'] as List<dynamic>? ?? const [])

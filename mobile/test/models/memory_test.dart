@@ -59,6 +59,32 @@ void main() {
     });
   });
 
+  test('a transcript hides the lines with nothing said', () {
+    Map<String, dynamic> line(String id, String? text, String status) => {
+          'segment_id': id,
+          'text': text,
+          'speaker_label': 'self',
+          'status': status,
+          'recorded_at': '2026-10-17T10:05:00Z',
+        };
+    final detail = ConversationDetail.fromJson({
+      'id': 'c1',
+      'started_at': '2026-10-17T10:05:00Z',
+      'transcriptions': [
+        line('said', '[You] Ciao Marco', 'completed'),
+        line('tag-only', '[You] ', 'completed'),
+        line('italian-tag', '[Altri]', 'completed'),
+        line('blank', '   ', 'completed'),
+        line('none', null, 'completed'),
+        line('waiting', null, 'pending'),
+        line('broken', null, 'failed'),
+      ],
+    });
+
+    // Still on its way, or failed: worth showing; done with nothing in it: not
+    expect(detail.lines.map((l) => l.segmentId), ['said', 'waiting', 'broken']);
+  });
+
   test('a detail keeps pending lines and drops nameless entities', () {
     final detail = ConversationDetail.fromJson(const {
       'id': 'c1',
