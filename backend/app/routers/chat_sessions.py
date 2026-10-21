@@ -21,6 +21,7 @@ class ChatMessage(BaseModel):
     timestamp: str | None = None
     pending_action: dict | None = None
     photo_id: str | None = None  # a photo from the wearable camera: GET /photos/{id}/image
+    citations: list[dict] | None = None  # web pages the answer cites: {"title", "url"}
 
 
 class ChatSessionSummary(BaseModel):

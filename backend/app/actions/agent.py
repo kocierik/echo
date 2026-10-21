@@ -31,6 +31,7 @@ from app.models.pending_action import PendingAction
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
 from app.services.memory_retrieval import retrieve_memory_context
+from app.services.web_search import search_options, search_tool_for
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,11 @@ told otherwise. When no event id is known, find the event by title and day by li
 events first.
 """
 
+_SEARCH_RULES = """- For live or current information (weather, news, scores, prices, opening \
+hours) search the web, answer from what you found and name the sources; if it finds nothing, say \
+so and never make it up. Never search the web for the user's own past: use search_memory.
+"""
+
 _PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
 when the user asks to be reminded of something at a time, create a reminder due then (the \
 phone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
@@ -135,6 +141,8 @@ class AgentOutcome:
     answer: str
     pending_action: PendingAction | None = None
     executed_tools: list[str] = field(default_factory=list)
+    # Pages a web search found and the answer cites ({"title", "url"})
+    web_sources: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -146,13 +154,15 @@ class _Failure:
     unknown: bool = False
 
 
-def _system_prompt(phone_apps: bool = False) -> str:
+def _system_prompt(phone_apps: bool = False, can_search: bool = False) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
         now=now.strftime("%A %Y-%m-%d %H:%M"),
         today=now.date().isoformat(),
         timezone=settings.user_timezone,
     )
+    if can_search:
+        prompt += _SEARCH_RULES
     return prompt + _PHONE_RULES if phone_apps else prompt
 
 
@@ -270,7 +280,8 @@ async def run_action_agent(
     tools = [SEARCH_MEMORY_TOOL, *external_tools]
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
-    messages = [LLMMessage(role="system", content=_system_prompt(phone_apps))]
+    search = await search_tool_for(llm, user_id)
+    messages = [LLMMessage(role="system", content=_system_prompt(phone_apps, search is not None))]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
             messages.append(LLMMessage(role=item["role"], content=item["content"]))
@@ -280,11 +291,14 @@ async def run_action_agent(
     failures: list[_Failure] = []
     succeeded: set[str] = set()
 
+    cited: list[dict] = []
+
     for _ in range(max_steps):
-        response = await llm.complete_with_tools(list(messages), tools)
+        response = await llm.complete_with_tools(list(messages), tools, **search_options(search))
+        cited.extend(page for page in response.citations if page not in cited)
         if not response.tool_calls:
             answer = _final_answer(response.content, failures, succeeded, texts)
-            return AgentOutcome(answer=answer, executed_tools=executed)
+            return AgentOutcome(answer=answer, executed_tools=executed, web_sources=cited)
 
         confirm_call = next(
             (

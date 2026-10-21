@@ -27,6 +27,7 @@ from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage
 from app.services.llm_openai import openai_llm
 from app.services.memory_answers import rag_system_prompt
+from app.services.web_search import OpenAIWebSearch
 from evals.scoring import Extracted, normalize_words, score_extraction
 
 CASES = Path(__file__).parent / "cases"
@@ -149,17 +150,26 @@ async def answers(llm) -> bool:
             if case.get("empty")
             else f"Context from memory:\n\n{suite['context']}\n\n---\n\nQuestion: {question}"
         )
+        # "search": the web search tool is offered, as in production under the cap
+        search = case.get("search", False)
         messages = [
             LLMMessage(
                 role="system",
-                content=rag_system_prompt(None, about_echo([]), clear_language(question)),
+                content=rag_system_prompt(
+                    None, about_echo([]), clear_language(question), can_search=search
+                ),
             ),
             LLMMessage(role="user", content=content),
         ]
+        options: dict = {}
+        cited: list[dict] = []
+        if search:
+            options = {"hosted_tools": [OpenAIWebSearch().hosted_tool()],
+                       "on_citations": cited.extend}
         start = time.perf_counter()
         first = None
         pieces = []
-        async for piece in llm.stream(messages, temperature=0.3):
+        async for piece in llm.stream(messages, temperature=0.3, **options):
             first = first or time.perf_counter() - start
             pieces.append(piece)
         seconds = time.perf_counter() - start
@@ -168,6 +178,10 @@ async def answers(llm) -> bool:
         problems = [f"missing {w!r}" for w in case.get("must", []) if w not in words]
         problems += [f"says {w!r}" for w in case.get("forbid", []) if w in words]
         problems += [f"none of {group}" for group in case.get("any", []) if not words & set(group)]
+        if case.get("cites") is True and not cited:
+            problems.append("no web source cited")
+        if case.get("cites") is False and cited:
+            problems.append(f"searched the web: {cited[0]['url']}")
         # The heuristic detector needs a few words: short answers are not checked
         if len(words) >= 8 and detect_language(answer) != case["language"]:
             problems.append(f"answered in {detect_language(answer)}")

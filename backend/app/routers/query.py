@@ -39,10 +39,12 @@ from app.services.memory_answers import (
     answer_without_memory,
     as_utc,
     format_date_filter,
+    generate_answer,
     rag_system_prompt,
 )
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.temporal import DateRange, extract_date_range
+from app.services.web_search import search_tool_for
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +109,20 @@ class PendingActionOut(BaseModel):
     expires_at: datetime
 
 
+class WebSource(BaseModel):
+    """A page a web search found and the answer cites (never part of the memory)."""
+
+    title: str | None = None
+    url: str
+
+
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceChunk]
     session_id: str
     date_filter: dict | None = None
     pending_action: PendingActionOut | None = None
+    web_sources: list[WebSource] = []
 
 
 # Words that may introduce a request on a connected tool (prefix match, IT + EN).
@@ -412,6 +422,8 @@ async def _answer_query(
                     status=pending.status,
                     expires_at=pending.expires_at,
                 )
+            if outcome.web_sources:
+                extra["citations"] = outcome.web_sources
             await record_turn(
                 redis_client, db, user_id, session_id, history, body.question,
                 outcome.answer, extra,
@@ -422,6 +434,7 @@ async def _answer_query(
                 session_id=session_id,
                 date_filter=None,
                 pending_action=pending_out,
+                web_sources=outcome.web_sources,
             )
 
     # 1. Determine date filter: explicit params take priority, then NLP extraction
@@ -446,26 +459,34 @@ async def _answer_query(
     )
 
     about = await about_echo_for(redis_client, user_id)
+    search = await search_tool_for(llm_service, user_id)
     if not memory.context:
-        # A question about Echo or a general one still gets an answer (the prompt's rules)
-        answer = await answer_without_memory(
-            llm_service, body.question, history, date_range, about, on_token
+        # A question about Echo, a general or a live one still gets an answer (the
+        # prompt's rules)
+        result = await answer_without_memory(
+            llm_service, body.question, history, date_range, about, on_token, search
         )
         # Save to history even for empty results
-        await record_turn(redis_client, db, user_id, session_id, history, body.question, answer)
+        await record_turn(
+            redis_client, db, user_id, session_id, history, body.question, result.text,
+            _cited(result.web_sources),
+        )
 
         return QueryResponse(
-            answer=answer,
+            answer=result.text,
             sources=[],
             session_id=session_id,
             date_filter=format_date_filter(date_range),
+            web_sources=result.web_sources,
         )
 
     context = memory.context
     sources = [SourceChunk(**src) for src in memory.sources]
 
     # 7. Generate answer via LLM (with conversation history)
-    system_prompt = rag_system_prompt(date_range, about, clear_language(body.question))
+    system_prompt = rag_system_prompt(
+        date_range, about, clear_language(body.question), can_search=search is not None
+    )
 
     messages = [LLMMessage(role="system", content=system_prompt)]
 
@@ -477,24 +498,26 @@ async def _answer_query(
     user_message = f"Context from memory:\n\n{context}\n\n---\n\nQuestion: {body.question}"
     messages.append(LLMMessage(role="user", content=user_message))
 
-    if on_token is None:
-        answer = (await llm_service.complete(messages, temperature=0.3)).content
-    else:
-        pieces: list[str] = []
-        async for piece in llm_service.stream(messages, temperature=0.3):
-            pieces.append(piece)
-            await on_token(piece)
-        answer = "".join(pieces)
+    result = await generate_answer(llm_service, messages, on_token=on_token, search=search)
 
     # Save to session history (store clean question, not the RAG-augmented one)
     # and persist to Postgres for permanent chat history
-    await record_turn(redis_client, db, user_id, session_id, history, body.question, answer)
+    await record_turn(
+        redis_client, db, user_id, session_id, history, body.question, result.text,
+        _cited(result.web_sources),
+    )
 
     return QueryResponse(
-        answer=answer,
+        answer=result.text,
         sources=sources,
         session_id=session_id,
         date_filter=format_date_filter(date_range),
+        web_sources=result.web_sources,
     )
+
+
+def _cited(web_sources: list[dict]) -> dict | None:
+    """The assistant message's extra keys: the web pages cited, for the history."""
+    return {"citations": web_sources} if web_sources else None
 
 

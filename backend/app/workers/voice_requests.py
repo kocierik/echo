@@ -48,11 +48,16 @@ from app.services.llm_openai import (
     get_llm_intent_service,
     get_llm_query_service,
 )
-from app.services.memory_answers import answer_without_memory, rag_system_prompt
+from app.services.memory_answers import (
+    answer_without_memory,
+    generate_answer,
+    rag_system_prompt,
+)
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
 from app.services.usage import usage_owner
+from app.services.web_search import search_tool_for
 from app.workers.lifecycle import sleep_or_shutdown
 
 logger = logging.getLogger(__name__)
@@ -128,9 +133,16 @@ async def _memory_answer(
         date_range=date_range,
         embedding_service=get_embedding_service(),
     )
+    # Live questions ("che tempo fa domani?") search the web; the answer names the site
+    search = await search_tool_for(llm, user_id)
     if not memory.context:
-        return await answer_without_memory(llm, command, history, date_range, about)
-    prompt = rag_system_prompt(date_range, about, clear_language(command))
+        result = await answer_without_memory(
+            llm, command, history, date_range, about, search=search
+        )
+        return result.text
+    prompt = rag_system_prompt(
+        date_range, about, clear_language(command), can_search=search is not None
+    )
     messages = [LLMMessage(role="system", content=prompt)]
     messages.extend(LLMMessage(role=m["role"], content=m["content"]) for m in history)
     messages.append(
@@ -139,8 +151,7 @@ async def _memory_answer(
             content=f"Context from memory:\n\n{memory.context}\n\n---\n\nQuestion: {command}",
         )
     )
-    response = await llm.complete(messages, temperature=0.3)
-    return response.content
+    return (await generate_answer(llm, messages, search=search)).text
 
 
 @dataclass

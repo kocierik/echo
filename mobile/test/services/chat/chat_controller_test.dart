@@ -386,6 +386,48 @@ void main() {
     expect(sources.last.conversationId, isNull);
   });
 
+  test('pages from the web come first, labelled by title or site, and open', () async {
+    api.queryHandler = (_, __) async => QueryResponse(
+          answer: 'Domani sole.',
+          sessionId: 's1',
+          sources: const [
+            {'conversation_id': 'c1', 'chunk_id': 'k1', 'text': 'Pioveva.', 'title': 'Gita'},
+          ],
+          webSources: const [
+            {'title': 'Meteo Milano', 'url': 'https://www.ilmeteo.it/meteo/Milano'},
+            {'title': null, 'url': 'https://3bmeteo.com/milano'},
+          ],
+        );
+
+    await controller.send('Che tempo fa domani a Milano?');
+
+    final sources = controller.state.messages.last.sources;
+    expect(sources.map((s) => s.label), ['Meteo Milano', '3bmeteo.com', 'Gita']);
+    expect(sources.first.text, 'ilmeteo.it');
+    expect(sources.first.url, Uri.parse('https://www.ilmeteo.it/meteo/Milano'));
+    expect(sources.last.url, isNull);
+  });
+
+  test('web pages kept in the history show again', () async {
+    api.details['s9'] = _detail(id: 's9', title: 'Meteo', messages: [
+      ChatSessionMessage.fromJson(const {'role': 'user', 'content': 'Meteo?', 'timestamp': null}),
+      ChatSessionMessage.fromJson(const {
+        'role': 'assistant',
+        'content': 'Sole.',
+        'timestamp': null,
+        'citations': [
+          {'title': 'Meteo Milano', 'url': 'https://www.ilmeteo.it/meteo/Milano'},
+        ],
+      }),
+    ]);
+
+    await controller.loadSession('s9');
+
+    final source = controller.state.messages.last.sources.single;
+    expect(source.label, 'Meteo Milano');
+    expect(source.text, 'ilmeteo.it');
+  });
+
   test('a failure clears the partial answer', () async {
     api
       ..streamPieces = ['Half']

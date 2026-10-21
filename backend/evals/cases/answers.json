@@ -144,6 +144,48 @@
         "gradi",
         "sereno"
       ]
+    },
+    {
+      "id": "live-weather-search-it",
+      "question": "Che tempo fa domani a Milano?",
+      "language": "it",
+      "empty": true,
+      "search": true,
+      "any": [
+        [
+          "milano"
+        ]
+      ],
+      "forbid": [
+        "accesso",
+        "impossibile"
+      ]
+    },
+    {
+      "id": "live-news-search-en",
+      "question": "What is the latest news about the ESA Moon mission?",
+      "language": "en",
+      "empty": true,
+      "search": true,
+      "cites": true
+    },
+    {
+      "id": "past-with-search-it",
+      "question": "Cosa mi ha detto Luca del trasloco?",
+      "language": "it",
+      "search": true,
+      "cites": false,
+      "any": [
+        [
+          "non",
+          "nessuna",
+          "niente",
+          "nessun"
+        ]
+      ],
+      "forbid": [
+        "traslocare"
+      ]
     }
   ]
 }

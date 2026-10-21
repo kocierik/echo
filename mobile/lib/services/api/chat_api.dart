@@ -13,12 +13,16 @@ class QueryResponse {
   final Map<String, dynamic>? dateFilter;
   final PendingAction? pendingAction;
 
+  /// Pages a web search found and the answer cites: {"title", "url"}.
+  final List<Map<String, dynamic>> webSources;
+
   QueryResponse({
     required this.answer,
     required this.sessionId,
     required this.sources,
     this.dateFilter,
     this.pendingAction,
+    this.webSources = const [],
   });
 
   factory QueryResponse.fromJson(Map<String, dynamic> json) {
@@ -27,6 +31,7 @@ class QueryResponse {
       sessionId: json['session_id'] ?? '',
       sources: List<Map<String, dynamic>>.from(json['sources'] ?? []),
       dateFilter: json['date_filter'],
+      webSources: List<Map<String, dynamic>>.from(json['web_sources'] ?? []),
       pendingAction: json['pending_action'] == null
           ? null
           : PendingAction.fromJson(

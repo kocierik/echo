@@ -200,7 +200,8 @@ final class ChatController extends ChangeNotifier {
             isUser: false,
             index: assistantIndex,
             timestamp: _clock(),
-            sources: _mapSources(response.sources),
+            // A live answer's pages first: they are what it was written from
+            sources: _mapSources([...response.webSources, ...response.sources]),
             pendingAction: response.pendingAction,
           ),
         ],
@@ -505,12 +506,15 @@ final class ChatController extends ChangeNotifier {
       final url = rawUrl is String && rawUrl.isNotEmpty
           ? Uri.tryParse(rawUrl)
           : null;
+      final text = source['text'] is String ? source['text'] as String : '';
+      final page = url?.hasScheme == true ? url : null;
       return ChatSource(
-        label: _sourceLabel(source, index),
-        text: source['text'] is String ? source['text'] as String : '',
+        label: _sourceLabel(source, index, page),
+        // A web page: its site under the title
+        text: text.isEmpty && page != null ? _site(page) : text,
         chunkId:
             source['chunk_id'] is String ? source['chunk_id'] as String : null,
-        url: url?.hasScheme == true ? url : null,
+        url: page,
         conversationId: source['conversation_id'] is String
             ? source['conversation_id'] as String
             : null,
@@ -518,11 +522,15 @@ final class ChatController extends ChangeNotifier {
     });
   }
 
-  /// "Lunch with Ada · Yesterday": the conversation a passage comes from.
-  String _sourceLabel(Map<String, dynamic> source, int index) {
+  /// "Lunch with Ada · Yesterday": the conversation a passage comes from; a web
+  /// page's title, or its site.
+  String _sourceLabel(Map<String, dynamic> source, int index, Uri? page) {
     final label = source['label'];
     if (label is String && label.trim().isNotEmpty) return label.trim();
     final title = source['title'];
+    if (page != null) {
+      return title is String && title.trim().isNotEmpty ? title.trim() : _site(page);
+    }
     final startedAt = source['started_at'] is String
         ? DateTime.tryParse(source['started_at'] as String)
         : null;
@@ -530,6 +538,10 @@ final class ChatController extends ChangeNotifier {
     if (startedAt != null) return '${name ?? 'Conversation'} · ${dayLabel(startedAt, _clock())}';
     return name ?? 'Source ${index + 1}';
   }
+
+  /// "ilmeteo.it" for https://www.ilmeteo.it/meteo/Milano.
+  static String _site(Uri page) =>
+      page.host.startsWith('www.') ? page.host.substring(4) : page.host;
 
   bool _isCurrent(int generation) =>
       !_disposed && generation == _generation;
