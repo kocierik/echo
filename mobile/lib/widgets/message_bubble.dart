@@ -11,7 +11,6 @@ import 'photo_thumbnail.dart';
 final class MessageBubble extends StatelessWidget {
   const MessageBubble({
     required this.message,
-    this.onFeedback,
     this.onConfirmAction,
     this.onCancelAction,
     this.actionBusy = false,
@@ -27,7 +26,6 @@ final class MessageBubble extends StatelessWidget {
 
   /// Opens the conversation a source comes from.
   final ValueChanged<String>? onOpenConversation;
-  final ValueChanged<String>? onFeedback;
   final VoidCallback? onConfirmAction;
   final VoidCallback? onCancelAction;
   final bool actionBusy;
@@ -84,7 +82,7 @@ final class MessageBubble extends StatelessWidget {
     );
   }
 
-  /// The answer: a panel with what Echo did, its sources and the feedback.
+  /// The answer: a panel with what Echo did and its sources.
   Widget _answer(BuildContext context) {
     final palette = EchoPalette.of(context);
     final theme = Theme.of(context);
@@ -133,28 +131,6 @@ final class MessageBubble extends StatelessWidget {
               child: Text(
                 'Send failed',
                 style: textTheme.labelMedium?.copyWith(color: palette.red),
-              ),
-            ),
-          if (onFeedback != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  _FeedbackButton(
-                    tooltip: 'Helpful',
-                    icon: Icons.thumb_up_outlined,
-                    active: message.feedback == 'positive',
-                    activeColor: palette.green,
-                    onPressed: () => onFeedback!('positive'),
-                  ),
-                  _FeedbackButton(
-                    tooltip: 'Not helpful',
-                    icon: Icons.thumb_down_outlined,
-                    active: message.feedback == 'negative',
-                    activeColor: palette.red,
-                    onPressed: () => onFeedback!('negative'),
-                  ),
-                ],
               ),
             ),
         ],
@@ -291,40 +267,5 @@ final class _SourceTile extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-final class _FeedbackButton extends StatelessWidget {
-  const _FeedbackButton({
-    required this.tooltip,
-    required this.icon,
-    required this.active,
-    required this.activeColor,
-    required this.onPressed,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final bool active;
-  final Color activeColor;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 44,
-      child: IconButton(
-        onPressed: onPressed,
-        tooltip: tooltip,
-        iconSize: 18,
-        color: active ? activeColor : EchoPalette.of(context).text2,
-        icon: Icon(active ? _filledIcon(icon) : icon),
-      ),
-    );
-  }
-
-  IconData _filledIcon(IconData icon) {
-    if (icon == Icons.thumb_up_outlined) return Icons.thumb_up_rounded;
-    return Icons.thumb_down_rounded;
   }
 }

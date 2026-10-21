@@ -346,45 +346,6 @@ final class ChatController extends ChangeNotifier {
     if (_state.sessionId == id) newChat();
   }
 
-  Future<void> sendFeedback(int messageIndex, String rating) async {
-    final sessionId = _state.sessionId;
-    if (sessionId == null) return;
-    final listIndex = _state.messages.indexWhere(
-      (message) => !message.isUser && message.index == messageIndex,
-    );
-    if (listIndex < 0) return;
-
-    final generation = _generation;
-    final previous = _state.messages[listIndex];
-    final messages = [..._state.messages];
-    messages[listIndex] = previous.copyWith(feedback: rating);
-    _emit(_state.copyWith(messages: messages, error: null));
-
-    try {
-      await _api.sendFeedback(
-        sessionId: sessionId,
-        messageIndex: messageIndex,
-        rating: rating,
-        chunkIds: previous.sources
-            .map((source) => source.chunkId)
-            .whereType<String>()
-            .toList(),
-      );
-    } catch (error) {
-      if (!_isCurrent(generation)) return;
-      final currentIndex = _state.messages.indexWhere(
-        (message) => !message.isUser && message.index == messageIndex,
-      );
-      if (currentIndex < 0) return;
-      final reverted = [..._state.messages];
-      reverted[currentIndex] = previous;
-      _emit(_state.copyWith(
-        messages: reverted,
-        error: userMessage(error, 'Could not save feedback.'),
-      ));
-    }
-  }
-
   /// Confirms the pending action [id]; ignored while a request for it is in
   /// flight or once it is no longer pending.
   Future<void> confirmAction(String id) async {

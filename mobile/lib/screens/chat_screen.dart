@@ -393,11 +393,6 @@ final class _ChatScreenState extends State<ChatScreen> {
                 : () => unawaited(
                       _controller.cancelAction(message.pendingAction!.id),
                     ),
-            onFeedback: message.index == null
-                ? null
-                : (rating) => unawaited(
-                      _controller.sendFeedback(message.index!, rating),
-                    ),
             onOpenConversation: _memoryApi == null ? null : _openConversation,
             loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
           );

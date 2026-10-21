@@ -106,7 +106,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       home: Scaffold(
-        body: MessageBubble(message: message, onFeedback: (_) {}),
+        body: MessageBubble(message: message),
       ),
     ));
 
@@ -359,13 +359,6 @@ final class _FakeChatApi implements ChatApi {
   @override
   Future<void> deleteSession(String id) async {}
 
-  @override
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  }) async {}
 }
 
 final class _FakeVoiceInput implements VoiceInput {
@@ -700,12 +693,5 @@ final class _FakeChatApi implements ChatApi {
     throw UnimplementedError();
   }
 
-  @override
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  }) async {}
 }
 */

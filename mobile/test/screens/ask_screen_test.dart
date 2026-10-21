@@ -407,13 +407,6 @@ final class _FakeChatApi implements ChatApi {
     sessions = sessions.where((session) => session.id != id).toList();
   }
 
-  @override
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  }) async {}
 
   @override
   Future<ConfirmResult> confirmPendingAction(String id) async =>

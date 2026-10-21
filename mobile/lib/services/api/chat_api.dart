@@ -48,17 +48,11 @@ abstract interface class ChatApi {
   Future<List<ChatSessionSummary>> getSessions();
   Future<ChatSessionDetail> getSessionDetail(String id);
   Future<void> deleteSession(String id);
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  });
   Future<ConfirmResult> confirmPendingAction(String id);
   Future<void> cancelPendingAction(String id);
 }
 
-/// Ask: questions, chat history and feedback. Confirming an action is in
+/// Ask: questions and chat history. Confirming an action is in
 /// actions_api.dart.
 mixin ChatEndpoints on ApiClient implements ChatApi {
   @override
@@ -168,23 +162,4 @@ mixin ChatEndpoints on ApiClient implements ChatApi {
 
   @override
   Future<void> deleteSession(String id) => delete('/api/chat-sessions/$id');
-
-  @override
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  }) async {
-    await post(
-      '/api/query/feedback',
-      body: {
-        'session_id': sessionId,
-        'message_index': messageIndex,
-        'rating': rating,
-        'source_chunk_ids': chunkIds,
-      },
-      expect: const {201},
-    );
-  }
 }

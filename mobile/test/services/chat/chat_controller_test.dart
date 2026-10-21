@@ -582,22 +582,6 @@ void main() {
     expect(controller.state.messages, isEmpty);
   });
 
-  test('feedback copies the assistant message and awaits the API', () async {
-    api.queryHandler = (_, __) async => _response(answer: 'Answer');
-    final feedback = Completer<void>();
-    api.feedbackHandler = () => feedback.future;
-    await controller.send('Question');
-    final before = controller.state.messages.last;
-
-    final sendingFeedback = controller.sendFeedback(1, 'positive');
-
-    expect(controller.state.messages.last, isNot(same(before)));
-    expect(controller.state.messages.last.feedback, 'positive');
-    feedback.complete();
-    await sendingFeedback;
-    expect(api.feedback.single.chunkIds, isEmpty);
-  });
-
   test('voice unavailable and denied permission expose errors', () async {
     voice.isAvailable = false;
     await controller.startVoice();
@@ -683,12 +667,10 @@ final class _FakeChatApi implements ChatApi {
   final queryRequestIds = <String?>[];
   final deletes = <String>[];
   final details = <String, ChatSessionDetail>{};
-  final feedback = <_FeedbackCall>[];
 
   Future<QueryResponse> Function(String question, String? sessionId)?
       queryHandler;
   Future<ChatSessionDetail> Function(String id)? detailHandler;
-  Future<void> Function()? feedbackHandler;
 
   /// Pieces passed to onToken before the answer is returned.
   List<String> streamPieces = const [];
@@ -721,17 +703,6 @@ final class _FakeChatApi implements ChatApi {
     deletes.add(id);
   }
 
-  @override
-  Future<void> sendFeedback({
-    required String sessionId,
-    required int messageIndex,
-    required String rating,
-    List<String> chunkIds = const [],
-  }) async {
-    feedback.add(_FeedbackCall(sessionId, messageIndex, rating, chunkIds));
-    await feedbackHandler?.call();
-  }
-
   final confirms = <String>[];
   final cancels = <String>[];
   Future<ConfirmResult> Function(String id)? confirmHandler;
@@ -751,19 +722,6 @@ final class _FakeChatApi implements ChatApi {
   }
 }
 
-final class _FeedbackCall {
-  const _FeedbackCall(
-    this.sessionId,
-    this.messageIndex,
-    this.rating,
-    this.chunkIds,
-  );
-
-  final String sessionId;
-  final int messageIndex;
-  final String rating;
-  final List<String> chunkIds;
-}
 
 
 void _languageTests() {
