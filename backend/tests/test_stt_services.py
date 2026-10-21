@@ -103,14 +103,15 @@ async def test_context_has_a_prompt_and_short_unique_keyterms(db_session):
 
     assert "Marco Rossi" in context.prompt
     # One Marco however it was written; the sentence-long task name is left out
-    assert sorted(term.lower() for term in context.keyterms) == ["atlas", "marco rossi"]
+    assert sorted(term.lower() for term in context.keyterms) == ["atlas", "echo", "marco rossi"]
 
 
 @pytest.mark.asyncio
-async def test_no_known_entities_means_no_hints(db_session):
+async def test_the_assistants_name_is_always_a_hint(db_session):
+    # Said by an Italian, "Echo" comes out as "ecco" unless the model expects the name
     from tests.conftest import TEST_USER_ID
 
     context = await build_stt_context(db_session, TEST_USER_ID)
 
-    assert context.prompt == ""
-    assert context.keyterms == []
+    assert context.prompt == "Ehi Echo, ricordamelo."
+    assert context.keyterms == ["Echo"]

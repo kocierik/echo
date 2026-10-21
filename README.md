@@ -21,8 +21,9 @@ each person has their own memory; the Android app builds from the same code but 
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
   right away; sending to other people, modifying and deleting wait for a **Confirm** tap in the app.
   Nothing happens from speech that is not addressed to Echo.
-- **Voice requests.** Start a sentence with "Echo, …" (also "Eco", "Hey/Ehi Echo") while wearing the
-  device: the answer appears in the **Voice requests** conversation of the app, with a notification the
+- **Voice requests.** Start a sentence with "Ehi Echo, …" (or "Hey", "Hei", "Ei"; "Echo, …" and
+  "Eco, …" alone work too) while wearing the device. After a greeting any spelling counts, so an
+  Italian "Echo" transcribed as "ecco" is heard; "ecco" alone is just the word: the answer appears in the **Voice requests** conversation of the app, with a notification the
   next time the app wakes up.
 - **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
   their day; 10 minutes before a meeting, a briefing on the person if there is something to know.

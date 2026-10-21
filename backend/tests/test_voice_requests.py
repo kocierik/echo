@@ -44,6 +44,24 @@ def test_find_wake_returns_the_command_after_the_name():
     assert _command("Ok. Echo, segnami X") == "segnami X"
 
 
+def test_a_greeting_lets_ecco_and_its_spellings_through():
+    # "Echo" said by an Italian is transcribed as "ecco"; after a greeting it is a call
+    assert _command("[You] Ehi ecco, puoi connetterti via Gmail?") == "puoi connetterti via Gmail?"
+    assert _command("Hei Echo che ore sono") == "che ore sono"
+    assert _command("ei eco, segnami il dentista") == "segnami il dentista"
+    assert _command("Ehy Ecco: fammi un riassunto") == "fammi un riassunto"
+    assert _command("hey, eko, apri le mail") == "apri le mail"
+    assert _command("Ehi! Ecco, cosa ho domani?") == "cosa ho domani?"
+
+
+def test_ecco_alone_is_only_the_word():
+    # Without a greeting "ecco" is Italian for "here is": never a call
+    assert voice.find_wake("[You] Ecco, puoi connetterti via Gmail?") is None
+    assert voice.find_wake("[Others] ecco il caffè") is None
+    assert voice.find_wake("un attimo di relax, ecco") is None
+    assert voice.find_wake("Eko, apri le mail") is None
+
+
 def test_find_wake_ignores_the_speaker_tag():
     assert _command("[You] Echo, segnami il dentista") == "segnami il dentista"
     assert _command("[Others] ehi eco riassumimi le mail") == "riassumimi le mail"

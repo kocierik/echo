@@ -70,13 +70,18 @@ async def build_stt_context(db: "AsyncSession", user_id: uuid.UUID) -> STTContex
     )
     return STTContext(
         prompt=_prompt(people_names, topic_names),
-        keyterms=_keyterms([*people_names, *topic_names]),
+        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *topic_names]),
     )
+
+
+# The name the user calls the assistant by: said by an Italian it comes out as "ecco"
+# unless the model expects it (voice requests: actions/voice.py)
+ASSISTANT_NAME = "Echo"
 
 
 def _prompt(people_names: list[str], topic_names: list[str]) -> str:
     """A realistic utterance: Whisper-style models treat it as context, not instructions."""
-    parts = []
+    parts = [f"Ehi {ASSISTANT_NAME}, ricordamelo."]
     if people_names:
         parts.append(f"Ho parlato con {', '.join(people_names[:10])}.")
     if topic_names:

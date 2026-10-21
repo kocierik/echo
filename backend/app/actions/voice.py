@@ -41,14 +41,19 @@ WORKING_TTL_S = 300
 # Speaker tag prepended by the STT worker: "[You] " / "[Others] " (older: "[Tu] "/"[Altri] ").
 _SPEAKER_TAG = re.compile(r"^\s*\[(?:you|others|tu|altri)\]\s*", re.IGNORECASE)
 # Whole word only: an apostrophe glued to the name ("l'eco") is part of another word.
+# After a greeting ("Ehi", "Hey", "Hei", "Ei"…) any spelling of the name counts, "ecco"
+# too: an Italian saying "Echo" is often transcribed as "ecco", which alone is only the
+# word ("ecco il caffè"). Without a greeting, only "Echo" and "Eco".
 _WAKE = re.compile(
-    r"(?<![\w'’])(?:(?:hey|ehi)[\s,]+)?(?:echo|eco)(?![\w'’])", re.IGNORECASE
+    r"(?<![\w'’])(?:(?:hey|hei|ehi|ehy|ei)[\s,.!;:]+(?:echo|eco|ecco|eko)|echo|eco)(?![\w'’])",
+    re.IGNORECASE,
 )
 _AFTER_NAME = re.compile(r"[\s,:;.!?\-–—]*")
 _PENDING_STT = ("pending", "processing")
 
 ASSISTANT_CHECK_PROMPT = """Echo is a voice assistant the user wears; it hears everything \
-the user says. This speech transcript contains the word "Echo" (or "Eco") near its start.
+the user says. This speech transcript contains the word "Echo" (or "Eco"; after "Ehi" or \
+"Hey" it may be transcribed "ecco") near its start.
 Decide whether the speaker is addressing Echo with a request or a question for it \
 (e.g. "Echo, riassumimi le ultime mail", "Hey Echo, what's on my calendar tomorrow?", \
 "Ehi Eco, segnami il dentista martedì") or is only mentioning the word (e.g. \
