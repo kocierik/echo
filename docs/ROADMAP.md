@@ -159,13 +159,13 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - Scartate per ora: "conti in sospeso" (li coprono i task), "un anno fa oggi"
 - [ ] Cosa aspetto dagli altri: le promesse fatte a te ("Marco mi manda il preventivo venerdì"), con un
       promemoria se non arriva; "Non parli con Luca da 2 mesi" nella pagina della persona
-- [ ] **Saved** (deciso il 16/10): le cose da ritrovare, non da fare (quelle restano task, Promemoria, Todoist).
-      Un nuovo tipo di elemento accanto a task, idee e note, con foto, posizione del telefono, campi (importo…) e
-      il suo momento (conversazione, persone, posto); salvato solo quando lo chiedi, a voce, in Ask o con il
-      pulsante; strumenti per l'agente (salva, trova, somma, togli); una pagina in Memories accanto a People.
-      Il parcheggio è il primo; poi le cose (passaporto), le liste (vini, libri), le spese.
-      Mockup approvati il 16/10 (tela, riga "Saved"): un pannello in Memories, la pagina Saved, la cosa salvata
-      con "The moment", parcheggio a voce
+- [ ] **Saved** (deciso il 16/10, generico il 21/10): le cose da ritrovare, non da fare (quelle restano task,
+      Promemoria, Todoist). UN solo tipo di elemento, generico: nome, foto, posto del telefono (solo se chiesto),
+      data, campi liberi (un importo…) e il suo momento (conversazione, persone); raccolte create dall'agente da
+      quello che dici ("salvami questo", "segnati dove ho messo…", "aggiungi alla lista dei vini"), nessuna
+      funzione dedicata per un caso; strumenti per l'agente (salva, trova, somma, togli); una pagina in Memories.
+      Parcheggio, passaporto, liste, scontrini sono solo esempi dello stesso meccanismo (il parcheggio il primo
+      da provare). Mockup approvati il 16/10 (tela, riga "Saved")
 - [ ] Posti: "Echo, salvami questo posto" → Saved, gruppo Places. La posizione si legge SOLO quando l'utente
       chiede di salvare qualcosa (il parcheggio, un posto, una cosa con il suo posto), mai in automatico su
       conversazioni e foto, e niente storico dei posti visitati (deciso il 16/10). Indirizzo dal telefono (gratis); nome del locale da Apple Maps su
