@@ -43,7 +43,7 @@ def test_the_memory_prompt_knows_what_echo_is():
 
     assert "About Echo" in prompt
     assert "What Echo can do" in prompt
-    assert "Settings → Apps" in prompt
+    assert "Profile → Apps" in prompt
     # The apps Echo works with, and the phone's apps that are on
     assert "Gmail" in prompt and "Google Calendar" in prompt
     assert "Phone Calendar" in prompt and "Phone Reminders" not in prompt

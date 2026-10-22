@@ -1,5 +1,9 @@
 """Chat history: the recent turns in Redis (follow-up context) and the complete session in
 Postgres (the chat list and history in the app). Shared by chat, voice and action outcomes.
+
+Voice answers, photos and action outcomes are written to Postgres only, so a session that
+is there gives its follow-up context from there (`load_thread_history`): in the thread with
+Echo, a typed question sees the voice turns before it, each once.
 """
 
 import json
@@ -62,6 +66,19 @@ async def load_persisted_history(
     ]
 
 
+async def load_thread_history(
+    redis_client: aioredis.Redis,
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_uuid: uuid.UUID,
+) -> list[dict]:
+    """A session's recent turns: from Postgres when it is stored, else from Redis."""
+    persisted = await load_persisted_history(db, user_id, session_uuid)
+    if persisted:
+        return persisted
+    return await get_session_history(redis_client, str(session_uuid))
+
+
 async def record_turn(
     redis_client: aioredis.Redis,
     db: AsyncSession,
@@ -72,14 +89,23 @@ async def record_turn(
     answer: str,
     assistant_extra: dict | None = None,
 ):
-    """Append one question/answer turn to the Redis context and the Postgres session."""
+    """Append one question/answer turn to the Redis context and the Postgres session.
+
+    The stored turn carries its time and that it was typed: a typed answer is shown where
+    it was asked, never notified as a voice update.
+    """
     turn = [
         {"role": "user", "content": question},
         {"role": "assistant", "content": answer, **(assistant_extra or {})},
     ]
     history.extend(turn)
     await save_session_history(redis_client, session_id, history)
-    await persist_chat_session(db, user_id, session_id, turn)
+    now = datetime.now(timezone.utc).isoformat()
+    stored = [
+        {**turn[0], "timestamp": now, "source": "chat"},
+        {**turn[1], "timestamp": now, "notify": False},
+    ]
+    await persist_chat_session(db, user_id, session_id, stored)
 
 
 async def persist_chat_session(
@@ -92,9 +118,12 @@ async def persist_chat_session(
     """
     session_uuid = uuid.UUID(session_id)
 
-    # Try to find existing session
+    # Locked until commit: the voice worker and photos rewrite the thread's messages too
     result = await db.execute(
-        select(ChatSession).where(ChatSession.id == session_uuid)
+        select(ChatSession)
+        .where(ChatSession.id == session_uuid)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     chat_session = result.scalar_one_or_none()
 

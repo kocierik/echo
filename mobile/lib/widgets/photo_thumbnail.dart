@@ -11,6 +11,8 @@ final class PhotoThumbnail extends StatelessWidget {
     required this.photoId,
     required this.loadSource,
     this.height = 200,
+    this.caption,
+    this.padding = const EdgeInsets.only(top: 8),
     super.key,
   });
 
@@ -18,11 +20,15 @@ final class PhotoThumbnail extends StatelessWidget {
   final PhotoSourceLoader loadSource;
   final double height;
 
+  /// "Echo's camera · 10:15", on the photo's corner.
+  final String? caption;
+  final EdgeInsets padding;
+
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
+    final image = Padding(
+      padding: padding,
       child: FutureBuilder<PhotoImageSource>(
         future: loadSource(photoId),
         builder: (context, snapshot) {
@@ -50,6 +56,32 @@ final class PhotoThumbnail extends StatelessWidget {
           );
         },
       ),
+    );
+    if (caption == null) return image;
+    return Stack(
+      children: [
+        image,
+        Positioned(
+          left: 12,
+          bottom: 12,
+          child: IgnorePointer(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: palette.chrome,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                caption!,
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: palette.onChrome),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

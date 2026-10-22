@@ -53,6 +53,35 @@ void main() {
     expect(controller.value.selectedTab, AppController.askTab);
   });
 
+  test('the Memories tab of the old key opens Today; its Ask stays Ask',
+      () async {
+    preferences.values[AppController.legacySelectedTabKey] = 2;
+    controller = await createController();
+    // Memories became part of Today: never Profile, which now has its place
+    expect(controller.value.selectedTab, AppController.todayTab);
+    controller.dispose();
+
+    preferences.values[AppController.legacySelectedTabKey] = AppController.askTab;
+    controller = await createController();
+    expect(controller.value.selectedTab, AppController.askTab);
+    controller.dispose();
+
+    // The new key wins once it is written
+    preferences.values[AppController.selectedTabKey] = AppController.profileTab;
+    controller = await createController();
+    expect(controller.value.selectedTab, AppController.profileTab);
+    expect(AppController.selectedTabKey, isNot(AppController.legacySelectedTabKey));
+  });
+
+  test('thread updates count up, for Ask to reload its thread', () async {
+    controller = await createController();
+    final before = controller.threadUpdates.value;
+
+    controller.threadChanged();
+
+    expect(controller.threadUpdates.value, before + 1);
+  });
+
   test('invalid restored values fall back to system and the first tab',
       () async {
     preferences.values[AppController.themePreferenceKey] = 'sepia';
@@ -167,7 +196,7 @@ void main() {
       controller.handleNotificationPayload('person:p-1');
       expect(controller.pendingPersonId.value, 'p-1');
 
-      await controller.setSelectedTab(AppController.memoriesTab);
+      await controller.setSelectedTab(AppController.profileTab);
       final before = controller.openTasksRequests.value;
       controller.handleNotificationPayload('tasks');
       await Future<void>.delayed(Duration.zero);

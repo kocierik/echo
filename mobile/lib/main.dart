@@ -8,9 +8,9 @@ import 'models/app_view_state.dart';
 import 'models/device_status.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
+import 'screens/echo_device_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/memories_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
 import 'services/api/build_defaults.dart';
@@ -382,27 +382,32 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onSettingsTap;
   final VoidCallback? onRequireOnboarding;
 
-  void _openSettings(BuildContext context) {
+  /// Profile: every setting, as the third tab.
+  Widget _profile() => ProfileScreen(
+        deviceController: deviceController,
+        appController: appController,
+        sessionController: sessionController,
+        networkPolicy: networkPolicy,
+        preferences: preferences,
+        onRequireOnboarding: onRequireOnboarding,
+        onOpenTranscripts: () {
+          unawaited(appController.setSelectedTab(AppController.todayTab));
+        },
+      );
+
+  /// The device pill (Today, Ask) and the firmware tip: the Echo screen.
+  void _openDevice(BuildContext context) {
     if (onSettingsTap != null) {
       onSettingsTap!();
       return;
     }
-    Navigator.push(
+    unawaited(openEchoDevice(
       context,
-      MaterialPageRoute(
-        builder: (_) => SettingsScreen(
-          deviceController: deviceController,
-          appController: appController,
-          sessionController: sessionController,
-          networkPolicy: networkPolicy,
-          preferences: preferences,
-          onRequireOnboarding: onRequireOnboarding,
-          onOpenTranscripts: () {
-            unawaited(appController.setSelectedTab(AppController.memoriesTab));
-          },
-        ),
-      ),
-    );
+      appController: appController,
+      deviceController: deviceController,
+      preferences: preferences,
+      onRequireOnboarding: onRequireOnboarding,
+    ));
   }
 
   void _openTasks(BuildContext context) {
@@ -448,7 +453,7 @@ class MainShell extends StatelessWidget {
           builder: (context, state, child) {
             final pill = DevicePill(
               status: state.device,
-              onTap: () => _openSettings(context),
+              onTap: () => _openDevice(context),
               onLongPress: deviceController == null
                   ? null
                   : () => unawaited(_toggleMute(context, state.device)),
@@ -474,27 +479,20 @@ class MainShell extends StatelessWidget {
                           ? appController.handleNotificationPayload(
                               NotificationService.voicePayloadPrefix)
                           : appController.requestOpenSession(sessionId),
-                      onOpenMemories: () {
-                        unawaited(appController
-                            .setSelectedTab(AppController.memoriesTab));
-                      },
                       onOpenTasks: () => _openTasks(context),
                       segmentUploadedStream: segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
-                      onOpenSettings: () => _openSettings(context),
+                      onOpenDevice: () => _openDevice(context),
                     ),
                     ChatScreen(
                       headerAction: pill,
                       dictation: appController.askDictation,
                       openSessionRequest: appController.pendingChatSessionId,
+                      threadUpdates: appController.threadUpdates,
                       askRequest: appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
-                    MemoriesScreen(
-                      headerAction: pill,
-                      segmentUploadedStream: segmentUploadedStream,
-                      onAsk: appController.requestAsk,
-                    ),
+                    _profile(),
                   ],
                 ),
               ),

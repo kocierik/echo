@@ -1,15 +1,56 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/device_status.dart';
 import '../services/app/app_controller.dart';
+import '../services/app/app_runtime.dart';
+import '../services/onboarding/onboarding_controller.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/firmware_update.dart';
-import '../widgets/device_readings.dart';
+import '../widgets/device_instrument.dart';
 import '../widgets/firmware_update_section.dart';
 import 'settings/settings_components.dart';
 
-class DeviceDetailScreen extends StatefulWidget {
-  const DeviceDetailScreen({
+/// Pushes the Echo screen; the app's own device and preferences unless given (tests).
+Future<void> openEchoDevice(
+  BuildContext context, {
+  required AppController appController,
+  DeviceController? deviceController,
+  SharedPreferences? preferences,
+  VoidCallback? onRequireOnboarding,
+}) async {
+  final coordinator = AppRuntime.maybeCoordinator;
+  final device = deviceController ?? coordinator?.deviceController;
+  final prefs = preferences ?? coordinator?.preferences;
+  if (device == null || prefs == null) return;
+  await Navigator.of(context).push(MaterialPageRoute<void>(
+    builder: (_) => EchoDeviceScreen(
+      appController: appController,
+      deviceController: device,
+      resetOnboarding: () => clearOnboardingProgress(prefs),
+      onRequireOnboarding: onRequireOnboarding,
+      firmwareUpdate: coordinator?.firmwareUpdate,
+    ),
+  ));
+}
+
+/// Forgetting Echo starts the setup over at pairing.
+Future<void> clearOnboardingProgress(SharedPreferences preferences) async {
+  final removed = await Future.wait([
+    preferences.remove(OnboardingController.completedKey),
+    preferences.remove(OnboardingController.highestStepKey),
+    preferences.remove('echo_onboarding_complete'),
+  ]);
+  if (removed.any((success) => !success)) {
+    throw StateError('Could not clear onboarding progress');
+  }
+}
+
+/// The "Echo" screen: the wearable drawn as the instrument (its state, battery, mute),
+/// then its readings, the firmware update, reconnecting, pairing and forgetting it.
+/// Opened from the device pill on Today and Ask and from the Profile device card.
+class EchoDeviceScreen extends StatefulWidget {
+  const EchoDeviceScreen({
     required this.appController,
     required this.deviceController,
     required this.resetOnboarding,
@@ -29,13 +70,26 @@ class DeviceDetailScreen extends StatefulWidget {
   final FirmwareUpdateController? firmwareUpdate;
 
   @override
-  State<DeviceDetailScreen> createState() => _DeviceDetailScreenState();
+  State<EchoDeviceScreen> createState() => _EchoDeviceScreenState();
 }
 
-class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
+class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
   bool _reconnecting = false;
   bool _forgetting = false;
+  bool _muteBusy = false;
   String? _error;
+
+  /// Mute Echo or let it listen again; the instrument changes once Echo confirms.
+  Future<void> _setMuted(bool muted) async {
+    setState(() => _muteBusy = true);
+    try {
+      await widget.deviceController.setMuted(muted);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Echo could not update the microphone.');
+    } finally {
+      if (mounted) setState(() => _muteBusy = false);
+    }
+  }
 
   Future<void> _reconnect() async {
     if (_reconnecting) return;
@@ -119,23 +173,24 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
           _ => false,
         };
         return SettingsPageScaffold(
-          title: 'Device',
+          title: 'Echo',
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+              // Its state and battery; reconnecting and pairing have their rows below
+              child: DeviceInstrumentPanel(
+                status: status,
+                busy: _muteBusy,
+                onMute: (muted) => _setMuted(muted),
+              ),
+            ),
             const SettingsSection('STATUS'),
-            SettingsRow(
-              icon: _stateIcon(status.connectionState),
-              title: 'Connection',
-              value: _stateLabel(status.connectionState),
-            ),
-            SettingsRow(
-              icon: status.batteryPercent == null
-                  ? Icons.battery_unknown_outlined
-                  : batteryIcon(status.batteryPercent!),
-              title: 'Battery',
-              value: status.batteryPercent == null
-                  ? 'Not measured'
-                  : '${status.batteryPercent}%',
-            ),
+            if (status.batteryPercent == null)
+              const SettingsRow(
+                icon: Icons.battery_unknown_outlined,
+                title: 'Battery',
+                value: 'Not measured',
+              ),
             if (status.protocolVersion != null)
               SettingsRow(
                 icon: Icons.hub_outlined,
@@ -229,32 +284,5 @@ class _DeviceDetailScreenState extends State<DeviceDetailScreen> {
         );
       },
     );
-  }
-
-  static String _stateLabel(DeviceConnectionState state) {
-    return switch (state) {
-      DeviceConnectionState.unpaired => 'Not paired',
-      DeviceConnectionState.bluetoothOff => 'Bluetooth unavailable',
-      DeviceConnectionState.scanning => 'Scanning',
-      DeviceConnectionState.connecting => 'Connecting',
-      DeviceConnectionState.bonding => 'Pairing',
-      DeviceConnectionState.listening => 'Listening',
-      DeviceConnectionState.muted => 'Muted',
-      DeviceConnectionState.reconnecting => 'Reconnecting',
-      DeviceConnectionState.offline => 'Offline',
-      DeviceConnectionState.error => 'Error',
-    };
-  }
-
-  static IconData _stateIcon(DeviceConnectionState state) {
-    return switch (state) {
-      DeviceConnectionState.listening => Icons.hearing_rounded,
-      DeviceConnectionState.muted => Icons.mic_off_outlined,
-      DeviceConnectionState.offline ||
-      DeviceConnectionState.error ||
-      DeviceConnectionState.bluetoothOff =>
-        Icons.bluetooth_disabled_rounded,
-      _ => Icons.bluetooth_searching_rounded,
-    };
   }
 }

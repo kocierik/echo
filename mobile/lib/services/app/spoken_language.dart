@@ -1,22 +1,32 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The account as Settings → Language sees it.
+/// The account as Profile sees it: its email, spoken language and name.
 final class AccountInfo {
-  const AccountInfo({required this.email, required this.language});
+  const AccountInfo({required this.email, required this.language, this.name});
 
-  factory AccountInfo.fromJson(Map<String, dynamic> json) => AccountInfo(
-        email: json['email'] as String?,
-        language: json['language'] as String? ?? 'en',
-      );
+  factory AccountInfo.fromJson(Map<String, dynamic> json) {
+    final name = (json['name'] as String?)?.trim();
+    return AccountInfo(
+      email: json['email'] as String?,
+      language: json['language'] as String? ?? 'en',
+      name: name == null || name.isEmpty ? null : name,
+    );
+  }
 
   /// Null for a key made on the server before any account.
   final String? email;
   final String language;
+
+  /// What Today's greeting calls the user; null until they give one.
+  final String? name;
 }
 
 abstract interface class AccountApi {
   Future<AccountInfo> me();
   Future<AccountInfo> setLanguage(String language);
+
+  /// Null (or blank) removes the name.
+  Future<AccountInfo> setName(String? name);
 }
 
 /// The languages Echo transcribes and takes dictation in, as Settings names them.

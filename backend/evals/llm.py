@@ -5,7 +5,7 @@
 Suites:
   compat      the calls Echo makes: complete with a temperature, JSON mode, tools, streaming
   extraction  entities from Italian sentences (evals/cases/extraction.json)
-  routing     memory / app / "not connected" for chat requests (evals/cases/routing.json)
+  routing     memory / app / "not connected" / camera (evals/cases/routing.json)
   answers     memory answers from a fixed context: facts, language, no invention, and the
               time to the first streamed piece (evals/cases/answers.json)
   tools       the action agent's first tool for a request (evals/cases/tools.json)
@@ -128,7 +128,12 @@ async def routing(llm) -> bool:
     suite = json.loads((CASES / "routing.json").read_text(encoding="utf-8"))
     passed = 0
     for case in suite["cases"]:
-        route, elapsed = await _timed(route_request(llm, case["text"], [], suite["connected"]))
+        # "camera": a voice request, which may take a photo (chat never does)
+        route, elapsed = await _timed(
+            route_request(
+                llm, case["text"], [], suite["connected"], camera=case.get("camera", False)
+            )
+        )
         ok = route.kind == case["expect"]
         passed += ok
         mark = "ok  " if ok else "FAIL"

@@ -1,4 +1,4 @@
-"""Voice requests worker: answers "Echo, ..." commands into the "Voice requests" chat.
+"""Voice requests worker: answers "Echo, ..." commands into the thread with Echo.
 
 The STT worker pushes the id of each segment where `find_wake` hits onto `queue:voice`.
 Every POLL_INTERVAL_S this loop takes the queued ids (oldest first): items whose command
@@ -83,7 +83,7 @@ FAILURE_TEXTS = {
         "failed": "Mi dispiace, non sono riuscito a completare la richiesta. Riprova.",
         "failed_partial": (
             "Mi dispiace, non sono riuscito a completare la richiesta. Alcuni passaggi "
-            "potrebbero essere già stati eseguiti: controlla Settings → Automations → Activity."
+            "potrebbero essere già stati eseguiti: controlla Profile → Activity."
         ),
     },
 }
@@ -315,7 +315,13 @@ async def _request_photo(
     )
     voice_session.messages = [
         *(voice_session.messages or []),
-        {"role": "user", "content": command, "timestamp": asked_at, "photo_id": str(photo.id)},
+        {
+            "role": "user",
+            "content": command,
+            "timestamp": asked_at,
+            "photo_id": str(photo.id),
+            "source": "voice",
+        },
     ]
     voice_session.updated_at = _utcnow()
     await db.commit()
@@ -328,7 +334,7 @@ def _append_turn(voice_session, command: str, asked_at: str, answer: str, extra:
     # Reassign (not mutate) so SQLAlchemy detects the JSONB change
     voice_session.messages = [
         *(voice_session.messages or []),
-        {"role": "user", "content": command, "timestamp": asked_at},
+        {"role": "user", "content": command, "timestamp": asked_at, "source": "voice"},
         {
             "role": "assistant",
             "content": answer,

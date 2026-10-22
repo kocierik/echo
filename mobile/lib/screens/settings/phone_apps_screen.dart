@@ -9,7 +9,7 @@ import '../../services/phone/phone_actions.dart';
 import '../../services/phone/phone_calendar.dart';
 import 'settings_components.dart';
 
-/// Settings → On this iPhone (On this phone on Android): Reminders and Calendar for Echo.
+/// Profile → On this iPhone (On this phone on Android): Reminders and Calendar for Echo.
 /// Android has no system Reminders app: there only the calendar is offered.
 final class PhoneAppsScreen extends StatefulWidget {
   const PhoneAppsScreen({required this.phoneActions, this.openSettings, super.key});

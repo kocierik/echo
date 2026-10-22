@@ -360,7 +360,8 @@ async def test_collect_command_with_bare_name_uses_the_next_segment():
 async def test_get_or_create_voice_session_creates_one():
     db = _Db()
     session = await voice.get_or_create_voice_session(db, USER_ID)
-    assert session.title == "Voice requests"
+    # The one thread with Echo in Ask
+    assert session.title == "Echo"
     assert session.kind == "voice"
     assert session.user_id == USER_ID
     assert session.messages == []
@@ -556,7 +557,7 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
     assert call.kw["connected_toolkits"] == ["gmail"]
     session = _voice_session(worker)
     assert call.kw["session_id"] == session.id
-    assert session.title == "Voice requests"
+    assert session.title == "Echo"
 
     user_msg, answer = session.messages
     assert user_msg["role"] == "user" and user_msg["content"] == "riassumimi le ultime mail"
@@ -569,6 +570,19 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
     check_text = worker.llm.call_log[0][-1].content
     assert "Ok. Echo, riassumimi le ultime mail" in check_text
     assert worker.rag_calls == []
+
+
+@pytest.mark.asyncio
+async def test_voice_turns_are_marked_by_voice(worker):
+    wake = _seg("Echo, riassumimi le ultime mail")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    user_msg, answer = _voice_session(worker).messages
+    # Ask shows "By voice" over it; the answer is the voice update to notify
+    assert user_msg["source"] == "voice"
+    assert "source" not in answer and answer.get("notify") is not False
 
 
 @pytest.mark.asyncio
@@ -994,7 +1008,7 @@ async def test_worker_says_when_the_named_app_is_not_connected(worker):
     assert worker.agent_calls == [] and worker.rag_calls == []
     answer = _voice_session(worker).messages[-1]
     assert answer["content"] == (
-        "Slack isn't connected. Connect it in Settings → Automations → Integrations."
+        "Slack isn't connected. Connect it in Profile → Apps."
     )
     assert answer["actions"] is True
 
@@ -1009,7 +1023,7 @@ async def test_worker_named_app_with_nothing_connected(worker):
 
     assert worker.rag_calls == []
     assert _voice_session(worker).messages[-1]["content"] == (
-        "Google Calendar non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
 
 
@@ -1055,7 +1069,7 @@ async def test_worker_calendar_request_with_only_todoist_says_calendar_is_missin
     assert worker.llm.intent_checks == 1
     answer = _voice_session(worker).messages[-1]
     assert answer["content"] == (
-        "Google Calendar non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
     assert answer["actions"] is True
 
@@ -1127,7 +1141,7 @@ async def test_worker_google_calendar_spelling_with_only_todoist_is_a_notice(wor
 
     assert worker.agent_calls == [] and worker.rag_calls == []
     assert _voice_session(worker).messages[-1]["content"] == (
-        "Google Calendar non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
 
 
@@ -1142,7 +1156,7 @@ async def test_worker_unknown_app_with_todoist_connected_is_a_notice(worker):
 
     assert worker.agent_calls == []
     assert _voice_session(worker).messages[-1]["content"] == (
-        "Trello isn't connected. Connect it in Settings → Automations → Integrations."
+        "Trello isn't connected. Connect it in Profile → Apps."
     )
 
 
@@ -1171,8 +1185,7 @@ async def test_worker_needed_without_a_name_and_nothing_connected_gives_a_hint(w
     assert worker.agent_calls == [] and worker.rag_calls == []
     answer = _voice_session(worker).messages[-1]
     assert answer["content"] == (
-        "Nessuna app è ancora collegata. Collegane una in Settings → Automations → "
-        "Integrations."
+        "Nessuna app è ancora collegata. Collegane una in Profile → Apps."
     )
     assert answer["actions"] is True
 

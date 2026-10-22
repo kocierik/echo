@@ -1,4 +1,4 @@
-"""The dead letter queue: what failed after every retry, for Settings → Diagnostics.
+"""The dead letter queue: what failed after every retry, for Profile → Diagnostics.
 
 `GET /admin/dead-letter` lists it and can push items back to their queue.
 """

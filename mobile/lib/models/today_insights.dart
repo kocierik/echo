@@ -80,3 +80,25 @@ final class WorkingItem {
 
   bool get isPhoto => kind == 'photo';
 }
+
+/// Today's "coming up": an event of the phone's calendar starting within the hour,
+/// with what was said last time with its people or about its title.
+final class ComingUp {
+  const ComingUp({required this.title, required this.start, this.recap});
+
+  /// `POST /api/notifications/coming-up`; null when nothing starts that soon.
+  static ComingUp? fromJson(Map<String, dynamic> json) {
+    final event = json['event'];
+    if (event is! Map<String, dynamic>) return null;
+    final start = DateTime.tryParse(event['start'] as String? ?? '');
+    final title = (event['title'] as String? ?? '').trim();
+    if (start == null || title.isEmpty) return null;
+    return ComingUp(title: title, start: start.toLocal(), recap: json['recap'] as String?);
+  }
+
+  final String title;
+  final DateTime start;
+
+  /// "Last time: the budget, the November date".
+  final String? recap;
+}

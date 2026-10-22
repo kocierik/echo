@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
-import 'package:echo_app/screens/settings_screen.dart';
+import 'package:echo_app/models/voice.dart';
+import 'package:echo_app/screens/profile_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/services/device/device_ble_port.dart';
@@ -10,6 +12,7 @@ import 'package:echo_app/services/device/device_identity_store.dart';
 import 'package:echo_app/services/device/device_protocol.dart';
 import 'package:echo_app/services/app/network_policy.dart';
 import 'package:echo_app/services/app/session_controller.dart';
+import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +25,7 @@ void main() {
   late _SessionFixture session;
   late NetworkPolicy networkPolicy;
   late _FakeApiService api;
-  late _FakeBlePort ble;
+  var openedDevice = 0;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({
@@ -32,6 +35,8 @@ void main() {
     appController = AppController(
       initialDevice: const DeviceStatus(
         connectionState: DeviceConnectionState.listening,
+        batteryPercent: 72,
+        firmwareVersion: '0.5.1',
       ),
       deviceStates: const Stream.empty(),
       initialSession: const SessionState(SessionStatus.loggedIn),
@@ -40,12 +45,13 @@ void main() {
     );
     await appController.initialize();
     deviceController = DeviceController(
-      ble: ble = _FakeBlePort(),
+      ble: _FakeBlePort(),
       identityStore: _FakeIdentityStore(),
     );
     session = _SessionFixture();
     networkPolicy = NetworkPolicy();
     api = _FakeApiService();
+    openedDevice = 0;
   });
 
   tearDown(() async {
@@ -66,7 +72,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      home: SettingsScreen(
+      home: ProfileScreen(
         deviceController: deviceController,
         appController: appController,
         sessionController: session.controller,
@@ -81,64 +87,84 @@ void main() {
         integrationsBuilder: (_) =>
             const Scaffold(body: Text('Integrations route')),
         devicesBuilder: (_) => const Scaffold(body: Text('Devices route')),
+        onOpenDevice: () => openedDevice++,
       ),
     ));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows the device, then the groups in order, without placeholders',
+  Future<void> openMore(WidgetTester tester) async {
+    await tester.ensureVisible(find.text('Devices, server, diagnostics, about'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Devices, server, diagnostics, about'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('shows the account, Echo, then the groups in order, without placeholders',
       (tester) async {
     await pumpSettings(tester);
 
     const labels = [
-      'Settings',
-      'Listening',
-      'Mute Echo',
+      'Profile',
+      'Erik',
+      'erik@x.io · Italiano',
+      'Echo',
+      'Listening · battery 72% · firmware 0.5.1',
+      'ECHO DOES',
       'Apps',
-      'Activity',
       'Notifications',
+      'Activity',
+      'YOU',
       'Voices',
-      'Appearance',
+      'Language',
       'Privacy',
+      'Appearance',
       'What Echo can do',
-      'Server connection',
-      'Diagnostics',
-      'Devices',
-      'About',
+      'Devices, server, diagnostics, about',
     ];
     final tops = <double>[];
     for (final label in labels) {
-      expect(find.text(label), findsOneWidget);
+      expect(find.text(label), findsOneWidget, reason: label);
       tops.add(tester.getTopLeft(find.text(label)).dy);
     }
     expect(tops, orderedEquals([...tops]..sort()));
+    // The connected apps by name
+    expect(find.text('Gmail, Google Calendar'), findsOneWidget);
     expect(find.textContaining('Coming soon'), findsNothing);
     expect(find.textContaining('Placeholder'), findsNothing);
   });
 
-  testWidgets('opens device, privacy, diagnostics, and automation routes',
+  testWidgets('the name is set from Profile, prefilled from the own voice',
+      (tester) async {
+    api.account = const AccountInfo(email: 'erik@x.io', language: 'it');
+    await pumpSettings(tester);
+    expect(find.text('Add your name'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('profile-account')));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byKey(const Key('profile-name-field')));
+    expect(field.controller!.text, 'Erik R.');
+
+    await tester.enterText(find.byKey(const Key('profile-name-field')), 'Erik');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(api.names, ['Erik']);
+    expect(find.text('Erik'), findsOneWidget);
+  });
+
+  testWidgets('the Echo card opens the Echo screen; the rest sits one row down',
       (tester) async {
     await pumpSettings(tester);
 
-    await tester.tap(find.text('Device details'));
+    await tester.tap(find.byKey(const Key('profile-device')));
     await tester.pumpAndSettle();
-    expect(find.text('Buffered segments'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Buffered segments'))).pop();
-    await tester.pumpAndSettle();
+    expect(openedDevice, 1);
 
     await tester.tap(find.text('Privacy'));
     await tester.pumpAndSettle();
     expect(find.text('24 hours'), findsOneWidget);
     expect(find.text('7 days'), findsOneWidget);
     Navigator.of(tester.element(find.text('Privacy'))).pop();
-    await tester.pumpAndSettle();
-
-    await tester.ensureVisible(find.text('Diagnostics'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Diagnostics'));
-    await tester.pumpAndSettle();
-    expect(find.text('Diagnostics route'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Diagnostics route'))).pop();
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Activity'));
@@ -153,22 +179,42 @@ void main() {
     Navigator.of(tester.element(find.text('Integrations route'))).pop();
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.text('Devices'));
+    await openMore(tester);
+    for (final label in ['Devices', 'Server connection', 'Diagnostics', 'About']) {
+      expect(find.text(label), findsOneWidget);
+    }
+    await tester.tap(find.text('Diagnostics'));
     await tester.pumpAndSettle();
+    expect(find.text('Diagnostics route'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Diagnostics route'))).pop();
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('Devices'));
     await tester.pumpAndSettle();
     expect(find.text('Devices route'), findsOneWidget);
   });
 
-  testWidgets('Mute Echo asks the wearable, which then confirms', (tester) async {
-    await pumpSettings(tester);
-    expect(find.text('Mute Echo'), findsOneWidget);
-
-    await tester.tap(find.byKey(const Key('device-instrument-action')));
+  testWidgets('fits 320 wide at 1.3 text scale', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: ProfileScreen(
+          deviceController: deviceController,
+          appController: appController,
+          sessionController: session.controller,
+          networkPolicy: networkPolicy,
+          preferences: preferences,
+          apiServiceFactory: () => api,
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
-    expect(ble.mutes, [true]);
-    // Still "Listening" until the wearable says it is muted
-    expect(find.text('Listening'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('appearance persists system light and dark selections',
@@ -195,6 +241,7 @@ void main() {
   testWidgets('cellular toggle mutates the shared policy and persists',
       (tester) async {
     await pumpSettings(tester);
+    await openMore(tester);
     await tester.tap(find.text('Server connection'));
     await tester.pumpAndSettle();
 
@@ -211,6 +258,7 @@ void main() {
   testWidgets('backend rejects an invalid URL before calling the API',
       (tester) async {
     await pumpSettings(tester);
+    await openMore(tester);
     await tester.tap(find.text('Server connection'));
     await tester.pumpAndSettle();
 
@@ -230,8 +278,7 @@ void main() {
       (tester) async {
     var resets = 0;
     await pumpSettings(tester, onRequireOnboarding: () => resets++);
-    await tester.ensureVisible(find.text('About'));
-    await tester.pumpAndSettle();
+    await openMore(tester);
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
 
@@ -254,8 +301,7 @@ void main() {
       (tester) async {
     session.failCacheOnce = true;
     await pumpSettings(tester);
-    await tester.ensureVisible(find.text('About'));
-    await tester.pumpAndSettle();
+    await openMore(tester);
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Log out'));
@@ -278,6 +324,31 @@ final class _FakeApiService extends ApiService {
   _FakeApiService();
 
   int validationCalls = 0;
+  AccountInfo account =
+      const AccountInfo(email: 'erik@x.io', language: 'it', name: 'Erik');
+  final names = <String?>[];
+
+  @override
+  Future<AccountInfo> me() async => account;
+
+  @override
+  Future<AccountInfo> setName(String? name) async {
+    names.add(name);
+    return account = AccountInfo(email: account.email, language: account.language, name: name);
+  }
+
+  @override
+  Future<VoiceProfiles> getVoiceProfiles() async => const VoiceProfiles(
+        fingerprintsEnabled: true,
+        items: [VoiceProfile(id: 'v1', name: 'Erik R.', isSelf: true)],
+      );
+
+  @override
+  Future<List<Toolkit>> getToolkits({String? query}) async => const [
+        Toolkit(slug: 'gmail', name: 'Gmail', description: '', connected: true),
+        Toolkit(slug: 'googlecalendar', name: 'Google Calendar', description: '', connected: true),
+        Toolkit(slug: 'slack', name: 'Slack', description: '', connected: false),
+      ];
 
   @override
   Future<String> getServerUrl() async => 'https://echo.test';

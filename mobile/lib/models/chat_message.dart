@@ -35,6 +35,11 @@ final class ChatMessage {
     this.pendingAction,
     this.clientRequestId,
     this.photoId,
+    this.byVoice = false,
+    this.when,
+    this.routineId,
+    this.routineSchedule,
+    this.aboutPhotoId,
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -52,6 +57,21 @@ final class ChatMessage {
 
   /// A photo from the wearable camera this message answers (or asks for).
   final String? photoId;
+
+  /// A question said to the wearable ("By voice · 08:02" in Ask).
+  final bool byVoice;
+
+  /// A photo's answer: the date or time it shows ("Remind me…").
+  final DateTime? when;
+
+  /// A routine's run: the answer shows as a routine's, its instruction not at all.
+  final String? routineId;
+
+  /// "Every day at 07:00", over a routine's answer.
+  final String? routineSchedule;
+
+  /// A follow-up about a photo, or its answer.
+  final String? aboutPhotoId;
 
   ChatMessage copyWith({
     String? text,
@@ -80,6 +100,11 @@ final class ChatMessage {
           : pendingAction as PendingAction?,
       clientRequestId: clientRequestId,
       photoId: photoId,
+      byVoice: byVoice,
+      when: when,
+      routineId: routineId,
+      routineSchedule: routineSchedule,
+      aboutPhotoId: aboutPhotoId,
     );
   }
 }

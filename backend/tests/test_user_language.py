@@ -51,11 +51,28 @@ async def test_me_reads_and_changes_the_language(client):
         "/api/auth/register", json=_register("ada@x.io", language="en"))).json()["api_key"]}
 
     me = await client.get("/api/auth/me", headers=key)
-    assert me.json() == {"email": "ada@x.io", "language": "en"}
+    assert me.json() == {"email": "ada@x.io", "language": "en", "name": None}
 
     changed = await client.patch("/api/auth/me", headers=key, json={"language": "it"})
     assert changed.status_code == 200 and changed.json()["language"] == "it"
     assert (await client.get("/api/auth/me", headers=key)).json()["language"] == "it"
+
+
+async def test_me_reads_and_changes_the_name(client):
+    key = {"X-API-Key": (await client.post(
+        "/api/auth/register", json=_register("erik@x.io", language="it"))).json()["api_key"]}
+
+    named = await client.patch("/api/auth/me", headers=key, json={"name": "  Erik "})
+    assert named.status_code == 200 and named.json()["name"] == "Erik"
+    # Changing the language keeps the name
+    await client.patch("/api/auth/me", headers=key, json={"language": "en"})
+    me = (await client.get("/api/auth/me", headers=key)).json()
+    assert me == {"email": "erik@x.io", "language": "en", "name": "Erik"}
+
+    cleared = await client.patch("/api/auth/me", headers=key, json={"name": "   "})
+    assert cleared.json()["name"] is None
+    too_long = await client.patch("/api/auth/me", headers=key, json={"name": "x" * 101})
+    assert too_long.status_code == 422
 
 
 async def test_an_unsupported_language_is_refused(client):
@@ -72,7 +89,7 @@ async def test_a_key_without_an_account_reads_the_default(client, auth_headers):
     me = await client.get("/api/auth/me", headers=auth_headers)
 
     assert me.status_code == 200
-    assert me.json() == {"email": None, "language": settings.stt_language}
+    assert me.json() == {"email": None, "language": settings.stt_language, "name": None}
     refused = await client.patch("/api/auth/me", headers=auth_headers, json={"language": "en"})
     assert refused.status_code == 409
 

@@ -158,7 +158,7 @@ CREATE TABLE chat_sessions (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
     title TEXT,
-    kind VARCHAR(10) NOT NULL DEFAULT 'chat',  -- Migration 007: chat | voice
+    kind VARCHAR(10) NOT NULL DEFAULT 'chat',  -- Migration 007: chat | voice (the thread "Echo", 021)
     messages JSONB NOT NULL DEFAULT '[]',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -215,6 +215,7 @@ CREATE TABLE users (
     email VARCHAR(320) NOT NULL UNIQUE,  -- stored lower-cased
     password_hash TEXT NOT NULL,         -- Argon2id
     language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
+    name VARCHAR(100),                   -- the app's greeting; null until given (021)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

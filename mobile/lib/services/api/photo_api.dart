@@ -26,7 +26,27 @@ abstract interface class PhotoApi {
   Future<PhotoImageSource> photoImage(String id);
 }
 
-mixin PhotoEndpoints on ApiClient implements PhotoApi {
+/// A follow-up about a photo already answered ("Translate it", "Ask more"): the
+/// server asks the vision model about the same image; the answer is returned and
+/// added to the photo's chat.
+abstract interface class PhotoFollowUpApi {
+  Future<String> askAboutPhoto(String photoId, String question);
+}
+
+mixin PhotoEndpoints on ApiClient implements PhotoApi, PhotoFollowUpApi {
+  @override
+  Future<String> askAboutPhoto(String photoId, String question) async {
+    final response = await post(
+      '/api/photos/$photoId/ask',
+      body: {'question': question},
+      timeout: queryTimeout,
+    );
+    return parse(
+      response.data,
+      (data) => ((data as Map<String, dynamic>)['answer'] as String?) ?? '',
+    );
+  }
+
   @override
   Future<PhotoInfo> requestPhoto({
     String? question,

@@ -20,7 +20,8 @@ from app.services.llm_base import LLMMessage, LLMService
 
 logger = logging.getLogger(__name__)
 
-VOICE_SESSION_TITLE = "Voice requests"
+# Ask's one thread with Echo: voice, photo and typed requests, and routine answers
+VOICE_SESSION_TITLE = "Echo"
 
 # The name must be one of the first WAKE_MAX_POSITION words of the utterance.
 WAKE_MAX_POSITION = 4
@@ -204,7 +205,7 @@ async def collect_command(
 
 
 async def get_or_create_voice_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:
-    """The user's "Voice requests" chat session (created on first use, not committed).
+    """The user's thread with Echo, the voice session (created on first use, not committed).
 
     Locked until commit: voice answers, photos and action outcomes all rewrite its
     message list, so they take turns instead of overwriting each other.

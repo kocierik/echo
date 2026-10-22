@@ -50,8 +50,9 @@ class ConversationListItem(BaseModel):
     # Up to three people mentioned, in order of appearance
     people: list[str]
     task_count: int
-    # Photos from the wearable camera taken during it
+    # Photos from the wearable camera taken during it, and the first one (Today's photo row)
     photo_count: int = 0
+    photo_id: uuid.UUID | None = None
 
     model_config = {"from_attributes": True}
 
@@ -200,21 +201,29 @@ async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
             is_open=_is_open(conv, now),
             people=people[conv.id][:MAX_LISTED_PEOPLE],
             task_count=tasks[conv.id],
-            photo_count=photos.get(conv.id, 0),
+            photo_count=photos.get(conv.id, (0, None))[0],
+            photo_id=photos.get(conv.id, (0, None))[1],
         )
         for conv, segment_count in rows
     ]
 
 
-async def _photo_counts(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+async def _photo_counts(
+    db: AsyncSession, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[int, uuid.UUID]]:
+    """Per conversation: how many photos have an image, and the first one taken."""
     if not ids:
         return {}
     rows = await db.execute(
-        select(Photo.conversation_id, func.count(Photo.id))
+        select(Photo.conversation_id, Photo.id)
         .where(Photo.conversation_id.in_(ids), Photo.image_sha256.isnot(None))
-        .group_by(Photo.conversation_id)
+        .order_by(Photo.created_at)
     )
-    return dict(rows.all())
+    photos: dict[uuid.UUID, tuple[int, uuid.UUID]] = {}
+    for conversation_id, photo_id in rows.all():
+        count, first = photos.get(conversation_id, (0, photo_id))
+        photos[conversation_id] = (count + 1, first)
+    return photos
 
 
 def conversation_entities(conversation_id: uuid.UUID):

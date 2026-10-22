@@ -31,10 +31,10 @@ TEXTS = {
     "en": {
         "unreachable": "I couldn't reach your connected apps right now. Try again in a moment.",
         "not_connected": (
-            "{app} isn't connected. Connect it in Settings → Automations → Integrations."
+            "{app} isn't connected. Connect it in Profile → Apps."
         ),
         "none_connected": (
-            "No apps are connected yet. Connect one in Settings → Automations → Integrations."
+            "No apps are connected yet. Connect one in Profile → Apps."
         ),
     },
     "it": {
@@ -42,11 +42,10 @@ TEXTS = {
             "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
         ),
         "not_connected": (
-            "{app} non è collegato. Collegalo da Settings → Automations → Integrations."
+            "{app} non è collegato. Collegalo da Profile → Apps."
         ),
         "none_connected": (
-            "Nessuna app è ancora collegata. Collegane una in Settings → Automations → "
-            "Integrations."
+            "Nessuna app è ancora collegata. Collegane una in Profile → Apps."
         ),
     },
 }
@@ -74,10 +73,13 @@ Respond with ONLY a JSON object: \
 or {{{camera_key}"routine": false, "needs_apps": false, "apps": []}}."""
 
 CAMERA_SECTION = """
-Echo also has a camera on the user's wearable. A request to take a photo, or a question \
-about what the user is looking at right now ("what is this?", "read this", "how much is \
-this?"), needs the camera: set "camera" to true. A question about the past never needs \
-it."""
+Echo also has a camera on the user's wearable. A request to take a photo, or a request \
+about what the user is looking at right now, needs the camera: set "camera" to true. That \
+includes a task on it ("explain this", "translate this sign", "what does this say?", \
+"spiegami cosa c'è scritto qui", "traducimi il cartello", "quanto costa questo?", "che \
+pianta è?"): Echo takes the photo and does the task on it. A request about the past, or \
+about what someone said or wrote before ("explain what Marco said", "translate what Luca \
+said in the meeting", an email), never needs it."""
 
 
 @dataclass

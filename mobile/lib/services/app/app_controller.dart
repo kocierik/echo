@@ -26,12 +26,13 @@ final class AppController extends ValueNotifier<AppViewState> {
         ));
 
   static const themePreferenceKey = 'echo_theme_mode';
-  // v3: Today, Ask, Memories (Tasks became a page of Today); an older index
-  // would open the wrong tab
-  static const selectedTabKey = 'echo_selected_tab_v3';
+  // v4: Today, Ask, Profile (Memories moved into Today). v3's Memories (2) opens
+  // Today, never Profile; an older index would open the wrong tab
+  static const selectedTabKey = 'echo_selected_tab_v4';
+  static const legacySelectedTabKey = 'echo_selected_tab_v3';
   static const todayTab = 0;
   static const askTab = 1;
-  static const memoriesTab = 2;
+  static const profileTab = 2;
   static const tabCount = AppViewState.tabCount;
 
   /// A chat session the Ask tab should open (e.g. from a notification tap).
@@ -52,6 +53,10 @@ final class AppController extends ValueNotifier<AppViewState> {
 
   /// True while the Ask button is held: Ask dictates into its question.
   final ValueNotifier<bool> askDictation = ValueNotifier(false);
+
+  /// Counts the times the thread with Echo got new messages from elsewhere (a voice
+  /// answer, a photo, a routine); Ask reloads it when it is showing it.
+  final ValueNotifier<int> threadUpdates = ValueNotifier(0);
 
   static const personPayloadPrefix = 'person:';
 
@@ -83,6 +88,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     );
     final selectedTab = _readSelectedTab(
       _preferences.getInt(selectedTabKey),
+      _preferences.getInt(legacySelectedTabKey),
     );
     if (_disposed) return;
 
@@ -126,6 +132,12 @@ final class AppController extends ValueNotifier<AppViewState> {
     if (_disposed || text.isEmpty) return;
     pendingChatQuestion.value = text;
     unawaited(setSelectedTab(askTab));
+  }
+
+  /// The thread with Echo got new messages (voice updates found some).
+  void threadChanged() {
+    if (_disposed) return;
+    threadUpdates.value++;
   }
 
   /// Selects Today and opens its Tasks page.
@@ -187,10 +199,12 @@ final class AppController extends ValueNotifier<AppViewState> {
     );
   }
 
-  int _readSelectedTab(int? storedValue) {
-    if (storedValue == null || storedValue < 0 || storedValue >= tabCount) {
-      return todayTab;
+  int _readSelectedTab(int? storedValue, int? legacyValue) {
+    if (storedValue == null) {
+      // Before Profile: Today and Ask kept their places, Memories is part of Today
+      return legacyValue == askTab ? askTab : todayTab;
     }
+    if (storedValue < 0 || storedValue >= tabCount) return todayTab;
     return storedValue;
   }
 
@@ -209,6 +223,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     pendingChatQuestion.dispose();
     openTasksRequests.dispose();
     askDictation.dispose();
+    threadUpdates.dispose();
     super.dispose();
   }
 }

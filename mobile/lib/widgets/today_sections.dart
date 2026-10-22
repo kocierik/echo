@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/action_models.dart';
+import '../models/photo.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/task_item.dart';
@@ -11,6 +12,7 @@ import 'action_card.dart';
 import 'conversation_card.dart';
 import 'device_readings.dart';
 import 'panel.dart';
+import 'photo_thumbnail.dart';
 import 'sections.dart';
 import 'task_tile.dart';
 
@@ -419,10 +421,14 @@ final class YourDayPanel extends StatelessWidget {
     required this.onOpen,
     required this.onSeeAll,
     this.maxVisible = 4,
+    this.loadPhoto,
     super.key,
   });
 
   final bool loading;
+
+  /// The image of a photo row (no thumbnail without it).
+  final PhotoSourceLoader? loadPhoto;
 
   /// Today's conversations, newest first.
   final List<ConversationCard> conversations;
@@ -486,10 +492,16 @@ final class YourDayPanel extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: _TimelineRow(
                   label: formatTime(conversation.startedAt),
-                  child: _ConversationBlock(
-                    conversation: conversation,
-                    onTap: () => onOpen(conversation),
-                  ),
+                  child: conversation.isPhoto && loadPhoto != null
+                      ? _PhotoBlock(
+                          conversation: conversation,
+                          loadPhoto: loadPhoto!,
+                          onTap: () => onOpen(conversation),
+                        )
+                      : _ConversationBlock(
+                          conversation: conversation,
+                          onTap: () => onOpen(conversation),
+                        ),
                 ),
               ),
             for (final conversation in open)
@@ -636,6 +648,89 @@ final class _ConversationBlock extends StatelessWidget {
   }
 }
 
+/// A photo on its own in the day: its thumbnail, "Photo: <title>" and what it showed.
+final class _PhotoBlock extends StatelessWidget {
+  const _PhotoBlock({required this.conversation, required this.loadPhoto, required this.onTap});
+
+  final ConversationCard conversation;
+  final PhotoSourceLoader loadPhoto;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final c = conversation;
+    final title = c.title == null ? 'Photo' : 'Photo: ${c.title}';
+    final radius = BorderRadius.circular(AppTheme.tileRadius);
+    return Semantics(
+      button: true,
+      label: [title, if (c.summary != null) c.summary!].join(', '),
+      excludeSemantics: true,
+      child: Material(
+        color: palette.tint,
+        borderRadius: radius,
+        child: InkWell(
+          key: Key('day-${c.id}'),
+          borderRadius: radius,
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: SizedBox.square(
+                    dimension: 48,
+                    child: FutureBuilder<PhotoImageSource>(
+                      future: loadPhoto(c.photoId!),
+                      builder: (context, snapshot) {
+                        final source = snapshot.data;
+                        if (source == null) return ColoredBox(color: palette.surface2);
+                        return Image.network(
+                          source.url.toString(),
+                          key: Key('day-photo-${c.photoId}'),
+                          headers: source.headers,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              ColoredBox(color: palette.surface2),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.titleSmall,
+                      ),
+                      if (c.summary case final summary?) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          summary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// "Now ——— Recording": the conversation still going.
 final class _NowRow extends StatelessWidget {
   const _NowRow({required this.recording, required this.onTap});
@@ -669,171 +764,6 @@ final class _NowRow extends StatelessWidget {
               Text(label, style: style),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// An app Echo can act in, on Today.
-final class ActsInApp {
-  const ActsInApp({required this.name, required this.icon});
-
-  final String name;
-  final IconData icon;
-
-  /// An icon for a connected app (Composio toolkit), by its slug.
-  static IconData iconFor(String slug) => switch (slug.toLowerCase()) {
-        'gmail' || 'outlook' => Icons.mail_outline_rounded,
-        'googlecalendar' => Icons.event_outlined,
-        'googledrive' || 'dropbox' => Icons.folder_outlined,
-        'googledocs' || 'notion' => Icons.description_outlined,
-        'googlesheets' => Icons.table_chart_outlined,
-        'slack' || 'discord' || 'telegram' || 'whatsapp' => Icons.chat_bubble_outline_rounded,
-        'github' || 'gitlab' => Icons.code_rounded,
-        'todoist' || 'asana' || 'linear' || 'trello' => Icons.checklist_rounded,
-        'spotify' => Icons.music_note_outlined,
-        _ => Icons.apps_rounded,
-      };
-}
-
-/// "Echo can act in": the apps it may use, always shown so the user knows it
-/// can do things, not only remember them.
-final class ActsInPanel extends StatelessWidget {
-  const ActsInPanel({
-    required this.apps,
-    required this.onManage,
-    required this.onAdd,
-    this.maxVisible = 4,
-    super.key,
-  });
-
-  final List<ActsInApp> apps;
-  final VoidCallback onManage;
-  final VoidCallback onAdd;
-  final int maxVisible;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final note = switch (apps.length) {
-      0 => 'Connect an app and Echo can send, add and remind for you.',
-      1 => '1 app on',
-      final n => '$n apps on',
-    };
-    return Panel(
-      key: const Key('acts-in'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelHeader(
-            title: 'Echo can act in',
-            actionLabel: 'Manage',
-            onAction: onManage,
-            actionKey: const Key('acts-in-manage'),
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(builder: (context, constraints) {
-            // As many apps as fit beside the add tile and a short note
-            final fit = ((constraints.maxWidth - 48 - 12 - 64) / 58).floor();
-            final shown = apps.take(fit.clamp(0, maxVisible));
-            return Row(
-              children: [
-                for (final app in shown) ...[
-                  _AppTile(app: app, onTap: onManage),
-                  const SizedBox(width: 10),
-                ],
-                _AddTile(onTap: onAdd),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    note,
-                    key: const Key('acts-in-note'),
-                    style: textTheme.bodySmall,
-                  ),
-                ),
-              ],
-            );
-          }),
-        ],
-      ),
-    );
-  }
-}
-
-final class _AppTile extends StatelessWidget {
-  const _AppTile({required this.app, required this.onTap});
-
-  final ActsInApp app;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    final radius = BorderRadius.circular(AppTheme.tileRadius);
-    return Semantics(
-      button: true,
-      label: '${app.name}, on',
-      excludeSemantics: true,
-      child: Tooltip(
-        message: app.name,
-        child: Material(
-          color: palette.background,
-          borderRadius: radius,
-          child: InkWell(
-            borderRadius: radius,
-            onTap: onTap,
-            child: SizedBox.square(
-              dimension: 48,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(app.icon, size: 22, color: palette.accent),
-                  Positioned(
-                    top: 6,
-                    right: 6,
-                    child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(color: palette.accent, shape: BoxShape.circle),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-final class _AddTile extends StatelessWidget {
-  const _AddTile({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    final radius = BorderRadius.circular(AppTheme.tileRadius);
-    return Semantics(
-      button: true,
-      label: 'Add an app',
-      excludeSemantics: true,
-      child: InkWell(
-        key: const Key('acts-in-add'),
-        borderRadius: radius,
-        onTap: onTap,
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: palette.text2.withValues(alpha: 0.45), width: 1.5),
-          ),
-          child: Icon(Icons.add_rounded, size: 22, color: palette.text),
         ),
       ),
     );

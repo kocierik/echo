@@ -384,7 +384,7 @@ async def test_named_app_not_connected_is_said_not_answered_from_memory(env):
     env.provider = FakeActionProvider(connected={"slack"})
     res = await _ask(env, "riassumimi le ultime mail di oggi")
     assert res.answer == (
-        "Gmail non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Gmail non è collegato. Collegalo da Profile → Apps."
     )
     assert env.agent_calls == [] and env.rag_calls == []
     assert env.db.added[0].messages[1]["actions"] is True
@@ -395,7 +395,7 @@ async def test_named_app_with_nothing_connected(env):
     env.provider.connected.clear()
     res = await _ask(env, "What's on my calendar tomorrow?")
     assert res.answer == (
-        "Google Calendar isn't connected. Connect it in Settings → Automations → Integrations."
+        "Google Calendar isn't connected. Connect it in Profile → Apps."
     )
     assert env.agent_calls == [] and env.rag_calls == []
 
@@ -420,7 +420,7 @@ async def test_calendar_request_with_only_todoist_connected_never_goes_to_todois
     env.provider = FakeActionProvider(connected={"todoist"})
     res = await _ask(env, "aggiungi il dentista al calendario")
     assert res.answer == (
-        "Google Calendar non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
     assert env.agent_calls == [] and env.rag_calls == []
     assert len(env.llm.intent_checks) == 1
@@ -440,7 +440,7 @@ async def test_one_missing_app_among_the_needed_ones_is_named(env):
     env.llm.intent = {"needs_apps": True, "apps": ["gmail", "googlecalendar"]}
     res = await _ask(env, "Turn Bob's email into a calendar event")
     assert res.answer == (
-        "Google Calendar isn't connected. Connect it in Settings → Automations → Integrations."
+        "Google Calendar isn't connected. Connect it in Profile → Apps."
     )
     assert env.agent_calls == []
 
@@ -581,6 +581,15 @@ async def test_the_camera_is_offered_only_to_voice_requests():
     assert "camera on the user's wearable" in prompt and '"camera": false' in prompt
 
 
+def test_camera_prompt_names_tasks_on_what_the_user_sees():
+    from app.actions.availability import CAMERA_SECTION
+
+    # "spiegami cosa c'è scritto qui" is a request about what is in front of the user
+    for example in ("explain this", "translate this sign", "what does this say?"):
+        assert example in CAMERA_SECTION
+    assert "said" in CAMERA_SECTION  # what someone said stays memory
+
+
 @pytest.mark.asyncio
 async def test_classify_request_sets_apart_apps_it_does_not_know():
     from app.actions.availability import APP_NAMES, classify_request
@@ -600,7 +609,7 @@ async def test_calendar_spelled_google_calendar_with_only_todoist_is_a_notice(en
     env.llm.intent = {"needs_apps": True, "apps": ["google_calendar"]}
     res = await _ask(env, "aggiungi il dentista al calendario")
     assert res.answer == (
-        "Google Calendar non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
     assert env.agent_calls == [] and env.rag_calls == []
 
@@ -611,7 +620,7 @@ async def test_unknown_app_with_another_app_connected_is_a_notice_not_the_agent(
     env.llm.intent = {"needs_apps": True, "apps": ["trello"]}
     res = await _ask(env, "aggiungi una card su Trello")
     assert res.answer == (
-        "Trello non è collegato. Collegalo da Settings → Automations → Integrations."
+        "Trello non è collegato. Collegalo da Profile → Apps."
     )
     assert env.agent_calls == [] and env.rag_calls == []
 
@@ -668,12 +677,11 @@ async def test_needed_without_a_name_and_an_app_connected_goes_to_the_agent(env)
     [
         (
             "manda un messaggio a Marco",
-            "Nessuna app è ancora collegata. Collegane una in Settings → Automations → "
-            "Integrations.",
+            "Nessuna app è ancora collegata. Collegane una in Profile → Apps.",
         ),
         (
             "Send a message to Marco",
-            "No apps are connected yet. Connect one in Settings → Automations → Integrations.",
+            "No apps are connected yet. Connect one in Profile → Apps.",
         ),
     ],
 )
@@ -711,11 +719,11 @@ def test_old_two_step_checks_are_gone():
 
 _UNFINISHED_IT = (
     "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere stati "
-    "eseguiti: controlla Settings → Automations → Activity prima di riprovare."
+    "eseguiti: controlla Profile → Activity prima di riprovare."
 )
 _UNFINISHED_EN = (
-    "I couldn't finish this request. Some steps may have run — check Settings → "
-    "Automations → Activity before asking again."
+    "I couldn't finish this request. Some steps may have run — check Profile → Activity "
+    "before asking again."
 )
 
 

@@ -1,6 +1,6 @@
 """Reminders and Calendar on the user's phone, as action tools the app runs.
 
-The app turns them on (Settings → On this iPhone; On this phone on Android, which has no
+The app turns them on (Profile → On this iPhone; On this phone on Android, which has no
 system Reminders app, so only the calendar) and reports which ones
 (`PUT /device/phone-apps`, kept PHONE_APPS_TTL_S and reported again on every wake). A
 call becomes a `phone_action` device command; the app runs it (EventKit on the iPhone, the
@@ -236,7 +236,7 @@ class WithPhoneApps:
     """Composio's apps (when configured) and the phone's, as one ActionProvider.
 
     The phone's apps are read once, when the request starts; managing connections
-    (Settings → Automations → Integrations) is Composio's alone.
+    (Profile → Apps) is Composio's alone.
     """
 
     def __init__(self, composio, phone: PhoneActionProvider, phone_toolkits: list[str]):

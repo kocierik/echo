@@ -17,6 +17,7 @@ import '../widgets/screen_header.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import '../utils/chat_suggestions.dart';
+import '../utils/formatting.dart';
 import 'chat_history_screen.dart';
 import 'conversation_detail_screen.dart';
 
@@ -31,6 +32,7 @@ final class ChatScreen extends StatefulWidget {
     this.photoTaker,
     this.headerAction,
     this.dictation,
+    this.threadUpdates,
     super.key,
   });
 
@@ -51,8 +53,12 @@ final class ChatScreen extends StatefulWidget {
   /// it and sets the notifier back to null.
   final ValueNotifier<String?>? openSessionRequest;
 
-  /// A question to send in a new chat, consumed (set to null) once sent.
+  /// A question to send in the thread with Echo (or a new chat, without one),
+  /// consumed (set to null) once sent.
   final ValueNotifier<String?>? askRequest;
+
+  /// Changes when the thread got messages from elsewhere: reloaded if it is shown.
+  final ValueListenable<int>? threadUpdates;
 
   /// Opens the conversations sources come from (defaults to the chat's api).
   final MemoryApi? memoryApi;
@@ -110,10 +116,18 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.openSessionRequest?.addListener(_onOpenSessionRequest);
     widget.askRequest?.addListener(_onAskRequest);
     widget.dictation?.addListener(_onDictation);
-    // A request made before this screen existed (cold start from a tap)
+    widget.threadUpdates?.addListener(_onThreadUpdate);
+    // A request made before this screen existed (cold start from a tap); else Ask
+    // opens on the thread with Echo
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final opening = widget.openSessionRequest?.value != null ||
+          widget.askRequest?.value != null;
       _onOpenSessionRequest();
       _onAskRequest();
+      final state = _controller.state;
+      if (!opening && state.sessionId == null && state.messages.isEmpty) {
+        unawaited(_controller.openThread());
+      }
     });
     unawaited(_loadSuggestions());
   }
@@ -130,6 +144,10 @@ final class _ChatScreenState extends State<ChatScreen> {
       oldWidget.askRequest?.removeListener(_onAskRequest);
       widget.askRequest?.addListener(_onAskRequest);
       _onAskRequest();
+    }
+    if (oldWidget.threadUpdates != widget.threadUpdates) {
+      oldWidget.threadUpdates?.removeListener(_onThreadUpdate);
+      widget.threadUpdates?.addListener(_onThreadUpdate);
     }
   }
 
@@ -148,9 +166,23 @@ final class _ChatScreenState extends State<ChatScreen> {
     final question = request.value;
     if (question == null) return;
     request.value = null;
-    _controller.newChat();
+    unawaited(_ask(question));
+  }
+
+  /// In the thread with Echo, where everything Echo answers is; a new chat without one.
+  Future<void> _ask(String question) async {
+    if (!_controller.hasThread) {
+      _controller.newChat();
+    } else if (!_controller.state.isThread) {
+      await _controller.openThread();
+    }
+    if (!mounted) return;
     _controller.setComposerText(question);
-    unawaited(_controller.send(question));
+    await _controller.send(question);
+  }
+
+  void _onThreadUpdate() {
+    if (mounted) unawaited(_controller.refreshThread());
   }
 
   /// Suggestions from the latest conversations; the defaults stay on any failure.
@@ -232,6 +264,18 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_controller.send(_textController.text));
   }
 
+  final _composerFocus = FocusNode();
+
+  /// Quick follow-ups under a photo's answer, when the server can look at it again.
+  bool _followUps(ChatMessage message) =>
+      !message.isUser && message.photoId != null && _api is PhotoFollowUpApi;
+
+  /// "Ask more": the composer, for a question about this photo.
+  void _askMore(String photoId) {
+    _controller.setPhotoContext(photoId);
+    _composerFocus.requestFocus();
+  }
+
   void _sendSuggestion(String suggestion) {
     _controller.setComposerText(suggestion);
     unawaited(_controller.send(suggestion));
@@ -243,6 +287,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.openSessionRequest?.removeListener(_onOpenSessionRequest);
     widget.askRequest?.removeListener(_onAskRequest);
     widget.dictation?.removeListener(_onDictation);
+    widget.threadUpdates?.removeListener(_onThreadUpdate);
+    _composerFocus.dispose();
     _textController.dispose();
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();
@@ -287,10 +333,16 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               Expanded(child: _messageArea(state, palette)),
+              if (state.photoContext != null && !state.listening)
+                _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
               if (state.listening)
                 DictationPanel(text: state.composerText)
               else
                 ChatComposer(
+                  focusNode: _composerFocus,
+                  hintText: state.photoContext != null
+                      ? 'Ask about this photo'
+                      : 'Ask about your day',
                   controller: _textController,
                   sending: state.sending,
                   enabled: !state.loadingSession,
@@ -343,7 +395,13 @@ final class _ChatScreenState extends State<ChatScreen> {
           ),
           if (state.error != null) ...[
             const SizedBox(height: 16),
-            _ErrorNotice(message: state.error!),
+            // The thread could not load: try it again
+            _ErrorNotice(
+              message: state.error!,
+              onRetry: _controller.hasThread && !state.isThread
+                  ? () => unawaited(_controller.openThread())
+                  : null,
+            ),
           ],
           const SizedBox(height: 22),
           ..._suggestions.map((suggestion) => Padding(
@@ -367,13 +425,18 @@ final class _ChatScreenState extends State<ChatScreen> {
       );
     }
 
+    final rows = _threadRows(state.messages);
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: state.messages.length +
+      itemCount: rows.length +
           (state.sending ? 1 : 0) +
           (state.error != null ? 1 : 0),
-      itemBuilder: (context, index) {
+      itemBuilder: (context, row) {
+        if (row < rows.length && rows[row].day != null) {
+          return _DayLabel(day: rows[row].day!);
+        }
+        final index = row < rows.length ? rows[row].message! : state.messages.length + row - rows.length;
         if (index < state.messages.length) {
           final message = state.messages[index];
           return MessageBubble(
@@ -395,6 +458,13 @@ final class _ChatScreenState extends State<ChatScreen> {
                     ),
             onOpenConversation: _memoryApi == null ? null : _openConversation,
             loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
+            onTranslate: _followUps(message)
+                ? () => unawaited(_controller.translatePhoto(message.photoId!))
+                : null,
+            onAskMore: _followUps(message) ? () => _askMore(message.photoId!) : null,
+            onRemind: _followUps(message)
+                ? (when) => unawaited(_controller.remindFromPhoto(when))
+                : null,
           );
         }
         if (state.sending && index == state.messages.length) {
@@ -429,6 +499,74 @@ final class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// The messages to show, a day's name before each new day: a routine's own instruction
+/// is left out (its answer says it is a routine's).
+List<({int? message, DateTime? day})> _threadRows(List<ChatMessage> messages) {
+  final rows = <({int? message, DateTime? day})>[];
+  DateTime? current;
+  for (final (index, message) in messages.indexed) {
+    if (message.isUser && message.routineId != null) continue;
+    final at = message.timestamp;
+    if (at != null) {
+      final day = dayOf(at);
+      if (day != current) {
+        current = day;
+        rows.add((message: null, day: day));
+      }
+    }
+    rows.add((message: index, day: null));
+  }
+  return rows;
+}
+
+/// Above the composer after "Ask more": the question goes about the photo.
+final class _PhotoContextChip extends StatelessWidget {
+  const _PhotoContextChip({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InputChip(
+          key: const Key('photo-context'),
+          avatar: Icon(Icons.photo_outlined, size: 18, color: palette.text2),
+          label: const Text('About the photo'),
+          onDeleted: onClear,
+          deleteButtonTooltipMessage: 'Ask about your day instead',
+        ),
+      ),
+    );
+  }
+}
+
+/// "Today", "Yesterday", "Mon, Oct 13" between the thread's days.
+final class _DayLabel extends StatelessWidget {
+  const _DayLabel({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10, bottom: 4),
+      child: Center(
+        child: Semantics(
+          header: true,
+          child: Text(
+            dayLabel(day, DateTime.now()),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ),
     );
   }
 }

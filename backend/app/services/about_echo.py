@@ -22,7 +22,7 @@ def about_echo(phone_apps_on: list[str]) -> str:
         "keeps the people, tasks, promises, ideas and events that came up;",
         "- answers questions about them, by chat (Ask) or by voice;",
         "- writes a summary of every day and of every week;",
-        f"- acts in the user's apps when asked ({apps}): they are connected in Settings → "
+        f"- acts in the user's apps when asked ({apps}): they are connected in Profile → "
         "Apps; sending to others, changing and deleting wait for the user's Confirm;",
     ]
     if phone:
@@ -31,7 +31,7 @@ def about_echo(phone_apps_on: list[str]) -> str:
         "- takes a photo with the wearable's camera when asked (or the button) and says "
         "what it shows;",
         "- hears requests spoken to the wearable that start with \"Echo, …\";",
-        "- learns the user's voice (Settings → Voices) to tell who is speaking.",
+        "- learns the user's voice (Profile → Voices) to tell who is speaking.",
         "What Echo can do (Settings) has examples to try. Examples of questions: "
         "\"What did Marco say about the offer?\", \"What did I promise this week?\", "
         "\"Echo, remind me to call Ada at 6\", \"Echo, what is this?\".",

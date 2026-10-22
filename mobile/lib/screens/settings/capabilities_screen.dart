@@ -57,10 +57,10 @@ final class CapabilitiesScreen extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
           child: Text(
-            'The answer arrives in the Voice requests chat, with a notification. Reading '
+            'The answer arrives in Ask, in your thread with Echo, with a notification. Reading '
             'and creating run at once; sending to others, changing and deleting wait for '
             'your Confirm. Reminders and events go to your connected apps, or to this '
-            "${PhoneWords.phone}'s (Settings → ${PhoneWords.onThisPhone}).",
+            "${PhoneWords.phone}'s (Profile → ${PhoneWords.onThisPhone}).",
             style: textTheme.bodySmall,
           ),
         ),

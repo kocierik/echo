@@ -38,6 +38,11 @@ final class ChatSessionMessage {
     this.sessionId,
     this.pendingAction,
     this.photoId,
+    this.source,
+    this.when,
+    this.routineId,
+    this.routineSchedule,
+    this.aboutPhotoId,
   });
 
   final String role;
@@ -49,6 +54,22 @@ final class ChatSessionMessage {
 
   /// A photo from the wearable camera (`GET /api/photos/{id}/image`).
   final String? photoId;
+
+  /// Where a question came from: "voice", "chat" (typed) or "camera"; null on
+  /// messages stored before it was kept.
+  final String? source;
+
+  /// A photo's answer: the date or time the photo shows, for "Remind me" (local).
+  final DateTime? when;
+
+  /// A routine's run: its instruction and answer.
+  final String? routineId;
+
+  /// When it runs, as the server says it ("Every day at 07:00").
+  final String? routineSchedule;
+
+  /// A follow-up question about a photo, and its answer.
+  final String? aboutPhotoId;
 
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
@@ -65,6 +86,13 @@ final class ChatSessionMessage {
           json['session_id'] is String ? json['session_id'] as String : null,
       pendingAction: _optionalPendingAction(json),
       photoId: json['photo_id'] is String ? json['photo_id'] as String : null,
+      source: json['source'] is String ? json['source'] as String : null,
+      when: json['when'] is String ? DateTime.tryParse(json['when'] as String) : null,
+      routineId: json['routine_id'] is String ? json['routine_id'] as String : null,
+      routineSchedule:
+          json['routine_schedule'] is String ? json['routine_schedule'] as String : null,
+      aboutPhotoId:
+          json['about_photo_id'] is String ? json['about_photo_id'] as String : null,
     );
   }
 }
@@ -76,10 +104,14 @@ final class ChatSessionDetail {
     required List<ChatSessionMessage> messages,
     required this.createdAt,
     required this.updatedAt,
+    this.kind = 'chat',
   }) : messages = List.unmodifiable(messages);
 
   final String id;
   final String? title;
+
+  /// "voice" for the thread with Echo, "chat" for a typed chat of its own.
+  final String kind;
   final List<ChatSessionMessage> messages;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -101,6 +133,7 @@ final class ChatSessionDetail {
       }).toList(),
       createdAt: _requiredDateTime(json, 'created_at'),
       updatedAt: _requiredDateTime(json, 'updated_at'),
+      kind: json['kind'] == 'voice' ? 'voice' : 'chat',
     );
   }
 }

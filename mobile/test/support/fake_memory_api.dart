@@ -9,6 +9,7 @@ import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/models/voice.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/services/app/spoken_language.dart';
 
 /// An in-memory [MemoryApi] (and [TranscriptMemoryApi]) recording every call.
 class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
@@ -148,7 +149,14 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
 class FakeTodayApi extends FakeMemoryApi
-    implements TodayApi, WeeklySummaryApi, VoiceWorkingApi, VoiceApi {
+    implements
+        TodayApi,
+        WeeklySummaryApi,
+        VoiceWorkingApi,
+        VoiceApi,
+        ComingUpApi,
+        AccountApi,
+        DigestApi {
   FakeTodayApi({
     super.conversations,
     super.openTasks,
@@ -158,6 +166,37 @@ class FakeTodayApi extends FakeMemoryApi
   }) : pending = pending ?? [];
 
   DailySummary? digest;
+
+  /// Past days' digests, by day.
+  Map<DateTime, DailySummary> digests = {};
+
+  @override
+  Future<DailySummary?> getDigest(DateTime day) async {
+    calls.add('digest ${day.toIso8601String().substring(0, 10)}');
+    return digests[day];
+  }
+
+  /// What the account is called ("Good afternoon, Erik"); none by default.
+  String? name;
+
+  @override
+  Future<AccountInfo> me() async => AccountInfo(email: 'erik@x.io', language: 'en', name: name);
+
+  @override
+  Future<AccountInfo> setLanguage(String language) => throw UnimplementedError();
+
+  @override
+  Future<AccountInfo> setName(String? name) => throw UnimplementedError();
+
+  /// The event in the next hour the server finds among the phone's ones.
+  ComingUp? upcoming;
+  final comingUpEvents = <List<Map<String, Object?>>>[];
+
+  @override
+  Future<ComingUp?> comingUp(List<Map<String, Object?>> phoneEvents) async {
+    comingUpEvents.add(phoneEvents);
+    return upcoming;
+  }
 
   /// The weekly summary (not recorded in [calls]: optional for Today).
   WeeklySummary? week;
@@ -237,6 +276,8 @@ ConversationCard card(
   String analysisStatus = 'completed',
   List<String> people = const ['Ada'],
   int taskCount = 1,
+  String? photoId,
+  int segmentCount = 3,
 }) {
   return ConversationCard(
     id: id,
@@ -250,6 +291,8 @@ ConversationCard card(
     analysisStatus: analysisStatus,
     people: people,
     taskCount: taskCount,
+    photoId: photoId,
+    segmentCount: segmentCount,
   );
 }
 

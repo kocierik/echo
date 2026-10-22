@@ -63,7 +63,7 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
           title: 'Before a meeting',
           subtitle: '10 minutes before, when you have tasks, a promise or a recent '
               'conversation with someone there. From Google Calendar, or from the '
-              "${PhoneWords.phone}'s calendar (Settings → ${PhoneWords.onThisPhone}).",
+              "${PhoneWords.phone}'s calendar (Profile → ${PhoneWords.onThisPhone}).",
           value: _choices.briefings,
         ),
         _row(

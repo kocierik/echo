@@ -19,7 +19,7 @@ final class EchoShellInsets extends InheritedWidget {
   bool updateShouldNotify(EchoShellInsets oldWidget) => bottom != oldWidget.bottom;
 }
 
-/// The graphite bar: Today on the left, Memories on the right and, in the middle,
+/// The graphite bar: Today on the left, Profile on the right and, in the middle,
 /// the round Ask button. A tap on it opens Ask; held, Ask dictates until let go.
 final class EchoNavBar extends StatelessWidget {
   const EchoNavBar({
@@ -37,7 +37,7 @@ final class EchoNavBar extends StatelessWidget {
   /// above it, and the gap below it).
   static const reserved = barHeight + 20 + 24;
 
-  /// 0 Today, 1 Ask, 2 Memories.
+  /// 0 Today, 1 Ask, 2 Profile.
   final int selectedIndex;
   final ValueChanged<int> onSelect;
 
@@ -73,8 +73,8 @@ final class EchoNavBar extends StatelessWidget {
                 const Spacer(),
                 _Destination(
                   index: 2,
-                  label: 'Memories',
-                  icon: Icons.notes_rounded,
+                  label: 'Profile',
+                  icon: Icons.person_outline_rounded,
                   selected: selectedIndex == 2,
                   onSelect: onSelect,
                 ),

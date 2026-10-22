@@ -4,13 +4,13 @@ import '../models/device_status.dart';
 import '../theme/app_theme.dart';
 import 'device_readings.dart';
 
-/// The wearable at the top of Settings, drawn like the device itself: its LED,
+/// The wearable at the top of the Echo screen, drawn like the device itself: its LED,
 /// battery, speech waiting to sync, and the one action its state calls for
-/// (mute, resume, reconnect or pair) next to its details.
+/// (mute, resume, reconnect or pair), next to its details when they are elsewhere.
 final class DeviceInstrumentPanel extends StatelessWidget {
   const DeviceInstrumentPanel({
     required this.status,
-    required this.onDetails,
+    this.onDetails,
     this.onMute,
     this.onReconnect,
     this.onPair,
@@ -20,7 +20,9 @@ final class DeviceInstrumentPanel extends StatelessWidget {
   });
 
   final DeviceStatus status;
-  final VoidCallback onDetails;
+
+  /// Opens the device's details; no button without it.
+  final VoidCallback? onDetails;
 
   /// True to mute, false to listen again.
   final ValueChanged<bool>? onMute;
@@ -98,32 +100,38 @@ final class DeviceInstrumentPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              if (action != null) ...[
-                Expanded(
-                  child: FilledButton(
-                    key: const Key('device-instrument-action'),
-                    onPressed: busy ? null : action.$2,
-                    child: Text(action.$1, maxLines: 1, overflow: TextOverflow.ellipsis),
+          if (action != null || onDetails != null) ...[
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                if (action != null)
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('device-instrument-action'),
+                      onPressed: busy ? null : action.$2,
+                      child: Text(action.$1, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
+                if (action != null && onDetails != null) const SizedBox(width: 8),
+                if (onDetails != null)
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('device-details'),
+                      onPressed: onDetails,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: palette.background,
+                        foregroundColor: palette.text,
+                      ),
+                      child: const Text(
+                        'Device details',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
               ],
-              Expanded(
-                child: FilledButton(
-                  key: const Key('device-details'),
-                  onPressed: onDetails,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: palette.background,
-                    foregroundColor: palette.text,
-                  ),
-                  child: const Text('Device details', maxLines: 1, overflow: TextOverflow.ellipsis),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
           if (firmwareLine != null) ...[
             const SizedBox(height: 14),
             Text(firmwareLine!, style: textTheme.bodySmall),

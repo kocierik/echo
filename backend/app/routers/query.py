@@ -26,11 +26,7 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
 from app.services.about_echo import about_echo_for
-from app.services.chat_history import (
-    get_session_history,
-    load_persisted_history,
-    record_turn,
-)
+from app.services.chat_history import load_thread_history, record_turn
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage
@@ -58,12 +54,12 @@ _PROCESSING = "processing"
 # same client_request_id gets this answer instead of running them again.
 _UNFINISHED = {
     "en": (
-        "I couldn't finish this request. Some steps may have run — check Settings → "
-        "Automations → Activity before asking again."
+        "I couldn't finish this request. Some steps may have run — check Profile → Activity "
+        "before asking again."
     ),
     "it": (
         "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere "
-        "stati eseguiti: controlla Settings → Automations → Activity prima di riprovare."
+        "stati eseguiti: controlla Profile → Activity prima di riprovare."
     ),
 }
 
@@ -134,7 +130,7 @@ _TOOL_HINT = re.compile(
     r"book|spost|rimand|anticip|posticip|resched|move|cancell|elimin|annull|delete|"
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
-    r"inbox|ricordami|ricordarmi|remind|promemoria|"
+    r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria|"
     # Routines: something regular, or the routines themselves
     r"ogni\b|tutti i giorni|tutte le (mattine|sere)|every\b|each (day|morning|evening|week)|"
     r"daily|weekly|monthly|routine|incaric|smetti|stop\b)",
@@ -361,10 +357,12 @@ async def _answer_query(
         session_uuid = uuid.uuid4()
     session_id = str(session_uuid)
     progress.session_id = session_id
-    history = await get_session_history(redis_client, session_id)
-    if not history and body.session_id:
-        # Redis context expired: resume follow-up context from the persisted session
-        history = await load_persisted_history(db, user_id, session_uuid)
+    # The stored session when there is one (the thread holds voice turns Redis never saw)
+    history = (
+        await load_thread_history(redis_client, db, user_id, session_uuid)
+        if body.session_id
+        else []
+    )
 
     # --- Tool requests (Gmail, Calendar, Slack, ...) go to the action agent ---
     llm_service = get_llm_query_service()

@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatting.dart';
+import '../utils/photo_follow_ups.dart';
 import 'action_card.dart';
 import 'panel.dart';
 import 'photo_thumbnail.dart';
@@ -16,6 +18,10 @@ final class MessageBubble extends StatelessWidget {
     this.actionBusy = false,
     this.onOpenConversation,
     this.loadPhoto,
+    this.onTranslate,
+    this.onAskMore,
+    this.onRemind,
+    this.now,
     super.key,
   });
 
@@ -30,6 +36,16 @@ final class MessageBubble extends StatelessWidget {
   final VoidCallback? onCancelAction;
   final bool actionBusy;
 
+  /// The quick follow-ups under a photo's answer: none without them.
+  final VoidCallback? onTranslate;
+  final VoidCallback? onAskMore;
+
+  /// "Remind me…": only when the photo shows a date still to come.
+  final ValueChanged<DateTime>? onRemind;
+
+  /// For the reminder chip's label (tests); now by default.
+  final DateTime? now;
+
   @override
   Widget build(BuildContext context) {
     return Semantics(
@@ -37,7 +53,11 @@ final class MessageBubble extends StatelessWidget {
       label: message.isUser ? 'You asked' : 'Echo answered',
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: message.isUser ? _question(context) : _answer(context),
+        child: message.isUser
+            ? _question(context)
+            : message.photoId != null && loadPhoto != null
+                ? _photoAnswer(context)
+                : _answer(context),
       ),
     );
   }
@@ -49,6 +69,23 @@ final class MessageBubble extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (message.byVoice)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic_none_rounded, size: 13, color: palette.text2),
+                const SizedBox(width: 4),
+                Text(
+                  message.timestamp == null
+                      ? 'By voice'
+                      : 'By voice · ${formatTime(message.timestamp!)}',
+                  style: textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
           child: DecoratedBox(
@@ -82,15 +119,94 @@ final class MessageBubble extends StatelessWidget {
     );
   }
 
+  /// A photo's answer: the photo large (a tap opens it full screen), what Echo saw,
+  /// then quick follow-ups about the same photo.
+  Widget _photoAnswer(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final at = message.timestamp;
+    final when = message.when;
+    final now = this.now ?? DateTime.now();
+    final remind = when != null && when.isAfter(now) ? onRemind : null;
+    final chips = [
+      if (onTranslate != null)
+        _FollowUp(key: const Key('photo-translate'), label: 'Translate it', onTap: onTranslate!),
+      if (remind != null)
+        _FollowUp(
+          key: const Key('photo-remind'),
+          label: reminderChipLabel(when!, now),
+          onTap: () => remind(when),
+        ),
+      if (onAskMore != null)
+        _FollowUp(key: const Key('photo-ask-more'), label: 'Ask more', onTap: onAskMore!),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Material(
+          color: palette.surface,
+          borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              PhotoThumbnail(
+                photoId: message.photoId!,
+                loadSource: loadPhoto!,
+                height: 260,
+                padding: EdgeInsets.zero,
+                caption: at == null ? "Echo's camera" : "Echo's camera · ${formatTime(at)}",
+              ),
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: MarkdownBody(
+                  data: message.text,
+                  selectable: true,
+                  onTapLink: (_, href, __) => _launch(href),
+                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                    p: textTheme.bodyMedium?.copyWith(height: 1.45),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (chips.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Wrap(spacing: 8, runSpacing: 8, children: chips),
+          ),
+      ],
+    );
+  }
+
   /// The answer: a panel with what Echo did and its sources.
   Widget _answer(BuildContext context) {
     final palette = EchoPalette.of(context);
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
+    final routine = message.routineId != null;
     return Panel(
+      // A routine's answer: Echo did it on its own, at the time asked
+      color: routine ? palette.accentSoft : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (routine)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                [
+                  'ROUTINE',
+                  if (message.routineSchedule case final schedule?) schedule.toUpperCase(),
+                ].join(' · '),
+                style: textTheme.labelSmall?.copyWith(
+                  color: palette.onAccentSoft,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
           MarkdownBody(
             data: message.text,
             selectable: true,
@@ -142,6 +258,37 @@ final class MessageBubble extends StatelessWidget {
     final uri = rawUrl == null ? null : Uri.tryParse(rawUrl);
     if (uri == null || !uri.hasScheme) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+/// A quick follow-up under a photo: a rounded button.
+final class _FollowUp extends StatelessWidget {
+  const _FollowUp({required this.label, required this.onTap, super.key});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Material(
+      color: palette.surface,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: palette.text),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

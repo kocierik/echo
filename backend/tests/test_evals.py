@@ -67,6 +67,13 @@ def test_a_forbidden_entity_fails_the_case():
     assert score_extraction(case, [Extracted("note", "Mangiare meglio")]).passed
 
 
+def test_routing_cases_cover_requests_about_what_the_user_sees():
+    cases = json.loads((CASES / "routing.json").read_text(encoding="utf-8"))["cases"]
+    photos = [c for c in cases if c["expect"] == "photo"]
+    negatives = [c for c in cases if c.get("camera") and c["expect"] == "memory"]
+    assert len(photos) >= 8 and len(negatives) >= 3
+
+
 @pytest.mark.parametrize("name", ["extraction.json", "routing.json"])
 def test_case_files_are_well_formed(name):
     suite = json.loads((CASES / name).read_text(encoding="utf-8"))
@@ -75,7 +82,9 @@ def test_case_files_are_well_formed(name):
     for case in suite["cases"]:
         assert case["text"].strip()
         if name == "routing.json":
-            assert case["expect"] in {"memory", "agent", "notice"}
+            assert case["expect"] in {"memory", "agent", "notice", "photo"}
+            # Only voice requests may take a photo
+            assert case["expect"] != "photo" or case.get("camera") is True
         else:
             for spec in [*case.get("expect", []), *case.get("forbid", [])]:
                 assert set(spec["types"]) <= {"person", "task", "idea", "event", "note"}
