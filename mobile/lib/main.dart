@@ -10,7 +10,7 @@ import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
-import 'screens/settings_screen.dart';
+import 'screens/profile_screen.dart';
 import 'screens/memories_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
@@ -384,7 +384,7 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onRequireOnboarding;
 
   /// Profile: every setting, as the third tab.
-  Widget _profile() => SettingsScreen(
+  Widget _profile() => ProfileScreen(
         deviceController: deviceController,
         appController: appController,
         sessionController: sessionController,

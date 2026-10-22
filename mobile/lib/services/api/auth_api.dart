@@ -101,6 +101,13 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
     return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
   }
 
+  /// Changes the name the app calls the user by; null removes it.
+  @override
+  Future<AccountInfo> setName(String? name) async {
+    final response = await patch('/api/auth/me', body: {'name': name?.trim() ?? ''});
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
   Future<void> _signInPhone(
     String path,
     String email,

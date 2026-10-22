@@ -59,6 +59,10 @@ final class _Account implements AccountApi {
   Future<AccountInfo> me() async => const AccountInfo(email: 'e@x.y', language: 'en');
 
   @override
+  Future<AccountInfo> setName(String? name) async =>
+      AccountInfo(email: 'e@x.y', language: 'en', name: name);
+
+  @override
   Future<AccountInfo> setLanguage(String language) async {
     if (failing) throw Exception('offline');
     changes.add(language);
