@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-21-web-search-and-routines-design.md`
 
+**Changed on 22/10 by the tabs redesign** (`docs/superpowers/specs/2026-10-22-app-tabs-redesign-design.md`):
+routine answers go into Ask's one thread with Echo (the per-user voice session), labelled as a
+routine, not into a separate "Routines" chat; the routines list lives in Profile → Routines; the
+routines migration is **021** (020 is `users.name`, built with the redesign). Tasks 6 and 7 wait
+for the redesign to be merged.
+
 ## Global Constraints
 
 - Web search is offered only while the user is under `WEB_SEARCHES_PER_DAY` (default 30) searches that UTC day; without it the "live information" rule says Echo cannot see live information.
