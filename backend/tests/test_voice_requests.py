@@ -573,6 +573,19 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
 
 
 @pytest.mark.asyncio
+async def test_voice_turns_are_marked_by_voice(worker):
+    wake = _seg("Echo, riassumimi le ultime mail")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    user_msg, answer = _voice_session(worker).messages
+    # Ask shows "By voice" over it; the answer is the voice update to notify
+    assert user_msg["source"] == "voice"
+    assert "source" not in answer and answer.get("notify") is not False
+
+
+@pytest.mark.asyncio
 async def test_worker_stores_the_pending_action_like_chat(worker):
     pending = SimpleNamespace(
         id=uuid.uuid4(), summary="GMAIL_SEND_EMAIL: to=ada@example.com", status="pending"

@@ -26,11 +26,7 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
 from app.services.about_echo import about_echo_for
-from app.services.chat_history import (
-    get_session_history,
-    load_persisted_history,
-    record_turn,
-)
+from app.services.chat_history import load_thread_history, record_turn
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage
@@ -358,10 +354,12 @@ async def _answer_query(
         session_uuid = uuid.uuid4()
     session_id = str(session_uuid)
     progress.session_id = session_id
-    history = await get_session_history(redis_client, session_id)
-    if not history and body.session_id:
-        # Redis context expired: resume follow-up context from the persisted session
-        history = await load_persisted_history(db, user_id, session_uuid)
+    # The stored session when there is one (the thread holds voice turns Redis never saw)
+    history = (
+        await load_thread_history(redis_client, db, user_id, session_uuid)
+        if body.session_id
+        else []
+    )
 
     # --- Tool requests (Gmail, Calendar, Slack, ...) go to the action agent ---
     llm_service = get_llm_query_service()

@@ -107,7 +107,11 @@ async def test_record_turn_updates_redis_context_and_appends_only_new_turn(monke
     )
 
     assert history == _turn("vecchia", "risposta") + _turn("nuova", "ok")
-    assert persisted == [_turn("nuova", "ok")]
+    [(question, answer)] = persisted
+    # Stored with the time and where it was asked; a typed answer is never notified
+    assert question["content"] == "nuova" and question["source"] == "chat"
+    assert answer["content"] == "ok" and answer["notify"] is False
+    assert question["timestamp"] and answer["timestamp"]
     assert "session:sid" in redis.store
 
 

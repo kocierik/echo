@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.actions.voice import get_or_create_voice_session
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.chat_session import ChatSession
@@ -22,6 +23,15 @@ class ChatMessage(BaseModel):
     pending_action: dict | None = None
     photo_id: str | None = None  # a photo from the wearable camera: GET /photos/{id}/image
     citations: list[dict] | None = None  # web pages the answer cites: {"title", "url"}
+    # Where a question came from: "voice", "chat" (typed) or "camera" (the app's button);
+    # none on messages written before it was kept
+    source: str | None = None
+    # A photo's answer: the date or time it shows, for "Remind me" (ISO, local)
+    when: str | None = None
+    # A routine's run (the routines worker)
+    routine_id: str | None = None
+    # A follow-up question about a photo, and its answer
+    about_photo_id: str | None = None
 
 
 class ChatSessionSummary(BaseModel):
@@ -38,6 +48,7 @@ class ChatSessionSummary(BaseModel):
 class ChatSessionDetail(BaseModel):
     id: uuid.UUID
     title: str | None
+    kind: str = "chat"
     messages: list[ChatMessage]
     created_at: datetime
     updated_at: datetime
@@ -86,6 +97,32 @@ async def list_chat_sessions(
     return ChatSessionListResponse(items=items, count=len(items))
 
 
+def _detail(session: ChatSession) -> ChatSessionDetail:
+    return ChatSessionDetail(
+        id=session.id,
+        title=session.title,
+        kind=session.kind,
+        messages=[ChatMessage(**m) for m in session.messages],
+        created_at=session.created_at,
+        updated_at=session.updated_at,
+    )
+
+
+@router.get("/thread", response_model=ChatSessionDetail)
+async def get_thread(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """The thread with Echo (the voice session), created on first use: what Ask opens.
+
+    Voice requests, photos and routine answers land here; typed questions too, unless the
+    user starts a new chat.
+    """
+    session = await get_or_create_voice_session(db, user_id)
+    await db.commit()
+    return _detail(session)
+
+
 @router.get("/{session_id}", response_model=ChatSessionDetail)
 async def get_chat_session(
     session_id: uuid.UUID,
@@ -104,13 +141,7 @@ async def get_chat_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
-    return ChatSessionDetail(
-        id=session.id,
-        title=session.title,
-        messages=[ChatMessage(**m) for m in session.messages],
-        created_at=session.created_at,
-        updated_at=session.updated_at,
-    )
+    return _detail(session)
 
 
 @router.delete("/{session_id}", status_code=204)

@@ -91,6 +91,8 @@ async def setup_database():
         await conn.execute(text("DELETE FROM transcriptions"))
         await conn.execute(text("DELETE FROM segments"))
         await conn.execute(text("DELETE FROM conversations"))
+        # The thread with Echo is one per user: a test must not find another test's
+        await conn.execute(text("DELETE FROM chat_sessions"))
         await conn.commit()
 
 

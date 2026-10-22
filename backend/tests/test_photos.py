@@ -373,6 +373,8 @@ async def test_a_photo_asked_from_a_chat_is_answered_in_that_chat(
     assert session.messages[-1]["role"] == "user"
     assert session.messages[-1]["content"] == "Che pianta è?"
     assert session.messages[-1]["photo_id"] == photo["id"]
+    # Asked with the app's camera button, not by voice
+    assert session.messages[-1]["source"] == "camera"
 
     await _upload(client, auth_headers, photo["id"])
     await photo_service.analyse_photo(

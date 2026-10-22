@@ -113,7 +113,12 @@ async def create_photo_request(
     await append_message(
         db,
         session.id,
-        {"role": "user", "content": photo.question or "📷", "photo_id": str(photo.id)},
+        {
+            "role": "user",
+            "content": photo.question or "📷",
+            "photo_id": str(photo.id),
+            "source": "camera",
+        },
     )
     await db.commit()
     return photo

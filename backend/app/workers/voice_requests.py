@@ -311,7 +311,13 @@ async def _request_photo(
     )
     voice_session.messages = [
         *(voice_session.messages or []),
-        {"role": "user", "content": command, "timestamp": asked_at, "photo_id": str(photo.id)},
+        {
+            "role": "user",
+            "content": command,
+            "timestamp": asked_at,
+            "photo_id": str(photo.id),
+            "source": "voice",
+        },
     ]
     voice_session.updated_at = _utcnow()
     await db.commit()
@@ -324,7 +330,7 @@ def _append_turn(voice_session, command: str, asked_at: str, answer: str, extra:
     # Reassign (not mutate) so SQLAlchemy detects the JSONB change
     voice_session.messages = [
         *(voice_session.messages or []),
-        {"role": "user", "content": command, "timestamp": asked_at},
+        {"role": "user", "content": command, "timestamp": asked_at, "source": "voice"},
         {
             "role": "assistant",
             "content": answer,
