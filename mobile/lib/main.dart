@@ -382,24 +382,35 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onSettingsTap;
   final VoidCallback? onRequireOnboarding;
 
+  /// Profile: every setting, as the third tab.
+  Widget _profile() => SettingsScreen(
+        deviceController: deviceController,
+        appController: appController,
+        sessionController: sessionController,
+        networkPolicy: networkPolicy,
+        preferences: preferences,
+        onRequireOnboarding: onRequireOnboarding,
+        onOpenTranscripts: () {
+          unawaited(appController.setSelectedTab(AppController.todayTab));
+        },
+      );
+
   void _openSettings(BuildContext context) {
     if (onSettingsTap != null) {
       onSettingsTap!();
       return;
     }
+    unawaited(appController.setSelectedTab(AppController.profileTab));
+  }
+
+  /// Every conversation by day (until Today lists the earlier days itself).
+  void _openMemories(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => SettingsScreen(
-          deviceController: deviceController,
-          appController: appController,
-          sessionController: sessionController,
-          networkPolicy: networkPolicy,
-          preferences: preferences,
-          onRequireOnboarding: onRequireOnboarding,
-          onOpenTranscripts: () {
-            unawaited(appController.setSelectedTab(AppController.memoriesTab));
-          },
+        builder: (_) => MemoriesScreen(
+          segmentUploadedStream: segmentUploadedStream,
+          onAsk: appController.requestAsk,
         ),
       ),
     );
@@ -474,10 +485,7 @@ class MainShell extends StatelessWidget {
                           ? appController.handleNotificationPayload(
                               NotificationService.voicePayloadPrefix)
                           : appController.requestOpenSession(sessionId),
-                      onOpenMemories: () {
-                        unawaited(appController
-                            .setSelectedTab(AppController.memoriesTab));
-                      },
+                      onOpenMemories: () => _openMemories(context),
                       onOpenTasks: () => _openTasks(context),
                       segmentUploadedStream: segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
@@ -490,11 +498,7 @@ class MainShell extends StatelessWidget {
                       askRequest: appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
-                    MemoriesScreen(
-                      headerAction: pill,
-                      segmentUploadedStream: segmentUploadedStream,
-                      onAsk: appController.requestAsk,
-                    ),
+                    _profile(),
                   ],
                 ),
               ),

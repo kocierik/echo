@@ -9,18 +9,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('EchoNavBar', () {
-    testWidgets('shows Today, Memories and the Ask button with semantics',
+    testWidgets('shows Today, Profile and the Ask button with semantics',
         (tester) async {
       await tester.pumpWidget(_themed(
         EchoNavBar(selectedIndex: 2, onSelect: (_) {}, onAskHold: (_) {}),
       ));
 
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Memories'), findsOneWidget);
+      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Memories'), findsNothing);
       expect(
         tester.getSemantics(find.byKey(const Key('echo-nav-2'))),
         matchesSemantics(
-          label: 'Memories',
+          label: 'Profile',
           isButton: true,
           hasSelectedState: true,
           isSelected: true,
