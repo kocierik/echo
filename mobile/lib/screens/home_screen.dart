@@ -12,21 +12,22 @@ import '../services/api/api_service.dart';
 import '../services/app/app_runtime.dart';
 import '../services/device/firmware_update.dart';
 import '../services/phone/phone_actions.dart';
-import '../services/phone/phone_calendar.dart';
 import '../theme/app_theme.dart';
 import '../widgets/echo_nav_bar.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
+import '../widgets/today_top_card.dart';
+import '../utils/formatting.dart';
+import '../services/app/spoken_language.dart';
 import 'conversation_detail_screen.dart';
-import 'integrations_screen.dart';
 import 'navigation.dart';
-import 'settings/automations_settings_screen.dart';
 import 'settings/voice_settings_screen.dart';
 import 'task_editing.dart';
 
-/// Today: what needs a decision, what to do, the day so far, and the apps Echo
-/// can act in. The wearable shows up only when something is wrong with it.
+/// Today: the day and a greeting, one card for the moment (something to confirm, an
+/// event within the hour, the conversation going on, or the day so far), what to do,
+/// and the day. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
@@ -43,10 +44,9 @@ final class HomeScreen extends StatefulWidget {
     this.firmwareUpdate,
     this.onOpenDevice,
     this.headerAction,
-    this.manageAppsBuilder,
-    this.addAppBuilder,
     this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
+    this.phoneEvents,
     super.key,
   });
 
@@ -76,13 +76,13 @@ final class HomeScreen extends StatefulWidget {
   /// The device pill, in the top right.
   final Widget? headerAction;
 
-  /// "Manage" and "Add an app" in "Echo can act in" (injected in tests).
-  final WidgetBuilder? manageAppsBuilder;
-  final WidgetBuilder? addAppBuilder;
-
   /// How often "Echo is working on it" is checked while something is working.
   final Duration workingPollInterval;
   final DateTime Function() clock;
+
+  /// The phone calendar's events of the next hour (the app's, unless injected); none
+  /// without a calendar, and then no "coming up" card.
+  final Future<List<Map<String, Object?>>> Function()? phoneEvents;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -108,9 +108,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   String? _tasksError;
   int _tasksGeneration = 0;
 
-  /// Apps Echo can act in: connected ones, then Reminders and Calendar.
-  List<ActsInApp> _apps = const [];
-
   /// The server recognises voices but has not got the user's own yet.
   bool _ownVoiceMissing = false;
 
@@ -119,6 +116,17 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   List<PendingAction> _pending = const [];
   final Set<String> _pendingBusy = {};
+
+  /// The actions and the busy ones, for the "+N more" page while it is open.
+  final _pendingView =
+      ValueNotifier<(List<PendingAction>, Set<String>)>((const [], const {}));
+
+  /// What the account is called, for the greeting.
+  String? _name;
+  ComingUp? _comingUp;
+
+  /// The last line heard in the conversation going on.
+  String? _lastLine;
 
   @override
   MemoryApi get taskApi => _api;
@@ -174,6 +182,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   @override
   void dispose() {
+    _pendingView.dispose();
     _conversationsGeneration++;
     _tasksGeneration++;
     _workingTimer?.cancel();
@@ -199,8 +208,48 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadPending(),
       _loadWorking(),
       _loadOwnVoice(),
-      _loadApps(),
+      _loadName(),
+      _loadComingUp(),
     ]);
+  }
+
+  Future<void> _loadName() async {
+    final api = _api;
+    if (api is! AccountApi) return;
+    try {
+      final name = (await (api as AccountApi).me()).name;
+      if (mounted) setState(() => _name = name);
+    } catch (_) {}
+  }
+
+  /// An event of the phone's calendar within the hour; nothing without a calendar.
+  Future<void> _loadComingUp() async {
+    final api = _api;
+    if (api is! ComingUpApi) return;
+    final read = widget.phoneEvents ??
+        () async => await _phoneActions?.upcomingEvents(within: const Duration(hours: 1)) ??
+            const <Map<String, Object?>>[];
+    try {
+      final events = await read();
+      final soon = events.isEmpty ? null : await (api as ComingUpApi).comingUp(events);
+      if (mounted) setState(() => _comingUp = soon);
+    } catch (_) {}
+  }
+
+  /// The last line heard in the conversation going on, for the top card.
+  Future<void> _loadLastLine(List<ConversationCard> today) async {
+    final open = today.where((c) => c.isOpen).firstOrNull;
+    if (open == null) {
+      if (_lastLine != null && mounted) setState(() => _lastLine = null);
+      return;
+    }
+    try {
+      final detail = await _api.getConversation(open.id);
+      final said = detail.lines.reversed
+          .map((line) => line.text == null ? '' : cleanTranscript(line.text!))
+          .firstWhere((text) => text.isNotEmpty, orElse: () => '');
+      if (mounted) setState(() => _lastLine = said.isEmpty ? null : said);
+    } catch (_) {}
   }
 
   Future<void> _loadConversations({bool showLoading = false}) async {
@@ -219,6 +268,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         _conversationsLoading = false;
         _conversationsError = null;
       });
+      unawaited(_loadLastLine(_conversations));
     } catch (error) {
       if (!mounted || generation != _conversationsGeneration) return;
       setState(() {
@@ -305,61 +355,19 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   PhoneActionsService? get _phoneActions =>
       widget.phoneActions ?? AppRuntime.maybeCoordinator?.phoneActions;
 
-  /// Connected apps and the iPhone's own: a failure (Composio not set up, the
-  /// server unreachable) just leaves those out.
-  Future<void> _loadApps() async {
-    final apps = <ActsInApp>[];
-    final api = _api;
-    if (api is ToolkitsApi) {
-      try {
-        final toolkits = await (api as ToolkitsApi).getToolkits();
-        apps.addAll([
-          for (final toolkit in toolkits.where((t) => t.connected))
-            ActsInApp(name: toolkit.name, icon: ActsInApp.iconFor(toolkit.slug)),
-        ]);
-      } catch (_) {}
-    }
-    final phone = _phoneActions;
-    if (phone != null) {
-      for (final (app, name, icon) in const [
-        (PhoneApp.reminders, 'Reminders', Icons.checklist_rounded),
-        (PhoneApp.calendar, 'Calendar', Icons.event_outlined),
-      ]) {
-        try {
-          if (phone.isOn(app) && await phone.access(app) == PhoneAccess.granted) {
-            apps.add(ActsInApp(name: name, icon: icon));
-          }
-        } catch (_) {}
-      }
-    }
-    if (mounted) setState(() => _apps = apps);
-  }
-
-  Future<void> _openApps({required bool add}) async {
-    final builder = add ? widget.addAppBuilder : widget.manageAppsBuilder;
-    final api = _api;
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: builder ??
-          (_) => add
-              ? IntegrationsScreen(api: api is ApiService ? api : null)
-              : AutomationsSettingsScreen(phoneActions: _phoneActions),
-    ));
-    if (mounted) unawaited(_loadApps());
-  }
-
   /// Pending actions are optional: a failure just shows none.
   Future<void> _loadPending() async {
     try {
       final pending = await _api.listPendingActions();
-      if (mounted) setState(() => _pending = pending);
+      if (mounted) _setPending(() => _pending = pending);
     } catch (_) {
-      if (mounted) setState(() => _pending = const []);
+      if (mounted) _setPending(() => _pending = const []);
     }
   }
 
   Future<void> _confirm(PendingAction action) async {
     if (_pendingBusy.contains(action.id)) return;
-    setState(() => _pendingBusy.add(action.id));
+    _setPending(() => _pendingBusy.add(action.id));
     try {
       final result = await _api.confirmPendingAction(action.id);
       if (!mounted) return;
@@ -371,13 +379,13 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(
           _loadPending()); // it may have expired or been handled elsewhere
     } finally {
-      if (mounted) setState(() => _pendingBusy.remove(action.id));
+      if (mounted) _setPending(() => _pendingBusy.remove(action.id));
     }
   }
 
   Future<void> _cancel(PendingAction action) async {
     if (_pendingBusy.contains(action.id)) return;
-    setState(() => _pendingBusy.add(action.id));
+    _setPending(() => _pendingBusy.add(action.id));
     try {
       await _api.cancelPendingAction(action.id);
       if (!mounted) return;
@@ -387,14 +395,42 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _snack(userMessage(error, 'Could not cancel this action.'));
       unawaited(_loadPending());
     } finally {
-      if (mounted) setState(() => _pendingBusy.remove(action.id));
+      if (mounted) _setPending(() => _pendingBusy.remove(action.id));
     }
   }
 
   void _replacePending(PendingAction changed) {
-    setState(() {
+    _setPending(() {
       _pending = [for (final a in _pending) a.id == changed.id ? changed : a];
     });
+  }
+
+  void _setPending(VoidCallback change) {
+    setState(change);
+    _pendingView.value = (_pending, {..._pendingBusy});
+  }
+
+  /// "+N more": every action waiting, on a page of its own.
+  Future<void> _openPending() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: const Text('Needs you')),
+        body: ValueListenableBuilder<(List<PendingAction>, Set<String>)>(
+          valueListenable: _pendingView,
+          builder: (context, view, _) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              NeedsYouSection(
+                actions: view.$1,
+                busyIds: view.$2,
+                onConfirm: (a) => unawaited(_confirm(a)),
+                onCancel: (a) => unawaited(_cancel(a)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ));
   }
 
   void _snack(String message) {
@@ -454,6 +490,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final device = widget.deviceStatus;
     final now = widget.clock();
     final todo = editedTasks(todayTodo(_openTasks, now));
+    final moment = pickMoment(
+      pending: _pending,
+      comingUp: _comingUp != null && _comingUp!.start.isAfter(now) ? _comingUp : null,
+      open: _conversations.where((c) => c.isOpen).firstOrNull,
+      lastLine: _lastLine,
+      today: _conversations,
+      now: now,
+    );
 
     // A Material, not a ColoredBox: row ink splashes paint on it
     return Material(
@@ -464,8 +508,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ScreenHeader(
-              overline: _weekdays[now.weekday - 1],
-              title: '${now.day} ${_months[now.month - 1]}',
+              overline:
+                  '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}'.toUpperCase(),
+              title: greeting(now, _name),
               actions: [if (widget.headerAction != null) widget.headerAction!],
             ),
             Expanded(
@@ -525,12 +570,16 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                           ? null
                           : (item) => widget.onOpenChat!(item.sessionId),
                     ),
-                    NeedsYouSection(
-                      actions: _pending,
-                      busyIds: _pendingBusy,
-                      onConfirm: (a) => unawaited(_confirm(a)),
-                      onCancel: (a) => unawaited(_cancel(a)),
-                    ),
+                    if (moment != null)
+                      TodayTopCard(
+                        moment: moment,
+                        now: now,
+                        busyIds: _pendingBusy,
+                        onConfirm: (a) => unawaited(_confirm(a)),
+                        onCancel: (a) => unawaited(_cancel(a)),
+                        onMore: () => unawaited(_openPending()),
+                        onOpenConversation: (c) => unawaited(_openConversation(c)),
+                      ),
                     TodoPanel(
                       loading: _tasksLoading,
                       tasks: todo,
@@ -551,12 +600,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                       onRetry: () => unawaited(_loadConversations(showLoading: true)),
                       onOpen: (c) => unawaited(_openConversation(c)),
                       onSeeAll: widget.onOpenMemories,
-                    ),
-                    const SizedBox(height: 12),
-                    ActsInPanel(
-                      apps: _apps,
-                      onManage: () => unawaited(_openApps(add: false)),
-                      onAdd: () => unawaited(_openApps(add: true)),
                     ),
                   ],
                 ),

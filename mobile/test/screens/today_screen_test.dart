@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
+import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/services/api/actions_api.dart';
@@ -32,6 +33,7 @@ void main() {
     ThemeData? theme,
     Size size = const Size(375, 812),
     double textScale = 1,
+    List<Map<String, Object?>> phoneEvents = const [],
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -53,9 +55,8 @@ void main() {
             workingPollInterval: const Duration(seconds: 1),
             openConversation: (context, id) async => calls.add('open $id'),
             segmentUploadedStream: uploads,
-            manageAppsBuilder: (_) => const Scaffold(body: Text('Manage apps page')),
-            addAppBuilder: (_) => const Scaffold(body: Text('Add app page')),
             clock: () => now,
+            phoneEvents: () async => phoneEvents,
           ),
         ),
       ),
@@ -129,6 +130,95 @@ void main() {
 
       expect(find.text('Bluetooth is off'), findsOneWidget);
       expect(find.byKey(const Key('device-action')), findsNothing);
+    });
+  });
+
+  group('top', () {
+    testWidgets('the day, and a greeting with the name when there is one', (tester) async {
+      await pumpToday(tester, api: FakeTodayApi()..name = 'Erik');
+      await tester.pumpAndSettle();
+      expect(find.text('WEDNESDAY 14 OCTOBER'), findsOneWidget);
+      expect(find.text('Good evening, Erik'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await pumpToday(tester, api: FakeTodayApi());
+      await tester.pumpAndSettle();
+      expect(find.text('Good evening'), findsOneWidget);
+    });
+
+    testWidgets('one card: what to confirm first, the others one tap away', (tester) async {
+      final api = FakeTodayApi(
+        conversations: [card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30))],
+        pending: [
+          PendingAction(id: 'late', summary: 'Book the dinner', status: 'pending',
+              expiresAt: DateTime(2026, 10, 14, 18, 30)),
+          PendingAction(id: 'soon', summary: 'Email Ada', status: 'pending',
+              expiresAt: DateTime(2026, 10, 14, 18, 5)),
+        ],
+      );
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('today-top-card')), findsOneWidget);
+      expect(find.text('Email Ada'), findsOneWidget);
+      expect(find.text('Book the dinner'), findsNothing);
+      expect(find.byKey(const Key('so-far-today')), findsNothing);
+
+      await tester.tap(find.text('+1 more'));
+      await tester.pumpAndSettle();
+      expect(find.text('Book the dinner'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('action-confirm-late')));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('confirm late'));
+    });
+
+    testWidgets('an event within the hour, with what was said last time', (tester) async {
+      final api = FakeTodayApi()
+        ..upcoming = ComingUp(
+            title: 'Review with Ada', start: DateTime(2026, 10, 14, 18, 30),
+            recap: 'Last time: the budget');
+      final events = [
+        {'id': 'E1', 'title': 'Review with Ada', 'start': '2026-10-14T16:30:00Z'},
+      ];
+      await pumpToday(tester, api: api, phoneEvents: events);
+      await tester.pumpAndSettle();
+
+      expect(api.comingUpEvents, [events]);
+      expect(find.text('COMING UP · 18:30'), findsOneWidget);
+      expect(find.text('Last time: the budget'), findsOneWidget);
+    });
+
+    testWidgets('no phone calendar: no event asked, the day so far instead', (tester) async {
+      final api = FakeTodayApi(conversations: [
+        card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30), duration: const Duration(hours: 1)),
+      ]);
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(api.comingUpEvents, isEmpty);
+      expect(find.text('SO FAR TODAY'), findsOneWidget);
+      expect(find.text('Lunch with Ada.'), findsOneWidget);
+      expect(find.text('1 h of talk'), findsOneWidget);
+    });
+
+    testWidgets('the conversation going on, with the last line heard', (tester) async {
+      final api = FakeTodayApi(conversations: [
+        card('live', startedAt: DateTime(2026, 10, 14, 17, 48), title: 'Call about Atlas',
+            isOpen: true, people: const ['Marco']),
+      ])
+        ..details['live'] = ConversationDetail(
+          card: card('live', startedAt: DateTime(2026, 10, 14, 17, 48), isOpen: true),
+          lines: [
+            TranscriptLine(segmentId: 's1', recordedAt: DateTime(2026, 10, 14, 17, 59),
+                status: 'completed', text: '[Others] so we move the demo to November'),
+          ],
+          entities: const [],
+        );
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('NOW · 12 MIN'), findsOneWidget);
+      expect(find.text('"…so we move the demo to November…"'), findsOneWidget);
     });
   });
 
@@ -363,42 +453,11 @@ void main() {
     });
   });
 
-  group('echo can act in', () {
-    testWidgets('shows the connected apps and opens Manage and Add',
-        (tester) async {
-      final api = _ToolkitsTodayApi([
-        const Toolkit(slug: 'gmail', name: 'Gmail', description: '', connected: true),
-        const Toolkit(slug: 'slack', name: 'Slack', description: '', connected: false),
-      ]);
-      await pumpToday(tester, api: api);
-      await tester.pumpAndSettle();
+  testWidgets('"Echo can act in" moved to Profile → Apps', (tester) async {
+    await pumpToday(tester, api: _ToolkitsTodayApi(const []));
+    await tester.pumpAndSettle();
 
-      expect(find.bySemanticsLabel('Gmail, on'), findsOneWidget);
-      expect(find.bySemanticsLabel('Slack, on'), findsNothing);
-      expect(find.text('1 app on'), findsOneWidget);
-
-      await tester.ensureVisible(find.byKey(const Key('acts-in-manage')));
-      await tester.tap(find.byKey(const Key('acts-in-manage')));
-      await tester.pumpAndSettle();
-      expect(find.text('Manage apps page'), findsOneWidget);
-      Navigator.of(tester.element(find.text('Manage apps page'))).pop();
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('acts-in-add')));
-      await tester.pumpAndSettle();
-      expect(find.text('Add app page'), findsOneWidget);
-    });
-
-    testWidgets('is there with no app yet, saying what it is for', (tester) async {
-      await pumpToday(tester, api: _ToolkitsTodayApi(const [], fails: true));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('acts-in')), findsOneWidget);
-      expect(
-        find.text('Connect an app and Echo can send, add and remind for you.'),
-        findsOneWidget,
-      );
-    });
+    expect(find.byKey(const Key('acts-in')), findsNothing);
   });
 
   testWidgets('a request being answered shows until its answer arrives', (tester) async {
@@ -473,18 +532,15 @@ void main() {
 final class _ToolkitsTodayApi extends FakeTodayApi implements ToolkitsApi {
   _ToolkitsTodayApi(
     this.toolkits, {
-    this.fails = false,
     super.conversations,
     super.openTasks,
     super.pending,
   });
 
   final List<Toolkit> toolkits;
-  final bool fails;
 
   @override
   Future<List<Toolkit>> getToolkits({String? query}) async {
-    if (fails) throw serverError('Composio is not configured');
     return toolkits;
   }
 }

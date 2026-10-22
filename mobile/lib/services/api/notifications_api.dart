@@ -1,3 +1,4 @@
+import '../../models/today_insights.dart';
 import '../../models/upcoming_notification.dart';
 import 'api_client.dart';
 
@@ -12,7 +13,21 @@ abstract interface class NotificationsApi {
   });
 }
 
-mixin NotificationEndpoints on ApiClient implements NotificationsApi {
+/// Today's "coming up" card: the phone calendar's next events, matched with the memory.
+abstract interface class ComingUpApi {
+  Future<ComingUp?> comingUp(List<Map<String, Object?>> phoneEvents);
+}
+
+mixin NotificationEndpoints on ApiClient implements NotificationsApi, ComingUpApi {
+  @override
+  Future<ComingUp?> comingUp(List<Map<String, Object?>> phoneEvents) async {
+    final response = await post(
+      '/api/notifications/coming-up',
+      body: {'phone_events': phoneEvents},
+    );
+    return parse(response.data, (data) => ComingUp.fromJson(data as Map<String, dynamic>));
+  }
+
   @override
   Future<List<UpcomingNotification>> getUpcomingNotifications({
     required bool briefings,
