@@ -115,8 +115,10 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       da cui viene) in Postgres, niente database a grafo; nella ricerca si seguono i legami per 1-2 passi
 - [ ] Esperimento "Cosa so di te" (16/10: da vedere se funziona): un profilo di fatti stabili, visibile e
       correggibile in Settings, usato in ogni risposta; niente deduzioni su salute, politica, religione, vita sessuale
-- [ ] Incarichi ricorrenti ("ogni venerdì alle 17 mandami su Slack i task aperti della settimana"), creati a voce
-      o in Ask, visibili e spegnibili in Settings; ogni esecuzione nell'Activity
+- [x] Incarichi ricorrenti (22/10): creati a voce o in Ask ("ogni mattina alle 7 dimmi il meteo a Milano"),
+      eseguiti dal server all'ora (giornalieri, feriali, settimanali, mensili; max 10), risposta nel thread con una
+      notifica, in Profile → Routines; senza strumenti che chiedono Confirm. Poi: incarichi che creano task o
+      promemoria, notifiche push ad app chiusa (APNs)
 - [ ] Regole a evento ("quando prometto qualcosa a un cliente, crea un task in Todoist"); azioni verso altri
       sempre con Confirm
 - [ ] Dati del proprio agente: quote, storico delle esecuzioni, pausa di tutti gli incarichi
@@ -136,7 +138,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       server con lo stesso modello del dispositivo (più precisa su nomi e italiano, costa per minuto: dopo la
       misura dei costi); un caso di prova per i messaggi dettati con ripensamenti ("alle 8, anzi alle 8 e
       mezza" → "alle 8:30") quando l'agente scrive per l'utente
-- [ ] Idea: ricerca web nella chat (lo strumento di ricerca integrato di OpenAI), con un costo per chiamata
+- [x] Ricerca web (22/10): lo strumento di OpenAI in chat, voce, agente e incarichi, 30 ricerche al giorno per
+      utente, contate in `make usage` (0,010 $ l'una, da verificare); fonti mostrate in Ask, mai nella memoria
+- [ ] Ricerca web con Perplexity al posto di OpenAI (stessa interfaccia, `services/web_search.py`)
 - [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 

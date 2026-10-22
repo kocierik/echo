@@ -11,11 +11,14 @@ each person has their own memory; the Android app builds from the same code but 
 ## What Echo does
 
 - **Remembers.** The wearable records speech (voice activity detection, no wake word), the phone relays
-  it over BLE, the backend transcribes it, groups it into conversations, extracts people, tasks, ideas,
-  events and notes, and writes a daily digest.
+  it over BLE, the backend transcribes it, groups it into conversations, extracts people, your
+  promises, ideas, events and notes, and writes a daily digest. Other to-dos are the ones you ask
+  Echo for ("Ehi Echo, segnami di comprare il latte"): they go to Echo's list, or to the app you name.
 - **Answers.** Ask in the app's chat — typed or dictated — "What did Marco say about the offer?"; Echo
   searches the memory (RAG), first in the conversations of the people the question names, and answers
-  in the language of the question. Each day and each week get a summary on Today.
+  in the language of the question. A question that needs live information (the weather, the news,
+  today's prices) is looked up on the web, with the sites named; up to 30 searches a day per user.
+  Each day and each week get a summary on Today.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
@@ -23,8 +26,11 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   Nothing happens from speech that is not addressed to Echo.
 - **Voice requests.** Start a sentence with "Ehi Echo, …" (or "Hey", "Hei", "Ei"; "Echo, …" and
   "Eco, …" alone work too) while wearing the device. After a greeting any spelling counts, so an
-  Italian "Echo" transcribed as "ecco" is heard; "ecco" alone is just the word: the answer appears in the **Voice requests** conversation of the app, with a notification the
-  next time the app wakes up.
+  Italian "Echo" transcribed as "ecco" is heard; "ecco" alone is just the word. The answer appears
+  in Ask, in your one thread with Echo, with a notification the next time the app wakes up.
+- **Does things on its own.** "Ehi Echo, ogni mattina alle 7 dimmi che tempo fa a Milano": a
+  routine, run by the server at its time (daily, weekdays, weekly or monthly, at most 10), its
+  answer in the thread with a notification; seen, paused and deleted in Profile → Routines.
 - **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
   their day; 10 minutes before a meeting, a briefing on the person if there is something to know.
   At most three notifications a day, none at night, each kind switchable.
@@ -311,7 +317,11 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   stored answer (409 "Still working on it" while the first attempt is running), so an action never
   runs twice. The response carries `answer`, `sources`, `session_id` and, when Echo is waiting for a
   confirmation, `pending_action` (`id`, `summary`, `status`, `expires_at`).
-- `GET /api/chat-sessions` (the Voice requests session first), `GET /api/chat-sessions/{id}`,
+  An answer that searched the web also carries `web_sources` (`title`, `url`), kept in the
+  history as the message's `citations`.
+- `GET /api/chat-sessions/thread` — the thread with Echo (created on first use): voice requests,
+  photos and routine answers land there, and typed questions unless a new chat is started.
+- `GET /api/chat-sessions` (the thread first), `GET /api/chat-sessions/{id}`,
   `DELETE /api/chat-sessions/{id}` — complete chat history.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
 
@@ -336,11 +346,19 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 ### Actions
 - See [Actions (Composio)](#actions-composio) for the `/api/actions` endpoints.
 
+### Routines
+- Created by asking Echo (chat or voice), never by REST. `GET /api/routines` — newest first, with
+  `instruction`, `schedule` and `schedule_text` ("Every day at 07:00"), `next_run_at`,
+  `last_status` (`ok`, `failed`, `skipped`) and `last_answer`. `PATCH /api/routines/{id}`
+  (`{active}`; resuming counts from now), `DELETE /api/routines/{id}`.
+
 ### Export
 - `GET /api/export` — everything about the user as one JSON file (conversations with transcripts and
   photo texts, entities, chats, summaries, voice names); no embeddings, no images.
 
 ### Notifications
+- `POST /api/notifications/coming-up` (`{phone_events}`) — Today's card: the next phone-calendar
+  event within the hour and what was said last time with its people or about its title.
 - `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
   schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),
   already filtered: only when there is something to do, at most 3 a day, none from 22 to 8.
@@ -356,9 +374,12 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 
 ### Camera
 - `POST /api/photos` (`{"question"?, "chat_session_id"?}`) — the app's camera button: a photo
-  request whose answer goes to that chat (or Voice requests). Voice requests create their own.
+  request whose answer goes to that chat (or the thread with Echo). Voice requests create their own.
+- `POST /api/photos/{id}/ask` (`{"question"}`) — a follow-up about the same photo ("Translate it");
+  the question and answer go to the photo's chat.
 - `GET /api/device/commands?wait=0..25` — long poll for the phone's and the wearable's commands:
-  `take_photo` (relayed to the wearable) and `phone_action` (Reminders or Calendar, run by the app,
+  `take_photo` (relayed to the wearable), `voice_update` (a routine ran: check the thread and
+  notify) and `phone_action` (Reminders or Calendar, run by the app,
   which answers with `POST /api/device/commands/{id}/result`). `PUT /api/device/phone-apps`
   (`{reminders, calendar}`) — which of them the app has turned on.
 - `PUT /api/photos/{id}/image` — the JPEG (multipart `image`, header `X-Captured-At`); idempotent.

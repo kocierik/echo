@@ -1,11 +1,12 @@
-# Echo — Stato del progetto (16/10/2026)
+# Echo — Stato del progetto (22/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
 13–14/10 e la verifica completa sul nuovo PC del 14/10 (tutte e tre le suite eseguite, Composio provato
 dal vivo). Aggiornato il 16/10 dopo la nuova interfaccia, il primo avvio con account e registrazione,
-l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. Il dettaglio di quanto resta è
-in [ROADMAP.md](ROADMAP.md).
+l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. Aggiornato il 22/10 dopo la
+ricerca web, gli incarichi ricorrenti, le nuove schede Today · Ask · Profile, i to-do solo su richiesta e le
+promesse più rigide. Il dettaglio di quanto resta è in [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -69,38 +70,51 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Account:** ogni telefono riceve una chiave sua (nel Keychain/Keystore); Settings → Devices elenca telefoni e
   chiavi per gli script, con Sign out e Revoke; una chiave revocata altrove fa uscire il telefono una volta sola e
   lo dice sul benvenuto.
-- Tre schede **Today | Ask | Memories** con il pulsante Ask rotondo al centro (tenuto premuto detta la domanda) e la
-  **pillola del dispositivo** in ogni intestazione (tocco = Settings, pressione lunga = muto). Tasks è una pagina di
-  Today. Settings: il dispositivo disegnato in alto (Mute Echo, Device details), poi Apps, On this iPhone,
-  Activity, Notifications, Voices, Appearance, Privacy, What Echo can do, Server connection, Diagnostics, Devices,
-  About.
+- Tre schede **Today | Ask | Profile** (22/10, [design](superpowers/specs/2026-10-22-app-tabs-redesign-design.md))
+  con il pulsante Ask rotondo al centro (tenuto premuto detta la domanda) e la **pillola del dispositivo** (tocco =
+  schermata Echo: stato, batteria, muto, riconnessione, firmware, Forget device; pressione lunga = muto). Tasks è una
+  pagina di Today. **Profile:** nome, email e lingua; la scheda Echo; "Echo does" (Apps, Routines, On this iPhone,
+  Notifications, Activity), "You" (Voices, Language, Privacy, Appearance), What Echo can do, e Devices, server,
+  diagnostica, About.
 - Interfaccia "A + C": pannelli su un fondo quieto, font Archivo; tema "System" di default, scuro quasi nero.
-- **Memories:** conversazioni per giorno (emoji, titolo, riassunto, persone, task, "Live"), ricerca sul server,
-  dettaglio con Summary (task con la frase d'origine, eventi, idee) e Transcript correggibile.
+- **Conversazioni** (in Today, dove è finito Memories): per giorno (emoji, titolo, riassunto, persone, "Live"),
+  ricerca sul server, dettaglio con Summary (promesse con la frase d'origine, eventi, idee) e Transcript correggibile.
 - **Tasks:** task aperti per scadenza, completamento con Annulla, "Not a task", conversazione d'origine.
 - **People** (in Memories): persone per ultima volta viste; la pagina di una persona ha ruolo e note, task ed
   eventi che la nominano, conversazioni in cui compare e "Ask about" (nuova chat con la domanda già inviata).
   Anche una conversazione ha "Ask about this conversation".
-- **Today:** il dispositivo solo se c'è un problema (offline, non abbinato, Bluetooth spento), **Needs you** con
-  le azioni da confermare, **To do today** (promesse e task, massimo tre), **Your day** (le conversazioni di oggi
-  su una linea del tempo, fino a quella in corso), **Echo can act in** (app collegate, Promemoria e Calendario).
-  Riassunto del giorno e della settimana in cima a Memories.
+- **Today:** il dispositivo solo se c'è un problema, la ricerca in tutta la memoria, **una scheda in cima che cambia
+  col momento** (un'azione da confermare con "+N more"; un impegno del calendario entro l'ora con "Last time: …"; la
+  conversazione in corso con l'ultima frase; "So far today"), **To do today** (promesse e to-do chiesti), **Your
+  day** (conversazioni e foto), People today, **Earlier** ("This week", poi i giorni, ognuno con il suo riassunto).
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la
   conversazione), suggerimenti dalle conversazioni e persone recenti; "Add to calendar" dagli eventi passa
   dall'agente (conferma se ci sono invitati).
-- Ask: chat con storico sessioni completo, feedback 👍/👎, input vocale, markdown; **schede Confirm/Cancel** per le
-  azioni da confermare; conversazione **Voice requests** fissata in cima allo storico.
+- Ask: **un unico thread con Echo** (22/10): domande scritte, richieste a voce ("By voice · 08:02"), foto con la
+  risposta e le azioni rapide (Translate it, Ask more, Remind me quando la foto mostra una data), risposte degli
+  incarichi ("ROUTINE · EVERY DAY AT 07:00"); New chat apre una chat a parte; fonti web cliccabili; storico
+  completo, input vocale, markdown, **schede Confirm/Cancel**.
+- **Profile → Routines:** gli incarichi con orario, prossima esecuzione e ultimo risultato; pausa e cancellazione.
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).
-- Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano);
-  il tocco apre la conversazione Voice requests.
+- Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano) e,
+  per gli incarichi, quando arriva il comando `voice_update`; il tocco apre il thread in Ask.
 - **Foto:** pulsante 📷 in Ask (il testo scritto diventa la domanda), risposta nella chat con la miniatura (tocco =
   schermo intero); i comandi "Echo, cos'è questo?" arrivano con un long poll e vengono inoltrati al dispositivo; le
   foto si caricano anche con "solo Wi-Fi". Protocollo 2 e 3 accettati.
 - Tema chiaro/scuro, errori API tipizzati, logout.
 
 ### Backend
+- **Ricerca web** (22/10, `services/web_search.py`): lo strumento di OpenAI offerto a chat, voce, agente e incarichi
+  finché l'utente è sotto `WEB_SEARCHES_PER_DAY` (30); ogni ricerca contata in `llm_usage` (0,010 $, da verificare);
+  le pagine citate nella risposta (`web_sources`), mai nella memoria. Il meteo arriva da una fonte di OpenAI senza
+  pagina da citare; una ricerca di notizie può impiegare ~12 s.
+- **Incarichi ricorrenti** (22/10, `workers/routines.py`): creati dall'agente con i suoi strumenti (anche senza app
+  collegate), eseguiti ogni minuto con `FOR UPDATE SKIP LOCKED`, senza strumenti da confermare, ora locale anche
+  col cambio dell'ora; se il server era giù da più di 2 h l'esecuzione è saltata. Migrazione 020.
+- **To-do e promesse** (22/10): dalle conversazioni nascono solo le promesse esplicite dell'utente; gli altri to-do
+  li chiede l'utente ("Ehi Echo, segnami…"): nella lista di Echo, nell'app che nomina o nei Promemoria per un'ora.
 - **Account** (`routers/auth.py`): `POST /api/auth/login` e `/register` danno una chiave per telefono (solo l'hash
   nel DB), `logout`, `devices`, revoca; password Argon2 controllate fuori dal loop; tentativi falliti contati prima
   del controllo, per indirizzo e per email (10 in 15 minuti); al massimo 5 registrazioni l'ora per indirizzo;
