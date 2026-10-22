@@ -112,6 +112,7 @@ void main() {
       'Listening · battery 72% · firmware 0.5.1',
       'ECHO DOES',
       'Apps',
+      'Routines',
       'Notifications',
       'Activity',
       'YOU',

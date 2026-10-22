@@ -166,10 +166,13 @@ final class AppLifecycleCoordinator {
     );
     unawaited(phoneActions.report(force: true));
     // The server's commands: photos for the wearable, actions for this iPhone
+    // Set below: a routine's answer is checked (and notified) when its nudge arrives
+    late final VoiceUpdatesService voiceUpdates;
     final commandLoop = DeviceCommandLoop(
       api: credentialApiService,
       onTakePhoto: photoService.handleTakePhoto,
       onPhoneAction: phoneActions.handle,
+      onVoiceUpdate: () => voiceUpdates.check(),
     )..start();
     final notificationScheduler = NotificationScheduler(
       api: credentialApiService,
@@ -193,7 +196,7 @@ final class AppLifecycleCoordinator {
     final firmwareSubscription = deviceController.stateStream
         .listen((_) => firmwareUpdate.deviceChanged());
     unawaited(firmwareUpdate.check());
-    final voiceUpdates = VoiceUpdatesService(
+    voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
       preferences,

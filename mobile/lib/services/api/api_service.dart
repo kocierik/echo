@@ -6,6 +6,7 @@ import 'device_api.dart';
 import 'memory_api.dart';
 import 'notifications_api.dart';
 import 'photo_api.dart';
+import 'routines_api.dart';
 import 'voice_api.dart';
 import 'wearable_api.dart';
 
@@ -18,6 +19,7 @@ export 'device_api.dart';
 export 'memory_api.dart';
 export 'notifications_api.dart';
 export 'photo_api.dart';
+export 'routines_api.dart';
 export 'voice_api.dart';
 
 /// The Echo server: every screen's interface, from the endpoint groups in this folder
@@ -31,6 +33,7 @@ class ApiService extends ApiClient
         DeviceEndpoints,
         VoiceEndpoints,
         NotificationEndpoints,
+        RoutineEndpoints,
         WearableEndpoints,
         AuthEndpoints
     implements TodayApi {

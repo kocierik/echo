@@ -21,6 +21,7 @@ void main() {
     expect((action.id, action.tool, action.arguments['title']),
         ('c1', 'APPLEREMINDERS_CREATE_REMINDER', 'Latte'));
 
+    expect(DeviceCommand.tryParse({'type': 'voice_update'}), isA<VoiceUpdateCommand>());
     expect(DeviceCommand.tryParse({'type': 'phone_action', 'tool': 'X'}), isNull);
     expect(DeviceCommand.tryParse({'type': 'launch_rocket'}), isNull);
     expect(DeviceCommand.tryParse('take_photo'), isNull);
@@ -47,6 +48,23 @@ void main() {
     expect(photos, ['p1']);
     expect(actions, ['c1']);
     expect(delays, [const Duration(seconds: 2), const Duration(seconds: 5)]);
+  });
+
+  test('a voice update runs the check for new answers', () async {
+    final api = _FakeCommandsApi([const VoiceUpdateCommand()]);
+    var checks = 0;
+    final loop = DeviceCommandLoop(
+      api: api,
+      onTakePhoto: (_) async {},
+      onPhoneAction: (_) async {},
+      onVoiceUpdate: () async => checks++,
+      sleep: (_) async {},
+    )..start();
+
+    await api.drained.future;
+    loop.stop();
+
+    expect(checks, 1);
   });
 
   test('a slow phone action does not hold up the next command', () async {

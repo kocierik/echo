@@ -29,6 +29,7 @@ import 'settings/language_settings_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
 import 'settings/privacy_settings_screen.dart';
+import 'settings/routines_screen.dart';
 import 'settings/settings_components.dart';
 import 'settings/voice_settings_screen.dart';
 
@@ -236,6 +237,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                   if (mounted) unawaited(_load());
                 },
+              ),
+              SettingsRow(
+                key: const Key('profile-routines'),
+                icon: Icons.schedule_rounded,
+                title: 'Routines',
+                subtitle: 'What Echo does on its own, and when.',
+                onTap: () => _push(const RoutinesScreen()),
               ),
               if (phoneActions != null)
                 SettingsRow(

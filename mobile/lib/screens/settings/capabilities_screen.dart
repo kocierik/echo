@@ -20,6 +20,7 @@ final class CapabilitiesScreen extends StatelessWidget {
 
   static const _voiceExamples = [
     'Echo, remind me to call Giulia on Friday',
+    'Echo, every morning at 7 tell me the weather in Milan',
     'Echo, what is this?',
     'Echo, send Marco a message on Slack',
   ];
@@ -33,7 +34,8 @@ final class CapabilitiesScreen extends StatelessWidget {
         const SettingsSection('REMEMBERS'),
         const SettingsMessage(
           'Wear it: Echo keeps what is said as conversations, with their people, tasks, '
-          'events and promises, a summary for every day and every week.',
+          'events and promises, a summary for every day and every week. What needs to be '
+          'live, like the weather or the news, it looks up on the web.',
         ),
         const SettingsSection('ASK IN THE CHAT (TAP ONE)'),
         const SettingsMessage(

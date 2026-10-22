@@ -19,6 +19,8 @@ sealed class DeviceCommand {
           tool: tool,
           arguments: arguments is Map<String, dynamic> ? arguments : const {},
         );
+      case 'voice_update':
+        return const VoiceUpdateCommand();
       default:
         return null;
     }
@@ -43,4 +45,9 @@ final class PhoneActionCommand extends DeviceCommand {
   final String id;
   final String tool;
   final Map<String, dynamic> arguments;
+}
+
+/// New answers in the thread with Echo (a routine ran): check them and notify.
+final class VoiceUpdateCommand extends DeviceCommand {
+  const VoiceUpdateCommand();
 }

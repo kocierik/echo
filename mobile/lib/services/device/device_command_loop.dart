@@ -7,17 +7,20 @@ import '../api/device_api.dart';
 
 /// Long-polls the server's commands while the app runs (the wearable keeps it awake
 /// through the day) and hands each to its handler: TAKE_PHOTO to the wearable
-/// (PhotoService), Reminders and Calendar to this iPhone (PhoneActionsService).
+/// (PhotoService), Reminders and Calendar to this iPhone (PhoneActionsService), a
+/// voice update (a routine's answer) to the check that notifies it.
 final class DeviceCommandLoop {
   DeviceCommandLoop({
     required DeviceCommandsApi api,
     required Future<void> Function(TakePhotoCommand command) onTakePhoto,
     required Future<void> Function(PhoneActionCommand command) onPhoneAction,
+    Future<void> Function()? onVoiceUpdate,
     this.wait = const Duration(seconds: 20),
     Future<void> Function(Duration)? sleep,
   })  : _api = api,
         _onTakePhoto = onTakePhoto,
         _onPhoneAction = onPhoneAction,
+        _onVoiceUpdate = onVoiceUpdate,
         _sleep = sleep ?? Future<void>.delayed;
 
   static const _retryDelays = [
@@ -30,6 +33,7 @@ final class DeviceCommandLoop {
   final DeviceCommandsApi _api;
   final Future<void> Function(TakePhotoCommand) _onTakePhoto;
   final Future<void> Function(PhoneActionCommand) _onPhoneAction;
+  final Future<void> Function()? _onVoiceUpdate;
   final Future<void> Function(Duration) _sleep;
   final Duration wait;
   bool _running = false;
@@ -60,6 +64,8 @@ final class DeviceCommandLoop {
             case PhoneActionCommand():
               // Not awaited: a slow one must not hold up the next commands
               unawaited(_onPhoneAction(command));
+            case VoiceUpdateCommand():
+              unawaited(_onVoiceUpdate?.call());
           }
         }
       } catch (error) {
