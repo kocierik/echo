@@ -17,7 +17,7 @@ from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
 from app.actions.pending import create_pending_action
 from app.actions.phone_provider import PHONE_APP_NAMES
-from app.actions.policy import ToolTier, classify_call, toolkit_of
+from app.actions.policy import ToolTier, classify_call, classify_tool, toolkit_of
 from app.actions.provider import (
     AccountNotConnectedError,
     ActionOutcomeUnknown,
@@ -122,6 +122,12 @@ _UNKNOWN_NOTE = (
 )
 
 _NOTHING_FOUND = "Nothing found in memory for this query."
+
+# A routine's run has no one to confirm a call that sends, changes or deletes
+_NO_CONFIRM = (
+    "Not done: this needs the user's confirmation, and a routine runs unattended. Tell the "
+    "user to ask Echo for it directly."
+)
 
 _SYSTEM_PROMPT = """You are Echo, the user's personal assistant. You can search the user's \
 memory of recorded conversations (search_memory) and use the tools of their connected apps.
@@ -294,13 +300,15 @@ async def run_action_agent(
     max_steps: int = 6,
     connected_toolkits: list[str] | None = None,
     routine_tools: bool = True,
+    allow_confirm: bool = True,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
     `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
     are offered: the connected apps the request names, else all connected ones.
     `routine_tools`: Echo's own tools to create, list and delete routines (not offered to
-    a routine's own run).
+    a routine's own run). Without `allow_confirm` (a routine: no one is there to confirm),
+    confirm-tier tools are not offered and a call that needs confirmation is refused.
     """
     texts = TEXTS[detect_language(request)]
 
@@ -309,6 +317,11 @@ async def run_action_agent(
     except ActionProviderError:
         logger.warning("Action provider unreachable while listing tools", exc_info=True)
         return AgentOutcome(answer=texts["unreachable"])
+    if not allow_confirm:
+        external_tools = [
+            schema for schema in external_tools
+            if classify_tool(_tool_name(schema)) != ToolTier.CONFIRM
+        ]
     offered = {_tool_name(schema) for schema in external_tools}
     own = ROUTINE_TOOL_NAMES if routine_tools else frozenset()
     tools = [SEARCH_MEMORY_TOOL, *(ROUTINE_TOOLS if routine_tools else []), *external_tools]
@@ -338,11 +351,24 @@ async def run_action_agent(
         confirm_call = next(
             (
                 call for call in response.tool_calls
-                if call.name in offered
+                # Unattended, even a tool not offered is refused as needing confirmation
+                if (call.name in offered or not allow_confirm)
                 and classify_call(call.name, call.arguments) == ToolTier.CONFIRM
             ),
             None,
         )
+        if confirm_call is not None and not allow_confirm:
+            # Told to the model, which explains; nothing from this turn runs
+            messages.append(LLMMessage(
+                role="assistant", content=response.content or "",
+                tool_calls=response.tool_calls,
+            ))
+            for call in response.tool_calls:
+                messages.append(LLMMessage(
+                    role="tool", tool_call_id=call.id, name=call.name,
+                    content=serialize_tool_result({"error": _NO_CONFIRM}),
+                ))
+            continue
         if confirm_call is not None:
             # Only the first confirm-tier call is kept; nothing else from this turn runs.
             summary = pending_summary(confirm_call.name, confirm_call.arguments)
