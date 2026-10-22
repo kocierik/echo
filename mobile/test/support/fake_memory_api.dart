@@ -149,7 +149,14 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
 
 /// [FakeMemoryApi] plus what Today reads: the digest and pending actions.
 class FakeTodayApi extends FakeMemoryApi
-    implements TodayApi, WeeklySummaryApi, VoiceWorkingApi, VoiceApi, ComingUpApi, AccountApi {
+    implements
+        TodayApi,
+        WeeklySummaryApi,
+        VoiceWorkingApi,
+        VoiceApi,
+        ComingUpApi,
+        AccountApi,
+        DigestApi {
   FakeTodayApi({
     super.conversations,
     super.openTasks,
@@ -159,6 +166,15 @@ class FakeTodayApi extends FakeMemoryApi
   }) : pending = pending ?? [];
 
   DailySummary? digest;
+
+  /// Past days' digests, by day.
+  Map<DateTime, DailySummary> digests = {};
+
+  @override
+  Future<DailySummary?> getDigest(DateTime day) async {
+    calls.add('digest ${day.toIso8601String().substring(0, 10)}');
+    return digests[day];
+  }
 
   /// What the account is called ("Good afternoon, Erik"); none by default.
   String? name;
@@ -260,6 +276,8 @@ ConversationCard card(
   String analysisStatus = 'completed',
   List<String> people = const ['Ada'],
   int taskCount = 1,
+  String? photoId,
+  int segmentCount = 3,
 }) {
   return ConversationCard(
     id: id,
@@ -273,6 +291,8 @@ ConversationCard card(
     analysisStatus: analysisStatus,
     people: people,
     taskCount: taskCount,
+    photoId: photoId,
+    segmentCount: segmentCount,
   );
 }
 

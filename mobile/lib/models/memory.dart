@@ -18,6 +18,7 @@ final class ConversationCard {
     this.people = const [],
     this.taskCount = 0,
     this.photoCount = 0,
+    this.photoId,
   });
 
   factory ConversationCard.fromJson(Map<String, dynamic> json) {
@@ -37,6 +38,7 @@ final class ConversationCard {
       ),
       taskCount: (json['task_count'] as num? ?? 0).toInt(),
       photoCount: (json['photo_count'] as num? ?? 0).toInt(),
+      photoId: json['photo_id'] as String?,
     );
   }
 
@@ -57,6 +59,12 @@ final class ConversationCard {
 
   /// Photos from the wearable camera taken during the conversation.
   final int photoCount;
+
+  /// The first of them: a photo on its own is a photo row on Today.
+  final String? photoId;
+
+  /// Only a photo, nothing said: Today shows its thumbnail and title.
+  bool get isPhoto => photoId != null && segmentCount == 0;
 
   /// Being transcribed or analysed: the title and summary are not there yet.
   bool get isProcessing =>

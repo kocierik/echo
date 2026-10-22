@@ -5,6 +5,7 @@ import '../../models/segment.dart';
 import '../../models/task_item.dart';
 import '../../models/today_insights.dart';
 import 'api_client.dart';
+import 'api_exception.dart';
 
 /// What the Memories and Tasks screens read and change.
 abstract interface class MemoryApi {
@@ -32,6 +33,12 @@ abstract interface class TodayApi implements MemoryApi, PendingActionsApi {
   Future<DailySummary?> getLatestDigest();
 }
 
+/// A past day's digest (optional: a day opened from Today shows it at the top).
+abstract interface class DigestApi {
+  /// The digest of [day], or null when that day has none.
+  Future<DailySummary?> getDigest(DateTime day);
+}
+
 /// Weekly summaries (optional for a Today api: no section without it).
 abstract interface class WeeklySummaryApi {
   /// The latest weekly summary of the last two weeks, or null.
@@ -49,7 +56,23 @@ abstract interface class TranscriptMemoryApi {
 
 /// Conversations, tasks, people, summaries and the user's whole data.
 mixin MemoryEndpoints on ApiClient
-    implements MemoryApi, TranscriptMemoryApi, WeeklySummaryApi {
+    implements MemoryApi, TranscriptMemoryApi, WeeklySummaryApi, DigestApi {
+  @override
+  Future<DailySummary?> getDigest(DateTime day) async {
+    final date = '${day.year.toString().padLeft(4, '0')}-'
+        '${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+    try {
+      final response = await getCached('/api/digest/$date');
+      return parse(
+        response.data,
+        (data) => DailySummary.fromJson(data as Map<String, dynamic>),
+      );
+    } on ApiException catch (error) {
+      if (error.code == 'not_found') return null; // a day without one
+      rethrow;
+    }
+  }
+
   @override
   Future<List<ConversationCard>> listConversations({
     int limit = 30,

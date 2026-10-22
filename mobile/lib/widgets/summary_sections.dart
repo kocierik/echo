@@ -75,17 +75,25 @@ final class _DigestSectionState extends State<DigestSection> {
 /// The latest weekly summary: what the week was about, its highlights (on a
 /// tap), who came up.
 final class WeeklySummarySection extends StatefulWidget {
-  const WeeklySummarySection({required this.week, required this.now, super.key});
+  const WeeklySummarySection({
+    required this.week,
+    required this.now,
+    this.expanded = false,
+    super.key,
+  });
 
   final WeeklySummary week;
   final DateTime now;
+
+  /// Open from the start, highlights included (its own page).
+  final bool expanded;
 
   @override
   State<WeeklySummarySection> createState() => _WeeklySummarySectionState();
 }
 
 final class _WeeklySummarySectionState extends State<WeeklySummarySection> {
-  bool _expanded = false;
+  late bool _expanded = widget.expanded;
 
   @override
   Widget build(BuildContext context) {

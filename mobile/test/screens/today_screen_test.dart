@@ -3,9 +3,14 @@ import 'dart:async';
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/person.dart';
+import 'package:echo_app/models/photo.dart';
+import 'package:echo_app/screens/navigation.dart';
+import 'package:echo_app/services/memory/memories_controller.dart';
+import 'package:echo_app/widgets/panel.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
-import 'package:echo_app/services/api/actions_api.dart';
+import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +39,8 @@ void main() {
     Size size = const Size(375, 812),
     double textScale = 1,
     List<Map<String, Object?>> phoneEvents = const [],
+    MemoriesController? memories,
+    ConversationOpener? openPerson,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -49,7 +56,6 @@ void main() {
             deviceStatus: status,
             onReconnect: onReconnect,
             onPair: () => calls.add('pair'),
-            onOpenMemories: () => calls.add('memories'),
             onOpenTasks: () => calls.add('tasks'),
             onOpenChat: (id) => calls.add('chat $id'),
             workingPollInterval: const Duration(seconds: 1),
@@ -57,6 +63,8 @@ void main() {
             segmentUploadedStream: uploads,
             clock: () => now,
             phoneEvents: () async => phoneEvents,
+            memories: memories,
+            openPerson: openPerson,
           ),
         ),
       ),
@@ -264,7 +272,10 @@ void main() {
 
       await tester.ensureVisible(find.byKey(const Key('recap-see-all')));
       await tester.tap(find.byKey(const Key('recap-see-all')));
-      expect(calls.last, 'memories');
+      await tester.pumpAndSettle();
+      // The whole of today, on a page of its own
+      expect(find.byKey(const Key('day-screen')), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
     });
 
     testWidgets('a muted Echo shows the open conversation as in progress',
@@ -295,7 +306,8 @@ void main() {
     testWidgets('empty and error states', (tester) async {
       await pumpToday(tester);
       await tester.pumpAndSettle();
-      expect(find.text('No conversations yet today.'), findsOneWidget);
+      // Nothing yet today: no empty panel
+      expect(find.byKey(const Key('your-day')), findsNothing);
 
       final api = withConversations()..listError = serverError('Offline');
       await tester.pumpWidget(const SizedBox());
@@ -321,7 +333,7 @@ void main() {
       uploads.add(null);
       await tester.pumpAndSettle();
 
-      expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false']));
+      expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false', 'people']));
     });
   });
 
@@ -393,8 +405,15 @@ void main() {
       expect(find.text('Buy a gift'), findsNothing);
     });
 
-    testWidgets('nothing due, and See all', (tester) async {
+    testWidgets('nothing due, and See all; no panel without anything open', (tester) async {
       await pumpToday(tester);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('todo-panel')), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await pumpToday(tester, api: FakeTodayApi(openTasks: [
+        task('later', 'Renew the passport', due: DateTime(2026, 11, 30)),
+      ]));
       await tester.pumpAndSettle();
       expect(find.text('Nothing due today.'), findsOneWidget);
 
@@ -450,6 +469,140 @@ void main() {
       await tester.tap(find.byKey(const Key('action-cancel-a1')));
       await tester.pumpAndSettle();
       expect(api.calls, contains('cancel a1'));
+    });
+  });
+
+  group('the memory', () {
+    testWidgets('search over the whole memory, in place of the day', (tester) async {
+      final api = FakeTodayApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
+        ..searchResults = MemorySearchResults(
+          conversations: [card('hit', startedAt: DateTime(2026, 10, 12, 9), title: 'Atlas kickoff')],
+          entities: const [
+            MemoryEntity(
+              id: 'e1',
+              type: 'idea',
+              name: 'Atlas dashboard',
+              sourceText: '[Tu] Facciamo una dashboard per Atlas.',
+              conversationId: 'hit',
+            ),
+          ],
+        );
+      late void Function() runSearch;
+      final memories = MemoriesController(
+        api: api,
+        debounceScheduler: (delay, callback) {
+          runSearch = callback;
+          return () {};
+        },
+      );
+      addTearDown(memories.dispose);
+      await pumpToday(tester, api: api, memories: memories);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('memories-search')), 'atlas');
+      await tester.pump();
+      expect(find.byKey(const Key('search-loading')), findsOneWidget);
+      runSearch();
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(PanelHeader, 'Conversations'), findsOneWidget);
+      expect(find.text('Atlas kickoff'), findsOneWidget);
+      expect(find.text('Atlas dashboard'), findsOneWidget);
+      expect(find.byKey(const Key('your-day')), findsNothing);
+      await tester.tap(find.text('Atlas dashboard'));
+      await tester.pumpAndSettle();
+      expect(calls, ['open hit']);
+
+      api.searchResults = const MemorySearchResults(conversations: [], entities: []);
+      await tester.enterText(find.byKey(const Key('memories-search')), 'zzz');
+      await tester.pump();
+      runSearch();
+      await tester.pumpAndSettle();
+      expect(find.text('No results'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('memories-search-clear')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('your-day')), findsOneWidget);
+    });
+
+    testWidgets('people today, and All for everyone', (tester) async {
+      final opened = <String>[];
+      final api = FakeTodayApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
+        ..people = [
+          PersonSummary(id: 'p1', name: 'Marco Rossi', lastSeen: DateTime(2026, 10, 14, 9),
+              conversationCount: 3),
+          PersonSummary(id: 'p2', name: 'Ada', lastSeen: DateTime(2026, 10, 12, 9)),
+        ];
+      await pumpToday(tester, api: api, openPerson: (context, id) async => opened.add(id));
+      await tester.pumpAndSettle();
+
+      Finder onPanel(String text) =>
+          find.descendant(of: find.byKey(const Key('people-panel')), matching: find.text(text));
+      expect(find.text('People today'), findsOneWidget);
+      expect(onPanel('Marco'), findsOneWidget);
+      expect(onPanel('Ada'), findsNothing); // not today
+      await tester.ensureVisible(find.byKey(const Key('person-p1')));
+      await tester.tap(find.byKey(const Key('person-p1')));
+      await tester.pumpAndSettle();
+      expect(opened, ['p1']);
+
+      await tester.tap(find.byKey(const Key('people-all')));
+      await tester.pumpAndSettle();
+      expect(find.text('Ada'), findsOneWidget);
+      expect(find.text('Marco Rossi'), findsOneWidget);
+    });
+
+    testWidgets('earlier: the week, then each day with its count and main topic',
+        (tester) async {
+      final api = FakeTodayApi(
+        conversations: [
+          card('t1', startedAt: DateTime(2026, 10, 14, 9)),
+          card('y1', startedAt: DateTime(2026, 10, 13, 18), title: 'Dinner plans',
+              duration: const Duration(minutes: 10)),
+          card('y2', startedAt: DateTime(2026, 10, 13, 10), title: 'The Atlas kickoff',
+              duration: const Duration(minutes: 50)),
+          card('m1', startedAt: DateTime(2026, 10, 12, 9), title: 'Dentist'),
+        ],
+        week: WeeklySummary(weekStart: DateTime(2026, 10, 12), summary: 'Atlas took the week.',
+            highlights: const ['The kickoff on Tuesday']),
+      )..digests[DateTime(2026, 10, 13)] =
+            DailySummary(date: DateTime(2026, 10, 13), summary: 'Atlas kicked off; dinner on Friday.');
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('earlier')));
+      expect(find.text('This week'), findsOneWidget);
+      expect(find.text('Yesterday'), findsOneWidget);
+      expect(find.text('2 conversations · The Atlas kickoff'), findsOneWidget);
+      expect(find.text('1 conversation · Dentist'), findsOneWidget);
+      // Today is not "earlier"
+      expect(find.byKey(const Key('earlier-2026-10-14')), findsNothing);
+
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('day-digest')), findsOneWidget);
+      expect(find.text('Atlas kicked off; dinner on Friday.'), findsOneWidget);
+      expect(find.text('Dinner plans'), findsOneWidget);
+      Navigator.of(tester.element(find.byKey(const Key('day-screen')))).pop();
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('This week'));
+      await tester.tap(find.text('This week'));
+      await tester.pumpAndSettle();
+      expect(find.text('• The kickoff on Tuesday'), findsOneWidget);
+    });
+
+    testWidgets('a photo of the day shows its thumbnail and title', (tester) async {
+      final api = _PhotoTodayApi(conversations: [
+        card('photo', startedAt: DateTime(2026, 10, 14, 10, 15), title: 'the lift notice',
+            summary: 'Out of order until Thursday', photoId: 'p1', segmentCount: 0),
+      ]);
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Photo: the lift notice'), findsOneWidget);
+      expect(find.text('Out of order until Thursday'), findsOneWidget);
+      expect(find.byKey(const Key('day-photo-p1')), findsOneWidget);
     });
   });
 
@@ -543,4 +696,34 @@ final class _ToolkitsTodayApi extends FakeTodayApi implements ToolkitsApi {
   Future<List<Toolkit>> getToolkits({String? query}) async {
     return toolkits;
   }
+}
+
+/// Today with the photos' images (a photo row's thumbnail).
+final class _PhotoTodayApi extends FakeTodayApi implements PhotoApi {
+  _PhotoTodayApi({super.conversations});
+
+  @override
+  Future<PhotoImageSource> photoImage(String id) async => PhotoImageSource(
+        url: Uri.parse('https://echo.test/api/photos/$id/image'),
+        headers: const {},
+      );
+
+  @override
+  Future<PhotoInfo> requestPhoto({
+    String? question,
+    String? chatSessionId,
+    bool fromWearableButton = false,
+    String source = 'app',
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<PhotoInfo> getPhoto(String id) => throw UnimplementedError();
+
+  @override
+  Future<void> uploadPhoto(String id, List<int> jpeg, DateTime capturedAt) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> reportPhotoFailure(String id, String reason) => throw UnimplementedError();
 }

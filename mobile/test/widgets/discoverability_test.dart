@@ -84,7 +84,6 @@ void main() {
                 const VoiceProfiles(fingerprintsEnabled: true, items: []),
           deviceStatus: const DeviceStatus(
               connectionState: DeviceConnectionState.listening),
-          onOpenMemories: () {},
           onOpenTasks: () {},
           clock: () => DateTime(2026, 10, 15, 10),
         ),
@@ -118,7 +117,6 @@ void main() {
         body: HomeScreen(
           api: FakeTodayApi(),
           deviceStatus: device,
-          onOpenMemories: () {},
           onOpenTasks: () {},
           firmwareUpdate: update,
           onOpenDevice: () => opened++,

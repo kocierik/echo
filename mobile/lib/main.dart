@@ -11,7 +11,6 @@ import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/profile_screen.dart';
-import 'screens/memories_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
 import 'services/api/build_defaults.dart';
@@ -411,19 +410,6 @@ class MainShell extends StatelessWidget {
     ));
   }
 
-  /// Every conversation by day (until Today lists the earlier days itself).
-  void _openMemories(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => MemoriesScreen(
-          segmentUploadedStream: segmentUploadedStream,
-          onAsk: appController.requestAsk,
-        ),
-      ),
-    );
-  }
-
   void _openTasks(BuildContext context) {
     Navigator.push(
       context,
@@ -493,7 +479,6 @@ class MainShell extends StatelessWidget {
                           ? appController.handleNotificationPayload(
                               NotificationService.voicePayloadPrefix)
                           : appController.requestOpenSession(sessionId),
-                      onOpenMemories: () => _openMemories(context),
                       onOpenTasks: () => _openTasks(context),
                       segmentUploadedStream: segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
