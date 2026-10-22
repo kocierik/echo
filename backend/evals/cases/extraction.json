@@ -6,24 +6,22 @@
   ],
   "cases": [
     {
-      "id": "task-tomorrow",
+      "id": "own-plan-is-not-a-task",
       "text": "[Tu] Domani devo chiamare Marco per il preventivo.",
       "expect": [
-        {
-          "types": [
-            "task"
-          ],
-          "keywords": [
-            "marco"
-          ],
-          "due_date": "2026-10-15"
-        },
         {
           "types": [
             "person"
           ],
           "keywords": [
             "marco"
+          ]
+        }
+      ],
+      "forbid": [
+        {
+          "types": [
+            "task"
           ]
         }
       ]
@@ -119,17 +117,13 @@
       ]
     },
     {
-      "id": "end-of-month-deadline",
+      "id": "own-deadline-is-not-a-task",
       "text": "[Tu] Entro fine mese devo rinnovare il passaporto.",
-      "expect": [
+      "forbid": [
         {
           "types": [
             "task"
-          ],
-          "keywords": [
-            "passaporto"
-          ],
-          "due_date": "2026-10-31"
+          ]
         }
       ]
     },
@@ -165,17 +159,13 @@
       ]
     },
     {
-      "id": "next-monday",
+      "id": "bill-is-not-a-task",
       "text": "[Tu] Lunedì prossimo devo pagare la bolletta della luce.",
-      "expect": [
+      "forbid": [
         {
           "types": [
             "task"
-          ],
-          "keywords": [
-            "bolletta"
-          ],
-          "due_date": "2026-10-19"
+          ]
         }
       ]
     },
@@ -185,8 +175,7 @@
       "expect": [
         {
           "types": [
-            "note",
-            "task"
+            "note"
           ],
           "keywords": [
             "password"
@@ -208,8 +197,7 @@
       "expect": [
         {
           "types": [
-            "event",
-            "task"
+            "event"
           ],
           "keywords": [
             "revisione"
@@ -272,6 +260,106 @@
             "task"
           ],
           "promise": true
+        }
+      ]
+    },
+    {
+      "id": "promise-slides-tonight",
+      "text": "[Tu] Ok Luca, ti giro le slide stasera.",
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "slide"
+          ],
+          "promise": true,
+          "promise_to": "luca",
+          "due_date": "2026-10-14"
+        }
+      ]
+    },
+    {
+      "id": "promise-english",
+      "text": "[You] Sure Ada, I'll send you the contract by Monday.",
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "promise": true,
+          "promise_to": "ada",
+          "due_date": "2026-10-19"
+        }
+      ]
+    },
+    {
+      "id": "polite-is-not-a-promise",
+      "text": "[Tu] Va bene, ci sentiamo, ti faccio sapere.",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conditional-is-not-a-promise",
+      "text": "[Tu] Se riesco ti chiamo stasera, Marco.",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reported-is-not-a-promise",
+      "text": "[Tu] Marco ha detto che mi manda il preventivo domani.",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "offer-is-not-a-promise",
+      "text": "[Tu] Vuoi che ti mandi le foto della cena?",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vague-yes-is-not-a-promise",
+      "text": "[Tu] Sì sì, lo faccio io, tranquillo.",
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "asked-todo-is-for-echo",
+      "text": "[Tu] Ehi Echo, segnami di comprare il latte.",
+      "forbid": [
+        {
+          "types": [
+            "task",
+            "note",
+            "event",
+            "idea"
+          ]
         }
       ]
     }

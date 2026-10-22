@@ -300,12 +300,10 @@ async def extract_entities(
                 '"content": "...", "metadata": {...}}]}\n\n'
                 "Tipi:\n"
                 "- person: persone menzionate (metadata: {role, notes})\n"
-                "- task: azioni concrete e specifiche da fare, con un risultato chiaro. "
-                "NON estrarre come task: intenzioni vaghe, desideri generici, "
-                "o abitudini. Esempio task valido: 'Chiamare Marco domani'. "
-                "Esempio NON task: 'Devo mangiare meglio' "
-                "(metadata: {done: false, due_date: YYYY-MM-DD, priority, "
-                "promise, promise_to})\n"
+                "- task: SOLO le promesse dell'utente (vedi 'Promesse' sotto). Non estrarre "
+                "altre cose da fare, piani, doveri o promemoria: quando l'utente vuole un "
+                "to-do lo chiede a Echo "
+                "(metadata: {done: false, due_date: YYYY-MM-DD, promise: true, promise_to})\n"
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
                 "- event: eventi, appuntamenti, date (metadata: {event_date: YYYY-MM-DD, "
                 "event_time: HH:MM, duration_minutes: intero, location})\n"
@@ -313,11 +311,17 @@ async def extract_entities(
                 "Regole importanti:\n"
                 "- Estrai SOLO informazioni esplicitamente presenti nel testo\n"
                 "- Per i task, formula il nome come azione (verbo all'infinito)\n"
-                "- Promesse: quando l'utente (righe [You] o [Tu]) si impegna con qualcuno "
-                "a fare qualcosa (\"ti mando il preventivo\", \"ti richiamo domani\"), "
-                "il task ha metadata promise: true e promise_to: il nome della persona "
-                "(ometti promise_to se non si capisce). Gli impegni presi da altri "
-                "(righe [Others] o [Altri]) non sono promesse dell'utente\n"
+                "- Promesse: una frase dell'utente (righe [You] o [Tu]) che è un impegno "
+                "esplicito verso una persona a fare una cosa concreta (\"Marco, ti mando il "
+                "preventivo entro venerdì\", \"ti richiamo domani, Giulia\"): un task con "
+                "metadata promise: true e promise_to: il nome della persona (ometti "
+                "promise_to se non si capisce). NON sono promesse: piani o doveri per sé "
+                "(\"devo comprare il latte\", \"domani devo chiamare Marco\"), frasi "
+                "ipotetiche o condizionate (\"se riesco ti chiamo\"), formule di cortesia "
+                "senza un'azione precisa (\"ci sentiamo\", \"ti faccio sapere\", \"lo "
+                "faccio io\"), domande e offerte (\"vuoi che ti mandi le foto?\"), ciò che "
+                "l'utente riporta di altri (\"Marco ha detto che mi manda...\"), gli impegni "
+                "presi da altri (righe [Others] o [Altri]). Nel dubbio non è una promessa\n"
                 "- Per le persone, usa il nome completo se disponibile\n"
                 "- Ignora filler e parole senza contenuto informativo\n"
                 "- Le richieste rivolte all'assistente \"Echo\" (es. \"Echo, segnami il "
@@ -344,6 +348,10 @@ async def extract_entities(
         # Skip entities with empty names
         name = entity_data.get("name", "").strip()
         if not name:
+            continue
+        metadata = entity_data.get("metadata") or {}
+        # To-dos come only from the user's promises; others are asked of Echo
+        if entity_data.get("type") == "task" and metadata.get("promise") is not True:
             continue
 
         entity = Entity(
