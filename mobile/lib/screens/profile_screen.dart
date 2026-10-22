@@ -103,6 +103,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     unawaited(_load());
   }
 
+  @override
+  void dispose() {
+    if (widget.apiServiceFactory == null) _api.dispose();
+    super.dispose();
+  }
+
   /// The account and the connected apps; a failure leaves them out.
   Future<void> _load() async {
     try {
