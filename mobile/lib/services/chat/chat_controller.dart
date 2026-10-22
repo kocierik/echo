@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../utils/formatting.dart';
+import '../../utils/photo_follow_ups.dart';
 import '../api/api_exception.dart';
 import '../api/api_service.dart';
 import '../device/photo_service.dart';
@@ -31,6 +32,7 @@ final class ChatState {
     Set<String> busyActionIds = const {},
     this.streamingText,
     this.isThread = false,
+    this.photoContext,
   })  : busyActionIds = Set<String>.unmodifiable(busyActionIds),
         messages = List<ChatMessage>.unmodifiable(messages);
 
@@ -61,6 +63,9 @@ final class ChatState {
   /// Showing the thread with Echo (voice, photo and routine messages land here).
   final bool isThread;
 
+  /// After "Ask more" under a photo: the next question is about that photo.
+  final String? photoContext;
+
   bool get canRetry => messages.any(
         (message) => message.isUser && message.failed,
       );
@@ -77,6 +82,7 @@ final class ChatState {
     Set<String>? busyActionIds,
     Object? streamingText = _unset,
     bool? isThread,
+    Object? photoContext = _unset,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -93,6 +99,9 @@ final class ChatState {
           ? this.streamingText
           : streamingText as String?,
       isThread: isThread ?? this.isThread,
+      photoContext: identical(photoContext, _unset)
+          ? this.photoContext
+          : photoContext as String?,
     );
   }
 }
@@ -141,6 +150,11 @@ final class ChatController extends ChangeNotifier {
   Future<void> send(String text) async {
     final question = text.trim();
     if (question.isEmpty || _state.sending || _state.loadingSession) return;
+    final photo = _state.photoContext;
+    if (photo != null && _api is PhotoFollowUpApi) {
+      await askAboutPhoto(photo, question);
+      return;
+    }
 
     final messages = [
       ..._state.messages,
@@ -333,6 +347,72 @@ final class ChatController extends ChangeNotifier {
         aboutPhotoId: message.aboutPhotoId,
       );
     }).toList();
+  }
+
+  /// "Ask more" under a photo: the next question is about it (null: no longer).
+  void setPhotoContext(String? photoId) {
+    if (_disposed || photoId == _state.photoContext) return;
+    _emit(_state.copyWith(photoContext: photoId));
+  }
+
+  /// A question about a photo already answered: the vision model looks at it again.
+  Future<void> askAboutPhoto(String photoId, String question) async {
+    final api = _api;
+    final text = question.trim();
+    if (api is! PhotoFollowUpApi || text.isEmpty || _state.sending) return;
+    final generation = _generation;
+    _emit(_state.copyWith(
+      messages: [
+        ..._state.messages,
+        ChatMessage(text: text, isUser: true, timestamp: _clock(), aboutPhotoId: photoId),
+      ],
+      sending: true,
+      error: null,
+      composerText: '',
+      photoContext: null,
+    ));
+    try {
+      final answer = await (api as PhotoFollowUpApi).askAboutPhoto(photoId, text);
+      if (!_isCurrent(generation)) return;
+      _emit(_state.copyWith(
+        messages: [
+          ..._state.messages,
+          ChatMessage(
+            text: answer,
+            isUser: false,
+            timestamp: _clock(),
+            aboutPhotoId: photoId,
+          ),
+        ],
+        sending: false,
+      ));
+    } catch (error) {
+      if (!_isCurrent(generation)) return;
+      final messages = [..._state.messages];
+      messages[messages.length - 1] = messages.last.copyWith(failed: true);
+      _emit(_state.copyWith(
+        messages: messages,
+        sending: false,
+        error: userMessage(error, 'Echo could not look at the photo again.'),
+      ));
+    }
+  }
+
+  /// "Translate it" under a photo, asked in the language the user speaks.
+  Future<void> translatePhoto(String photoId) async {
+    final language = await _spokenLanguage?.call() ?? 'en';
+    if (_disposed) return;
+    await askAboutPhoto(photoId, translateRequest(language));
+  }
+
+  /// "Remind me…" under a photo that shows a date: Echo makes the reminder, with the
+  /// usual rules (the phone's Reminders when on, else an Echo task).
+  Future<void> remindFromPhoto(DateTime when) async {
+    final language = await _spokenLanguage?.call() ?? 'en';
+    if (_disposed) return;
+    final request = reminderRequest(when, language);
+    setComposerText(request);
+    await send(request);
   }
 
   /// The camera button: the wearable takes a photo; the text in the composer, if

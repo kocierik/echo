@@ -30,6 +30,41 @@ void main() {
     expect(find.text('È un ficus.'), findsOneWidget);
   });
 
+  testWidgets('a photo answer: the photo large, then quick follow-ups', (tester) async {
+    final now = DateTime(2026, 10, 20, 10, 15);
+    final taps = <String>[];
+    Widget bubble(DateTime? when) => _app(MessageBubble(
+          message: ChatMessage(
+            text: "È un avviso: l'ascensore è fermo fino a giovedì.",
+            isUser: false,
+            photoId: 'p1',
+            timestamp: now,
+            when: when,
+          ),
+          loadPhoto: _source,
+          now: now,
+          onTranslate: () => taps.add('translate'),
+          onAskMore: () => taps.add('more'),
+          onRemind: (at) => taps.add('remind $at'),
+        ));
+
+    await tester.pumpWidget(bubble(DateTime(2026, 10, 22, 9)));
+    await tester.pump();
+    expect(tester.getSize(find.byType(PhotoThumbnail)).height, greaterThanOrEqualTo(260));
+    expect(find.textContaining("Echo's camera · "), findsOneWidget);
+    await tester.tap(find.text('Translate it'));
+    await tester.tap(find.text('Remind me Thursday'));
+    await tester.tap(find.text('Ask more'));
+    expect(taps, ['translate', 'remind ${DateTime(2026, 10, 22, 9)}', 'more']);
+
+    // No date in the photo, or one already gone: no reminder to offer
+    await tester.pumpWidget(bubble(null));
+    expect(find.textContaining('Remind me'), findsNothing);
+    await tester.pumpWidget(bubble(DateTime(2026, 10, 19, 9)));
+    expect(find.textContaining('Remind me'), findsNothing);
+    expect(find.text('Translate it'), findsOneWidget);
+  });
+
   testWidgets('no photo without a loader or on the question', (tester) async {
     await tester.pumpWidget(_app(Column(children: [
       MessageBubble(

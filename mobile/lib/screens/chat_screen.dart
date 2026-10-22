@@ -264,6 +264,18 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_controller.send(_textController.text));
   }
 
+  final _composerFocus = FocusNode();
+
+  /// Quick follow-ups under a photo's answer, when the server can look at it again.
+  bool _followUps(ChatMessage message) =>
+      !message.isUser && message.photoId != null && _api is PhotoFollowUpApi;
+
+  /// "Ask more": the composer, for a question about this photo.
+  void _askMore(String photoId) {
+    _controller.setPhotoContext(photoId);
+    _composerFocus.requestFocus();
+  }
+
   void _sendSuggestion(String suggestion) {
     _controller.setComposerText(suggestion);
     unawaited(_controller.send(suggestion));
@@ -276,6 +288,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.askRequest?.removeListener(_onAskRequest);
     widget.dictation?.removeListener(_onDictation);
     widget.threadUpdates?.removeListener(_onThreadUpdate);
+    _composerFocus.dispose();
     _textController.dispose();
     _scrollController.dispose();
     if (_ownsController) _controller.dispose();
@@ -320,10 +333,16 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               Expanded(child: _messageArea(state, palette)),
+              if (state.photoContext != null && !state.listening)
+                _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
               if (state.listening)
                 DictationPanel(text: state.composerText)
               else
                 ChatComposer(
+                  focusNode: _composerFocus,
+                  hintText: state.photoContext != null
+                      ? 'Ask about this photo'
+                      : 'Ask about your day',
                   controller: _textController,
                   sending: state.sending,
                   enabled: !state.loadingSession,
@@ -433,6 +452,13 @@ final class _ChatScreenState extends State<ChatScreen> {
                     ),
             onOpenConversation: _memoryApi == null ? null : _openConversation,
             loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
+            onTranslate: _followUps(message)
+                ? () => unawaited(_controller.translatePhoto(message.photoId!))
+                : null,
+            onAskMore: _followUps(message) ? () => _askMore(message.photoId!) : null,
+            onRemind: _followUps(message)
+                ? (when) => unawaited(_controller.remindFromPhoto(when))
+                : null,
           );
         }
         if (state.sending && index == state.messages.length) {
@@ -489,6 +515,31 @@ List<({int? message, DateTime? day})> _threadRows(List<ChatMessage> messages) {
     rows.add((message: index, day: null));
   }
   return rows;
+}
+
+/// Above the composer after "Ask more": the question goes about the photo.
+final class _PhotoContextChip extends StatelessWidget {
+  const _PhotoContextChip({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: InputChip(
+          key: const Key('photo-context'),
+          avatar: Icon(Icons.photo_outlined, size: 18, color: palette.text2),
+          label: const Text('About the photo'),
+          onDeleted: onClear,
+          deleteButtonTooltipMessage: 'Ask about your day instead',
+        ),
+      ),
+    );
+  }
 }
 
 /// "Today", "Yesterday", "Mon, Oct 13" between the thread's days.

@@ -71,6 +71,57 @@ void main() {
       expect(controller.state.messages.last.byVoice, isFalse);
     });
 
+    test('Translate it asks about the same photo, in the language spoken', () async {
+      controller.dispose();
+      controller = ChatController(
+        api: api,
+        voiceInput: _SilentVoice(),
+        spokenLanguage: () async => 'it',
+      );
+      api.thread = thread(const [
+        ChatSessionMessage(role: 'assistant', content: 'È un avviso.', photoId: 'p1'),
+      ]);
+      await controller.openThread();
+
+      await controller.translatePhoto('p1');
+
+      expect(api.photoQuestions, [('p1', 'Traducilo')]);
+      expect(controller.state.messages.last.text, 'Notice: the lift is out of order.');
+      expect(controller.state.messages.last.aboutPhotoId, 'p1');
+      expect(controller.state.sending, isFalse);
+    });
+
+    test('after Ask more, the next question is about the photo', () async {
+      api.thread = thread(const [
+        ChatSessionMessage(role: 'assistant', content: 'È un avviso.', photoId: 'p1'),
+      ]);
+      await controller.openThread();
+
+      controller.setPhotoContext('p1');
+      expect(controller.state.photoContext, 'p1');
+      await controller.send('fino a quando?');
+
+      expect(api.photoQuestions, [('p1', 'fino a quando?')]);
+      expect(api.querySessionIds, isEmpty);
+      expect(controller.state.photoContext, isNull);
+    });
+
+    test('Remind me asks Echo in the thread, with the day', () async {
+      controller.dispose();
+      controller = ChatController(
+        api: api,
+        voiceInput: _SilentVoice(),
+        spokenLanguage: () async => 'en',
+      );
+      api.thread = thread(const []);
+      await controller.openThread();
+
+      await controller.remindFromPhoto(DateTime(2026, 10, 22, 9));
+
+      expect(api.querySessionIds, ['thread']);
+      expect(controller.state.messages.first.text, 'Remind me on Thursday 22 October at 9:00');
+    });
+
     test('a refresh reloads the thread only while it is shown and idle', () async {
       api.thread = thread(const []);
       await controller.openThread();
@@ -158,10 +209,17 @@ void main() {
   });
 }
 
-final class _ThreadApi implements ChatApi, ThreadApi {
+final class _ThreadApi implements ChatApi, ThreadApi, PhotoFollowUpApi {
   ChatSessionDetail? thread;
   int threadReads = 0;
   final querySessionIds = <String?>[];
+  final photoQuestions = <(String, String)>[];
+
+  @override
+  Future<String> askAboutPhoto(String photoId, String question) async {
+    photoQuestions.add((photoId, question));
+    return 'Notice: the lift is out of order.';
+  }
 
   @override
   Future<ChatSessionDetail> getThread() async {

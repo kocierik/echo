@@ -12,6 +12,8 @@ final class ChatComposer extends StatelessWidget {
     required this.onSend,
     this.onCamera,
     this.enabled = true,
+    this.hintText = 'Ask about your day',
+    this.focusNode,
     super.key,
   });
 
@@ -24,6 +26,10 @@ final class ChatComposer extends StatelessWidget {
   /// No button without it.
   final VoidCallback? onCamera;
   final bool enabled;
+
+  /// "Ask about this photo" after "Ask more" under one.
+  final String hintText;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +46,7 @@ final class ChatComposer extends StatelessWidget {
             child: TextField(
               key: const Key('chat-input'),
               controller: controller,
+              focusNode: focusNode,
               enabled: enabled,
               minLines: 1,
               maxLines: 4,
@@ -48,10 +55,10 @@ final class ChatComposer extends StatelessWidget {
               onSubmitted: (_) {
                 if (canSend) onSend();
               },
-              decoration: const InputDecoration(
-                hintText: 'Ask about your day',
-                contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                border: OutlineInputBorder(
+              decoration: InputDecoration(
+                hintText: hintText,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                border: const OutlineInputBorder(
                   borderRadius: BorderRadius.all(Radius.circular(25)),
                   borderSide: BorderSide.none,
                 ),
