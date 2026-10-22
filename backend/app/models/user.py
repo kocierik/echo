@@ -15,3 +15,5 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     # The language the user speaks: the wearable's transcription and the app's dictation
     language: Mapped[str] = mapped_column(String(5), nullable=False, server_default="it")
+    # What the app calls the user ("Good afternoon, Erik"); none until they give one
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)

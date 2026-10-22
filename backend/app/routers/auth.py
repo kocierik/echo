@@ -69,10 +69,14 @@ class RegisterRequest(LoginRequest):
 class Me(BaseModel):
     email: str | None
     language: str
+    name: str | None = None
 
 
 class MeUpdate(BaseModel):
-    language: Literal[SUPPORTED_LANGUAGES]  # type: ignore[valid-type]
+    """Only the fields sent change; a blank name removes it."""
+
+    language: Literal[SUPPORTED_LANGUAGES] | None = None  # type: ignore[valid-type]
+    name: str | None = Field(default=None, max_length=100)
 
 
 class LoginUser(BaseModel):
@@ -222,11 +226,11 @@ async def register(
 async def read_me(
     current: ApiKey = Depends(get_current_api_key), db: AsyncSession = Depends(get_db)
 ):
-    """The account behind this key: its email and the language it speaks."""
+    """The account behind this key: its email, the language it speaks and its name."""
     user = await db.get(User, current.user_id)
     if user is None:  # a key made with make create-key, before any account
         return Me(email=None, language=settings.stt_language)
-    return Me(email=user.email, language=user.language)
+    return Me(email=user.email, language=user.language, name=user.name)
 
 
 @router.patch("/me", response_model=Me)
@@ -235,16 +239,19 @@ async def update_me(
     current: ApiKey = Depends(get_current_api_key),
     db: AsyncSession = Depends(get_db),
 ):
-    """Change the language this account speaks."""
+    """Change the language this account speaks, or the name the app calls it by."""
     user = await db.get(User, current.user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This key has no account yet: create one with make create-user.",
         )
-    user.language = body.language
+    if body.language is not None:
+        user.language = body.language
+    if "name" in body.model_fields_set:
+        user.name = (body.name or "").strip() or None
     await db.commit()
-    return Me(email=user.email, language=user.language)
+    return Me(email=user.email, language=user.language, name=user.name)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

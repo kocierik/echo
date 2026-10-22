@@ -53,7 +53,7 @@ class PhotoRequest(BaseModel):
     # not looking at the phone, so the answer is notified)
     # "phone": taken with the phone's camera when the wearable could not
     source: Literal["app", "button", "phone"] = "app"
-    # The chat the photo is asked from; the "Voice requests" chat when omitted
+    # The chat the photo is asked from; the thread with Echo when omitted
     chat_session_id: uuid.UUID | None = None
 
 
@@ -98,7 +98,7 @@ async def create_photo_request(
     """The app's camera button: a request the app then sends to the wearable itself.
 
     The question (or a camera mark) is added to the chat now; the answer follows with
-    the photo, in the chat it was asked from or in "Voice requests".
+    the photo, in the chat it was asked from or in the thread with Echo.
     """
     if body.chat_session_id is not None:
         session = await lock_chat_session(db, body.chat_session_id)

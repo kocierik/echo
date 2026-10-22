@@ -1,4 +1,4 @@
-"""Voice requests worker: answers "Echo, ..." commands into the "Voice requests" chat.
+"""Voice requests worker: answers "Echo, ..." commands into the thread with Echo.
 
 The STT worker pushes the id of each segment where `find_wake` hits onto `queue:voice`.
 Every POLL_INTERVAL_S this loop takes the queued ids (oldest first): items whose command

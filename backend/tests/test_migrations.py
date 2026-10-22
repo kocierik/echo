@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 21)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 22)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -348,6 +348,19 @@ def test_migration_011_adds_photos_and_photo_chunks_once(monkeypatch):
     again = _run(migration_011, state, monkeypatch)
 
     assert again.calls == []
+
+
+def test_migration_021_adds_the_user_name_and_names_the_thread_echo(monkeypatch):
+    state = _State()
+    for module in _migrations()[:-1]:
+        _run(module, state, monkeypatch)
+    migration_021 = next(m for m in _migrations() if m.revision == "021")
+
+    op = _run(migration_021, state, monkeypatch)
+
+    assert state.tables["users"]["columns"]["name"] is True  # nullable
+    updates = [call[1] for call in op.calls if call[0] == "execute"]
+    assert updates == ["UPDATE chat_sessions SET title = 'Echo' WHERE kind = 'voice'"]
 
 
 def test_migration_003_is_defined_once():

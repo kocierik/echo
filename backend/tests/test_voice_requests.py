@@ -360,7 +360,8 @@ async def test_collect_command_with_bare_name_uses_the_next_segment():
 async def test_get_or_create_voice_session_creates_one():
     db = _Db()
     session = await voice.get_or_create_voice_session(db, USER_ID)
-    assert session.title == "Voice requests"
+    # The one thread with Echo in Ask
+    assert session.title == "Echo"
     assert session.kind == "voice"
     assert session.user_id == USER_ID
     assert session.messages == []
@@ -556,7 +557,7 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
     assert call.kw["connected_toolkits"] == ["gmail"]
     session = _voice_session(worker)
     assert call.kw["session_id"] == session.id
-    assert session.title == "Voice requests"
+    assert session.title == "Echo"
 
     user_msg, answer = session.messages
     assert user_msg["role"] == "user" and user_msg["content"] == "riassumimi le ultime mail"
