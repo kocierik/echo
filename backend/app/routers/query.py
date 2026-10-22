@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.actions.agent import run_action_agent
+from app.actions.agent import NO_APPS, run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
@@ -130,7 +130,10 @@ _TOOL_HINT = re.compile(
     r"book|spost|rimand|anticip|posticip|resched|move|cancell|elimin|annull|delete|"
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
-    r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria)",
+    r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria|"
+    # Routines: something regular, or the routines themselves
+    r"ogni\b|tutti i giorni|tutte le (mattine|sere)|every\b|each (day|morning|evening|week)|"
+    r"daily|weekly|monthly|routine|incaric|smetti|stop\b)",
     re.IGNORECASE,
 )
 
@@ -392,6 +395,11 @@ async def _answer_query(
                     answer=route.notice, sources=[], session_id=session_id, date_filter=None
                 )
             use_agent = route.kind == "agent"
+        else:
+            # No app to act in: only a routine (Echo's own tools) goes to the agent
+            route = await route_request(get_llm_intent_service(), body.question, history, [])
+            if route.kind == "agent":
+                provider, use_agent = NO_APPS, True
         if use_agent:
             progress.agent_started = True
             outcome = await run_action_agent(

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.actions.agent import run_action_agent
+from app.actions.agent import NO_APPS, run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
 from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
@@ -179,27 +179,31 @@ async def _answer(
     # The iPhone's Reminders and Calendar, when the app offers them
     provider = await with_phone_apps(provider, redis_client, user_id)
     if provider is None:
-        # Still checked for the camera; app requests have nothing to act on
+        # Still checked for the camera and routines; app requests have nothing to act on
         route = await route_request(get_llm_intent_service(), command, history, [], camera=True)
         if route.kind == "photo":
             return _PhotoRoute()
-        return await _memory_answer(db, user_id, command, history, llm, about), {}
-    # Every confirmed voice request goes through the same intent check as chat
-    reachable: list[str] | None = None
-    try:
-        connected = await provider.connected_toolkits(str(user_id))
-        reachable = connected
-    except ActionProviderError:
-        logger.warning("[Voice] Action provider unreachable", exc_info=True)
-    route = await route_request(
-        get_llm_intent_service(), command, history, reachable, camera=True
-    )
-    if route.kind == "photo":
-        return _PhotoRoute()
-    if route.kind == "notice":
-        return route.notice, {"actions": True}
-    if route.kind == "memory":
-        return await _memory_answer(db, user_id, command, history, llm, about), {}
+        if route.kind != "agent":
+            return await _memory_answer(db, user_id, command, history, llm, about), {}
+        # A routine: Echo's own tools
+        provider = NO_APPS
+    else:
+        # Every confirmed voice request goes through the same intent check as chat
+        reachable: list[str] | None = None
+        try:
+            connected = await provider.connected_toolkits(str(user_id))
+            reachable = connected
+        except ActionProviderError:
+            logger.warning("[Voice] Action provider unreachable", exc_info=True)
+        route = await route_request(
+            get_llm_intent_service(), command, history, reachable, camera=True
+        )
+        if route.kind == "photo":
+            return _PhotoRoute()
+        if route.kind == "notice":
+            return route.notice, {"actions": True}
+        if route.kind == "memory":
+            return await _memory_answer(db, user_id, command, history, llm, about), {}
 
     outcome = await run_action_agent(
         db,

@@ -12,6 +12,11 @@
     {"id": "create-event", "request": "Segnami il dentista giovedì alle 15", "first": ["GOOGLECALENDAR_CREATE_EVENT", "GOOGLECALENDAR_EVENTS_LIST"]},
     {"id": "create-task", "request": "Aggiungi un task: comprare il latte", "first": ["TODOIST_CREATE_TASK"]},
     {"id": "send-needs-address", "request": "Manda a Marco una mail con il budget di Atlas", "first": ["search_memory", "GMAIL_FETCH_EMAILS", "GMAIL_SEND_EMAIL"]},
-    {"id": "memory-then-calendar", "request": "Cosa mi ha detto Ada sul lancio? Se c'è una data mettila in calendario", "first": ["search_memory"]}
+    {"id": "memory-then-calendar", "request": "Cosa mi ha detto Ada sul lancio? Se c'è una data mettila in calendario", "first": ["search_memory"]},
+    {"id": "routine-weather", "request": "Ogni mattina alle 7 dimmi che tempo fa a Milano", "first": ["ECHO_CREATE_ROUTINE"], "args": {"kind": "daily", "time": "07:00"}},
+    {"id": "routine-weekly-mail", "request": "Every Friday at 5pm summarize my week's emails", "first": ["ECHO_CREATE_ROUTINE"], "args": {"kind": "weekly", "time": "17:00", "days": [5]}},
+    {"id": "routine-weekdays", "request": "Nei giorni feriali alle 8:30 dimmi gli impegni della giornata", "first": ["ECHO_CREATE_ROUTINE"], "args": {"kind": "weekdays", "time": "08:30"}},
+    {"id": "routine-missing-time", "request": "Dimmi il meteo ogni mattina", "first": [null]},
+    {"id": "routine-stop", "request": "Smetti di dirmi il meteo la mattina", "first": ["ECHO_LIST_ROUTINES"]}
   ]
 }

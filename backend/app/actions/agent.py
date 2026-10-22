@@ -17,7 +17,7 @@ from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
 from app.actions.pending import create_pending_action
 from app.actions.phone_provider import PHONE_APP_NAMES
-from app.actions.policy import ToolTier, classify_call, toolkit_of
+from app.actions.policy import ToolTier, classify_call, classify_tool, toolkit_of
 from app.actions.provider import (
     AccountNotConnectedError,
     ActionOutcomeUnknown,
@@ -25,6 +25,7 @@ from app.actions.provider import (
     ActionProviderError,
     ToolResult,
 )
+from app.actions.routine_tools import ROUTINE_TOOL_NAMES, ROUTINE_TOOLS, run_routine_tool
 from app.core.config import settings
 from app.core.timezone import user_zone
 from app.models.pending_action import PendingAction
@@ -97,6 +98,23 @@ TEXTS = {
 
 TOOLKIT_NAMES = {**APP_NAMES, **PHONE_APP_NAMES}
 
+
+class _NoApps:
+    """The provider when no app can be reached (no Composio, no phone apps): the agent
+    still has its own tools (memory, routines)."""
+
+    async def connected_toolkits(self, user_id: str) -> list[str]:
+        return []
+
+    async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
+        return []
+
+    async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult:
+        return ToolResult(ok=False, error="No app is connected")
+
+
+NO_APPS = _NoApps()
+
 # Told to the model when an execute call timed out after being sent.
 _UNKNOWN_NOTE = (
     "The request timed out after it was sent: it may or may not have been done. "
@@ -104,6 +122,12 @@ _UNKNOWN_NOTE = (
 )
 
 _NOTHING_FOUND = "Nothing found in memory for this query."
+
+# A routine's run has no one to confirm a call that sends, changes or deletes
+_NO_CONFIRM = (
+    "Not done: this needs the user's confirmation, and a routine runs unattended. Tell the "
+    "user to ask Echo for it directly."
+)
 
 _SYSTEM_PROMPT = """You are Echo, the user's personal assistant. You can search the user's \
 memory of recorded conversations (search_memory) and use the tools of their connected apps.
@@ -127,6 +151,14 @@ events first.
 _SEARCH_RULES = """- For live or current information (weather, news, scores, prices, opening \
 hours) search the web, answer from what you found and name the sources; if it finds nothing, say \
 so and never make it up. Never search the web for the user's own past: use search_memory.
+"""
+
+_ROUTINE_RULES = """- Routines: when the user asks for something to happen regularly ("ogni \
+mattina alle 7 dimmi che tempo fa a Milano", "every Friday summarize my emails"), create a \
+routine (ECHO_CREATE_ROUTINE). If the time, or a detail the task needs (the city for the weather), \
+is missing, ask for it in one short question and create nothing; never guess. Then confirm \
+in words with the schedule and say it can be paused in Profile → Routines. To stop or change \
+one, list the routines and delete it (a change: delete it and create the new one).
 """
 
 _PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
@@ -154,7 +186,9 @@ class _Failure:
     unknown: bool = False
 
 
-def _system_prompt(phone_apps: bool = False, can_search: bool = False) -> str:
+def _system_prompt(
+    phone_apps: bool = False, can_search: bool = False, routines: bool = False
+) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
         now=now.strftime("%A %Y-%m-%d %H:%M"),
@@ -163,6 +197,8 @@ def _system_prompt(phone_apps: bool = False, can_search: bool = False) -> str:
     )
     if can_search:
         prompt += _SEARCH_RULES
+    if routines:
+        prompt += _ROUTINE_RULES
     return prompt + _PHONE_RULES if phone_apps else prompt
 
 
@@ -263,11 +299,16 @@ async def run_action_agent(
     llm: LLMService,
     max_steps: int = 6,
     connected_toolkits: list[str] | None = None,
+    routine_tools: bool = True,
+    allow_confirm: bool = True,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
     `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
     are offered: the connected apps the request names, else all connected ones.
+    `routine_tools`: Echo's own tools to create, list and delete routines (not offered to
+    a routine's own run). Without `allow_confirm` (a routine: no one is there to confirm),
+    confirm-tier tools are not offered and a call that needs confirmation is refused.
     """
     texts = TEXTS[detect_language(request)]
 
@@ -276,12 +317,19 @@ async def run_action_agent(
     except ActionProviderError:
         logger.warning("Action provider unreachable while listing tools", exc_info=True)
         return AgentOutcome(answer=texts["unreachable"])
+    if not allow_confirm:
+        external_tools = [
+            schema for schema in external_tools
+            if classify_tool(_tool_name(schema)) != ToolTier.CONFIRM
+        ]
     offered = {_tool_name(schema) for schema in external_tools}
-    tools = [SEARCH_MEMORY_TOOL, *external_tools]
+    own = ROUTINE_TOOL_NAMES if routine_tools else frozenset()
+    tools = [SEARCH_MEMORY_TOOL, *(ROUTINE_TOOLS if routine_tools else []), *external_tools]
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
     search = await search_tool_for(llm, user_id)
-    messages = [LLMMessage(role="system", content=_system_prompt(phone_apps, search is not None))]
+    prompt = _system_prompt(phone_apps, search is not None, routine_tools)
+    messages = [LLMMessage(role="system", content=prompt)]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
             messages.append(LLMMessage(role=item["role"], content=item["content"]))
@@ -303,11 +351,24 @@ async def run_action_agent(
         confirm_call = next(
             (
                 call for call in response.tool_calls
-                if call.name in offered
+                # Unattended, even a tool not offered is refused as needing confirmation
+                if (call.name in offered or not allow_confirm)
                 and classify_call(call.name, call.arguments) == ToolTier.CONFIRM
             ),
             None,
         )
+        if confirm_call is not None and not allow_confirm:
+            # Told to the model, which explains; nothing from this turn runs
+            messages.append(LLMMessage(
+                role="assistant", content=response.content or "",
+                tool_calls=response.tool_calls,
+            ))
+            for call in response.tool_calls:
+                messages.append(LLMMessage(
+                    role="tool", tool_call_id=call.id, name=call.name,
+                    content=serialize_tool_result({"error": _NO_CONFIRM}),
+                ))
+            continue
         if confirm_call is not None:
             # Only the first confirm-tier call is kept; nothing else from this turn runs.
             summary = pending_summary(confirm_call.name, confirm_call.arguments)
@@ -329,6 +390,7 @@ async def run_action_agent(
         for call in response.tool_calls:
             content = await _run_tool(
                 db, user_id, source, provider, call, offered, executed, failures, succeeded,
+                own,
             )
             messages.append(LLMMessage(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
@@ -350,14 +412,24 @@ async def _run_tool(
     executed: list[str],
     failures: list[_Failure],
     succeeded: set[str],
+    own: frozenset[str] = frozenset(),
 ) -> str:
-    """Run one READ/CREATE call (or search_memory) and return the tool message content."""
+    """Run one READ/CREATE call (search_memory, a routine tool in `own`) and return the
+    tool message content."""
     if call.name == "search_memory":
         query = str(call.arguments.get("query") or "").strip()
         if not query:
             return serialize_tool_result({"error": "query is required"})
         memory = await retrieve_memory_context(db, user_id, query)
         return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
+
+    if call.name in own:
+        result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
+        executed.append(call.name)
+        await log_action(db, user_id, source, call.name, call.arguments, result)
+        if result.ok:
+            return serialize_tool_result(result.data)
+        return serialize_tool_result({"error": result.error})
 
     if call.name not in offered:
         return serialize_tool_result({"error": f"Unknown tool: {call.name}"})

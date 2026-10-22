@@ -23,6 +23,10 @@
     {"id": "camera-said-by-marco-it", "text": "Spiegami cosa ha detto Marco", "expect": "memory", "camera": true},
     {"id": "camera-past-mail-it", "text": "Cosa c'era scritto nella mail di Ada di ieri?", "expect": "agent", "camera": true},
     {"id": "camera-translate-meeting-it", "text": "Traducimi cosa ha detto Luca alla riunione", "expect": "memory", "camera": true},
-    {"id": "camera-explain-decision-en", "text": "Explain what we decided about the launch", "expect": "memory", "camera": true}
+    {"id": "camera-explain-decision-en", "text": "Explain what we decided about the launch", "expect": "memory", "camera": true},
+    {"id": "routine-create-it", "text": "Ogni mattina alle 7 dimmi che tempo fa a Milano", "expect": "agent"},
+    {"id": "routine-create-en", "text": "Every Friday at 5pm summarize my week's emails", "expect": "agent"},
+    {"id": "routine-list", "text": "Quali incarichi ricorrenti ho?", "expect": "agent"},
+    {"id": "routine-not-a-routine", "text": "Cosa faccio di solito ogni lunedì?", "expect": "memory"}
   ]
 }

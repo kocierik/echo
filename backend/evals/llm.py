@@ -21,6 +21,7 @@ from pathlib import Path
 
 from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
+from app.actions.routine_tools import ROUTINE_TOOLS
 from app.services.about_echo import about_echo
 from app.services.analysis_pipeline import extract_entities
 from app.services.language import clear_language, detect_language
@@ -207,16 +208,20 @@ async def answers(llm) -> bool:
 
 async def tools(llm) -> bool:
     suite = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
-    offered = [SEARCH_MEMORY_TOOL, *suite["tools"]]
+    # As in production: Echo's routine tools are always offered
+    offered = [SEARCH_MEMORY_TOOL, *ROUTINE_TOOLS, *suite["tools"]]
     passed = 0
     for case in suite["cases"]:
         messages = [
-            LLMMessage(role="system", content=_system_prompt()),
+            LLMMessage(role="system", content=_system_prompt(routines=True)),
             LLMMessage(role="user", content=case["request"]),
         ]
         response, elapsed = await _timed(llm.complete_with_tools(messages, offered))
         called = response.tool_calls[0].name if response.tool_calls else None
         ok = called in case["first"]
+        # "args": what the first call must say (a routine's schedule)
+        arguments = response.tool_calls[0].arguments if response.tool_calls else {}
+        ok = ok and all(arguments.get(k) == v for k, v in case.get("args", {}).items())
         passed += ok
         mark = "ok  " if ok else "FAIL"
         print(f"  {mark}  {case['id']:22} {called or '(no tool)':28} {elapsed:4.1f}s")

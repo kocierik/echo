@@ -24,6 +24,7 @@ from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.photos import process_photos
 from app.workers.reanalysis import process_reanalysis
 from app.workers.retention import run_retention_loop
+from app.workers.routines import run_routines_loop
 from app.workers.stt import process_stt
 from app.workers.summaries import run_summary_loop
 from app.workers.voice_requests import process_voice_queue
@@ -63,6 +64,9 @@ async def main():
         asyncio.create_task(run_retention_loop(shutdown_event), name="retention_worker"),
         asyncio.create_task(run_summary_loop(shutdown_event), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
+        asyncio.create_task(
+            run_routines_loop(redis_client, shutdown_event), name="routines_worker"
+        ),
         asyncio.create_task(
             process_voice_queue(redis_client, shutdown_event), name="voice_worker"
         ),

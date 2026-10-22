@@ -11,7 +11,7 @@ from app.models.base import Base, UUIDPrimaryKey
 class ActionLog(UUIDPrimaryKey, Base):
     """Audit trail of executed actions.
 
-    source: chat | voice
+    source: chat | voice | routine
     outcome: ok | error | unknown
     """
 
