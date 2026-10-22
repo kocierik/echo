@@ -615,3 +615,95 @@ async def test_a_photo_from_the_phone_is_accepted_and_analysed(client, auth_head
     assert done is True
     assert (await _photo(db_session, photo["id"])).source == "phone"
 
+
+async def _answered_photo(client, auth_headers, db_session, reply=None, question=None) -> dict:
+    photo = await _request(client, auth_headers, question=question)
+    await _upload(client, auth_headers, photo["id"])
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), VisionLLM(reply), Embeddings()
+    )
+    return photo
+
+
+@pytest.mark.asyncio
+async def test_the_answer_keeps_the_date_the_photo_shows(client, auth_headers, db_session):
+    reply = {
+        "answer": "L'ascensore è fermo fino a giovedì 23.",
+        "description": "Avviso: ascensore fuori servizio fino al 23/10.",
+        "title": "Avviso ascensore",
+        "when": "2026-10-23T09:00",
+    }
+
+    photo = await _answered_photo(client, auth_headers, db_session, reply, "spiegami questo")
+
+    message = await _last_voice_message(db_session)
+    assert message["photo_id"] == photo["id"]
+    assert message["when"] == "2026-10-23T09:00:00"
+    thread = (await client.get("/api/chat-sessions/thread", headers=auth_headers)).json()
+    assert thread["messages"][-1]["when"] == "2026-10-23T09:00:00"
+
+
+@pytest.mark.parametrize("when", ["giovedì", "", None, 23, "2026-13-40"])
+def test_a_bad_when_is_dropped(when):
+    assert photo_service.parse_when(when) is None
+
+
+def test_an_aware_when_is_kept_as_local_time():
+    # The user's zone (Europe/Rome, summer time on 23 October)
+    assert photo_service.parse_when("2026-10-23T07:00:00+00:00") == "2026-10-23T09:00:00"
+
+
+def test_vision_prompt_does_what_was_asked_and_names_the_date():
+    prompt = photo_service.VISION_PROMPT.format(language="Italian")
+    assert '"when"' in prompt
+    assert "translate" in prompt and "explain" in prompt
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_is_answered_from_the_same_image(
+    client, auth_headers, db_session, monkeypatch
+):
+    photo = await _answered_photo(client, auth_headers, db_session, question="Che pianta è?")
+    llm = VisionLLM({"answer": "It's a ficus."})
+    monkeypatch.setattr("app.routers.photos.get_llm_vision_service", lambda: llm)
+
+    response = await client.post(
+        f"/api/photos/{photo['id']}/ask", headers=auth_headers, json={"question": "Translate it"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "It's a ficus."
+    assert response.json()["session_id"] == photo["chat_session_id"]
+    assert llm.messages[-1].images == [JPEG]
+    assert "Translate it" in llm.messages[-1].content
+    assert "È un ficus." in llm.messages[-1].content  # the first answer, as context
+    session = await db_session.get(
+        ChatSession, uuid.UUID(photo["chat_session_id"]), populate_existing=True
+    )
+    question, answer = session.messages[-2:]
+    assert question["content"] == "Translate it" and question["source"] == "chat"
+    assert question["about_photo_id"] == photo["id"]
+    assert answer["content"] == "It's a ficus." and answer["notify"] is False
+    assert answer["about_photo_id"] == photo["id"] and "photo_id" not in answer
+
+
+@pytest.mark.asyncio
+async def test_a_follow_up_needs_an_image_of_ones_own(client, auth_headers, db_session):
+    waiting = await _request(client, auth_headers)
+    other = Photo(
+        id=uuid.uuid4(), user_id=uuid.uuid4(), status="done", source="app",
+        image=JPEG, image_sha256="x", created_at=datetime.now(timezone.utc),
+    )
+    db_session.add(other)
+    await db_session.commit()
+
+    for photo_id in (waiting["id"], str(other.id), str(uuid.uuid4())):
+        response = await client.post(
+            f"/api/photos/{photo_id}/ask", headers=auth_headers, json={"question": "E questo?"}
+        )
+        assert response.status_code == 404
+    empty = await client.post(
+        f"/api/photos/{waiting['id']}/ask", headers=auth_headers, json={"question": ""}
+    )
+    assert empty.status_code == 422
+

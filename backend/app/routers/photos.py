@@ -32,10 +32,12 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import limiter
 from app.models.photo import Photo
+from app.services.llm_openai import get_llm_vision_service
 from app.services.photos import (
     FAILURE_REASONS,
     PHOTO_QUEUE,
     accepts_image,
+    answer_follow_up,
     append_message,
     fail_photo,
     is_jpeg,
@@ -43,6 +45,7 @@ from app.services.photos import (
     request_photo,
     store_image,
 )
+from app.services.usage import usage_owner
 
 router = APIRouter(tags=["photos"])
 
@@ -55,6 +58,15 @@ class PhotoRequest(BaseModel):
     source: Literal["app", "button", "phone"] = "app"
     # The chat the photo is asked from; the thread with Echo when omitted
     chat_session_id: uuid.UUID | None = None
+
+
+class PhotoQuestion(BaseModel):
+    question: str = Field(min_length=1, max_length=500)
+
+
+class PhotoFollowUp(BaseModel):
+    answer: str
+    session_id: uuid.UUID | None
 
 
 class PhotoFailure(BaseModel):
@@ -186,6 +198,34 @@ async def report_photo_failure(
         await fail_photo(db, photo, body.reason)
         await db.commit()
     return photo
+
+
+@router.post("/photos/{photo_id}/ask", response_model=PhotoFollowUp)
+@limiter.limit("20/minute")
+async def ask_about_photo(
+    request: Request,
+    photo_id: uuid.UUID,
+    body: PhotoQuestion,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """A follow-up about a photo ("Translate it", "Ask more" in Ask): the vision model looks
+    at the same image again; the question and the answer go to the photo's chat."""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="Ask something about the photo")
+    result = await db.execute(
+        select(Photo)
+        .options(undefer(Photo.image))
+        .where(Photo.id == photo_id, Photo.user_id == user_id)
+    )
+    photo = result.scalar_one_or_none()
+    if photo is None or not photo.image:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    usage_owner.set(user_id)
+    answer = await answer_follow_up(db, photo, question, get_llm_vision_service())
+    await db.commit()
+    return PhotoFollowUp(answer=answer, session_id=photo.chat_session_id)
 
 
 @router.get("/photos/{photo_id}/image")
