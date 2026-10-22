@@ -31,10 +31,10 @@ TEXTS = {
     "en": {
         "unreachable": "I couldn't reach your connected apps right now. Try again in a moment.",
         "not_connected": (
-            "{app} isn't connected. Connect it in Settings → Automations → Integrations."
+            "{app} isn't connected. Connect it in Profile → Apps."
         ),
         "none_connected": (
-            "No apps are connected yet. Connect one in Settings → Automations → Integrations."
+            "No apps are connected yet. Connect one in Profile → Apps."
         ),
     },
     "it": {
@@ -42,11 +42,10 @@ TEXTS = {
             "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
         ),
         "not_connected": (
-            "{app} non è collegato. Collegalo da Settings → Automations → Integrations."
+            "{app} non è collegato. Collegalo da Profile → Apps."
         ),
         "none_connected": (
-            "Nessuna app è ancora collegata. Collegane una in Settings → Automations → "
-            "Integrations."
+            "Nessuna app è ancora collegata. Collegane una in Profile → Apps."
         ),
     },
 }

@@ -70,7 +70,7 @@ _KINDS_OF_QUESTION = (
 # Last, so they are not lost after the longer text about Echo
 _LAST_RULES = (
     "Name Echo's screens and buttons exactly as written above, in English (the app is in "
-    "English): 'Settings → Apps', never a translation. Answer in the language of the "
+    "English): 'Profile → Apps', never a translation. Answer in the language of the "
     "user's question, even when the context or these instructions are in another language."
 )
 

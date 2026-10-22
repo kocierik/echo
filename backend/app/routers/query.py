@@ -54,12 +54,12 @@ _PROCESSING = "processing"
 # same client_request_id gets this answer instead of running them again.
 _UNFINISHED = {
     "en": (
-        "I couldn't finish this request. Some steps may have run — check Settings → "
-        "Automations → Activity before asking again."
+        "I couldn't finish this request. Some steps may have run — check Profile → Activity "
+        "before asking again."
     ),
     "it": (
         "Non sono riuscito a completare la richiesta. Alcuni passaggi potrebbero essere "
-        "stati eseguiti: controlla Settings → Automations → Activity prima di riprovare."
+        "stati eseguiti: controlla Profile → Activity prima di riprovare."
     ),
 }
 

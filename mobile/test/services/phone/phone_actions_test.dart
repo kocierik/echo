@@ -165,7 +165,7 @@ void main() {
     final denied = await service.run('APPLECALENDAR_LIST_EVENTS', {});
     final unknown = await service.run('GMAIL_SEND_EMAIL', {});
 
-    expect(off['error'], contains('Settings → On this iPhone'));
+    expect(off['error'], contains('Profile → On this iPhone'));
     expect(denied['error'], contains('iOS Settings'));
     expect(unknown, {'ok': false, 'error': 'Unknown tool: GMAIL_SEND_EMAIL'});
   });
@@ -176,7 +176,7 @@ void main() {
     calendar.accessOf[PhoneApp.calendar] = PhoneAccess.denied;
     final denied = await service.run('APPLECALENDAR_LIST_EVENTS', {});
 
-    expect(off['error'], contains('Settings → On this phone'));
+    expect(off['error'], contains('Profile → On this phone'));
     expect(denied['error'], contains('Android settings'));
   });
 

@@ -83,7 +83,7 @@ FAILURE_TEXTS = {
         "failed": "Mi dispiace, non sono riuscito a completare la richiesta. Riprova.",
         "failed_partial": (
             "Mi dispiace, non sono riuscito a completare la richiesta. Alcuni passaggi "
-            "potrebbero essere già stati eseguiti: controlla Settings → Automations → Activity."
+            "potrebbero essere già stati eseguiti: controlla Profile → Activity."
         ),
     },
 }

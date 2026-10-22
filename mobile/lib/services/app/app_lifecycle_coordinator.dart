@@ -59,7 +59,7 @@ final class AppLifecycleCoordinator {
   final NotificationService notificationService;
   final PhotoService photoService;
 
-  /// Reminders and Calendar on this iPhone (Settings → Automations → On this iPhone).
+  /// Reminders and Calendar on this iPhone (Profile → On this iPhone).
   final PhoneActionsService phoneActions;
   final DeviceCommandLoop _commandLoop;
 

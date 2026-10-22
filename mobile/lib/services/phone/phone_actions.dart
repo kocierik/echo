@@ -23,7 +23,7 @@ final class PhoneAppChoices {
 
 /// Reminders and Calendar on this iPhone, for Echo.
 ///
-/// The user turns them on in Settings → Automations → On this iPhone (iOS asks for
+/// The user turns them on in Profile → On this iPhone (iOS asks for
 /// access then); the server is told which are on, now and on every wake. Echo's requests
 /// ("remind me…", "what do I have tomorrow?") reach the app as `phone_action` commands:
 /// [handle] runs one with EventKit and posts what it did. The calendar's next events also
@@ -115,7 +115,7 @@ final class PhoneActionsService {
     if (app == null) return _error('Unknown tool: $tool');
     final name = app == PhoneApp.reminders ? 'Reminders' : 'Calendar';
     if (!_choices.isOn(app)) {
-      return _error('$name is turned off in Echo (Settings → ${PhoneWords.onThisPhone})');
+      return _error('$name is turned off in Echo (Profile → ${PhoneWords.onThisPhone})');
     }
     if (await _calendar.access(app) != PhoneAccess.granted) {
       return _error(
