@@ -581,6 +581,15 @@ async def test_the_camera_is_offered_only_to_voice_requests():
     assert "camera on the user's wearable" in prompt and '"camera": false' in prompt
 
 
+def test_camera_prompt_names_tasks_on_what_the_user_sees():
+    from app.actions.availability import CAMERA_SECTION
+
+    # "spiegami cosa c'è scritto qui" is a request about what is in front of the user
+    for example in ("explain this", "translate this sign", "what does this say?"):
+        assert example in CAMERA_SECTION
+    assert "said" in CAMERA_SECTION  # what someone said stays memory
+
+
 @pytest.mark.asyncio
 async def test_classify_request_sets_apart_apps_it_does_not_know():
     from app.actions.availability import APP_NAMES, classify_request
