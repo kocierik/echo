@@ -542,6 +542,8 @@ async def test_photos_in_the_conversation_and_in_the_list(client, auth_headers, 
     listed = await client.get("/api/conversations", headers=auth_headers)
     item = next(c for c in listed.json()["conversations"] if c["id"] == str(photo.conversation_id))
     assert item["photo_count"] == 1
+    # Today shows a photo row with its image
+    assert item["photo_id"] == str(photo.id)
 
 
 @pytest.mark.asyncio

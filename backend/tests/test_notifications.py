@@ -280,3 +280,77 @@ async def test_the_app_posts_the_iphone_events(client, auth_headers):
         json={"phone_events": [{"id": str(i), "start": tomorrow.isoformat()} for i in range(301)]},
     )
     assert too_many.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_coming_up_recaps_the_last_talk_with_the_guest(db_session: AsyncSession):
+    now = at(TODAY, 14, 20)
+    conversation, _ = await make_conversation(
+        db_session, started_at=now - timedelta(days=3), title="Il budget e la data di novembre",
+        texts=(),
+    )
+    ada = make_entity(conversation, "person", "Ada")
+    db_session.add(ada)
+    await db_session.commit()
+    await record_mentions(db_session, [ada])
+    await db_session.commit()
+
+    soon = await n.coming_up(
+        db_session, TEST_USER_ID,
+        [_phone_event("Later", at(TODAY, 15, 10), event_id="L"),
+         _phone_event("Review with Ada", at(TODAY, 15))],
+        now,
+    )
+
+    assert soon.title == "Review with Ada" and soon.start == at(TODAY, 15)
+    assert soon.recap == "Last time: Il budget e la data di novembre"
+
+
+@pytest.mark.asyncio
+async def test_coming_up_ignores_events_after_an_hour_and_all_day(db_session: AsyncSession):
+    now = at(TODAY, 14)
+    events = [
+        _phone_event("Too late", at(TODAY, 15, 30)),
+        _phone_event("Already started", at(TODAY, 13, 50)),
+        n.phone_event({"id": "D", "title": "Ferie", "start": at(TODAY, 0), "all_day": True}),
+    ]
+
+    assert await n.coming_up(db_session, TEST_USER_ID, events, now) is None
+    assert await n.coming_up(db_session, TEST_USER_ID, [], now) is None
+
+
+@pytest.mark.asyncio
+async def test_coming_up_without_a_known_person_uses_the_title(db_session: AsyncSession):
+    now = at(TODAY, 9)
+    await make_conversation(
+        db_session, started_at=now - timedelta(days=7), title="Atlas launch review", texts=()
+    )
+    await db_session.commit()
+
+    soon = await n.coming_up(
+        db_session, TEST_USER_ID, [_phone_event("Atlas", at(TODAY, 9, 30))], now
+    )
+    nothing = await n.coming_up(
+        db_session, TEST_USER_ID, [_phone_event("Dentist", at(TODAY, 9, 30))], now
+    )
+
+    assert soon.recap == "Last time: Atlas launch review"
+    assert nothing.title == "Dentist" and nothing.recap is None
+
+
+@pytest.mark.asyncio
+async def test_the_app_asks_what_is_coming_up(client, auth_headers):
+    start = datetime.now(user_zone()) + timedelta(minutes=30)
+    response = await client.post(
+        "/api/notifications/coming-up",
+        headers=auth_headers,
+        json={"phone_events": [{"id": "E1", "title": "Call", "start": start.isoformat()}]},
+    )
+    empty = await client.post(
+        "/api/notifications/coming-up", headers=auth_headers, json={"phone_events": []}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event"]["title"] == "Call" and body["recap"] is None
+    assert empty.json() == {"event": None, "recap": None}

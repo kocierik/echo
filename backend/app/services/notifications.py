@@ -292,6 +292,65 @@ async def briefing_notices(
     return notices
 
 
+# Today's "coming up" card: an event this soon, with what was said last time
+COMING_UP_WITHIN = timedelta(hours=1)
+
+
+@dataclass(frozen=True)
+class ComingUp:
+    title: str
+    start: datetime
+    # "Last time: <conversation title>", with its people or about its title; None without
+    recap: str | None
+
+
+async def _last_talk(db: AsyncSession, user_id: uuid.UUID, condition) -> str | None:
+    title = (
+        await db.execute(
+            select(Conversation.title)
+            .where(Conversation.user_id == user_id, Conversation.title.isnot(None), condition)
+            .order_by(Conversation.started_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return f"Last time: {title}" if title else None
+
+
+async def coming_up(
+    db: AsyncSession, user_id: uuid.UUID, events: list[dict], now: datetime
+) -> ComingUp | None:
+    """The first event starting in the next hour (phone_event shape), with a recap from the
+    last conversation with someone it names, else about its title. None without one."""
+    soon = sorted(
+        (
+            (start, event)
+            for event in events
+            if (start := _event_start(event)) is not None
+            and now <= start <= now + COMING_UP_WITHIN
+        ),
+        key=lambda pair: pair[0],
+    )
+    if not soon:
+        return None
+    start, event = soon[0]
+    title = (event.get("summary") or "").strip() or "Meeting"
+    people = list(
+        (
+            await db.execute(
+                select(Entity).where(Entity.user_id == user_id, Entity.entity_type == "person")
+            )
+        ).scalars()
+    )
+    recap = None
+    for person in people_in_event(event, people):
+        recap = await _last_talk(db, user_id, in_person_conversations(person))
+        if recap:
+            break
+    if recap is None and len(title) >= 3:
+        recap = await _last_talk(db, user_id, Conversation.title.icontains(title, autoescape=True))
+    return ComingUp(title=title, start=start, recap=recap)
+
+
 async def evening_notice(db: AsyncSession, user_id: uuid.UUID, now: datetime) -> list[Notice]:
     today = now.astimezone(user_zone()).date()
     start, end = local_day_bounds(today)

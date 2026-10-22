@@ -5,7 +5,7 @@ too; GET (older apps) uses Google Calendar only.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -15,7 +15,7 @@ from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
-from app.services.notifications import phone_event, upcoming_notices
+from app.services.notifications import coming_up, phone_event, upcoming_notices
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -55,6 +55,20 @@ class UpcomingRequest(BaseModel):
     evening: bool = False
     hours: int = Field(default=36, ge=1, le=72)
     phone_events: list[PhoneEvent] = Field(default_factory=list, max_length=300)
+
+
+class ComingUpRequest(BaseModel):
+    phone_events: list[PhoneEvent] = Field(default_factory=list, max_length=300)
+
+
+class ComingUpEvent(BaseModel):
+    title: str
+    start: datetime
+
+
+class ComingUpOut(BaseModel):
+    event: ComingUpEvent | None = None
+    recap: str | None = None
 
 
 async def _upcoming(
@@ -99,3 +113,18 @@ async def upcoming_with_phone_events(
 ):
     """As GET, with the iPhone calendar's next events for briefings."""
     return await _upcoming(db, user_id, body)
+
+
+@router.post("/coming-up", response_model=ComingUpOut)
+async def what_is_coming_up(
+    body: ComingUpRequest,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Today's "coming up" card: the iPhone calendar's next event within the hour, and what
+    was said last time with its people or about its title."""
+    events = [phone_event(e.model_dump()) for e in body.phone_events]
+    soon = await coming_up(db, user_id, events, datetime.now(timezone.utc))
+    if soon is None:
+        return ComingUpOut()
+    return ComingUpOut(event=ComingUpEvent(title=soon.title, start=soon.start), recap=soon.recap)
