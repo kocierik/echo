@@ -25,7 +25,7 @@ from app.models.routine import Routine
 from app.services.device_commands import push_device_command
 from app.services.language import detect_language
 from app.services.llm_openai import get_llm_query_service
-from app.services.routines import next_run
+from app.services.routines import describe_schedule, next_run
 from app.services.usage import owned_by
 from app.workers.lifecycle import sleep_or_shutdown
 
@@ -50,6 +50,8 @@ class _Due:
     id: uuid.UUID
     user_id: uuid.UUID
     instruction: str
+    # "Every day at 07:00", shown with the answer in the thread
+    schedule_text: str
 
 
 async def _claim(session_factory, now: datetime) -> list[_Due]:
@@ -70,7 +72,10 @@ async def _claim(session_factory, now: datetime) -> list[_Due]:
                 routine.last_status = "skipped"
                 logger.info(f"[Routines] {routine.id} skipped: missed by more than {CATCH_UP}")
                 continue
-            due.append(_Due(routine.id, routine.user_id, routine.instruction))
+            due.append(_Due(
+                routine.id, routine.user_id, routine.instruction,
+                describe_schedule(routine.schedule),
+            ))
         await db.commit()
     return due
 
@@ -106,7 +111,7 @@ async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) 
                 answer, extra = FAILED[detect_language(routine.instruction)], {}
             thread = await get_or_create_voice_session(db, routine.user_id)
             answered_at = datetime.now(timezone.utc)
-            tag = {"routine_id": str(routine.id)}
+            tag = {"routine_id": str(routine.id), "routine_schedule": routine.schedule_text}
             # Reassign (not mutate) so SQLAlchemy sees the JSONB change
             thread.messages = [
                 *(thread.messages or []),

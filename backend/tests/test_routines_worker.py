@@ -145,6 +145,7 @@ async def test_the_answer_lands_in_the_thread_and_nudges_the_phone():
     assert asked["routine_id"] == str(routine.id)
     assert answered["role"] == "assistant" and answered["content"].startswith("Oggi")
     assert answered["routine_id"] == str(routine.id)
+    assert answered["routine_schedule"] == "Every day at 07:00"
     queued = redis.lists[DEVICE_COMMANDS_KEY.format(user_id=TEST_USER_ID)]
     assert [json.loads(item)["type"] for item in queued] == ["voice_update"]
 
