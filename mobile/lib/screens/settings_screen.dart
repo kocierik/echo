@@ -8,14 +8,13 @@ import '../services/device/firmware_update.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/phone_words.dart';
 import '../services/app/network_policy.dart';
-import '../services/onboarding/onboarding_controller.dart';
 import '../services/app/session_controller.dart';
 import '../services/app/spoken_language.dart';
 import '../models/app_view_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/device_instrument.dart';
 import '../widgets/screen_header.dart';
-import 'device_detail_screen.dart';
+import 'echo_device_screen.dart';
 import 'device_messages_screen.dart';
 import 'settings/about_settings_screen.dart';
 import 'action_log_screen.dart';
@@ -90,17 +89,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _preferences = widget.preferences ?? coordinator!.preferences;
   }
 
-  Future<void> _clearOnboardingProgress() async {
-    final removed = await Future.wait([
-      _preferences.remove(OnboardingController.completedKey),
-      _preferences.remove(OnboardingController.highestStepKey),
-      _preferences.remove('echo_onboarding_complete'),
-    ]);
-    if (removed.any((success) => !success)) {
-      throw StateError('Could not clear onboarding progress');
-    }
-  }
-
   Future<void> _push(Widget page) async {
     await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => page));
   }
@@ -123,13 +111,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _openDevice() => _push(DeviceDetailScreen(
+  void _openDevice() => openEchoDevice(
+        context,
         appController: _appController,
         deviceController: _deviceController,
-        resetOnboarding: _clearOnboardingProgress,
+        preferences: _preferences,
         onRequireOnboarding: widget.onRequireOnboarding,
-        firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
-      ));
+      );
 
   @override
   Widget build(BuildContext context) {

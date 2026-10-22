@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/session_state.dart';
-import 'package:echo_app/screens/device_detail_screen.dart';
+import 'package:echo_app/screens/echo_device_screen.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/services/device/device_ble_port.dart';
 import 'package:echo_app/services/device/device_controller.dart';
@@ -31,6 +31,29 @@ void main() {
       await tester.pump();
       expect(find.text(entry.value), findsOneWidget);
     }
+  });
+
+  testWidgets('is the Echo screen, built around the instrument: Mute Echo mutes',
+      (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.5.1',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.text('Echo'), findsOneWidget);
+    expect(find.byKey(const Key('device-instrument')), findsOneWidget);
+    // Already here: no way to "Device details"
+    expect(find.byKey(const Key('device-details')), findsNothing);
+    expect(find.text('Forget device'), findsOneWidget);
+    expect(find.text('0.5.1'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('device-instrument-action')));
+    await tester.pump();
+    expect(fixture.ble.mutes, [true]);
   });
 
   testWidgets('says an unknown battery is not measured and shows a known one',
@@ -307,7 +330,7 @@ final class _Fixture {
       theme: theme ?? AppTheme.light,
       home: MediaQuery(
         data: MediaQueryData(textScaler: TextScaler.linear(textScale)),
-        child: DeviceDetailScreen(
+        child: EchoDeviceScreen(
           appController: appController,
           deviceController: deviceController,
           resetOnboarding: () async {
@@ -361,8 +384,10 @@ final class _FakeBlePort implements DeviceBlePort {
   }
   @override
   Future<String> pair() async => 'echo';
+  final mutes = <bool>[];
+
   @override
-  Future<void> setMuted(bool muted) async {}
+  Future<void> setMuted(bool muted) async => mutes.add(muted);
 }
 
 final class _FakeIdentityStore implements DeviceIdentityStorePort {

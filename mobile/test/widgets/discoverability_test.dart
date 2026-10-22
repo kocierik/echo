@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:echo_app/models/voice.dart';
+import 'package:echo_app/services/device/device_protocol.dart';
+import 'package:echo_app/services/device/firmware_update.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/screens/settings/capabilities_screen.dart';
 import 'package:echo_app/models/device_status.dart';
@@ -89,4 +93,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('tip-record_voice')), findsOneWidget);
   });
+
+  testWidgets('the firmware tip opens the Echo screen', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const device = DeviceStatus(
+      connectionState: DeviceConnectionState.listening,
+      protocolVersion: 4,
+      firmwareVersion: '0.5.0',
+    );
+    final update = FirmwareUpdateController(
+      api: _OneRelease(),
+      link: _NoLink(),
+      device: () => device,
+    );
+    addTearDown(update.dispose);
+    await update.check();
+    var opened = 0;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: HomeScreen(
+          api: FakeTodayApi(),
+          deviceStatus: device,
+          onOpenMemories: () {},
+          onOpenTasks: () {},
+          firmwareUpdate: update,
+          onOpenDevice: () => opened++,
+          clock: () => DateTime(2026, 10, 15, 10),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Open Echo'));
+    expect(opened, 1);
+  });
+}
+
+final class _OneRelease implements FirmwareApi {
+  @override
+  Future<FirmwareRelease?> latestFirmware() async =>
+      const FirmwareRelease(version: '0.6.0', sizeBytes: 1, sha256: 'x', notes: '');
+
+  @override
+  Future<Uint8List> downloadFirmware(String version) async => Uint8List(1);
+}
+
+final class _NoLink implements FirmwareLink {
+  @override
+  bool get canUpdateFirmware => false;
+  @override
+  int get firmwareChunkSize => 100;
+  @override
+  Stream<OtaStatus> get otaStatusStream => const Stream.empty();
+  @override
+  Stream<DeviceInfo> get deviceInfoStream => const Stream.empty();
+  @override
+  Future<void> beginFirmwareUpdate(int size, List<int> sha256) async {}
+  @override
+  Future<void> writeFirmwareChunk(int offset, List<int> bytes) async {}
+  @override
+  Future<void> abortFirmwareUpdate() async {}
 }

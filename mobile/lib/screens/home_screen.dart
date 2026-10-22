@@ -41,7 +41,7 @@ final class HomeScreen extends StatefulWidget {
     this.openConversation,
     this.onOpenChat,
     this.firmwareUpdate,
-    this.onOpenSettings,
+    this.onOpenDevice,
     this.headerAction,
     this.manageAppsBuilder,
     this.addAppBuilder,
@@ -68,9 +68,10 @@ final class HomeScreen extends StatefulWidget {
   /// Opens the chat an answer goes to (null: the Voice requests chat).
   final void Function(String? sessionId)? onOpenChat;
 
-  /// A newer wearable firmware is announced once per version, with the way to Settings.
+  /// A newer wearable firmware is announced once per version, with the way to the Echo
+  /// screen, where it is installed.
   final FirmwareUpdateController? firmwareUpdate;
-  final VoidCallback? onOpenSettings;
+  final VoidCallback? onOpenDevice;
 
   /// The device pill, in the top right.
   final Widget? headerAction;
@@ -513,8 +514,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                             text:
                                 'A new firmware for Echo (${release.version}) is ready. '
                                 'Installing it takes about a minute.',
-                            actionLabel: 'Open Settings',
-                            onAction: widget.onOpenSettings,
+                            actionLabel: 'Open Echo',
+                            onAction: widget.onOpenDevice,
                           );
                         },
                       ),
