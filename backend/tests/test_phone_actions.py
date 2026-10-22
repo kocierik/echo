@@ -235,6 +235,8 @@ def test_reminder_requests_are_checked_for_apps():
     assert q.might_need_tools("Ricordami di comprare il latte alle 18", [])
     assert q.might_need_tools("Remind me to call Ada tomorrow", [])
     assert q.might_need_tools("Che promemoria ho?", [])
+    # The "Remind me…" under a photo, in Italian
+    assert q.might_need_tools("Ricordamelo giovedì 22 ottobre alle 9:00", [])
     assert not q.might_need_tools("Ti ricordi cosa ha detto Marco?", [])
 
 

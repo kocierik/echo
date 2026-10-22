@@ -130,7 +130,7 @@ _TOOL_HINT = re.compile(
     r"book|spost|rimand|anticip|posticip|resched|move|cancell|elimin|annull|delete|"
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
-    r"inbox|ricordami|ricordarmi|remind|promemoria)",
+    r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria)",
     re.IGNORECASE,
 )
 
