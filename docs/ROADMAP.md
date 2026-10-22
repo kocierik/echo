@@ -221,6 +221,11 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 ## Più avanti
 
 - Firmware: wake word sul dispositivo, risparmio energetico (light sleep tra i frame VAD), feedback aptico.
+- Hardware del prodotto (22/10; per ora si resta sulla XIAO ESP32-S3 Sense): un circuito fatto apposta con
+  ESP32-S3, **due microfoni** (beamforming e meno rumore; la direzione del suono distingue la voce dell'utente da
+  quella degli altri, oltre alle impronte vocali), fotocamera e un piccolo **altoparlante** (Echo risponde a voce
+  dal dispositivo: costa batteria, la sintesi vocale ha un costo da misurare, e chi è vicino sente). Da provare
+  prima su una scheda audio a parte (es. ReSpeaker Lite con XIAO ESP32-S3) come prototipo separato.
 - Memoria: filtro per tipo di entità ("i miei task aperti con Marco"), raggruppamento per argomento.
 - Provider alternativi e locali: Whisper/LLM/embedding self-hosted, Claude, Gemini.
 - Deploy: il server su un VPS in Europa con backup notturni cifrati (oggi gira sul Mac: se è spento, Echo non
