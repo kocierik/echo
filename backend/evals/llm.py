@@ -22,6 +22,7 @@ from pathlib import Path
 from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
 from app.actions.routine_tools import ROUTINE_TOOLS
+from app.actions.todo_tools import TODO_TOOLS
 from app.services.about_echo import about_echo
 from app.services.analysis_pipeline import extract_entities
 from app.services.language import clear_language, detect_language
@@ -208,8 +209,8 @@ async def answers(llm) -> bool:
 
 async def tools(llm) -> bool:
     suite = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
-    # As in production: Echo's routine tools are always offered
-    offered = [SEARCH_MEMORY_TOOL, *ROUTINE_TOOLS, *suite["tools"]]
+    # As in production: Echo's own tools (routines, its to-do list) are always offered
+    offered = [SEARCH_MEMORY_TOOL, *ROUTINE_TOOLS, *TODO_TOOLS, *suite["tools"]]
     passed = 0
     for case in suite["cases"]:
         messages = [

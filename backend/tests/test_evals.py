@@ -100,10 +100,11 @@ def test_answer_and_tool_cases_are_well_formed():
             assert normalize_words(word) == [word]
     tools = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
     from app.actions.routine_tools import ROUTINE_TOOL_NAMES
+    from app.actions.todo_tools import TODO_TOOL_NAMES
 
     # None: the model asks instead of calling a tool
     names = {
-        None, "search_memory", *ROUTINE_TOOL_NAMES,
+        None, "search_memory", *ROUTINE_TOOL_NAMES, *TODO_TOOL_NAMES,
         *(tool["function"]["name"] for tool in tools["tools"]),
     }
     for case in tools["cases"]:

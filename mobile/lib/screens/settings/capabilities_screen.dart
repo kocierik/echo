@@ -33,9 +33,10 @@ final class CapabilitiesScreen extends StatelessWidget {
       children: [
         const SettingsSection('REMEMBERS'),
         const SettingsMessage(
-          'Wear it: Echo keeps what is said as conversations, with their people, tasks, '
-          'events and promises, a summary for every day and every week. What needs to be '
-          'live, like the weather or the news, it looks up on the web.',
+          'Wear it: Echo keeps what is said as conversations, with their people, events '
+          'and your promises, a summary for every day and every week. To-dos are the '
+          'ones you ask for. What needs to be live, like the weather or the news, it '
+          'looks up on the web.',
         ),
         const SettingsSection('ASK IN THE CHAT (TAP ONE)'),
         const SettingsMessage(

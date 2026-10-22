@@ -26,6 +26,7 @@ from app.actions.provider import (
     ToolResult,
 )
 from app.actions.routine_tools import ROUTINE_TOOL_NAMES, ROUTINE_TOOLS, run_routine_tool
+from app.actions.todo_tools import TODO_TOOL_NAMES, TODO_TOOLS, run_todo_tool
 from app.core.config import settings
 from app.core.timezone import user_zone
 from app.models.pending_action import PendingAction
@@ -161,6 +162,12 @@ in words with the schedule and say it can be paused in Profile → Routines. To 
 one, list the routines and delete it (a change: delete it and create the new one).
 """
 
+_TODO_RULES = """- To-dos and reminders the user asks for ("segnami di comprare il latte", \
+"ricordami di chiamare Giulia venerdì"): in the app they name; a reminder at a time in the phone's \
+Reminders when they are available; otherwise Echo's own list (ECHO_CREATE_TASK), with the \
+day when one is said. Never ask which app.
+"""
+
 _PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
 when the user asks to be reminded of something at a time, create a reminder due then (the \
 phone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
@@ -198,7 +205,7 @@ def _system_prompt(
     if can_search:
         prompt += _SEARCH_RULES
     if routines:
-        prompt += _ROUTINE_RULES
+        prompt += _ROUTINE_RULES + _TODO_RULES
     return prompt + _PHONE_RULES if phone_apps else prompt
 
 
@@ -306,9 +313,10 @@ async def run_action_agent(
 
     `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
     are offered: the connected apps the request names, else all connected ones.
-    `routine_tools`: Echo's own tools to create, list and delete routines (not offered to
-    a routine's own run). Without `allow_confirm` (a routine: no one is there to confirm),
-    confirm-tier tools are not offered and a call that needs confirmation is refused.
+    `routine_tools`: Echo's own tools: routines (create, list, delete) and its to-do list
+    (not offered to a routine's own run). Without `allow_confirm` (a routine: no one is
+    there to confirm), confirm-tier tools are not offered and a call that needs
+    confirmation is refused.
     """
     texts = TEXTS[detect_language(request)]
 
@@ -323,8 +331,9 @@ async def run_action_agent(
             if classify_tool(_tool_name(schema)) != ToolTier.CONFIRM
         ]
     offered = {_tool_name(schema) for schema in external_tools}
-    own = ROUTINE_TOOL_NAMES if routine_tools else frozenset()
-    tools = [SEARCH_MEMORY_TOOL, *(ROUTINE_TOOLS if routine_tools else []), *external_tools]
+    own = ROUTINE_TOOL_NAMES | TODO_TOOL_NAMES if routine_tools else frozenset()
+    own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS] if routine_tools else []
+    tools = [SEARCH_MEMORY_TOOL, *own_tools, *external_tools]
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
     search = await search_tool_for(llm, user_id)
@@ -424,7 +433,10 @@ async def _run_tool(
         return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
 
     if call.name in own:
-        result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
+        if call.name in TODO_TOOL_NAMES:
+            result = await run_todo_tool(db, user_id, call.name, call.arguments)
+        else:
+            result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
         executed.append(call.name)
         await log_action(db, user_id, source, call.name, call.arguments, result)
         if result.ok:

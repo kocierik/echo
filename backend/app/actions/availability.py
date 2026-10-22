@@ -67,10 +67,14 @@ to happen regularly ("every morning at 7 tell me the weather", "ogni venerdì ri
 email"), or to see, stop or change such routines ("which routines do I have?", "quali \
 incarichi ho?", "stop the morning weather"), is a routine: set "routine" to true \
 (it needs no app). A request about something that happens regularly in the user's life \
-("what do I do every Monday?") is not.{camera}
+("what do I do every Monday?") is not.
+A to-do or a reminder for the user with no app named ("segnami di comprare il latte", \
+"aggiungi ai to-do...", "ricordami di chiamare Giulia venerdì") goes to Echo's own list: \
+set "todo" to true (it needs no app). With an app named (Todoist, Notion, ...) it needs \
+that app.{camera}
 Respond with ONLY a JSON object: \
-{{{camera_key}"routine": false, "needs_apps": true, "apps": ["<slug>", ...]}} \
-or {{{camera_key}"routine": false, "needs_apps": false, "apps": []}}."""
+{{{camera_key}"routine": false, "todo": false, "needs_apps": true, "apps": ["<slug>", ...]}} \
+or {{{camera_key}"routine": false, "todo": false, "needs_apps": false, "apps": []}}."""
 
 CAMERA_SECTION = """
 Echo also has a camera on the user's wearable. A request to take a photo, or a request \
@@ -90,6 +94,8 @@ class RequestIntent:
     camera: bool = False
     # Create, see, stop or change a routine (the agent's own tools, no app)
     routine: bool = False
+    # A to-do or reminder with no app named: Echo's own list (the agent's own tool)
+    todo: bool = False
     # Names the model gave that match no known or connected app, as written
     unresolved: list[str] = field(default_factory=list)
 
@@ -148,6 +154,8 @@ def _parse_intent(
         return RequestIntent(camera=True)
     if result.get("routine") is True:
         return RequestIntent(routine=True)
+    if result.get("todo") is True and not result.get("apps"):
+        return RequestIntent(todo=True)
     needs, apps = result.get("needs_apps"), result.get("apps", [])
     if needs is not True or not isinstance(apps, list):
         return RequestIntent()
@@ -238,7 +246,7 @@ async def route_request(
     intent = await classify_request(llm, request, history, connected, APP_NAMES, camera)
     if camera and intent.camera:
         return Route("photo")
-    if intent.routine:
+    if intent.routine or intent.todo:
         # Echo's own tools: no app is needed, whatever is connected
         return Route("agent")
     if not intent.needs_apps:

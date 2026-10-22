@@ -120,7 +120,7 @@ async def test_read_tool_result_is_summarized():
     names = [t["function"]["name"] for t in llm.tools_log[0]]
     assert names == [
         "search_memory", "ECHO_CREATE_ROUTINE", "ECHO_LIST_ROUTINES", "ECHO_DELETE_ROUTINE",
-        "GMAIL_FETCH_EMAILS",
+        "ECHO_CREATE_TASK", "GMAIL_FETCH_EMAILS",
     ]
 
 

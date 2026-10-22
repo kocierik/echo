@@ -19,9 +19,15 @@ def about_echo(phone_apps_on: list[str]) -> str:
     lines = [
         "Echo is a wearable the user wears and an app on their phone. Echo:",
         "- remembers the user's conversations: it transcribes them, knows who spoke and "
-        "keeps the people, tasks, promises, ideas and events that came up;",
+        "keeps the people, promises, ideas and events that came up;",
+        "- keeps a to-do list of what the user asks it to note (\"Echo, segnami di…\"), "
+        "shown in Today;",
         "- answers questions about them, by chat (Ask) or by voice;",
         "- writes a summary of every day and of every week;",
+        "- looks up live information on the web (weather, news, prices) and names the "
+        "sources;",
+        "- does things on its own at a regular time when asked (\"every morning at 7 tell "
+        "me the weather\"): routines, seen and paused in Profile → Routines;",
         f"- acts in the user's apps when asked ({apps}): they are connected in Profile → "
         "Apps; sending to others, changing and deleting wait for the user's Confirm;",
     ]
@@ -32,7 +38,7 @@ def about_echo(phone_apps_on: list[str]) -> str:
         "what it shows;",
         "- hears requests spoken to the wearable that start with \"Echo, …\";",
         "- learns the user's voice (Profile → Voices) to tell who is speaking.",
-        "What Echo can do (Settings) has examples to try. Examples of questions: "
+        "What Echo can do (Profile) has examples to try. Examples of questions: "
         "\"What did Marco say about the offer?\", \"What did I promise this week?\", "
         "\"Echo, remind me to call Ada at 6\", \"Echo, what is this?\".",
     ]
