@@ -358,3 +358,23 @@ CREATE TABLE mcp_calls (
     created_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX ix_mcp_calls_api_key_id ON mcp_calls(api_key_id);
+
+-- ============================================================
+-- ROUTINES: what Echo does on its own at a time (Migration 020)
+-- ============================================================
+CREATE TABLE routines (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    instruction TEXT NOT NULL,         -- the request in the user's words
+    schedule JSONB NOT NULL,           -- {kind, time, days?, day_of_month?}
+    timezone VARCHAR(64) NOT NULL,     -- the schedule's wall times are read here
+    active BOOLEAN NOT NULL,
+    next_run_at TIMESTAMPTZ NOT NULL,
+    last_run_at TIMESTAMPTZ,
+    last_status VARCHAR(10),           -- ok | failed | skipped
+    last_answer TEXT,
+    source VARCHAR(10) NOT NULL,       -- chat | voice
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_routines_user_id ON routines(user_id);
+CREATE INDEX ix_routines_due ON routines(active, next_run_at);

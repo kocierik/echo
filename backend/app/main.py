@@ -35,6 +35,7 @@ from app.routers import (
     people,
     photos,
     query,
+    routines,
     search,
     segments,
     voices,
@@ -122,6 +123,7 @@ app.include_router(photos.router, prefix=settings.api_prefix)
 app.include_router(voices.router, prefix=settings.api_prefix)
 app.include_router(firmware.router, prefix=settings.api_prefix)
 app.include_router(device.router, prefix=settings.api_prefix)
+app.include_router(routines.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):

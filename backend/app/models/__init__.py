@@ -13,6 +13,7 @@ from app.models.mcp_call import McpCall
 from app.models.pending_action import PendingAction
 from app.models.photo import Photo
 from app.models.query_feedback import QueryFeedback
+from app.models.routine import Routine
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
@@ -36,6 +37,7 @@ __all__ = [
     "PendingAction",
     "Photo",
     "QueryFeedback",
+    "Routine",
     "Segment",
     "TimestampMixin",
     "Transcription",
