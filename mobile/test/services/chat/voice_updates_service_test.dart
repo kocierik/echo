@@ -31,6 +31,26 @@ void main() {
         sessionId: session,
       );
 
+  test('new answers tell the thread to reload, once per check', () async {
+    await setUpService({
+      VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),
+    });
+    var changed = 0;
+    service = VoiceUpdatesService(api, NotificationService(port), prefs,
+        onNewMessages: () => changed++);
+    api.response = VoiceUpdates(
+      messages: [
+        message('one', t0.add(const Duration(minutes: 1))),
+        message('two', t0.add(const Duration(minutes: 2))),
+      ],
+      now: t0.add(const Duration(minutes: 3)),
+    );
+
+    await service.check();
+    await service.check(); // the same answers again: nothing new
+    expect(changed, 1);
+  });
+
   test('first check only stores now and shows nothing', () async {
     await setUpService();
     api.response = VoiceUpdates(messages: [message('old', t0)], now: t0);

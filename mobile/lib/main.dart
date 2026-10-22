@@ -503,6 +503,7 @@ class MainShell extends StatelessWidget {
                       headerAction: pill,
                       dictation: appController.askDictation,
                       openSessionRequest: appController.pendingChatSessionId,
+                      threadUpdates: appController.threadUpdates,
                       askRequest: appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),

@@ -11,10 +11,18 @@ abstract interface class VoiceUpdatesApi {
   Future<VoiceUpdates> getVoiceUpdates(DateTime? since);
 }
 
-/// Checks for new "Voice requests" answers and shows a local notification
+/// Checks for new answers in the thread with Echo and shows a local notification
 /// for each. Called on every segment upload and on app resume.
 final class VoiceUpdatesService {
-  VoiceUpdatesService(this._api, this._notifications, this._preferences);
+  VoiceUpdatesService(
+    this._api,
+    this._notifications,
+    this._preferences, {
+    void Function()? onNewMessages,
+  }) : _onNewMessages = onNewMessages;
+
+  /// Called once per check that found new answers: Ask reloads the thread.
+  final void Function()? _onNewMessages;
 
   static const lastSeenKey = 'voice_updates_last_seen';
   static const seenKeysKey = 'voice_updates_seen_keys';
@@ -43,6 +51,7 @@ final class VoiceUpdatesService {
         final seen = List<String>.of(
           _preferences.getStringList(seenKeysKey) ?? const <String>[],
         );
+        var found = false;
         for (final message in updates.messages) {
           if (message.role != 'assistant') continue;
           final key = _keyOf(message);
@@ -53,11 +62,13 @@ final class VoiceUpdatesService {
             id: _nextId(),
           );
           seen.add(key);
+          found = true;
           if (seen.length > maxSeenKeys) {
             seen.removeRange(0, seen.length - maxSeenKeys);
           }
           await _preferences.setStringList(seenKeysKey, seen);
         }
+        if (found) _onNewMessages?.call();
       }
       await _preferences.setString(
         lastSeenKey,

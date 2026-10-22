@@ -197,6 +197,7 @@ final class AppLifecycleCoordinator {
       credentialApiService,
       notificationService,
       preferences,
+      onNewMessages: appController.threadChanged,
     );
     final binding = await startBinding(
       initialStatus: deviceController.state,

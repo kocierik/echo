@@ -57,9 +57,25 @@ abstract interface class ChatApi {
   Future<void> cancelPendingAction(String id);
 }
 
+/// The thread with Echo: what Ask opens (voice, photo, typed and routine messages).
+abstract interface class ThreadApi {
+  Future<ChatSessionDetail> getThread();
+}
+
 /// Ask: questions and chat history. Confirming an action is in
 /// actions_api.dart.
-mixin ChatEndpoints on ApiClient implements ChatApi {
+mixin ChatEndpoints on ApiClient implements ChatApi, ThreadApi {
+  /// `GET /api/chat-sessions/thread`, created on first use; never from the cache: it
+  /// changes while the app is closed.
+  @override
+  Future<ChatSessionDetail> getThread() async {
+    final response = await get('/api/chat-sessions/thread');
+    return parse(
+      response.data,
+      (data) => ChatSessionDetail.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
   @override
   Future<QueryResponse> query(
     String question, {

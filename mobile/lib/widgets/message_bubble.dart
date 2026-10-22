@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatting.dart';
 import 'action_card.dart';
 import 'panel.dart';
 import 'photo_thumbnail.dart';
@@ -49,6 +50,23 @@ final class MessageBubble extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
+        if (message.byVoice)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.mic_none_rounded, size: 13, color: palette.text2),
+                const SizedBox(width: 4),
+                Text(
+                  message.timestamp == null
+                      ? 'By voice'
+                      : 'By voice · ${formatTime(message.timestamp!)}',
+                  style: textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
         ConstrainedBox(
           constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
           child: DecoratedBox(
@@ -87,10 +105,25 @@ final class MessageBubble extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final theme = Theme.of(context);
     final textTheme = theme.textTheme;
+    final routine = message.routineId != null;
     return Panel(
+      // A routine's answer: Echo did it on its own, at the time asked
+      color: routine ? palette.accentSoft : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (routine)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'ROUTINE',
+                style: textTheme.labelSmall?.copyWith(
+                  color: palette.onAccentSoft,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
           MarkdownBody(
             data: message.text,
             selectable: true,
