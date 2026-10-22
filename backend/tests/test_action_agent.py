@@ -116,9 +116,12 @@ async def test_read_tool_result_is_summarized():
     # The assistant turn with the tool call precedes the tool message
     assistant = [m for m in llm.call_log[1] if m.role == "assistant"]
     assert assistant[-1].tool_calls[0].name == "GMAIL_FETCH_EMAILS"
-    # Tools offered: search_memory + the connected toolkit's tools
+    # Tools offered: search_memory, Echo's routine tools, the connected toolkit's tools
     names = [t["function"]["name"] for t in llm.tools_log[0]]
-    assert names == ["search_memory", "GMAIL_FETCH_EMAILS"]
+    assert names == [
+        "search_memory", "ECHO_CREATE_ROUTINE", "ECHO_LIST_ROUTINES", "ECHO_DELETE_ROUTINE",
+        "GMAIL_FETCH_EMAILS",
+    ]
 
 
 async def test_system_prompt_and_history_are_sent():

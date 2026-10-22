@@ -10,6 +10,10 @@
     {"id": "notion-not-connected", "text": "Aggiungi una nota su Notion con le idee di oggi", "expect": "notice"},
     {"id": "english-memory", "text": "What did Ada say about the launch?", "expect": "memory"},
     {"id": "english-schedule", "text": "Schedule a meeting with Ada tomorrow at 10", "expect": "agent"},
-    {"id": "mail-mentioned-in-memory", "text": "Ho parlato con Marco della sua mail sul preventivo?", "expect": "memory"}
+    {"id": "mail-mentioned-in-memory", "text": "Ho parlato con Marco della sua mail sul preventivo?", "expect": "memory"},
+    {"id": "routine-create-it", "text": "Ogni mattina alle 7 dimmi che tempo fa a Milano", "expect": "agent"},
+    {"id": "routine-create-en", "text": "Every Friday at 5pm summarize my week's emails", "expect": "agent"},
+    {"id": "routine-list", "text": "Quali incarichi ricorrenti ho?", "expect": "agent"},
+    {"id": "routine-not-a-routine", "text": "Cosa faccio di solito ogni lunedì?", "expect": "memory"}
   ]
 }

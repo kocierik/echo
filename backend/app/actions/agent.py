@@ -25,6 +25,7 @@ from app.actions.provider import (
     ActionProviderError,
     ToolResult,
 )
+from app.actions.routine_tools import ROUTINE_TOOL_NAMES, ROUTINE_TOOLS, run_routine_tool
 from app.core.config import settings
 from app.core.timezone import user_zone
 from app.models.pending_action import PendingAction
@@ -97,6 +98,23 @@ TEXTS = {
 
 TOOLKIT_NAMES = {**APP_NAMES, **PHONE_APP_NAMES}
 
+
+class _NoApps:
+    """The provider when no app can be reached (no Composio, no phone apps): the agent
+    still has its own tools (memory, routines)."""
+
+    async def connected_toolkits(self, user_id: str) -> list[str]:
+        return []
+
+    async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
+        return []
+
+    async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult:
+        return ToolResult(ok=False, error="No app is connected")
+
+
+NO_APPS = _NoApps()
+
 # Told to the model when an execute call timed out after being sent.
 _UNKNOWN_NOTE = (
     "The request timed out after it was sent: it may or may not have been done. "
@@ -129,6 +147,14 @@ hours) search the web, answer from what you found and name the sources; if it fi
 so and never make it up. Never search the web for the user's own past: use search_memory.
 """
 
+_ROUTINE_RULES = """- Routines: when the user asks for something to happen regularly ("ogni \
+mattina alle 7 dimmi che tempo fa a Milano", "every Friday summarize my emails"), create a \
+routine (ECHO_CREATE_ROUTINE). If the time, or a detail the task needs (the city for the weather), \
+is missing, ask for it in one short question and create nothing; never guess. Then confirm \
+in words with the schedule and say it can be paused in Profile → Routines. To stop or change \
+one, list the routines and delete it (a change: delete it and create the new one).
+"""
+
 _PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
 when the user asks to be reminded of something at a time, create a reminder due then (the \
 phone alerts them). Give their times as local 'YYYY-MM-DDTHH:MM'. An event goes to the \
@@ -154,7 +180,9 @@ class _Failure:
     unknown: bool = False
 
 
-def _system_prompt(phone_apps: bool = False, can_search: bool = False) -> str:
+def _system_prompt(
+    phone_apps: bool = False, can_search: bool = False, routines: bool = False
+) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
         now=now.strftime("%A %Y-%m-%d %H:%M"),
@@ -163,6 +191,8 @@ def _system_prompt(phone_apps: bool = False, can_search: bool = False) -> str:
     )
     if can_search:
         prompt += _SEARCH_RULES
+    if routines:
+        prompt += _ROUTINE_RULES
     return prompt + _PHONE_RULES if phone_apps else prompt
 
 
@@ -263,11 +293,14 @@ async def run_action_agent(
     llm: LLMService,
     max_steps: int = 6,
     connected_toolkits: list[str] | None = None,
+    routine_tools: bool = True,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
     `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
     are offered: the connected apps the request names, else all connected ones.
+    `routine_tools`: Echo's own tools to create, list and delete routines (not offered to
+    a routine's own run).
     """
     texts = TEXTS[detect_language(request)]
 
@@ -277,11 +310,13 @@ async def run_action_agent(
         logger.warning("Action provider unreachable while listing tools", exc_info=True)
         return AgentOutcome(answer=texts["unreachable"])
     offered = {_tool_name(schema) for schema in external_tools}
-    tools = [SEARCH_MEMORY_TOOL, *external_tools]
+    own = ROUTINE_TOOL_NAMES if routine_tools else frozenset()
+    tools = [SEARCH_MEMORY_TOOL, *(ROUTINE_TOOLS if routine_tools else []), *external_tools]
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
     search = await search_tool_for(llm, user_id)
-    messages = [LLMMessage(role="system", content=_system_prompt(phone_apps, search is not None))]
+    prompt = _system_prompt(phone_apps, search is not None, routine_tools)
+    messages = [LLMMessage(role="system", content=prompt)]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
             messages.append(LLMMessage(role=item["role"], content=item["content"]))
@@ -329,6 +364,7 @@ async def run_action_agent(
         for call in response.tool_calls:
             content = await _run_tool(
                 db, user_id, source, provider, call, offered, executed, failures, succeeded,
+                own,
             )
             messages.append(LLMMessage(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
@@ -350,14 +386,24 @@ async def _run_tool(
     executed: list[str],
     failures: list[_Failure],
     succeeded: set[str],
+    own: frozenset[str] = frozenset(),
 ) -> str:
-    """Run one READ/CREATE call (or search_memory) and return the tool message content."""
+    """Run one READ/CREATE call (search_memory, a routine tool in `own`) and return the
+    tool message content."""
     if call.name == "search_memory":
         query = str(call.arguments.get("query") or "").strip()
         if not query:
             return serialize_tool_result({"error": "query is required"})
         memory = await retrieve_memory_context(db, user_id, query)
         return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
+
+    if call.name in own:
+        result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
+        executed.append(call.name)
+        await log_action(db, user_id, source, call.name, call.arguments, result)
+        if result.ok:
+            return serialize_tool_result(result.data)
+        return serialize_tool_result({"error": result.error})
 
     if call.name not in offered:
         return serialize_tool_result({"error": f"Unknown tool: {call.name}"})
