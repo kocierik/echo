@@ -38,6 +38,7 @@ final class ChatMessage {
     this.byVoice = false,
     this.when,
     this.routineId,
+    this.routineSchedule,
     this.aboutPhotoId,
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
@@ -65,6 +66,9 @@ final class ChatMessage {
 
   /// A routine's run: the answer shows as a routine's, its instruction not at all.
   final String? routineId;
+
+  /// "Every day at 07:00", over a routine's answer.
+  final String? routineSchedule;
 
   /// A follow-up about a photo, or its answer.
   final String? aboutPhotoId;
@@ -99,6 +103,7 @@ final class ChatMessage {
       byVoice: byVoice,
       when: when,
       routineId: routineId,
+      routineSchedule: routineSchedule,
       aboutPhotoId: aboutPhotoId,
     );
   }

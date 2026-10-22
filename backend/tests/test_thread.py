@@ -125,6 +125,22 @@ async def test_legacy_messages_without_source_or_time_load(client, auth_headers,
 
 
 @pytest.mark.asyncio
+async def test_a_routine_answer_keeps_its_routine_and_schedule(client, auth_headers, db_session):
+    thread = await _thread(client, auth_headers)
+    stored = await _stored(db_session, thread["id"])
+    stored.messages = [
+        {"role": "assistant", "content": "Buongiorno: sole.", "routine_id": "r1",
+         "routine_schedule": "Every day at 07:00", "notify": True},
+    ]
+    await db_session.commit()
+
+    [message] = (await _thread(client, auth_headers))["messages"]
+
+    assert message["routine_id"] == "r1"
+    assert message["routine_schedule"] == "Every day at 07:00"
+
+
+@pytest.mark.asyncio
 async def test_a_new_chat_stays_its_own_session(client, auth_headers):
     thread = await _thread(client, auth_headers)
 

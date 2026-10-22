@@ -28,8 +28,9 @@ class ChatMessage(BaseModel):
     source: str | None = None
     # A photo's answer: the date or time it shows, for "Remind me" (ISO, local)
     when: str | None = None
-    # A routine's run (the routines worker)
+    # A routine's run (the routines worker): its id and schedule ("Every day at 07:00")
     routine_id: str | None = None
+    routine_schedule: str | None = None
     # A follow-up question about a photo, and its answer
     about_photo_id: str | None = None
 

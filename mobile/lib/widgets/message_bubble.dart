@@ -196,7 +196,10 @@ final class MessageBubble extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
-                'ROUTINE',
+                [
+                  'ROUTINE',
+                  if (message.routineSchedule case final schedule?) schedule.toUpperCase(),
+                ].join(' · '),
                 style: textTheme.labelSmall?.copyWith(
                   color: palette.onAccentSoft,
                   fontWeight: FontWeight.w600,

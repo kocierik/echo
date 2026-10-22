@@ -344,6 +344,7 @@ final class ChatController extends ChangeNotifier {
                 (thread && message.source == null && message.content != '📷')),
         when: message.when,
         routineId: message.routineId,
+        routineSchedule: message.routineSchedule,
         aboutPhotoId: message.aboutPhotoId,
       );
     }).toList();

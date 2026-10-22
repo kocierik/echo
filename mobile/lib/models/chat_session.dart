@@ -41,6 +41,7 @@ final class ChatSessionMessage {
     this.source,
     this.when,
     this.routineId,
+    this.routineSchedule,
     this.aboutPhotoId,
   });
 
@@ -64,6 +65,9 @@ final class ChatSessionMessage {
   /// A routine's run: its instruction and answer.
   final String? routineId;
 
+  /// When it runs, as the server says it ("Every day at 07:00").
+  final String? routineSchedule;
+
   /// A follow-up question about a photo, and its answer.
   final String? aboutPhotoId;
 
@@ -85,6 +89,8 @@ final class ChatSessionMessage {
       source: json['source'] is String ? json['source'] as String : null,
       when: json['when'] is String ? DateTime.tryParse(json['when'] as String) : null,
       routineId: json['routine_id'] is String ? json['routine_id'] as String : null,
+      routineSchedule:
+          json['routine_schedule'] is String ? json['routine_schedule'] as String : null,
       aboutPhotoId:
           json['about_photo_id'] is String ? json['about_photo_id'] as String : null,
     );

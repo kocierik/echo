@@ -395,7 +395,13 @@ final class _ChatScreenState extends State<ChatScreen> {
           ),
           if (state.error != null) ...[
             const SizedBox(height: 16),
-            _ErrorNotice(message: state.error!),
+            // The thread could not load: try it again
+            _ErrorNotice(
+              message: state.error!,
+              onRetry: _controller.hasThread && !state.isThread
+                  ? () => unawaited(_controller.openThread())
+                  : null,
+            ),
           ],
           const SizedBox(height: 22),
           ..._suggestions.map((suggestion) => Padding(

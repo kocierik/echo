@@ -168,17 +168,33 @@ void main() {
         ChatSessionMessage(
             role: 'user', content: 'Il meteo ogni mattina', timestamp: morning, routineId: 'r1'),
         ChatSessionMessage(
-            role: 'assistant', content: 'Buongiorno: sole.', timestamp: morning, routineId: 'r1'),
+            role: 'assistant',
+            content: 'Buongiorno: sole.',
+            timestamp: morning,
+            routineId: 'r1',
+            routineSchedule: 'Every day at 07:00'),
       ]);
 
       await pump(tester);
 
       expect(find.text('By voice · 08:02'), findsOneWidget);
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('ROUTINE'), findsOneWidget);
+      expect(find.text('ROUTINE · EVERY DAY AT 07:00'), findsOneWidget);
       expect(find.text('Buongiorno: sole.'), findsOneWidget);
       // The routine's own instruction is not a question the user asked here
       expect(find.text('Il meteo ogni mattina'), findsNothing);
+    });
+
+    testWidgets('a thread that could not load offers to try again', (tester) async {
+      api.failThread = true;
+      await pump(tester);
+      expect(find.byKey(const Key('retry-chat-send')), findsOneWidget);
+
+      api.failThread = false;
+      api.thread = thread(const [ChatSessionMessage(role: 'assistant', content: 'Sole.')]);
+      await tester.tap(find.byKey(const Key('retry-chat-send')));
+      await tester.pumpAndSettle();
+      expect(find.text('Sole.'), findsOneWidget);
     });
 
     testWidgets('an Ask request lands in the thread', (tester) async {
@@ -221,9 +237,12 @@ final class _ThreadApi implements ChatApi, ThreadApi, PhotoFollowUpApi {
     return 'Notice: the lift is out of order.';
   }
 
+  bool failThread = false;
+
   @override
   Future<ChatSessionDetail> getThread() async {
     threadReads++;
+    if (failThread) throw Exception('offline');
     return thread!;
   }
 
