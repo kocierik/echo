@@ -299,11 +299,13 @@ async def extract_entities(
                 '{"entities": [{"type": "person|task|idea|event|note", "name": "...", '
                 '"content": "...", "metadata": {...}}]}\n\n'
                 "Tipi:\n"
-                "- person: persone menzionate (metadata: {role, notes})\n"
-                "- task: SOLO le promesse dell'utente (vedi 'Promesse' sotto). Non estrarre "
-                "altre cose da fare, piani, doveri o promemoria: quando l'utente vuole un "
-                "to-do lo chiede a Echo "
-                "(metadata: {done: false, due_date: YYYY-MM-DD, promise: true, promise_to})\n"
+                "- person: ogni persona nominata, anche quando la frase non dà altre "
+                "entità (\"stasera passo da Lucia\" → Lucia) (metadata: {role, notes})\n"
+                "- task: SOLO le promesse dell'utente e le attese (vedi 'Promesse' e "
+                "'Attese' sotto). Non estrarre altre cose da fare, piani, doveri o "
+                "promemoria: quando l'utente vuole un to-do lo chiede a Echo "
+                "(metadata: {done: false, due_date: YYYY-MM-DD, promise: true, promise_to} "
+                "oppure {done: false, due_date, expected: true, expected_from})\n"
                 "- idea: idee, suggerimenti, concetti (metadata: {tags})\n"
                 "- event: eventi, appuntamenti, date (metadata: {event_date: YYYY-MM-DD, "
                 "event_time: HH:MM, duration_minutes: intero, location})\n"
@@ -322,6 +324,15 @@ async def extract_entities(
                 "faccio io\"), domande e offerte (\"vuoi che ti mandi le foto?\"), ciò che "
                 "l'utente riporta di altri (\"Marco ha detto che mi manda...\"), gli impegni "
                 "presi da altri (righe [Others] o [Altri]). Nel dubbio non è una promessa\n"
+                "- Attese: quando un'altra persona (righe [Others] o [Altri]) si impegna "
+                "esplicitamente con l'utente a fare una cosa concreta (\"il preventivo te "
+                "lo mando io domani\", \"ti richiamo venerdì\"): un task con metadata "
+                "expected: true ed expected_from: il nome di chi lo farà, anche quando lo "
+                "dice un'altra riga (\"[Tu] Perfetto Giulia\"; ometti se non si capisce); il "
+                "nome del task dice cosa arriverà (\"Preventivo da Marco\"). È un'attesa "
+                "anche quando l'utente lo riferisce (\"Marco ha detto che mi manda il "
+                "preventivo domani\"). Non lo sono le frasi ipotetiche, le formule di "
+                "cortesia (\"ti faccio sapere\") e le domande; nel dubbio non è un'attesa\n"
                 "- Per le persone, usa il nome completo se disponibile\n"
                 "- Ignora filler e parole senza contenuto informativo\n"
                 "- Le richieste rivolte all'assistente \"Echo\" (es. \"Echo, segnami il "
@@ -350,8 +361,11 @@ async def extract_entities(
         if not name:
             continue
         metadata = entity_data.get("metadata") or {}
-        # To-dos come only from the user's promises; others are asked of Echo
-        if entity_data.get("type") == "task" and metadata.get("promise") is not True:
+        # To-dos come only from promises, the user's or made to them ("expected"); the
+        # others are asked of Echo
+        if entity_data.get("type") == "task" and not (
+            metadata.get("promise") is True or metadata.get("expected") is True
+        ):
             continue
 
         entity = Entity(

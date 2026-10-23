@@ -261,6 +261,18 @@
           ],
           "promise": true
         }
+      ],
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "preventivo"
+          ],
+          "expected": true,
+          "due_date": "2026-10-15"
+        }
       ]
     },
     {
@@ -317,13 +329,27 @@
       ]
     },
     {
-      "id": "reported-is-not-a-promise",
+      "id": "reported-is-expected-not-a-promise",
       "text": "[Tu] Marco ha detto che mi manda il preventivo domani.",
       "forbid": [
         {
           "types": [
             "task"
-          ]
+          ],
+          "promise": true
+        }
+      ],
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "keywords": [
+            "preventivo"
+          ],
+          "expected": true,
+          "expected_from": "marco",
+          "due_date": "2026-10-15"
         }
       ]
     },
@@ -359,6 +385,39 @@
             "note",
             "event",
             "idea"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "expected-call-back",
+      "text": "[Altri] Ti richiamo io venerdì per la risposta, va bene? [Tu] Perfetto Giulia.",
+      "expect": [
+        {
+          "types": [
+            "task"
+          ],
+          "expected": true,
+          "expected_from": "giulia",
+          "due_date": "2026-10-16"
+        }
+      ],
+      "forbid": [
+        {
+          "types": [
+            "task"
+          ],
+          "promise": true
+        }
+      ]
+    },
+    {
+      "id": "vague-other-is-not-expected",
+      "text": "[Altri] Ci sentiamo, magari ti faccio sapere qualcosa.",
+      "forbid": [
+        {
+          "types": [
+            "task"
           ]
         }
       ]

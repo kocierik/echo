@@ -55,6 +55,12 @@ def _matches(entity: Extracted, spec: dict) -> bool:
             return False
     if "promise" in spec and bool(entity.metadata.get("promise")) != spec["promise"]:
         return False
+    if "expected" in spec and bool(entity.metadata.get("expected")) != spec["expected"]:
+        return False
+    if "expected_from" in spec and spec["expected_from"] not in normalize_words(
+        str(entity.metadata.get("expected_from", ""))
+    ):
+        return False
     if "promise_to" in spec and spec["promise_to"] not in normalize_words(
         str(entity.metadata.get("promise_to", ""))
     ):

@@ -354,3 +354,48 @@ async def test_the_app_asks_what_is_coming_up(client, auth_headers):
     body = response.json()
     assert body["event"]["title"] == "Call" and body["recap"] is None
     assert empty.json() == {"event": None, "recap": None}
+
+
+def _expected(name, due=None, sender=None, done=False) -> Entity:
+    metadata = {"expected": True, "done": done}
+    if due:
+        metadata["due_date"] = due.isoformat()
+    if sender:
+        metadata["expected_from"] = sender
+    return Entity(user_id=TEST_USER_ID, entity_type="task", name=name, metadata_=metadata)
+
+
+def test_what_others_promised_is_asked_about_the_morning_after_it_was_due():
+    waiting = [
+        _expected("Preventivo da Marco", TODAY - timedelta(days=1), "Marco"),
+        _expected("Foto della cena", TODAY - timedelta(days=1)),
+        _expected("Contratto da Ada", TODAY + timedelta(days=1), "Ada"),
+        _expected("Prima o poi", None, "Luca"),
+    ]
+
+    notices = n.waiting_notices(waiting, TODAY, days=2)
+
+    by_day = {x.fire_at.date(): x for x in notices}
+    # Due yesterday: today; due tomorrow: the day after; no date: never
+    assert set(by_day) == {TODAY, TODAY + timedelta(days=2)}
+    assert by_day[TODAY].title == "Still waiting for 2 things"
+    assert "Marco: Preventivo da Marco" in by_day[TODAY].body
+    assert by_day[TODAY + timedelta(days=2)].title == "Still waiting"
+    assert by_day[TODAY].kind == "promises" and by_day[TODAY].target == "tasks"
+    assert by_day[TODAY].fire_at.hour == n.PROMISE_HOUR
+
+
+async def test_open_waiting_items_and_promises_stay_apart(db_session: AsyncSession):
+    db_session.add_all([
+        _expected("Preventivo da Marco", TODAY, "Marco"),
+        _expected("Arrivato", TODAY, "Ada", done=True),
+        _promise("Mandare le slide", TODAY, "Luca"),
+    ])
+    await db_session.commit()
+
+    assert [e.name for e in await n.open_waiting(db_session, TEST_USER_ID)] == [
+        "Preventivo da Marco"
+    ]
+    assert [e.name for e in await n.open_promises(db_session, TEST_USER_ID)] == [
+        "Mandare le slide"
+    ]

@@ -71,6 +71,15 @@ final class TaskItem {
     return to is String && to.trim().isNotEmpty ? to.trim() : null;
   }
 
+  /// Something someone promised the user ("il preventivo te lo mando io domani").
+  bool get isExpected => metadata['expected'] == true;
+
+  /// Who is to do it, when known.
+  String? get expectedFrom {
+    final from = metadata['expected_from'];
+    return from is String && from.trim().isNotEmpty ? from.trim() : null;
+  }
+
   bool get done => metadata['done'] == true;
 
   Map<String, dynamic> metadataWithDone(bool done) => {...metadata, 'done': done};

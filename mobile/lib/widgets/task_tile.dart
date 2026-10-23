@@ -94,6 +94,16 @@ final class TaskTile extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                  if (task.isExpected)
+                    Text(
+                      task.expectedFrom == null ? 'Waiting' : 'Waiting for ${task.expectedFrom}',
+                      key: Key('task-expected-${task.id}'),
+                      style: textTheme.bodySmall?.copyWith(
+                        fontSize: 13,
+                        color: palette.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   if (due != null)
                     Text(
                       overdue ? 'Overdue · ${shortDate(due)}' : dayLabel(due, today),

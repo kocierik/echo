@@ -5,7 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 TaskItem _task(String id,
-        {bool promise = false, String? to, DateTime? due, DateTime? created}) =>
+        {bool promise = false,
+        String? to,
+        bool expected = false,
+        String? from,
+        DateTime? due,
+        DateTime? created}) =>
     TaskItem(
       id: id,
       name: 'Task $id',
@@ -14,6 +19,8 @@ TaskItem _task(String id,
       metadata: {
         if (promise) 'promise': true,
         if (to != null) 'promise_to': to,
+        if (expected) 'expected': true,
+        if (from != null) 'expected_from': from,
         if (due != null) 'due_date': due.toIso8601String().substring(0, 10),
       },
     );
@@ -70,5 +77,29 @@ void main() {
     ));
     expect(find.text('To do today'), findsOneWidget);
     expect(find.text('Promised to Marco'), findsOneWidget);
+  });
+
+  testWidgets('something promised to the user says from whom', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: TodoPanel(
+          loading: false,
+          tasks: [
+            _task('w', expected: true, from: 'Ada', due: DateTime(2026, 10, 15)),
+            _task('v', expected: true, due: DateTime(2026, 10, 15)),
+          ],
+          error: null,
+          busy: (_) => false,
+          onRetry: () {},
+          onToggle: (_) {},
+          onDismiss: (_) {},
+          onSeeAll: () {},
+          now: now,
+        ),
+      ),
+    ));
+    expect(find.text('Waiting for Ada'), findsOneWidget);
+    expect(find.text('Waiting'), findsOneWidget);
   });
 }

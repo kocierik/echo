@@ -88,6 +88,50 @@ async def open_promises(db: AsyncSession, user_id: uuid.UUID) -> list[Entity]:
     return list(result.scalars())
 
 
+async def open_waiting(db: AsyncSession, user_id: uuid.UUID) -> list[Entity]:
+    """What others promised the user and has not arrived yet ("expected" tasks)."""
+    result = await db.execute(
+        select(Entity)
+        .where(Entity.user_id == user_id, Entity.entity_type == "task")
+        .where(Entity.metadata_["expected"].as_boolean().is_(True))
+        .where(func.coalesce(Entity.metadata_["done"].as_boolean(), False).is_(False))
+    )
+    return list(result.scalars())
+
+
+def _waiting_line(item: Entity) -> str:
+    sender = (item.metadata_ or {}).get("expected_from")
+    return f"{sender}: {item.name}" if sender else item.name
+
+
+def waiting_notices(items: list[Entity], today: date, days: int) -> list[Notice]:
+    """The morning after something promised to the user was due, one notice for that day
+    (under the promises switch); none for those without a date."""
+    due: dict[date, list[Entity]] = {}
+    for item in items:
+        try:
+            day = date.fromisoformat(str((item.metadata_ or {}).get("due_date")))
+        except ValueError:
+            continue
+        ask_on = day + timedelta(days=1)
+        if today <= ask_on <= today + timedelta(days=days):
+            due.setdefault(ask_on, []).append(item)
+    notices = []
+    for day, waiting in due.items():
+        title = "Still waiting" if len(waiting) == 1 else f"Still waiting for {len(waiting)} things"
+        notices.append(
+            Notice(
+                key=f"waiting:{day.isoformat()}",
+                kind="promises",
+                fire_at=_at_local(day, PROMISE_HOUR),
+                title=title,
+                body="; ".join(_waiting_line(item) for item in waiting[:3]),
+                target="tasks",
+            )
+        )
+    return notices
+
+
 def _promise_line(promise: Entity) -> str:
     to = (promise.metadata_ or {}).get("promise_to")
     return f"{promise.name} (to {to})" if to else promise.name
@@ -413,6 +457,9 @@ async def upcoming_notices(
     notices: list[Notice] = []
     if promises:
         notices += promise_notices(open_ones, today, days=hours // 24 + 1)
+        notices += waiting_notices(
+            await open_waiting(db, user_id), today, days=hours // 24 + 1
+        )
     if briefings and (provider is not None or phone_events):
         notices += await briefing_notices(
             db, user_id, provider, now, until, open_ones, phone_events
