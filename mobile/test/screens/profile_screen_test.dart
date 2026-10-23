@@ -116,6 +116,7 @@ void main() {
       'Notifications',
       'Activity',
       'YOU',
+      'Instructions',
       'Voices',
       'Language',
       'Privacy',

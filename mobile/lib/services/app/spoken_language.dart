@@ -2,14 +2,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// The account as Profile sees it: its email, spoken language and name.
 final class AccountInfo {
-  const AccountInfo({required this.email, required this.language, this.name});
+  const AccountInfo({
+    required this.email,
+    required this.language,
+    this.name,
+    this.instructions,
+  });
 
   factory AccountInfo.fromJson(Map<String, dynamic> json) {
-    final name = (json['name'] as String?)?.trim();
+    String? text(String key) {
+      final value = (json[key] as String?)?.trim();
+      return value == null || value.isEmpty ? null : value;
+    }
+
     return AccountInfo(
       email: json['email'] as String?,
       language: json['language'] as String? ?? 'en',
-      name: name == null || name.isEmpty ? null : name,
+      name: text('name'),
+      instructions: text('instructions'),
     );
   }
 
@@ -19,6 +29,9 @@ final class AccountInfo {
 
   /// What Today's greeting calls the user; null until they give one.
   final String? name;
+
+  /// The user's own instructions to Echo (Profile → Instructions), used in every answer.
+  final String? instructions;
 }
 
 abstract interface class AccountApi {
@@ -27,6 +40,12 @@ abstract interface class AccountApi {
 
   /// Null (or blank) removes the name.
   Future<AccountInfo> setName(String? name);
+}
+
+/// The user's own instructions to Echo ("Call me Erik, keep answers short").
+abstract interface class InstructionsApi {
+  /// Null (or blank) removes them.
+  Future<AccountInfo> setInstructions(String? instructions);
 }
 
 /// The languages Echo transcribes and takes dictation in, as Settings names them.

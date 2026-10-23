@@ -39,6 +39,7 @@ from app.services.memory_answers import (
     rag_system_prompt,
 )
 from app.services.memory_retrieval import retrieve_memory_context
+from app.services.personal import personal_context
 from app.services.temporal import DateRange, extract_date_range
 from app.services.web_search import search_tool_for
 
@@ -466,11 +467,13 @@ async def _answer_query(
 
     about = await about_echo_for(redis_client, user_id)
     search = await search_tool_for(llm_service, user_id)
+    personal = await personal_context(db, user_id)
     if not memory.context:
         # A question about Echo, a general or a live one still gets an answer (the
         # prompt's rules)
         result = await answer_without_memory(
-            llm_service, body.question, history, date_range, about, on_token, search
+            llm_service, body.question, history, date_range, about, on_token, search,
+            personal,
         )
         # Save to history even for empty results
         await record_turn(
@@ -491,7 +494,8 @@ async def _answer_query(
 
     # 7. Generate answer via LLM (with conversation history)
     system_prompt = rag_system_prompt(
-        date_range, about, clear_language(body.question), can_search=search is not None
+        date_range, about, clear_language(body.question), can_search=search is not None,
+        personal=personal,
     )
 
     messages = [LLMMessage(role="system", content=system_prompt)]

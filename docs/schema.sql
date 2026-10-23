@@ -216,6 +216,7 @@ CREATE TABLE users (
     password_hash TEXT NOT NULL,         -- Argon2id
     language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
     name VARCHAR(100),                   -- the app's greeting; null until given (021)
+    instructions TEXT,                   -- the user's own instructions to Echo (022)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

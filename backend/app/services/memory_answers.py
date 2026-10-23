@@ -83,12 +83,14 @@ def rag_system_prompt(
     about: str = "",
     language: str | None = None,
     can_search: bool = False,
+    personal: str = "",
 ) -> str:
     """System prompt for memory answers, written in the question's language.
 
     `about` (services.about_echo) lets it answer questions about Echo itself; `language`
     (`clear_language` of the question) is spelled out, since transcripts in another
-    language pull the answer towards theirs; `can_search`: the web search tool is offered.
+    language pull the answer towards theirs; `can_search`: the web search tool is offered;
+    `personal`: the user's name and own instructions (services/personal.py).
     """
     prompt = (
         "You are a personal assistant. The user asks about their own memory: "
@@ -112,6 +114,8 @@ def rag_system_prompt(
         )
     if date_range:
         prompt += f"\n\nNote: results are filtered to the period {describe_period(date_range)}."
+    if personal:
+        prompt += f"\n\n{personal}"
     if language in _LANGUAGE_NAMES:
         name = _LANGUAGE_NAMES[language]
         prompt += f"\n\nThe question is in {name}: answer in {name}."
@@ -178,12 +182,14 @@ async def answer_without_memory(
     about: str,
     on_token: Callable[[str], Awaitable[None]] | None = None,
     search: dict | None = None,
+    personal: str = "",
 ) -> MemoryAnswer:
     """Nothing in memory: the model answers with the prompt's rules and no context (a
     question about Echo, a general one, a live one with `search`), or says it does not
     know. The fixed text only when the model fails before writing anything."""
     prompt = rag_system_prompt(
-        date_range, about, clear_language(question), can_search=search is not None
+        date_range, about, clear_language(question), can_search=search is not None,
+        personal=personal,
     )
     messages = [LLMMessage(role="system", content=prompt)]
     messages.extend(LLMMessage(role=m["role"], content=m["content"]) for m in history)

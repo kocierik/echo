@@ -64,7 +64,7 @@ abstract interface class DevicesApi {
 }
 
 /// Signing in gives this phone its own key; signing out and revoking take keys away.
-mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
+mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, InstructionsApi {
   /// Signs in and keeps the key this phone was given, for the server set in Settings
   /// (development) or the one built into the app.
   ///
@@ -105,6 +105,13 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi {
   @override
   Future<AccountInfo> setName(String? name) async {
     final response = await patch('/api/auth/me', body: {'name': name?.trim() ?? ''});
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
+  @override
+  Future<AccountInfo> setInstructions(String? instructions) async {
+    final response =
+        await patch('/api/auth/me', body: {'instructions': instructions?.trim() ?? ''});
     return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
   }
 

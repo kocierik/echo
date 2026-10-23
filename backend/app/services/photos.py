@@ -35,6 +35,7 @@ from app.services.device_commands import push_device_command
 from app.services.entity_mentions import record_mentions
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService
+from app.services.personal import personal_context
 from app.services.usage import usage_owner
 
 logger = logging.getLogger(__name__)
@@ -277,14 +278,23 @@ async def conversation_for_photo(
     return conversation
 
 
-def _vision_messages(photo: Photo, image: bytes) -> list[LLMMessage]:
+def _with_personal(prompt: str, personal: str) -> str:
+    """The user's name and own instructions shape the answer only, never the description
+    kept in memory."""
+    if not personal:
+        return prompt
+    return f"{prompt}\n\nFor the answer only:\n{personal}"
+
+
+def _vision_messages(photo: Photo, image: bytes, personal: str = "") -> list[LLMMessage]:
     language = LANGUAGE_NAMES.get(message_language(photo), "English")
     if photo.question:
         ask = f"The user asked: {photo.question}"
     else:
         ask = "The user took this photo without a question."
+    system = _with_personal(VISION_PROMPT.format(language=language), personal)
     return [
-        LLMMessage(role="system", content=VISION_PROMPT.format(language=language)),
+        LLMMessage(role="system", content=system),
         LLMMessage(role="user", content=ask, images=[image]),
     ]
 
@@ -401,7 +411,10 @@ async def analyse_photo(
     if not image:
         return False
 
-    reply = await llm.complete_json(_vision_messages(photo, image), temperature=0.2)
+    personal = await personal_context(db, photo.user_id)
+    reply = await llm.complete_json(
+        _vision_messages(photo, image, personal), temperature=0.2
+    )
     answer = str(reply.get("answer") or "").strip()
     description = str(reply.get("description") or "").strip() or answer
     title = str(reply.get("title") or "").strip()[:80]
@@ -492,9 +505,10 @@ async def answer_follow_up(
     """Ask the vision model about an answered photo again; the question and its answer go to
     the photo's chat (no commit). Model errors propagate."""
     context = f"Your first answer: {photo.answer}\n" if photo.answer else ""
+    personal = await personal_context(db, photo.user_id)
     reply = await llm.complete_json(
         [
-            LLMMessage(role="system", content=FOLLOW_UP_PROMPT),
+            LLMMessage(role="system", content=_with_personal(FOLLOW_UP_PROMPT, personal)),
             LLMMessage(
                 role="user",
                 content=f"{context}The user now asks: {question}",

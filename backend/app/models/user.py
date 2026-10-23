@@ -17,3 +17,5 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     language: Mapped[str] = mapped_column(String(5), nullable=False, server_default="it")
     # What the app calls the user ("Good afternoon, Erik"); none until they give one
     name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # The user's own instructions to Echo, added to every answer (services/personal.py)
+    instructions: Mapped[str | None] = mapped_column(Text, nullable=True)

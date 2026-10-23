@@ -25,6 +25,7 @@ import 'settings/appearance_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/devices_screen.dart';
+import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
@@ -283,6 +284,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ]),
             const SettingsSection('YOU'),
             SettingsGroup(children: [
+              SettingsRow(
+                key: const Key('profile-instructions'),
+                icon: Icons.tune_rounded,
+                title: 'Instructions',
+                subtitle: _account?.instructions?.split('\n').first ??
+                    'How Echo talks to you.',
+                onTap: () async {
+                  final account = await Navigator.push<AccountInfo>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => InstructionsScreen(
+                        api: _api,
+                        initial: _account?.instructions,
+                      ),
+                    ),
+                  );
+                  if (account != null && mounted) setState(() => _account = account);
+                },
+              ),
               SettingsRow(
                 icon: Icons.record_voice_over_outlined,
                 title: 'Voices',

@@ -33,6 +33,7 @@ from app.models.pending_action import PendingAction
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
 from app.services.memory_retrieval import retrieve_memory_context
+from app.services.personal import personal_context
 from app.services.web_search import search_options, search_tool_for
 
 logger = logging.getLogger(__name__)
@@ -194,7 +195,8 @@ class _Failure:
 
 
 def _system_prompt(
-    phone_apps: bool = False, can_search: bool = False, routines: bool = False
+    phone_apps: bool = False, can_search: bool = False, routines: bool = False,
+    personal: str = "",
 ) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
@@ -206,7 +208,10 @@ def _system_prompt(
         prompt += _SEARCH_RULES
     if routines:
         prompt += _ROUTINE_RULES + _TODO_RULES
-    return prompt + _PHONE_RULES if phone_apps else prompt
+    if phone_apps:
+        prompt += _PHONE_RULES
+    # Last: the user's name and own instructions (services/personal.py)
+    return f"{prompt}\n{personal}\n" if personal else prompt
 
 
 def _tool_name(schema: dict) -> str:
@@ -337,7 +342,8 @@ async def run_action_agent(
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
     search = await search_tool_for(llm, user_id)
-    prompt = _system_prompt(phone_apps, search is not None, routine_tools)
+    personal = await personal_context(db, user_id)
+    prompt = _system_prompt(phone_apps, search is not None, routine_tools, personal)
     messages = [LLMMessage(role="system", content=prompt)]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):

@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 22)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 23)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -352,7 +352,9 @@ def test_migration_011_adds_photos_and_photo_chunks_once(monkeypatch):
 
 def test_migration_021_adds_the_user_name_and_names_the_thread_echo(monkeypatch):
     state = _State()
-    for module in _migrations()[:-1]:
+    for module in _migrations():
+        if module.revision >= "021":
+            break
         _run(module, state, monkeypatch)
     migration_021 = next(m for m in _migrations() if m.revision == "021")
 

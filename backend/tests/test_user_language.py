@@ -51,7 +51,9 @@ async def test_me_reads_and_changes_the_language(client):
         "/api/auth/register", json=_register("ada@x.io", language="en"))).json()["api_key"]}
 
     me = await client.get("/api/auth/me", headers=key)
-    assert me.json() == {"email": "ada@x.io", "language": "en", "name": None}
+    assert me.json() == {
+        "email": "ada@x.io", "language": "en", "name": None, "instructions": None,
+    }
 
     changed = await client.patch("/api/auth/me", headers=key, json={"language": "it"})
     assert changed.status_code == 200 and changed.json()["language"] == "it"
@@ -67,7 +69,7 @@ async def test_me_reads_and_changes_the_name(client):
     # Changing the language keeps the name
     await client.patch("/api/auth/me", headers=key, json={"language": "en"})
     me = (await client.get("/api/auth/me", headers=key)).json()
-    assert me == {"email": "erik@x.io", "language": "en", "name": "Erik"}
+    assert me == {"email": "erik@x.io", "language": "en", "name": "Erik", "instructions": None}
 
     cleared = await client.patch("/api/auth/me", headers=key, json={"name": "   "})
     assert cleared.json()["name"] is None
@@ -89,7 +91,9 @@ async def test_a_key_without_an_account_reads_the_default(client, auth_headers):
     me = await client.get("/api/auth/me", headers=auth_headers)
 
     assert me.status_code == 200
-    assert me.json() == {"email": None, "language": settings.stt_language, "name": None}
+    assert me.json() == {
+        "email": None, "language": settings.stt_language, "name": None, "instructions": None,
+    }
     refused = await client.patch("/api/auth/me", headers=auth_headers, json={"language": "en"})
     assert refused.status_code == 409
 

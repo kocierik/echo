@@ -39,6 +39,7 @@ from app.services.passwords import (
     normalize_email,
     verify_password,
 )
+from app.services.personal import MAX_INSTRUCTIONS
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -70,6 +71,7 @@ class Me(BaseModel):
     email: str | None
     language: str
     name: str | None = None
+    instructions: str | None = None
 
 
 class MeUpdate(BaseModel):
@@ -77,6 +79,7 @@ class MeUpdate(BaseModel):
 
     language: Literal[SUPPORTED_LANGUAGES] | None = None  # type: ignore[valid-type]
     name: str | None = Field(default=None, max_length=100)
+    instructions: str | None = Field(default=None, max_length=MAX_INSTRUCTIONS)
 
 
 class LoginUser(BaseModel):
@@ -230,7 +233,10 @@ async def read_me(
     user = await db.get(User, current.user_id)
     if user is None:  # a key made with make create-key, before any account
         return Me(email=None, language=settings.stt_language)
-    return Me(email=user.email, language=user.language, name=user.name)
+    return Me(
+        email=user.email, language=user.language, name=user.name,
+        instructions=user.instructions,
+    )
 
 
 @router.patch("/me", response_model=Me)
@@ -250,8 +256,13 @@ async def update_me(
         user.language = body.language
     if "name" in body.model_fields_set:
         user.name = (body.name or "").strip() or None
+    if "instructions" in body.model_fields_set:
+        user.instructions = (body.instructions or "").strip() or None
     await db.commit()
-    return Me(email=user.email, language=user.language, name=user.name)
+    return Me(
+        email=user.email, language=user.language, name=user.name,
+        instructions=user.instructions,
+    )
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

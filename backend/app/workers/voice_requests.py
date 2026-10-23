@@ -54,6 +54,7 @@ from app.services.memory_answers import (
     rag_system_prompt,
 )
 from app.services.memory_retrieval import retrieve_memory_context
+from app.services.personal import personal_context
 from app.services.photos import request_photo, send_take_photo
 from app.services.temporal import extract_date_range
 from app.services.usage import usage_owner
@@ -135,13 +136,15 @@ async def _memory_answer(
     )
     # Live questions ("che tempo fa domani?") search the web; the answer names the site
     search = await search_tool_for(llm, user_id)
+    personal = await personal_context(db, user_id)
     if not memory.context:
         result = await answer_without_memory(
-            llm, command, history, date_range, about, search=search
+            llm, command, history, date_range, about, search=search, personal=personal
         )
         return result.text
     prompt = rag_system_prompt(
-        date_range, about, clear_language(command), can_search=search is not None
+        date_range, about, clear_language(command), can_search=search is not None,
+        personal=personal,
     )
     messages = [LLMMessage(role="system", content=prompt)]
     messages.extend(LLMMessage(role=m["role"], content=m["content"]) for m in history)
