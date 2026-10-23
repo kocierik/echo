@@ -70,6 +70,8 @@ async def setup_database():
 
     async with test_engine.begin() as conn:
         # Clean up test data (but keep schema for next test)
+        await conn.execute(text("DELETE FROM saved_items"))
+        await conn.execute(text("DELETE FROM saved_lists"))
         await conn.execute(text("DELETE FROM pending_actions"))
         await conn.execute(text("DELETE FROM routines"))
         await conn.execute(text("DELETE FROM mcp_calls"))

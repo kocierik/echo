@@ -380,3 +380,42 @@ CREATE TABLE routines (
 );
 CREATE INDEX ix_routines_user_id ON routines(user_id);
 CREATE INDEX ix_routines_due ON routines(active, next_run_at);
+
+-- ============================================================
+-- SAVED: things the user asks Echo to keep and find again (Migration 023)
+-- ============================================================
+CREATE TABLE saved_lists (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    name VARCHAR(80) NOT NULL,         -- made by Echo: "Wines", "Your car"
+    latest_only BOOLEAN NOT NULL,      -- saving another thing replaces it (the car)
+    keep_days INTEGER,                 -- things deleted this many days after; NULL = kept
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL    -- the last thing saved or changed in it
+);
+CREATE UNIQUE INDEX ix_saved_lists_user_name ON saved_lists(user_id, name);
+
+CREATE TABLE saved_items (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    list_id UUID NOT NULL,
+    title TEXT NOT NULL,
+    details TEXT,
+    fields JSONB NOT NULL,             -- free: {"amount": 12.5, "vintage": "2019", ...}
+    photo_id UUID,
+    place JSONB,                       -- {latitude, longitude, accuracy_m, address}, asked for
+    people JSONB NOT NULL,             -- [{name, id}] named in the request
+    conversation_id UUID,
+    segment_id UUID,                   -- a voice request's segment (its conversation, later)
+    request_text TEXT,                 -- the request as said
+    source VARCHAR(10) NOT NULL,       -- chat | voice
+    embedding vector(1536),
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT fk_saved_items_list FOREIGN KEY (list_id) REFERENCES saved_lists(id) ON DELETE CASCADE,
+    CONSTRAINT fk_saved_items_photo FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE SET NULL,
+    CONSTRAINT fk_saved_items_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL,
+    CONSTRAINT fk_saved_items_segment FOREIGN KEY (segment_id) REFERENCES segments(id) ON DELETE SET NULL
+);
+CREATE INDEX ix_saved_items_user_id ON saved_items(user_id);
+CREATE INDEX ix_saved_items_list_id ON saved_items(list_id);
