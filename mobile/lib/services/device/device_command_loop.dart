@@ -8,19 +8,22 @@ import '../api/device_api.dart';
 /// Long-polls the server's commands while the app runs (the wearable keeps it awake
 /// through the day) and hands each to its handler: TAKE_PHOTO to the wearable
 /// (PhotoService), Reminders and Calendar to this iPhone (PhoneActionsService), a
-/// voice update (a routine's answer) to the check that notifies it.
+/// voice update (a routine's answer) to the check that notifies it, and a place asked
+/// for a thing being saved to PhoneLocationService.
 final class DeviceCommandLoop {
   DeviceCommandLoop({
     required DeviceCommandsApi api,
     required Future<void> Function(TakePhotoCommand command) onTakePhoto,
     required Future<void> Function(PhoneActionCommand command) onPhoneAction,
     Future<void> Function()? onVoiceUpdate,
+    Future<void> Function(GetLocationCommand command)? onGetLocation,
     this.wait = const Duration(seconds: 20),
     Future<void> Function(Duration)? sleep,
   })  : _api = api,
         _onTakePhoto = onTakePhoto,
         _onPhoneAction = onPhoneAction,
         _onVoiceUpdate = onVoiceUpdate,
+        _onGetLocation = onGetLocation,
         _sleep = sleep ?? Future<void>.delayed;
 
   static const _retryDelays = [
@@ -34,6 +37,7 @@ final class DeviceCommandLoop {
   final Future<void> Function(TakePhotoCommand) _onTakePhoto;
   final Future<void> Function(PhoneActionCommand) _onPhoneAction;
   final Future<void> Function()? _onVoiceUpdate;
+  final Future<void> Function(GetLocationCommand)? _onGetLocation;
   final Future<void> Function(Duration) _sleep;
   final Duration wait;
   bool _running = false;
@@ -66,6 +70,9 @@ final class DeviceCommandLoop {
               unawaited(_onPhoneAction(command));
             case VoiceUpdateCommand():
               unawaited(_onVoiceUpdate?.call());
+            case GetLocationCommand():
+              // Reading the place takes seconds: never in the way of a photo
+              unawaited(_onGetLocation?.call(command));
           }
         }
       } catch (error) {

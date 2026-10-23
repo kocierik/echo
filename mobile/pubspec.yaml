@@ -28,6 +28,9 @@ dependencies:
   share_plus: 13.3.0
   # The phone's camera when the wearable cannot take the photo (Ask's camera button)
   image_picker: 1.1.2
+  # The phone's place and its address, read only when the user saves something with it
+  geolocator: 14.1.2
+  geocoding: 5.0.0
 
 dev_dependencies:
   flutter_test:

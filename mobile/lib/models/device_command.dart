@@ -21,6 +21,11 @@ sealed class DeviceCommand {
         );
       case 'voice_update':
         return const VoiceUpdateCommand();
+      case 'get_location':
+        final id = json['id'];
+        final itemId = json['item_id'];
+        if (id is! String) return null;
+        return GetLocationCommand(id: id, itemId: itemId is String ? itemId : null);
       default:
         return null;
     }
@@ -50,4 +55,14 @@ final class PhoneActionCommand extends DeviceCommand {
 /// New answers in the thread with Echo (a routine ran): check them and notify.
 final class VoiceUpdateCommand extends DeviceCommand {
   const VoiceUpdateCommand();
+}
+
+/// Where the phone is, for a thing the user is saving with its place (the car).
+final class GetLocationCommand extends DeviceCommand {
+  const GetLocationCommand({required this.id, this.itemId});
+
+  final String id;
+
+  /// The thing the place is for: it goes there later when it cannot be read now.
+  final String? itemId;
 }

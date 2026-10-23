@@ -92,7 +92,7 @@ void main() {
           'count': 2,
           'updated_at': '2026-10-18T19:40:00Z',
           'items': [itemJson(), itemJson(id: 'i2', title: 'Etna')],
-          'week_sum': {
+          'week_sum': const {
             'count': 2,
             'totals': {'EUR': 20.0},
           },
@@ -107,7 +107,7 @@ void main() {
     final detail = SavedItemDetail.fromJson({
       ...itemJson(photoId: 'ph1'),
       'photo_text': 'Barolo DOCG 2019.',
-      'moment': {
+      'moment': const {
         'at': '2026-10-18T19:40:00Z',
         'people': [
           {'name': 'Marco', 'id': null},

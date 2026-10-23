@@ -67,6 +67,32 @@ void main() {
     expect(checks, 1);
   });
 
+  test('a place asked for a saved thing goes to its handler', () async {
+    final parsed = DeviceCommand.tryParse({'type': 'get_location', 'id': 'c9', 'item_id': 'car'});
+    expect(
+      parsed,
+      isA<GetLocationCommand>()
+          .having((c) => c.id, 'id', 'c9')
+          .having((c) => c.itemId, 'itemId', 'car'),
+    );
+    expect(DeviceCommand.tryParse({'type': 'get_location'}), isNull);
+
+    final api = _FakeCommandsApi([parsed!]);
+    final asked = <String?>[];
+    final loop = DeviceCommandLoop(
+      api: api,
+      onTakePhoto: (_) async {},
+      onPhoneAction: (_) async {},
+      onGetLocation: (command) async => asked.add(command.itemId),
+      sleep: (_) async {},
+    )..start();
+
+    await api.drained.future;
+    loop.stop();
+
+    expect(asked, ['car']);
+  });
+
   test('a slow phone action does not hold up the next command', () async {
     final slow = Completer<void>();
     final api = _FakeCommandsApi([
