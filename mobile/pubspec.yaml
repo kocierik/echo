@@ -30,7 +30,8 @@ dependencies:
   image_picker: 1.1.2
   # The phone's place and its address, read only when the user saves something with it
   geolocator: 14.1.2
-  geocoding: 5.0.0
+  # 4.x: 5.x needs a newer Swift than the Xcode in use (its Package.swift)
+  geocoding: 4.0.0
 
 dev_dependencies:
   flutter_test:

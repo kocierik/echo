@@ -213,7 +213,7 @@ final class GeolocatorReader implements LocationReader {
 
   @override
   Future<String?> address(double latitude, double longitude) async {
-    final found = await Geocoding().placemarkFromCoordinates(latitude, longitude);
+    final found = await placemarkFromCoordinates(latitude, longitude);
     if (found.isEmpty) return null;
     final mark = found.first;
     final street = [mark.thoroughfare, mark.subThoroughfare]
