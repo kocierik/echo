@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_command.dart';
+import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/services/api/api_exception.dart';
@@ -12,6 +13,68 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
+  group('Saved', () {
+    Map<String, dynamic> item(String id) => {
+          'id': id,
+          'list_id': 'l1',
+          'list': 'Wines',
+          'title': 'Barolo',
+          'fields': <String, dynamic>{},
+          'people': <Object?>[],
+          'saved_at': '2026-10-18T19:40:00Z',
+        };
+
+    test('reads the page, searches and moves, removes and places', () async {
+      final calls = <String>[];
+      final bodies = <String>[];
+      final service = _service((request) async {
+        calls.add('${request.method} ${request.url.path}?${request.url.query}');
+        if (request is http.Request) bodies.add(request.body);
+        if (request.method == 'DELETE') return _response(request, 204);
+        if (request.url.query.startsWith('q=')) {
+          return _jsonResponse(request, 200, {
+            'results': [item('i1')],
+          });
+        }
+        if (request.url.path == '/api/saved') {
+          return _jsonResponse(request, 200, {
+            'total': 1,
+            'latest_list': 'Wines',
+            'places': <Object?>[],
+            'lists': <Object?>[],
+          });
+        }
+        if (request.url.path == '/api/saved/lists') {
+          return _jsonResponse(request, 200, [
+            {'id': 'l1', 'name': 'Wines', 'count': 1},
+          ]);
+        }
+        return _jsonResponse(request, 200, item('i1'));
+      });
+
+      expect((await service.getSaved()).latestList, 'Wines');
+      expect((await service.searchSaved('vino rosso')).single.id, 'i1');
+      expect((await service.listSavedLists()).single.name, 'Wines');
+      expect((await service.moveSavedItem('i1', 'Books')).id, 'i1');
+      await service.deleteSavedItem('i1');
+      await service.putSavedPlace(
+        'i1',
+        const SavedPlace(latitude: 45.4, longitude: 9.1, address: 'Via Roma 12'),
+      );
+
+      expect(calls, [
+        'GET /api/saved?',
+        'GET /api/saved?q=vino+rosso',
+        'GET /api/saved/lists?',
+        'PATCH /api/saved/items/i1?',
+        'DELETE /api/saved/items/i1?',
+        'PUT /api/saved/items/i1/place?',
+      ]);
+      expect(jsonDecode(bodies[3]), {'list': 'Books'});
+      expect(jsonDecode(bodies.last)['address'], 'Via Roma 12');
+    });
+  });
+
   group('ApiService success statuses', () {
     test('decodes a 200 response', () async {
       final service = _service((request) => _jsonResponse(request, 200, {
