@@ -2,7 +2,8 @@
 
 - `GET /device/commands`: long poll for TAKE_PHOTO (relayed to the wearable) and
   `phone_action` (run on the iPhone), see services/device_commands.py;
-- `POST /device/commands/{id}/result`: what a `phone_action` did;
+- `POST /device/commands/{id}/result`: what a `phone_action` did, or the place a
+  `get_location` read;
 - `PUT /device/phone-apps`: which of the iPhone's Reminders and Calendar Echo may use
   (actions/phone_provider.py).
 """

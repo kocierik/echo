@@ -6,7 +6,9 @@ does not pick up in time is dropped. Kinds:
 
 - `take_photo`: relayed to the wearable (services/photos.py);
 - `phone_action`: run on the iPhone with EventKit (actions/phone_provider.py). Picking it
-  up is remembered (DELIVERED_KEY): a call that gets no answer then may have run.
+  up is remembered (DELIVERED_KEY): a call that gets no answer then may have run;
+- `get_location`: the phone's place for a thing being saved (services/phone_location.py);
+- `voice_update`: new answers in the thread with Echo (a routine ran).
 """
 
 import json
