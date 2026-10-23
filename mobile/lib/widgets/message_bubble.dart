@@ -3,6 +3,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
+import '../models/saved.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
 import '../utils/photo_follow_ups.dart';
@@ -21,6 +22,7 @@ final class MessageBubble extends StatelessWidget {
     this.onTranslate,
     this.onAskMore,
     this.onRemind,
+    this.onOpenSaved,
     this.now,
     super.key,
   });
@@ -42,6 +44,9 @@ final class MessageBubble extends StatelessWidget {
 
   /// "Remind me…": only when the photo shows a date still to come.
   final ValueChanged<DateTime>? onRemind;
+
+  /// Opens a thing the answer saved; no chip without it.
+  final ValueChanged<SavedChip>? onOpenSaved;
 
   /// For the reminder chip's label (tests); now by default.
   final DateTime? now;
@@ -168,6 +173,7 @@ final class MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
+              ..._savedChips(),
             ],
           ),
         ),
@@ -232,6 +238,7 @@ final class MessageBubble extends StatelessWidget {
           ),
           if (message.photoId != null && loadPhoto != null)
             PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
+          ..._savedChips(),
           if (message.pendingAction != null)
             ActionCard(
               action: message.pendingAction!,
@@ -254,10 +261,75 @@ final class MessageBubble extends StatelessWidget {
     );
   }
 
+  List<Widget> _savedChips() {
+    final open = onOpenSaved;
+    if (open == null || message.saved.isEmpty) return const [];
+    return [
+      for (final chip in message.saved)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+          child: _SavedChip(chip: chip, onTap: () => open(chip)),
+        ),
+    ];
+  }
+
   Future<void> _launch(String? rawUrl) async {
     final uri = rawUrl == null ? null : Uri.tryParse(rawUrl);
     if (uri == null || !uri.hasScheme) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+/// What an answer saved: "Your car · Saved", where it is or its list; a tap opens it.
+final class _SavedChip extends StatelessWidget {
+  const _SavedChip({required this.chip, required this.onTap});
+
+  final SavedChip chip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Material(
+      color: palette.accentSoft,
+      borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+      child: InkWell(
+        key: Key('saved-chip-${chip.id}'),
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Icon(Icons.bookmark_rounded, size: 18, color: palette.onAccentSoft),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${chip.title} · Saved',
+                        style: textTheme.labelLarge?.copyWith(color: palette.onAccentSoft),
+                      ),
+                      Text(
+                        chip.subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.bodySmall?.copyWith(color: palette.onAccentSoft),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: palette.onAccentSoft),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

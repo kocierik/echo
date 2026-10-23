@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'action_models.dart';
+import 'saved.dart';
 
 @immutable
 final class ChatSource {
@@ -40,6 +41,7 @@ final class ChatMessage {
     this.routineId,
     this.routineSchedule,
     this.aboutPhotoId,
+    this.saved = const [],
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -73,6 +75,9 @@ final class ChatMessage {
   /// A follow-up about a photo, or its answer.
   final String? aboutPhotoId;
 
+  /// What the answer saved in Saved ("Your car · Saved"): a chip opening each.
+  final List<SavedChip> saved;
+
   ChatMessage copyWith({
     String? text,
     bool? isUser,
@@ -105,6 +110,7 @@ final class ChatMessage {
       routineId: routineId,
       routineSchedule: routineSchedule,
       aboutPhotoId: aboutPhotoId,
+      saved: saved,
     );
   }
 }

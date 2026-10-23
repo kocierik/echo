@@ -15,6 +15,7 @@ final class CapabilitiesScreen extends StatelessWidget {
     'What did I promise this week?',
     'What did Marco say about the quote?',
     'What do I have tomorrow?',
+    'How much did I spend this week?',
     'Summarize my latest emails',
   ];
 
@@ -22,6 +23,7 @@ final class CapabilitiesScreen extends StatelessWidget {
     'Echo, remind me to call Giulia on Friday',
     'Echo, every morning at 7 tell me the weather in Milan',
     'Echo, what is this?',
+    'Echo, remember where I parked',
     'Echo, send Marco a message on Slack',
   ];
 
@@ -73,6 +75,12 @@ final class CapabilitiesScreen extends StatelessWidget {
           title: 'Photos',
           subtitle: 'A short press of the wearable button, or 📷 in Ask: Echo answers about '
               'what you see and remembers it. A business card becomes a person.',
+        ),
+        const SettingsRow(
+          icon: Icons.bookmark_outline_rounded,
+          title: 'Saved',
+          subtitle: '"Echo, save this": a wine, a book, a receipt, where you parked. Echo '
+              'keeps it with its moment in a list (Today → Saved) and finds it again.',
         ),
         SettingsRow(
           icon: Icons.mic_none_rounded,

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../../models/action_models.dart';
 import '../../models/chat_session.dart';
+import '../../models/saved.dart';
 import 'api_client.dart';
 
 class QueryResponse {
@@ -16,6 +17,9 @@ class QueryResponse {
   /// Pages a web search found and the answer cites: {"title", "url"}.
   final List<Map<String, dynamic>> webSources;
 
+  /// What the answer saved in Saved.
+  final List<SavedChip> saved;
+
   QueryResponse({
     required this.answer,
     required this.sessionId,
@@ -23,6 +27,7 @@ class QueryResponse {
     this.dateFilter,
     this.pendingAction,
     this.webSources = const [],
+    this.saved = const [],
   });
 
   factory QueryResponse.fromJson(Map<String, dynamic> json) {
@@ -32,6 +37,7 @@ class QueryResponse {
       sources: List<Map<String, dynamic>>.from(json['sources'] ?? []),
       dateFilter: json['date_filter'],
       webSources: List<Map<String, dynamic>>.from(json['web_sources'] ?? []),
+      saved: SavedChip.listFrom(json['saved']),
       pendingAction: json['pending_action'] == null
           ? null
           : PendingAction.fromJson(
