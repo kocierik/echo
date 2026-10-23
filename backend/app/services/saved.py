@@ -310,10 +310,12 @@ async def find_items(
     date_to: datetime | None = None,
     limit: int = 10,
     embedding_service=None,
+    vector: list[float] | None = None,
 ) -> list[SavedItem]:
     """Things matching the query's words (title, details, fields, list, people) and, with
-    an embedding service, its meaning; in a list and a period when given. Newest first,
-    the word matches before the others. Without a query: the newest things."""
+    an embedding service (or the query's `vector`, already embedded), its meaning; in a
+    list and a period when given. Newest first, the word matches before the others.
+    Without a query: the newest things."""
     base = (
         select(SavedItem)
         .join(SavedList, SavedList.id == SavedItem.list_id)
@@ -342,12 +344,14 @@ async def find_items(
         found = list(
             (await db.scalars(base.where(or_(*matches)).order_by(newest).limit(limit))).unique()
         )
-    if embedding_service is not None and len(found) < limit and (query or "").strip():
-        try:
-            vector = await embedding_service.embed(query)
-        except Exception:
-            logger.warning("Could not embed a Saved search", exc_info=True)
-            return found
+    by_meaning = vector is not None or embedding_service is not None
+    if by_meaning and len(found) < limit and (query or "").strip():
+        if vector is None:
+            try:
+                vector = await embedding_service.embed(query)
+            except Exception:
+                logger.warning("Could not embed a Saved search", exc_info=True)
+                return found
         similarity = 1 - SavedItem.embedding.cosine_distance(vector)
         rows = await db.execute(
             base.add_columns(similarity.label("similarity"))

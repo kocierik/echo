@@ -77,6 +77,8 @@ async def search_memory(
         memory = await retrieve_memory_context(
             db, _user(), query, top_k=max(1, min(limit, 10)), date_range=period,
             embedding_service=get_embedding_service(),
+            # Saved things come without where they are: places stay with Echo
+            include_places=False,
         )
     return {
         "quoted": memory.context or None,
