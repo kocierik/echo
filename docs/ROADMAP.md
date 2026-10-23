@@ -141,6 +141,11 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [x] Ricerca web (22/10): lo strumento di OpenAI in chat, voce, agente e incarichi, 30 ricerche al giorno per
       utente, contate in `make usage` (0,010 $ l'una, da verificare); fonti mostrate in Ask, mai nella memoria
 - [ ] Ricerca web con Perplexity al posto di OpenAI (stessa interfaccia, `services/web_search.py`)
+- [ ] Echo con gli agenti di ChatGPT (Dots, OpenAI, 30/09): nessuna API per chiamarli da Echo, ma un Dot può
+      usare Echo come fonte tramite il nostro server MCP ("compra il vino di cui ho parlato sabato": Echo dice
+      quale, il Dot lo cerca e lo compra con le conferme e i pagamenti di ChatGPT). Da verificare che accettino
+      connettori MCP esterni; serve l'accesso con OAuth. Un agente nel browser nostro (Browserbase/Browser Use +
+      computer use) no per ora: lento, costoso, senza i login dell'utente; mai acquisti senza Confirm
 - [ ] Più azioni: Echo come client MCP (l'utente collega i server MCP che vuole, oltre a Composio); parlare con il
       proprio agente anche da Telegram o Slack, non solo dall'app e dal dispositivo
 
@@ -153,10 +158,8 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 ### Fase 8 — Nuove funzioni (idee del 16/10)
 - [ ] Echo riconosce chi hai davanti: quando una voce nota parla, sul telefono "Marco: l'ultima volta ti ha
       detto che aspettava l'esito dell'esame" (dopo circa un minuto: la voce si riconosce sul server)
-- [ ] Ricordare le persone per te: compleanni e qualunque evento del calendario (Google o del telefono) con
-      quello che Echo sa delle persone coinvolte ("ama i gialli"); allarga il briefing che oggi arriva 10 minuti
-      prima di un incontro: anche gli eventi di tutto il giorno, con qualche giorno di anticipo quando serve
-      (un regalo)
+- [-] ~~Ricordare le persone per te: compleanni ed eventi del calendario~~ (23/10: no, bastano i promemoria
+      e il briefing prima degli incontri)
 - [ ] Domande che nessun'altra app sa fare, mostrate in "What Echo can do" ("Quando ho visto Marco l'ultima
       volta?", "Quante volte ho promesso di chiamare mia madre?")
 - [ ] Il primo giorno: un riepilogo che sorprende entro 24 ore (da provare sui dati veri prima di deciderlo)
