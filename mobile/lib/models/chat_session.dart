@@ -1,4 +1,5 @@
 import 'action_models.dart';
+import 'saved.dart';
 
 final class ChatSessionSummary {
   const ChatSessionSummary({
@@ -43,6 +44,7 @@ final class ChatSessionMessage {
     this.routineId,
     this.routineSchedule,
     this.aboutPhotoId,
+    this.saved = const [],
   });
 
   final String role;
@@ -71,6 +73,9 @@ final class ChatSessionMessage {
   /// A follow-up question about a photo, and its answer.
   final String? aboutPhotoId;
 
+  /// What the answer saved in Saved: a chip opening each.
+  final List<SavedChip> saved;
+
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
     if (role != 'user' && role != 'assistant') {
@@ -93,6 +98,7 @@ final class ChatSessionMessage {
           json['routine_schedule'] is String ? json['routine_schedule'] as String : null,
       aboutPhotoId:
           json['about_photo_id'] is String ? json['about_photo_id'] as String : null,
+      saved: SavedChip.listFrom(json['saved']),
     );
   }
 }

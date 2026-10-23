@@ -11,9 +11,18 @@ import logging
 import time
 import uuid
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.actions.agent import NO_APPS, run_action_agent
+from app.actions.saved_tools import SavedContext
 from app.core.database import async_session
+from app.models.photo import Photo
 from app.services.embedding_openai import get_embedding_service
-from app.services.llm_openai import get_llm_analysis_service, get_llm_vision_service
+from app.services.llm_openai import (
+    get_llm_analysis_service,
+    get_llm_query_service,
+    get_llm_vision_service,
+)
 from app.services.photos import (
     PHOTO_QUEUE,
     analyse_photo,
@@ -28,6 +37,32 @@ EXPIRE_EVERY_S = 10
 POP_TIMEOUT_S = 2
 
 
+async def save_photo_request(
+    db: AsyncSession, photo: Photo, llm=None, embedding_service=None
+) -> tuple[str, dict]:
+    """"Echo, save this" once the photo is described: the agent saves it (or adds it to
+    a thing already saved, such as the car) knowing what the photo shows. The answer and
+    the thread message's extra keys."""
+    outcome = await run_action_agent(
+        db,
+        photo.user_id,
+        photo.question or "",
+        [],
+        session_id=photo.chat_session_id,
+        source="voice",
+        provider=NO_APPS,
+        llm=llm or get_llm_query_service(),
+        saved=SavedContext(
+            chat_session_id=photo.chat_session_id,
+            conversation_id=photo.conversation_id,
+            photo_id=photo.id,
+            photo_text=photo.description,
+            embedding_service=embedding_service or get_embedding_service(),
+        ),
+    )
+    return outcome.answer, ({"saved": outcome.saved} if outcome.saved else {})
+
+
 async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
     async with session_factory() as db:
         return await analyse_photo(
@@ -36,6 +71,7 @@ async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
             get_llm_vision_service(),
             get_embedding_service(),
             analysis_llm=get_llm_analysis_service(),
+            save_with=save_photo_request,
         )
 
 

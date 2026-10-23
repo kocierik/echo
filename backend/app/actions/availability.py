@@ -71,17 +71,27 @@ incarichi ho?", "stop the morning weather"), is a routine: set "routine" to true
 A to-do or a reminder for the user with no app named ("segnami di comprare il latte", \
 "aggiungi ai to-do...", "ricordami di chiamare Giulia venerdì") goes to Echo's own list: \
 set "todo" to true (it needs no app). With an app named (Todoist, Notion, ...) it needs \
-that app.{camera}
+that app.
+Echo also keeps things the user wants to find again (Saved): a request to save or keep \
+something (where they parked, where they put an object, a wine, a book, a receipt, "save \
+this"), to change, move or remove something saved ("I found it", "I took the car back"), \
+or a question about how much the user spent (their receipts and expenses are kept in \
+Saved), is a save: set "saved" to true (it needs no app). A question about where something \
+is, what something was or what the user noted before is answered from memory (which \
+includes Saved): not a save, and not a to-do.{camera}
 Respond with ONLY a JSON object: \
-{{{camera_key}"routine": false, "todo": false, "needs_apps": true, "apps": ["<slug>", ...]}} \
-or {{{camera_key}"routine": false, "todo": false, "needs_apps": false, "apps": []}}."""
+{{{camera_key}"routine": false, "todo": false, "saved": false, "needs_apps": true, \
+"apps": ["<slug>", ...]}} \
+or {{{camera_key}"routine": false, "todo": false, "saved": false, "needs_apps": false, \
+"apps": []}}."""
 
 CAMERA_SECTION = """
 Echo also has a camera on the user's wearable. A request to take a photo, or a request \
 about what the user is looking at right now, needs the camera: set "camera" to true. That \
 includes a task on it ("explain this", "translate this sign", "what does this say?", \
 "spiegami cosa c'è scritto qui", "traducimi il cartello", "quanto costa questo?", "che \
-pianta è?"): Echo takes the photo and does the task on it. A request about the past, or \
+pianta è?"): Echo takes the photo and does the task on it. To save what the user is \
+looking at ("save this label") set both "camera" and "saved". A request about the past, or \
 about what someone said or wrote before ("explain what Marco said", "translate what Luca \
 said in the meeting", an email), never needs it."""
 
@@ -96,6 +106,8 @@ class RequestIntent:
     routine: bool = False
     # A to-do or reminder with no app named: Echo's own list (the agent's own tool)
     todo: bool = False
+    # Save, change or remove something in Saved, or sum what was saved (own tools)
+    saved: bool = False
     # Names the model gave that match no known or connected app, as written
     unresolved: list[str] = field(default_factory=list)
 
@@ -109,6 +121,8 @@ class Route:
     # For "agent": the connected apps the request names (empty: any connected app).
     # Only their tools are offered, which keeps the agent's prompt small and fast.
     apps: list[str] = field(default_factory=list)
+    # For "photo": save what the photo shows once it is analysed ("Echo, save this")
+    save: bool = False
 
 
 def _label(slug: str, known_apps: dict[str, str]) -> str:
@@ -151,11 +165,13 @@ def _parse_intent(
     if not isinstance(result, dict):
         return RequestIntent()
     if result.get("camera") is True:
-        return RequestIntent(camera=True)
+        return RequestIntent(camera=True, saved=result.get("saved") is True)
     if result.get("routine") is True:
         return RequestIntent(routine=True)
     if result.get("todo") is True and not result.get("apps"):
         return RequestIntent(todo=True)
+    if result.get("saved") is True and not result.get("apps"):
+        return RequestIntent(saved=True)
     needs, apps = result.get("needs_apps"), result.get("apps", [])
     if needs is not True or not isinstance(apps, list):
         return RequestIntent()
@@ -241,12 +257,14 @@ async def route_request(
     a needed app that is not connected, or that matches no app Echo knows ->
     "{App} isn't connected" (never another app); needed with no app named and nothing
     connected -> "No apps are connected yet"; otherwise the agent. With `camera` (voice
-    requests), a request to take a photo or about what the user is looking at -> photo.
+    requests), a request to take a photo or about what the user is looking at -> photo,
+    to be saved when the request saves it. A save (in chat also one about a photo: the
+    agent attaches the thread's last one) -> the agent.
     """
     intent = await classify_request(llm, request, history, connected, APP_NAMES, camera)
     if camera and intent.camera:
-        return Route("photo")
-    if intent.routine or intent.todo:
+        return Route("photo", save=intent.saved)
+    if intent.routine or intent.todo or intent.saved:
         # Echo's own tools: no app is needed, whatever is connected
         return Route("agent")
     if not intent.needs_apps:

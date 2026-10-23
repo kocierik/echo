@@ -224,6 +224,7 @@ final class ChatController extends ChangeNotifier {
             // A live answer's pages first: they are what it was written from
             sources: _mapSources([...response.webSources, ...response.sources]),
             pendingAction: response.pendingAction,
+            saved: response.saved,
           ),
         ],
         sessionId: response.sessionId,
@@ -346,6 +347,7 @@ final class ChatController extends ChangeNotifier {
         routineId: message.routineId,
         routineSchedule: message.routineSchedule,
         aboutPhotoId: message.aboutPhotoId,
+        saved: message.saved,
       );
     }).toList();
   }

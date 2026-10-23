@@ -861,3 +861,19 @@ async def test_agent_failure_without_executed_tools_commits_nothing(env, monkeyp
     with pytest.raises(RuntimeError):
         await _ask(env, "riassumimi le ultime mail", request_id="r-21")
     assert env.db.commits == 0
+
+
+@pytest.mark.asyncio
+async def test_a_save_by_chat_returns_and_stores_what_was_saved(env):
+    chip = {"id": str(uuid.uuid4()), "title": "Dune", "list": "Libri", "address": None}
+    env.llm.intent = {"saved": True, "needs_apps": False, "apps": []}
+    env.outcome = AgentOutcome(answer="Salvato nei Libri.", saved=[chip])
+
+    res = await _ask(env, "salvami Dune, me l'ha consigliato Giulia")
+
+    assert res.saved == [chip]
+    _, kw = env.agent_calls[0]
+    # The phone for a place, the chat for its last photo
+    assert kw["saved"].redis_client is env.redis
+    assert str(kw["saved"].chat_session_id) == res.session_id
+    assert env.db.added[0].messages[1]["saved"] == [chip]

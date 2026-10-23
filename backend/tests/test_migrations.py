@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 23)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 24)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -363,6 +363,36 @@ def test_migration_021_adds_the_user_name_and_names_the_thread_echo(monkeypatch)
     assert state.tables["users"]["columns"]["name"] is True  # nullable
     updates = [call[1] for call in op.calls if call[0] == "execute"]
     assert updates == ["UPDATE chat_sessions SET title = 'Echo' WHERE kind = 'voice'"]
+
+
+def test_migration_023_creates_the_saved_tables(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        if module.revision >= "023":
+            break
+        _run(module, state, monkeypatch)
+    migration_023 = next(m for m in _migrations() if m.revision == "023")
+
+    op = _run(migration_023, state, monkeypatch)
+
+    assert [c[1] for c in op.calls if c[0] == "create_table"] == ["saved_lists", "saved_items"]
+    items = state.tables["saved_items"]
+    assert items["columns"]["photo_id"] is True and items["columns"]["list_id"] is False
+    ondelete = {
+        fk["constrained_columns"][0]: fk["options"].get("ondelete") for fk in items["fks"]
+    }
+    # The photo and the conversation may go: the thing stays, with its text
+    assert ondelete == {
+        "list_id": "CASCADE",
+        "photo_id": "SET NULL",
+        "conversation_id": "SET NULL",
+        "segment_id": "SET NULL",
+    }
+    lists = {i["name"]: i for i in state.tables["saved_lists"]["indexes"]}
+    assert lists["ix_saved_lists_user_name"]["unique"] is True
+    assert {"ix_saved_items_user_id", "ix_saved_items_list_id"} <= {
+        i["name"] for i in items["indexes"]
+    }
 
 
 def test_migration_003_is_defined_once():

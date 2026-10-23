@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
+import '../models/saved.dart';
 import '../services/api/api_service.dart';
 import '../services/app/spoken_language.dart';
 import '../services/chat/chat_controller.dart';
@@ -20,6 +21,7 @@ import '../utils/chat_suggestions.dart';
 import '../utils/formatting.dart';
 import 'chat_history_screen.dart';
 import 'conversation_detail_screen.dart';
+import 'saved_item_screen.dart';
 
 final class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -183,6 +185,19 @@ final class _ChatScreenState extends State<ChatScreen> {
 
   void _onThreadUpdate() {
     if (mounted) unawaited(_controller.refreshThread());
+  }
+
+  /// A thing an answer saved, on its page.
+  void _openSaved(SavedChip chip) {
+    unawaited(Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SavedItemScreen(
+        itemId: chip.id,
+        api: _api as SavedApi,
+        loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
+        openConversation:
+            _memoryApi == null ? null : (context, id) async => _openConversation(id),
+      ),
+    )));
   }
 
   /// Suggestions from the latest conversations; the defaults stay on any failure.
@@ -465,6 +480,7 @@ final class _ChatScreenState extends State<ChatScreen> {
             onRemind: _followUps(message)
                 ? (when) => unawaited(_controller.remindFromPhoto(when))
                 : null,
+            onOpenSaved: _api is SavedApi ? _openSaved : null,
           );
         }
         if (state.sending && index == state.messages.length) {

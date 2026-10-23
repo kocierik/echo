@@ -29,6 +29,7 @@ final class NotificationService {
   static const int disconnectId = 100;
   static const int lossId = 101;
   static const int uploadFailureId = 102;
+  static const int savePlaceId = 103;
   static const int voiceAnswerBaseId = 200;
   static const int voiceAnswerIdCount = 50;
   static const String voicePayloadPrefix = 'voice:';
@@ -80,6 +81,14 @@ final class NotificationService {
         id: uploadFailureId,
         title: 'Upload needs attention',
         body: 'Echo could not upload recent audio after several attempts.',
+      );
+
+  /// A thing was saved while Echo was in the background, where the phone gives no
+  /// position: opening Echo adds the place.
+  Future<void> showSavePlace() => _port.show(
+        id: savePlaceId,
+        title: 'Open Echo to save the place',
+        body: 'Echo saved it without the place: open the app now to add where you are.',
       );
 
   Future<void> showVoiceAnswer(

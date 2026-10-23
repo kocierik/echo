@@ -2,6 +2,24 @@ import 'package:echo_app/models/chat_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('an answer keeps what it saved', () {
+    final message = ChatSessionMessage.fromJson({
+      'role': 'assistant',
+      'content': 'Salvato nei Vini.',
+      'timestamp': null,
+      'saved': [
+        {'id': 'i1', 'title': 'Barolo 2019', 'list': 'Vini', 'address': null},
+      ],
+    });
+
+    expect(message.saved.single.title, 'Barolo 2019');
+    expect(message.saved.single.subtitle, 'In Vini');
+    expect(
+      ChatSessionMessage.fromJson({'role': 'assistant', 'content': 'x', 'timestamp': null}).saved,
+      isEmpty,
+    );
+  });
+
   group('ChatSessionDetail.fromJson', () {
     test('preserves message order, nullable timestamps, and citations', () {
       final detail = ChatSessionDetail.fromJson({

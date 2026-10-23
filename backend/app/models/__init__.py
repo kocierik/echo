@@ -14,6 +14,7 @@ from app.models.pending_action import PendingAction
 from app.models.photo import Photo
 from app.models.query_feedback import QueryFeedback
 from app.models.routine import Routine
+from app.models.saved import SavedItem, SavedList
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
@@ -38,6 +39,8 @@ __all__ = [
     "Photo",
     "QueryFeedback",
     "Routine",
+    "SavedItem",
+    "SavedList",
     "Segment",
     "TimestampMixin",
     "Transcription",

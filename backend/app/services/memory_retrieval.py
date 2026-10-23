@@ -5,8 +5,12 @@ Shared by POST /api/query, the action agent's search_memory tool and the voice w
 A question that names a known person ("cosa ha detto Marco?") is answered first from
 the conversations that person was mentioned in: similarity alone would favour any
 passage about "saying", not the ones with Marco.
+
+The things the user saved (Saved) that match the question are a section of their own,
+with their place, except for outside assistants (MCP: `include_places=False`).
 """
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 
@@ -17,11 +21,15 @@ from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.services.people import in_person_conversations, names_person
+from app.services.saved import find_items, item_line
 from app.services.temporal import DateRange, conversation_overlaps
+
+logger = logging.getLogger(__name__)
 
 # People named in one question that narrow the search; conversations listed per person
 MAX_PEOPLE = 3
 PERSON_CONVERSATIONS_LISTED = 5
+SAVED_LISTED = 5
 
 
 @dataclass
@@ -40,11 +48,13 @@ async def retrieve_memory_context(
     top_k: int = 5,
     date_range: DateRange | None = None,
     embedding_service=None,
+    include_places: bool = True,
 ) -> MemoryContext:
-    """Embed the question, search chunks/entities/summaries and assemble the context.
+    """Embed the question, search chunks/entities/summaries/Saved and assemble the context.
 
     date_range is used as given (the caller resolves explicit filters or NLP extraction).
     embedding_service defaults to the configured one; callers may inject their own.
+    Without `include_places` the saved things come without address (outside assistants).
     """
     if embedding_service is None:
         from app.services.embedding_openai import get_embedding_service
@@ -115,7 +125,11 @@ async def retrieve_memory_context(
                 summary_lines.append(f"- [{date_str}] {title}: {s.summary}")
             conversation_summaries = "\n".join(summary_lines)
 
-    if not rows and not entities_context and not people_context:
+    saved_context = await saved_things(
+        db, user_id, question, question_embedding, date_range, include_places
+    )
+
+    if not rows and not entities_context and not people_context and not saved_context:
         return MemoryContext(context="", sources=[], date_range=date_range)
 
     context_parts = []
@@ -123,6 +137,11 @@ async def retrieve_memory_context(
 
     if people_context:
         context_parts.append(f"People asked about:\n{people_context}")
+
+    if saved_context:
+        context_parts.append(
+            f"Saved things (what the user asked Echo to keep):\n{saved_context}"
+        )
 
     if conversation_summaries:
         context_parts.append(f"Relevant conversation summaries:\n{conversation_summaries}")
@@ -150,6 +169,32 @@ async def retrieve_memory_context(
         sources=sources,
         date_range=date_range,
     )
+
+
+async def saved_things(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    question: str,
+    question_embedding: list[float],
+    date_range: DateRange | None,
+    include_places: bool,
+) -> str:
+    """The saved things matching the question, one line each ("" when none, or when
+    they cannot be read: the rest of the memory still answers)."""
+    try:
+        items = await find_items(
+            db,
+            user_id,
+            query=question,
+            date_from=date_range.date_from if date_range else None,
+            date_to=date_range.date_to if date_range else None,
+            limit=SAVED_LISTED,
+            vector=question_embedding,
+        )
+    except Exception:
+        logger.warning("Could not search Saved for a memory answer", exc_info=True)
+        return ""
+    return "\n".join(item_line(item, include_place=include_places) for item in items)
 
 
 async def _reranked(db: AsyncSession, user_id: uuid.UUID, rows: list) -> list:

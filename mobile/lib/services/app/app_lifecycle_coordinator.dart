@@ -21,6 +21,7 @@ import '../device/device_command_loop.dart';
 import '../device/firmware_update.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
+import '../phone/phone_location.dart';
 import '../device/live_activity_service.dart';
 import '../device/phone_camera.dart';
 import '../device/phone_words.dart';
@@ -38,6 +39,7 @@ final class AppLifecycleCoordinator {
     required this.notificationService,
     required this.photoService,
     required this.phoneActions,
+    required this.phoneLocation,
     required DeviceCommandLoop commandLoop,
     required this.notificationScheduler,
     required this.liveActivity,
@@ -61,6 +63,9 @@ final class AppLifecycleCoordinator {
 
   /// Reminders and Calendar on this iPhone (Profile → On this iPhone).
   final PhoneActionsService phoneActions;
+
+  /// Where the phone is, only for a thing saved with its place (Saved).
+  final PhoneLocationService phoneLocation;
   final DeviceCommandLoop _commandLoop;
 
   /// Briefings, promises and the evening recap, scheduled on the phone.
@@ -165,6 +170,15 @@ final class AppLifecycleCoordinator {
       server: credentialApiService,
     );
     unawaited(phoneActions.report(force: true));
+    // The place of a thing being saved, read only when the server asks for it
+    final phoneLocation = PhoneLocationService(
+      reader: const GeolocatorReader(),
+      commands: credentialApiService,
+      saved: credentialApiService,
+      inForeground: () =>
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+      notifyOpen: notificationService.showSavePlace,
+    );
     // The server's commands: photos for the wearable, actions for this iPhone
     // Set below: a routine's answer is checked (and notified) when its nudge arrives
     late final VoiceUpdatesService voiceUpdates;
@@ -173,6 +187,7 @@ final class AppLifecycleCoordinator {
       onTakePhoto: photoService.handleTakePhoto,
       onPhoneAction: phoneActions.handle,
       onVoiceUpdate: () => voiceUpdates.check(),
+      onGetLocation: phoneLocation.handle,
     )..start();
     final notificationScheduler = NotificationScheduler(
       api: credentialApiService,
@@ -216,6 +231,8 @@ final class AppLifecycleCoordinator {
         await notificationScheduler.refresh();
         await firmwareUpdate.check();
         await phoneActions.report();
+        // On screen again: the place a save could not read in the background
+        await phoneLocation.onResumed();
       },
     );
     return AppLifecycleCoordinator._(
@@ -228,6 +245,7 @@ final class AppLifecycleCoordinator {
       notificationService: notificationService,
       photoService: photoService,
       phoneActions: phoneActions,
+      phoneLocation: phoneLocation,
       commandLoop: commandLoop,
       notificationScheduler: notificationScheduler,
       liveActivity: liveActivity,

@@ -1265,3 +1265,35 @@ async def test_a_voice_request_runs_as_the_segment_owner(worker):
     await vr.handle_voice_item(_Redis(), str(wake.id))
 
     assert seen and set(seen) == {USER_ID}
+
+
+@pytest.mark.asyncio
+async def test_worker_a_voice_save_keeps_its_moment(worker):
+    chip = {"id": str(uuid.uuid4()), "title": "Macchina", "list": "La macchina",
+            "address": "Via Roma 12"}
+    worker.outcome = AgentOutcome(answer="Ho salvato la macchina.", saved=[chip])
+    worker.llm.intent = {"saved": True, "needs_apps": False, "apps": []}
+    conversation_id = uuid.uuid4()
+    wake = _seg("[You] Echo, ricordati dove ho parcheggiato", conversation_id=conversation_id)
+    _ready(worker, wake)
+    redis = _Redis()
+
+    await vr.handle_voice_item(redis, str(wake.id))
+
+    context = worker.agent_calls[0].kw["saved"]
+    assert context.segment_id == wake.id and context.conversation_id == conversation_id
+    assert context.redis_client is redis
+    assert _voice_session(worker).messages[-1]["saved"] == [chip]
+
+
+@pytest.mark.asyncio
+async def test_worker_save_this_with_the_camera_marks_the_photo_to_save(worker):
+    worker.llm.intent = {"camera": True, "saved": True, "needs_apps": False, "apps": []}
+    wake = _seg("[You] Echo, salva questa etichetta")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls == []
+    last = _voice_session(worker).messages[-1]
+    assert last["role"] == "user" and "photo_id" in last and last["save"] is True

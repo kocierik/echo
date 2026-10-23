@@ -22,18 +22,20 @@ import '../utils/formatting.dart';
 import '../services/app/spoken_language.dart';
 import '../services/memory/memories_controller.dart';
 import '../widgets/memory_sections.dart';
+import '../widgets/saved_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
 import 'people_screen.dart';
 import 'person_screen.dart';
+import 'saved_screen.dart';
 import 'navigation.dart';
 import 'settings/voice_settings_screen.dart';
 import 'task_editing.dart';
 
 /// Today: the day and a greeting, the search over the whole memory, one card for the
 /// moment (something to confirm, an event within the hour, the conversation going on,
-/// or the day so far), what to do, the day, who came up and the days before. Empty
-/// sections are left out. The wearable shows up only when something is wrong with it.
+/// or the day so far), what to do, the day, who came up, what was saved and the days
+/// before. Empty sections are left out. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
@@ -143,6 +145,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   /// The last line heard in the conversation going on.
   String? _lastLine;
+
+  /// Saved: how many things, and the list one was last saved in (no row without any).
+  int _savedTotal = 0;
+  String? _savedLatest;
 
   @override
   MemoryApi get taskApi => _api;
@@ -267,7 +273,37 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadOwnVoice(),
       _loadName(),
       _loadComingUp(),
+      _loadSaved(),
     ]);
+  }
+
+  Future<void> _loadSaved() async {
+    final api = _api;
+    if (api is! SavedApi) return;
+    try {
+      final saved = await (api as SavedApi).getSaved();
+      if (!mounted) return;
+      setState(() {
+        _savedTotal = saved.total;
+        _savedLatest = saved.latestList;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _openSaved() async {
+    final api = _api;
+    if (api is! SavedApi) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => SavedScreen(
+        api: api as SavedApi,
+        loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
+        onAsk: widget.onAsk,
+        openConversation: (context, id) => _openById(id),
+        openPerson: (context, id) => _openPerson(id),
+        clock: widget.clock,
+      ),
+    ));
+    if (mounted) await _loadSaved();
   }
 
   Future<void> _loadName() async {
@@ -733,6 +769,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         people: peopleToday,
                         onOpen: (id) => unawaited(_openPerson(id)),
                         onAll: () => unawaited(_openPeople()),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_savedTotal > 0) ...[
+                      SavedRow(
+                        total: _savedTotal,
+                        latestList: _savedLatest,
+                        onOpen: () => unawaited(_openSaved()),
                       ),
                       const SizedBox(height: 12),
                     ],

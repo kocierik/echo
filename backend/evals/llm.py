@@ -22,6 +22,7 @@ from pathlib import Path
 from app.actions.agent import SEARCH_MEMORY_TOOL, _system_prompt
 from app.actions.availability import route_request
 from app.actions.routine_tools import ROUTINE_TOOLS
+from app.actions.saved_tools import SAVED_TOOLS
 from app.actions.todo_tools import TODO_TOOLS
 from app.services.about_echo import about_echo
 from app.services.analysis_pipeline import extract_entities
@@ -136,6 +137,8 @@ async def routing(llm) -> bool:
             )
         )
         ok = route.kind == case["expect"]
+        # "save": a photo to save once analysed ("Echo, save this")
+        ok = ok and ("save" not in case or route.save == case["save"])
         passed += ok
         mark = "ok  " if ok else "FAIL"
         print(
@@ -209,12 +212,14 @@ async def answers(llm) -> bool:
 
 async def tools(llm) -> bool:
     suite = json.loads((CASES / "tools.json").read_text(encoding="utf-8"))
-    # As in production: Echo's own tools (routines, its to-do list) are always offered
-    offered = [SEARCH_MEMORY_TOOL, *ROUTINE_TOOLS, *TODO_TOOLS, *suite["tools"]]
+    # As in production: Echo's own tools (routines, its to-do list, Saved) are always
+    # offered, with the user's Saved lists in the prompt
+    offered = [SEARCH_MEMORY_TOOL, *ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS, *suite["tools"]]
+    prompt = _system_prompt(routines=True, saved_lists=suite.get("saved_lists"))
     passed = 0
     for case in suite["cases"]:
         messages = [
-            LLMMessage(role="system", content=_system_prompt(routines=True)),
+            LLMMessage(role="system", content=prompt),
             LLMMessage(role="user", content=case["request"]),
         ]
         response, elapsed = await _timed(llm.complete_with_tools(messages, offered))
@@ -223,6 +228,8 @@ async def tools(llm) -> bool:
         # "args": what the first call must say (a routine's schedule)
         arguments = response.tool_calls[0].arguments if response.tool_calls else {}
         ok = ok and all(arguments.get(k) == v for k, v in case.get("args", {}).items())
+        # "not_args": what it must not say (a place for an object put at home)
+        ok = ok and all(arguments.get(k) != v for k, v in case.get("not_args", {}).items())
         passed += ok
         mark = "ok  " if ok else "FAIL"
         print(f"  {mark}  {case['id']:22} {called or '(no tool)':28} {elapsed:4.1f}s")

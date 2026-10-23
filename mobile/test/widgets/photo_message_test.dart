@@ -1,5 +1,6 @@
 import 'package:echo_app/models/chat_message.dart';
 import 'package:echo_app/models/photo.dart';
+import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:echo_app/widgets/chat_composer.dart';
 import 'package:echo_app/widgets/message_bubble.dart';
@@ -28,6 +29,25 @@ void main() {
     expect(find.byType(PhotoThumbnail), findsOneWidget);
     expect(find.byKey(const Key('photo-p1')), findsOneWidget);
     expect(find.text('È un ficus.'), findsOneWidget);
+  });
+
+  testWidgets('an answer that saved something has a chip opening it', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(_app(MessageBubble(
+      message: ChatMessage(
+        text: 'Ho salvato la macchina: Via Roma 12, Milano.',
+        isUser: false,
+        saved: const [
+          SavedChip(id: 'car', title: 'Your car', list: 'Your car', address: 'Via Roma 12'),
+        ],
+      ),
+      onOpenSaved: (chip) => opened.add(chip.id),
+    )));
+
+    expect(find.text('Your car · Saved'), findsOneWidget);
+    expect(find.text("Via Roma 12 · from the phone's location"), findsOneWidget);
+    await tester.tap(find.byKey(const Key('saved-chip-car')));
+    expect(opened, ['car']);
   });
 
   testWidgets('a photo answer: the photo large, then quick follow-ups', (tester) async {

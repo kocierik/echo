@@ -5,6 +5,7 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/photo.dart';
+import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/widgets/panel.dart';
@@ -552,6 +553,30 @@ void main() {
       expect(find.text('Marco Rossi'), findsOneWidget);
     });
 
+    testWidgets('a Saved row with how many and the latest list, opening Saved', (tester) async {
+      final api = _SavedTodayApi(const SavedOverview(
+        total: 3,
+        latestList: 'Wines',
+        places: [],
+        lists: [],
+      ));
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(find.text('3 things · latest in Wines'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('saved-row')));
+      await tester.tap(find.byKey(const Key('saved-row')));
+      await tester.pumpAndSettle();
+      expect(find.text('Things to find again, each with its moment.'), findsOneWidget);
+    });
+
+    testWidgets('nothing saved: no Saved row', (tester) async {
+      await pumpToday(tester, api: _SavedTodayApi(const SavedOverview(total: 0, places: [], lists: [])));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('saved-row')), findsNothing);
+    });
+
     testWidgets('earlier: the week, then each day with its count and main topic',
         (tester) async {
       final api = FakeTodayApi(
@@ -726,4 +751,17 @@ final class _PhotoTodayApi extends FakeTodayApi implements PhotoApi {
 
   @override
   Future<void> reportPhotoFailure(String id, String reason) => throw UnimplementedError();
+}
+
+/// Today's API with Saved.
+final class _SavedTodayApi extends FakeTodayApi implements SavedApi {
+  _SavedTodayApi(this.overview);
+
+  final SavedOverview overview;
+
+  @override
+  Future<SavedOverview> getSaved() async => overview;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

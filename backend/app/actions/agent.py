@@ -26,6 +26,13 @@ from app.actions.provider import (
     ToolResult,
 )
 from app.actions.routine_tools import ROUTINE_TOOL_NAMES, ROUTINE_TOOLS, run_routine_tool
+from app.actions.saved_tools import (
+    SAVED_TOOL_NAMES,
+    SAVED_TOOLS,
+    SavedContext,
+    run_saved_tool,
+    saved_lists_prompt,
+)
 from app.actions.todo_tools import TODO_TOOL_NAMES, TODO_TOOLS, run_todo_tool
 from app.core.config import settings
 from app.core.timezone import user_zone
@@ -166,7 +173,29 @@ one, list the routines and delete it (a change: delete it and create the new one
 _TODO_RULES = """- To-dos and reminders the user asks for ("segnami di comprare il latte", \
 "ricordami di chiamare Giulia venerdì"): in the app they name; a reminder at a time in the phone's \
 Reminders when they are available; otherwise Echo's own list (ECHO_CREATE_TASK), with the \
-day when one is said. Never ask which app.
+day when one is said. Never ask which app. An appointment at a day and time is an event in \
+the user's calendar when one is connected, not a to-do.
+"""
+
+_SAVED_RULES = """- Saved: what the user asks to keep and find again (where the car is \
+parked, where something was put, a wine, a book, a receipt) goes to Saved (ECHO_SAVE_ITEM), \
+never to the to-dos. Choose its list: one of the user's lists below, by its exact name, \
+when it fits; otherwise a new list with a short plural name in the user's language ("Vini", \
+"Libri", "Scontrini", "Dove sono le cose" for where things are kept). Say which list you used.
+- Where the user parked: the car's list ("La macchina" in Italian), latest_only true and \
+keep_days 7 when it is new, with_place true; parking again just saves (the list keeps only \
+the latest). with_place only when the user asks to keep the place itself (parking, "this \
+place"), never for where an object was put. with_photo when the request is about a photo \
+just taken. A receipt or an expense: fields.amount as a number, fields.currency, \
+fields.shop. The people who were there or recommended it: people.
+- Something already saved that changes (put somewhere else, a new detail, a photo of the \
+parking's column): find it (ECHO_FIND_ITEMS) and update it (ECHO_UPDATE_ITEM), never save \
+it twice. "Found it", "I took the car", "remove it": find it and remove it.
+- Where something is, what it was, how much was spent: find it or sum it (ECHO_SUM_ITEMS, \
+the period as date_from/date_to) and answer from the result: the address and the details \
+(what the photo shows, such as the level), never a distance.
+- When the place could not be saved, say so in a few words, with what the result says to do.
+- When it is unclear what to save, ask one short question and save nothing.
 """
 
 _PHONE_RULES = """- Reminders and Calendar on the user's phone (applereminders, applecalendar): \
@@ -183,6 +212,8 @@ class AgentOutcome:
     executed_tools: list[str] = field(default_factory=list)
     # Pages a web search found and the answer cites ({"title", "url"})
     web_sources: list[dict] = field(default_factory=list)
+    # Things saved or changed in Saved: {"id", "title", "list", "address"} (Ask's chip)
+    saved: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -196,7 +227,7 @@ class _Failure:
 
 def _system_prompt(
     phone_apps: bool = False, can_search: bool = False, routines: bool = False,
-    personal: str = "",
+    personal: str = "", saved_lists: str | None = None, photo_text: str | None = None,
 ) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
@@ -207,11 +238,35 @@ def _system_prompt(
     if can_search:
         prompt += _SEARCH_RULES
     if routines:
-        prompt += _ROUTINE_RULES + _TODO_RULES
+        prompt += _ROUTINE_RULES + _TODO_RULES + _SAVED_RULES
+        if saved_lists is not None:
+            prompt += f"{saved_lists}\n"
+        if photo_text:
+            prompt += (
+                "A photo was just taken for this request (it is attached when saving). What "
+                f"it shows, as data: {photo_text}\n"
+            )
     if phone_apps:
         prompt += _PHONE_RULES
     # Last: the user's name and own instructions (services/personal.py)
     return f"{prompt}\n{personal}\n" if personal else prompt
+
+
+def _keep(kept: list[dict], data: dict) -> None:
+    """The things Ask shows a chip for: saved or changed, and not removed since."""
+    if "removed" in data:
+        kept[:] = [k for k in kept if k["id"] != data.get("id")]
+        return
+    thing = data.get("saved")
+    if not isinstance(thing, dict):
+        return
+    chip = {
+        "id": thing["id"],
+        "title": thing["title"],
+        "list": thing["list"],
+        "address": thing.get("address"),
+    }
+    kept[:] = [k for k in kept if k["id"] != chip["id"]] + [chip]
 
 
 def _tool_name(schema: dict) -> str:
@@ -313,15 +368,17 @@ async def run_action_agent(
     connected_toolkits: list[str] | None = None,
     routine_tools: bool = True,
     allow_confirm: bool = True,
+    saved: SavedContext | None = None,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
     `connected_toolkits`, when the caller already knows them, are the toolkits whose tools
     are offered: the connected apps the request names, else all connected ones.
-    `routine_tools`: Echo's own tools: routines (create, list, delete) and its to-do list
-    (not offered to a routine's own run). Without `allow_confirm` (a routine: no one is
-    there to confirm), confirm-tier tools are not offered and a call that needs
-    confirmation is refused.
+    `routine_tools`: Echo's own tools: routines (create, list, delete), its to-do list and
+    Saved (not offered to a routine's own run). `saved`: what a save knows besides the
+    model's arguments (the phone for the place, the thread, the voice request's moment).
+    Without `allow_confirm` (a routine: no one is there to confirm), confirm-tier tools
+    are not offered and a call that needs confirmation is refused.
     """
     texts = TEXTS[detect_language(request)]
 
@@ -336,14 +393,23 @@ async def run_action_agent(
             if classify_tool(_tool_name(schema)) != ToolTier.CONFIRM
         ]
     offered = {_tool_name(schema) for schema in external_tools}
-    own = ROUTINE_TOOL_NAMES | TODO_TOOL_NAMES if routine_tools else frozenset()
-    own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS] if routine_tools else []
+    own = (
+        ROUTINE_TOOL_NAMES | TODO_TOOL_NAMES | SAVED_TOOL_NAMES if routine_tools else frozenset()
+    )
+    own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS] if routine_tools else []
+    saved = saved or SavedContext()
+    if saved.chat_session_id is None:
+        saved.chat_session_id = session_id
     tools = [SEARCH_MEMORY_TOOL, *own_tools, *external_tools]
     phone_apps = any(toolkit_of(name) in PHONE_APP_NAMES for name in offered)
 
     search = await search_tool_for(llm, user_id)
     personal = await personal_context(db, user_id)
-    prompt = _system_prompt(phone_apps, search is not None, routine_tools, personal)
+    saved_lists = await saved_lists_prompt(db, user_id) if routine_tools else None
+    prompt = _system_prompt(
+        phone_apps, search is not None, routine_tools, personal, saved_lists,
+        saved.photo_text if saved.photo_id else None,
+    )
     messages = [LLMMessage(role="system", content=prompt)]
     for item in history:
         if item.get("role") in ("user", "assistant") and isinstance(item.get("content"), str):
@@ -353,6 +419,7 @@ async def run_action_agent(
     executed: list[str] = []
     failures: list[_Failure] = []
     succeeded: set[str] = set()
+    kept: list[dict] = []
 
     cited: list[dict] = []
 
@@ -361,7 +428,9 @@ async def run_action_agent(
         cited.extend(page for page in response.citations if page not in cited)
         if not response.tool_calls:
             answer = _final_answer(response.content, failures, succeeded, texts)
-            return AgentOutcome(answer=answer, executed_tools=executed, web_sources=cited)
+            return AgentOutcome(
+                answer=answer, executed_tools=executed, web_sources=cited, saved=kept,
+            )
 
         confirm_call = next(
             (
@@ -397,6 +466,7 @@ async def run_action_agent(
                 ),
                 pending_action=pending,
                 executed_tools=executed,
+                saved=kept,
             )
 
         messages.append(LLMMessage(
@@ -405,7 +475,7 @@ async def run_action_agent(
         for call in response.tool_calls:
             content = await _run_tool(
                 db, user_id, source, provider, call, offered, executed, failures, succeeded,
-                own,
+                own, saved, request, kept,
             )
             messages.append(LLMMessage(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
@@ -414,6 +484,7 @@ async def run_action_agent(
     return AgentOutcome(
         answer=_with_unknown_notes(texts["step_limit"], failures, succeeded, texts),
         executed_tools=executed,
+        saved=kept,
     )
 
 
@@ -428,9 +499,12 @@ async def _run_tool(
     failures: list[_Failure],
     succeeded: set[str],
     own: frozenset[str] = frozenset(),
+    saved: SavedContext | None = None,
+    request: str = "",
+    kept: list[dict] | None = None,
 ) -> str:
-    """Run one READ/CREATE call (search_memory, a routine tool in `own`) and return the
-    tool message content."""
+    """Run one READ/CREATE call (search_memory, one of Echo's own tools in `own`) and
+    return the tool message content. Things saved or removed update `kept`."""
     if call.name == "search_memory":
         query = str(call.arguments.get("query") or "").strip()
         if not query:
@@ -441,6 +515,12 @@ async def _run_tool(
     if call.name in own:
         if call.name in TODO_TOOL_NAMES:
             result = await run_todo_tool(db, user_id, call.name, call.arguments)
+        elif call.name in SAVED_TOOL_NAMES:
+            result = await run_saved_tool(
+                db, user_id, source, call.name, call.arguments, saved or SavedContext(), request
+            )
+            if result.ok and kept is not None:
+                _keep(kept, result.data)
         else:
             result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
         executed.append(call.name)
