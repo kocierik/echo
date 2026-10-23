@@ -24,6 +24,9 @@ def about_echo(phone_apps_on: list[str]) -> str:
         "shown in Today;",
         "- answers questions about them, by chat (Ask) or by voice;",
         "- writes a summary of every day and of every week;",
+        "- keeps what the user asks it to save and find again (where the car is parked, "
+        "where something was put, a wine, a book, receipts) in Saved (Today → Saved), "
+        "each with its moment, and adds up what was spent;",
         "- looks up live information on the web (weather, news, prices) and names the "
         "sources;",
         "- does things on its own at a regular time when asked (\"every morning at 7 tell "

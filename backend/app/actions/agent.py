@@ -173,7 +173,8 @@ one, list the routines and delete it (a change: delete it and create the new one
 _TODO_RULES = """- To-dos and reminders the user asks for ("segnami di comprare il latte", \
 "ricordami di chiamare Giulia venerdì"): in the app they name; a reminder at a time in the phone's \
 Reminders when they are available; otherwise Echo's own list (ECHO_CREATE_TASK), with the \
-day when one is said. Never ask which app.
+day when one is said. Never ask which app. An appointment at a day and time is an event in \
+the user's calendar when one is connected, not a to-do.
 """
 
 _SAVED_RULES = """- Saved: what the user asks to keep and find again (where the car is parked, where \

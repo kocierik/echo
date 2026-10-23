@@ -1,5 +1,5 @@
 {
-  "context": "Relevant conversation summaries:\n- [13/10/2026 12:30] Lunch with Ada about Atlas: Ada wants to launch Atlas in November; the user will send her the budget by Friday and involve Marco for the design.\n- [12/10/2026 20:15] Dinner plans: pizza on Saturday at 8 pm with Giulia and Marco at Da Gino.\n\nStructured knowledge:\n- person: Marco Rossi (designer, works on Atlas)\n- task: Mandare il budget ad Ada (due 2026-10-16)\n- event: Cena da Gino (2026-10-17 20:00)\n\n---\n\n[Altri] Allora Atlas lo lanciamo a novembre, mi serve il budget entro venerdì.\n\n---\n\n[Tu] Per il design coinvolgiamo Marco, lui conosce già il progetto.\n\n---\n\n[Altri] Sabato alle otto da Gino, prenoto io per quattro.",
+  "context": "Saved things (what the user asked Echo to keep):\n- [Vini] Barolo 2019: Cantina Rinaldi (vintage: 2019). Saved Saturday 2026-10-17 21:40, with Marco. Asked: \"Echo, tienimi questo vino\"\n- [La macchina] Macchina (level: -2, column: B4). Saved Tuesday 2026-10-20 09:40. Place: Via Roma 12, Milano. Asked: \"Echo, ricordati dove ho parcheggiato\"\n\n---\n\nRelevant conversation summaries:\n- [13/10/2026 12:30] Lunch with Ada about Atlas: Ada wants to launch Atlas in November; the user will send her the budget by Friday and involve Marco for the design.\n- [12/10/2026 20:15] Dinner plans: pizza on Saturday at 8 pm with Giulia and Marco at Da Gino.\n\nStructured knowledge:\n- person: Marco Rossi (designer, works on Atlas)\n- task: Mandare il budget ad Ada (due 2026-10-16)\n- event: Cena da Gino (2026-10-17 20:00)\n\n---\n\n[Altri] Allora Atlas lo lanciamo a novembre, mi serve il budget entro venerdì.\n\n---\n\n[Tu] Per il design coinvolgiamo Marco, lui conosce già il progetto.\n\n---\n\n[Altri] Sabato alle otto da Gino, prenoto io per quattro.",
   "cases": [
     {
       "id": "fact-it",
@@ -185,6 +185,22 @@
       ],
       "forbid": [
         "traslocare"
+      ]
+    },
+    {
+      "id": "saved-wine-it",
+      "question": "Cos'era quel vino che ho bevuto con Marco sabato?",
+      "language": "it",
+      "must": [
+        "barolo"
+      ]
+    },
+    {
+      "id": "saved-car-en",
+      "question": "Where did I leave the car?",
+      "language": "en",
+      "must": [
+        "roma"
       ]
     }
   ]

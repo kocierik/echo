@@ -75,9 +75,10 @@ that app.
 Echo also keeps things the user wants to find again (Saved): a request to save or keep \
 something (where they parked, where they put an object, a wine, a book, a receipt, "save \
 this"), to change, move or remove something saved ("I found it", "I took the car back"), \
-or how much they spent on what they saved, is a save: set "saved" to true (it needs no \
-app). A question about where something is or what something was is answered from memory, \
-which includes Saved: not a save.{camera}
+or a question about how much the user spent (their receipts and expenses are kept in \
+Saved), is a save: set "saved" to true (it needs no app). A question about where something \
+is, what something was or what the user noted before is answered from memory (which \
+includes Saved): not a save, and not a to-do.{camera}
 Respond with ONLY a JSON object: \
 {{{camera_key}"routine": false, "todo": false, "saved": false, "needs_apps": true, \
 "apps": ["<slug>", ...]}} \

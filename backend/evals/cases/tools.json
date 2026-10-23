@@ -1,4 +1,5 @@
 {
+  "saved_lists": "The user's Saved lists: \"Vini\" (4 things); \"Dove sono le cose\" (2 things); \"La macchina\" (latest only, kept 7 days; 1 thing); \"Books\" (2 things); \"Scontrini\" (7 things).",
   "tools": [
     {"type": "function", "function": {"name": "GMAIL_FETCH_EMAILS", "description": "List the latest emails in the user's Gmail inbox, optionally filtered by a search query.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}}}},
     {"type": "function", "function": {"name": "GMAIL_SEND_EMAIL", "description": "Send an email from the user's Gmail.", "parameters": {"type": "object", "properties": {"recipient_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["recipient_email", "body"]}}},
@@ -19,6 +20,15 @@
     {"id": "routine-missing-time", "request": "Dimmi il meteo ogni mattina", "first": [null]},
     {"id": "routine-stop", "request": "Smetti di dirmi il meteo la mattina", "first": ["ECHO_LIST_ROUTINES"]},
     {"id": "todo-echo-list", "request": "Segnami di comprare il latte", "first": ["ECHO_CREATE_TASK"]},
-    {"id": "todo-named-app", "request": "Aggiungi su Todoist: comprare il latte", "first": ["TODOIST_CREATE_TASK"]}
+    {"id": "todo-named-app", "request": "Aggiungi su Todoist: comprare il latte", "first": ["TODOIST_CREATE_TASK"]},
+    {"id": "saved-wine-it", "request": "Tienimi questo vino: Nebbiolo di Gattinara, l'abbiamo bevuto ieri sera", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Vini"}},
+    {"id": "saved-parking-it", "request": "Ricorda dove ho lasciato la macchina", "first": ["ECHO_SAVE_ITEM"], "args": {"with_place": true}},
+    {"id": "saved-object-it", "request": "Le chiavi di riserva le ho messe nella scatola blu in corridoio, tienilo a mente", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Dove sono le cose"}, "not_args": {"with_place": true}},
+    {"id": "saved-book-en", "request": "Keep this book for me: Project Hail Mary, Ada loved it", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Books"}},
+    {"id": "saved-receipt-en", "request": "Save this receipt: 23.40 euros at Carrefour", "first": ["ECHO_SAVE_ITEM"]},
+    {"id": "saved-sum-it", "request": "Quanto ho speso questo mese con gli scontrini?", "first": ["ECHO_SUM_ITEMS"]},
+    {"id": "saved-sum-en", "request": "How much have I spent this week?", "first": ["ECHO_SUM_ITEMS"]},
+    {"id": "saved-found-car-it", "request": "Ho ripreso la macchina, puoi toglierla", "first": ["ECHO_FIND_ITEMS", "ECHO_REMOVE_ITEM"]},
+    {"id": "saved-where-it", "request": "Dove avevo messo il passaporto?", "first": ["ECHO_FIND_ITEMS", "search_memory"]}
   ]
 }

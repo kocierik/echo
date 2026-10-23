@@ -30,6 +30,17 @@
     {"id": "routine-not-a-routine", "text": "Cosa faccio di solito ogni lunedì?", "expect": "memory"},
     {"id": "todo-no-app", "text": "Ehi Echo, segnami di comprare il latte", "expect": "agent"},
     {"id": "todo-remind", "text": "Ricordami di chiamare Giulia venerdì", "expect": "agent"},
-    {"id": "todo-from-memory", "text": "Che cose da fare mi ero segnato ieri?", "expect": "memory"}
+    {"id": "todo-from-memory", "text": "Che cose da fare mi ero segnato ieri?", "expect": "memory"},
+    {"id": "saved-chat-it", "text": "Tienimi da parte il nome di quel ristorante: Da Vittorio", "expect": "agent"},
+    {"id": "saved-parking-voice-it", "text": "Ricorda dove ho lasciato la macchina", "expect": "agent", "camera": true},
+    {"id": "saved-label-voice-it", "text": "Mettimi questa bottiglia tra i vini", "expect": "photo", "camera": true, "save": true},
+    {"id": "saved-label-voice-en", "text": "Keep this bottle's label in my wines", "expect": "photo", "camera": true, "save": true},
+    {"id": "photo-not-a-save-it", "text": "Che vino è questo?", "expect": "photo", "camera": true, "save": false},
+    {"id": "saved-spent-it", "text": "Quanto ho speso di spesa questa settimana?", "expect": "agent"},
+    {"id": "saved-spent-en", "text": "How much did I spend on receipts this month?", "expect": "agent"},
+    {"id": "saved-found-car-it", "text": "Ho ritrovato la macchina, toglila pure", "expect": "agent"},
+    {"id": "saved-where-it", "text": "Dov'è il passaporto?", "expect": "memory"},
+    {"id": "saved-where-car-en", "text": "Where did I park?", "expect": "memory"},
+    {"id": "saved-wine-said-it", "text": "Cosa ha detto Marco del vino di sabato?", "expect": "memory"}
   ]
 }
