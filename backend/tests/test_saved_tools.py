@@ -255,3 +255,20 @@ async def test_the_photo_a_voice_request_took_is_attached(db_session):
     assert item.photo_id == photo.id
     # The model is told what the photo shows before it saves
     assert "Barolo DOCG 2019" in llm.call_log[0][0].content
+
+
+async def test_a_failing_saved_search_leaves_the_session_usable(db_session, monkeypatch):
+    """The rest of the answer still reads and writes after Saved could not be searched."""
+    from sqlalchemy import text as sql
+
+    from app.services import memory_retrieval
+
+    async def broken(db, *args, **kwargs):
+        await db.execute(sql("SELECT * FROM no_such_table"))
+
+    monkeypatch.setattr(memory_retrieval, "find_items", broken)
+
+    assert await memory_retrieval.saved_things(
+        db_session, TEST_USER_ID, "il vino", [0.0] * 1536, None, True
+    ) == ""
+    assert (await db_session.execute(sql("SELECT 1"))).scalar() == 1

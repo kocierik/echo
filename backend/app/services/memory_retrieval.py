@@ -182,15 +182,18 @@ async def saved_things(
     """The saved things matching the question, one line each ("" when none, or when
     they cannot be read: the rest of the memory still answers)."""
     try:
-        items = await find_items(
-            db,
-            user_id,
-            query=question,
-            date_from=date_range.date_from if date_range else None,
-            date_to=date_range.date_to if date_range else None,
-            limit=SAVED_LISTED,
-            vector=question_embedding,
-        )
+        # A savepoint: a failure here rolls back only this search, so the session stays
+        # usable for the rest of the answer
+        async with db.begin_nested():
+            items = await find_items(
+                db,
+                user_id,
+                query=question,
+                date_from=date_range.date_from if date_range else None,
+                date_to=date_range.date_to if date_range else None,
+                limit=SAVED_LISTED,
+                vector=question_embedding,
+            )
     except Exception:
         logger.warning("Could not search Saved for a memory answer", exc_info=True)
         return ""
