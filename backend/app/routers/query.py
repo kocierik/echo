@@ -22,6 +22,7 @@ from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.phone_provider import with_phone_apps
 from app.actions.provider import ActionProviderError
+from app.actions.saved_tools import SavedContext
 from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
@@ -120,6 +121,9 @@ class QueryResponse(BaseModel):
     date_filter: dict | None = None
     pending_action: PendingActionOut | None = None
     web_sources: list[WebSource] = []
+    # What the answer saved or changed in Saved ({"id", "title", "list", "address"}): Ask
+    # shows a chip opening it
+    saved: list[dict] = []
 
 
 # Words that may introduce a request on a connected tool (prefix match, IT + EN).
@@ -134,7 +138,10 @@ _TOOL_HINT = re.compile(
     r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria|"
     # Routines: something regular, or the routines themselves
     r"ogni\b|tutti i giorni|tutte le (mattine|sere)|every\b|each (day|morning|evening|week)|"
-    r"daily|weekly|monthly|routine|incaric|smetti|stop\b)",
+    r"daily|weekly|monthly|routine|incaric|smetti|stop\b|"
+    # Saved: keeping things to find again, and what was spent on them
+    r"salv|ricordati|parcheggi|park|save\b|keep\b|tieni|speso|spent|spend|scontrin|"
+    r"receipt|togli)",
     re.IGNORECASE,
 )
 
@@ -413,6 +420,12 @@ async def _answer_query(
                 provider=provider,
                 llm=llm_service,
                 connected_toolkits=route.apps or connected,
+                # The phone for a place, this chat for its last photo
+                saved=SavedContext(
+                    redis_client=redis_client,
+                    chat_session_id=session_uuid,
+                    embedding_service=get_embedding_service(),
+                ),
             )
             pending = outcome.pending_action
             extra: dict = {"actions": True}
@@ -431,6 +444,8 @@ async def _answer_query(
                 )
             if outcome.web_sources:
                 extra["citations"] = outcome.web_sources
+            if outcome.saved:
+                extra["saved"] = outcome.saved
             await record_turn(
                 redis_client, db, user_id, session_id, history, body.question,
                 outcome.answer, extra,
@@ -442,6 +457,7 @@ async def _answer_query(
                 date_filter=None,
                 pending_action=pending_out,
                 web_sources=outcome.web_sources,
+                saved=outcome.saved,
             )
 
     # 1. Determine date filter: explicit params take priority, then NLP extraction

@@ -28,6 +28,7 @@ from app.actions.availability import route_request
 from app.actions.composio_provider import get_action_provider
 from app.actions.phone_provider import with_phone_apps
 from app.actions.provider import ActionProviderError
+from app.actions.saved_tools import SavedContext
 from app.actions.voice import (
     WORKING_KEY,
     WORKING_TTL_S,
@@ -159,7 +160,10 @@ async def _memory_answer(
 
 @dataclass
 class _PhotoRoute:
-    """The request needs the camera: no answer yet, the photo's analysis gives it."""
+    """The request needs the camera: no answer yet, the photo's analysis gives it.
+    `save`: what the photo shows is saved then ("Echo, save this")."""
+
+    save: bool = False
 
 
 async def _answer(
@@ -169,8 +173,10 @@ async def _answer(
     command: str,
     history: list[dict],
     session_id: uuid.UUID,
+    segment=None,
 ) -> tuple[str, dict] | _PhotoRoute:
-    """The answer and the extra keys of the assistant message, or a photo to take."""
+    """The answer and the extra keys of the assistant message, or a photo to take.
+    `segment`: the request's, for the moment of what it saves."""
     provider = None
     connected: list[str] = []
     llm = get_llm_query_service()
@@ -185,7 +191,7 @@ async def _answer(
         # Still checked for the camera and routines; app requests have nothing to act on
         route = await route_request(get_llm_intent_service(), command, history, [], camera=True)
         if route.kind == "photo":
-            return _PhotoRoute()
+            return _PhotoRoute(save=route.save)
         if route.kind != "agent":
             return await _memory_answer(db, user_id, command, history, llm, about), {}
         # A routine: Echo's own tools
@@ -202,7 +208,7 @@ async def _answer(
             get_llm_intent_service(), command, history, reachable, camera=True
         )
         if route.kind == "photo":
-            return _PhotoRoute()
+            return _PhotoRoute(save=route.save)
         if route.kind == "notice":
             return route.notice, {"actions": True}
         if route.kind == "memory":
@@ -218,6 +224,14 @@ async def _answer(
         provider=provider,
         llm=llm,
         connected_toolkits=route.apps or connected,
+        # The phone for a place; the segment and its conversation for the moment
+        saved=SavedContext(
+            redis_client=redis_client,
+            chat_session_id=session_id,
+            segment_id=segment.id if segment is not None else None,
+            conversation_id=segment.conversation_id if segment is not None else None,
+            embedding_service=get_embedding_service(),
+        ),
     )
     extra: dict = {"actions": True}
     if outcome.pending_action is not None:
@@ -226,6 +240,8 @@ async def _answer(
             "summary": outcome.pending_action.summary,
             "status": "pending",
         }
+    if outcome.saved:
+        extra["saved"] = outcome.saved
     return outcome.answer, extra
 
 
@@ -292,9 +308,13 @@ async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, co
         if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)
     ]
     asked_at = _utcnow().isoformat()
-    result = await _answer(db, redis_client, segment.user_id, command, history, voice_session.id)
+    result = await _answer(
+        db, redis_client, segment.user_id, command, history, voice_session.id, segment
+    )
     if isinstance(result, _PhotoRoute):
-        await _request_photo(db, redis_client, segment, command, asked_at, voice_session)
+        await _request_photo(
+            db, redis_client, segment, command, asked_at, voice_session, save=result.save
+        )
         logger.info(f"[Voice] Photo requested from segment {segment_id}")
         return True
     answer, extra = result
@@ -305,9 +325,16 @@ async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, co
 
 
 async def _request_photo(
-    db: AsyncSession, redis_client, segment: Segment, command: str, asked_at: str, voice_session
+    db: AsyncSession,
+    redis_client,
+    segment: Segment,
+    command: str,
+    asked_at: str,
+    voice_session,
+    save: bool = False,
 ) -> None:
-    """Ask the wearable for a photo; its answer is appended when the photo is analysed."""
+    """Ask the wearable for a photo; its answer is appended when the photo is analysed.
+    With `save`, the question is marked: the analysis saves what the photo shows."""
     photo = request_photo(
         db,
         segment.user_id,
@@ -324,6 +351,7 @@ async def _request_photo(
             "timestamp": asked_at,
             "photo_id": str(photo.id),
             "source": "voice",
+            **({"save": True} if save else {}),
         },
     ]
     voice_session.updated_at = _utcnow()

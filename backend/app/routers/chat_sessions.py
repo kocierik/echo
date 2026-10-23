@@ -33,6 +33,8 @@ class ChatMessage(BaseModel):
     routine_schedule: str | None = None
     # A follow-up question about a photo, and its answer
     about_photo_id: str | None = None
+    # What the answer saved or changed in Saved: {"id", "title", "list", "address"}
+    saved: list[dict] | None = None
 
 
 class ChatSessionSummary(BaseModel):
