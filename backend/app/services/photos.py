@@ -13,6 +13,7 @@ conversation when none was going on.
 import hashlib
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -130,6 +131,23 @@ def parse_when(value) -> str | None:
     if moment.tzinfo is not None:
         moment = moment.astimezone(user_zone()).replace(tzinfo=None)
     return moment.isoformat(timespec="seconds")
+
+
+# Saves what a photo shows ("Echo, save this"): the thread's answer and its extra keys
+PhotoSaver = Callable[[AsyncSession, Photo], Awaitable[tuple[str, dict]]]
+
+
+async def photo_wants_saving(db: AsyncSession, photo: Photo) -> bool:
+    """Whether the request that took the photo asked to save it (its question in the
+    thread is marked "save")."""
+    if photo.chat_session_id is None:
+        return False
+    session = await db.get(ChatSession, photo.chat_session_id)
+    photo_id = str(photo.id)
+    return any(
+        m.get("role") == "user" and m.get("photo_id") == photo_id and m.get("save") is True
+        for m in (session.messages if session is not None else None) or []
+    )
 
 
 def failure_text(photo: Photo, reason: str) -> str:
@@ -387,9 +405,14 @@ async def analyse_photo(
     llm: LLMService,
     embedding_service,
     analysis_llm: LLMService | None = None,
+    save_with: PhotoSaver | None = None,
 ) -> bool:
     """Answer in the chat and describe the photo in memory. False if there was nothing to
     do (deleted, already done, or no image). Model errors propagate (the worker retries).
+
+    With `save_with`, a photo whose request asked to save it is saved once described,
+    and the thread shows the save's answer with the photo; a failure there keeps the
+    photo's own answer.
 
     With `analysis_llm`, what the photo shows also becomes entities (tasks, events,
     people), and a business card a person in People; that part is best effort: a
@@ -481,6 +504,16 @@ async def analyse_photo(
         answer = f"{answer}\n\n{saved}"
         photo.answer = answer
 
+    extra: dict = {}
+    if save_with is not None and await photo_wants_saving(db, photo):
+        try:
+            async with db.begin_nested():
+                saved_answer, extra = await save_with(db, photo)
+            answer = saved_answer or answer
+        except Exception:
+            extra = {}
+            logger.warning(f"[Photos] Saving photo {photo.id} failed", exc_info=True)
+
     photo.status = "done"
     await append_message(
         db,
@@ -493,6 +526,8 @@ async def analyse_photo(
             "notify": photo.source != "app",
             # The date the photo shows: Ask offers "Remind me"
             **({"when": when} if when else {}),
+            # What was saved from it: Ask's chip
+            **extra,
         },
     )
     await db.commit()
