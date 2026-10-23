@@ -273,7 +273,9 @@ async def match_people(db: AsyncSession, user_id: uuid.UUID, names: list[str]) -
         person = next(
             (p for p in known if _key(p.name) == _key(name)), None
         ) or next((p for p in known if names_person(p.name, name)), None)
-        entry = {"name": person.name, "id": str(person.id)} if person else {"name": name, "id": None}
+        entry = (
+            {"name": person.name, "id": str(person.id)} if person else {"name": name, "id": None}
+        )
         if entry not in people:
             people.append(entry)
     return people

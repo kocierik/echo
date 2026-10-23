@@ -76,7 +76,8 @@ async def test_a_list_and_every_list(client, auth_headers, db_session):
     one = (await client.get(f"/api/saved/lists/{first.list_id}", headers=auth_headers)).json()
     every = (await client.get("/api/saved/lists", headers=auth_headers)).json()
 
-    assert one["list"]["name"] == "Vini" and [i["title"] for i in one["items"]] == ["Etna", "Barolo"]
+    assert one["list"]["name"] == "Vini"
+    assert [i["title"] for i in one["items"]] == ["Etna", "Barolo"]
     assert every == [
         {"id": str(first.list_id), "name": "Vini", "count": 2, "latest_only": False,
          "keep_days": None}

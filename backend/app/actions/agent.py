@@ -177,11 +177,11 @@ day when one is said. Never ask which app. An appointment at a day and time is a
 the user's calendar when one is connected, not a to-do.
 """
 
-_SAVED_RULES = """- Saved: what the user asks to keep and find again (where the car is parked, where \
-something was put, a wine, a book, a receipt) goes to Saved (ECHO_SAVE_ITEM), never to the \
-to-dos. Choose its list: one of the user's lists below, by its exact name, when it fits; \
-otherwise a new list with a short plural name in the user's language ("Vini", "Libri", \
-"Scontrini", "Dove sono le cose" for where things are kept). Say which list you used.
+_SAVED_RULES = """- Saved: what the user asks to keep and find again (where the car is \
+parked, where something was put, a wine, a book, a receipt) goes to Saved (ECHO_SAVE_ITEM), \
+never to the to-dos. Choose its list: one of the user's lists below, by its exact name, \
+when it fits; otherwise a new list with a short plural name in the user's language ("Vini", \
+"Libri", "Scontrini", "Dove sono le cose" for where things are kept). Say which list you used.
 - Where the user parked: the car's list ("La macchina" in Italian), latest_only true and \
 keep_days 7 when it is new, with_place true; parking again just saves (the list keeps only \
 the latest). with_place only when the user asks to keep the place itself (parking, "this \
@@ -376,9 +376,9 @@ async def run_action_agent(
     are offered: the connected apps the request names, else all connected ones.
     `routine_tools`: Echo's own tools: routines (create, list, delete), its to-do list and
     Saved (not offered to a routine's own run). `saved`: what a save knows besides the
-    model's arguments (the phone for the place, the thread, the voice request's moment). Without `allow_confirm` (a routine: no one is
-    there to confirm), confirm-tier tools are not offered and a call that needs
-    confirmation is refused.
+    model's arguments (the phone for the place, the thread, the voice request's moment).
+    Without `allow_confirm` (a routine: no one is there to confirm), confirm-tier tools
+    are not offered and a call that needs confirmation is refused.
     """
     texts = TEXTS[detect_language(request)]
 

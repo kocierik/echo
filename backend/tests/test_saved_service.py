@@ -124,9 +124,8 @@ async def test_find_by_words_list_and_period(db_session):
     assert [i.title for i in await saved.find_items(db_session, TEST_USER_ID, query="Giulia")] == [
         "Dune"
     ]
-    assert [i.title for i in await saved.find_items(db_session, TEST_USER_ID, list_name="vini")] == [
-        "Vermentino"
-    ]
+    in_list = await saved.find_items(db_session, TEST_USER_ID, list_name="vini")
+    assert [i.title for i in in_list] == ["Vermentino"]
     recent = await saved.find_items(
         db_session, TEST_USER_ID, date_from=datetime.now(timezone.utc) - timedelta(days=7)
     )
