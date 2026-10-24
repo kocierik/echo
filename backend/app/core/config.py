@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     # Searches per user per UTC day; at the cap, answers say Echo cannot look it up
     web_searches_per_day: int = 30
 
+    # Plans (services/plans.py): changes to the defaults, per plan, as JSON in .env, e.g.
+    # PLANS={"plus": {"monthly_minutes": 1200, "web_searches_per_day": 20}}
+    plans: dict[str, dict[str, int]] = {}
+
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"
 

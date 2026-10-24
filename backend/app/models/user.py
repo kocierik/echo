@@ -19,3 +19,6 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # The user's own instructions to Echo, added to every answer (services/personal.py)
     instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The plan: speech a month, web searches, routines (services/plans.py); set by the
+    # operator with `make set-plan` until payments exist
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, server_default="free")

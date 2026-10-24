@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (013) for reading.
+-- Do not apply this file: it shows the schema at the head revision (025) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -20,6 +20,8 @@ CREATE TABLE segments (
     audio_path TEXT,
     audio_size_bytes INTEGER,
     silence_before_ms INTEGER,
+    -- pending | processing | completed | failed | deferred (past the plan's budget: the
+    -- audio is kept until it is transcribed, services/plans.py)
     transcription_status TEXT NOT NULL DEFAULT 'pending',
     conversation_id UUID,
     -- Migration 002: idempotent ingest
@@ -217,6 +219,7 @@ CREATE TABLE users (
     language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
     name VARCHAR(100),                   -- the app's greeting; null until given (021)
     instructions TEXT,                   -- the user's own instructions to Echo (022)
+    plan VARCHAR(20) NOT NULL DEFAULT 'free',  -- free | plus | unlimited (025)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
