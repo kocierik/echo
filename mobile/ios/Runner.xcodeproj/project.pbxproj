@@ -28,6 +28,7 @@
 		BBA5ABA6298D537383732000 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D0F9140BDE07850750563880 /* WidgetKit.framework */; };
 		CB52030063939A8ECA38B789 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 569554E4FB279DCF2FB261D0 /* Pods_Runner.framework */; };
 		EBF5C974AB633B9B60DCB5D1 /* EventKitBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9B506B5B5C1974113BC7410 /* EventKitBridge.swift */; };
+		A1C0FFEE5A7E4D1B9C2E0002 /* VisitRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1C0FFEE5A7E4D1B9C2E0001 /* VisitRecorder.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -105,6 +106,7 @@
 		BEF64B0C62D1C6696C2E13C0 /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/EventKit.framework; sourceTree = DEVELOPER_DIR; };
 		D0F9140BDE07850750563880 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
 		D9B506B5B5C1974113BC7410 /* EventKitBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EventKitBridge.swift; sourceTree = "<group>"; };
+		A1C0FFEE5A7E4D1B9C2E0001 /* VisitRecorder.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VisitRecorder.swift; sourceTree = "<group>"; };
 		DBD594E0347D84737394CA72 /* EchoActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = EchoActivityAttributes.swift; sourceTree = "<group>"; };
 		FBEE49D03D65E80F2816743E /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -169,6 +171,15 @@
 			);
 			name = EventKit;
 			path = EventKit;
+			sourceTree = "<group>";
+		};
+		A1C0FFEE5A7E4D1B9C2E0003 /* Visits */ = {
+			isa = PBXGroup;
+			children = (
+				A1C0FFEE5A7E4D1B9C2E0001 /* VisitRecorder.swift */,
+			);
+			name = Visits;
+			path = Visits;
 			sourceTree = "<group>";
 		};
 		79327623489684253A115022 /* LiveActivity */ = {
@@ -240,6 +251,7 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 				79327623489684253A115022 /* LiveActivity */,
 				77B24F1332A8D2E2266D2C16 /* EventKit */,
+				A1C0FFEE5A7E4D1B9C2E0003 /* Visits */,
 			);
 			path = Runner;
 			sourceTree = "<group>";
@@ -516,6 +528,7 @@
 				949FD590285A17A7E7993985 /* EchoActivityAttributes.swift in Sources */,
 				12F499561CCBD3A15991D138 /* LiveActivityBridge.swift in Sources */,
 				EBF5C974AB633B9B60DCB5D1 /* EventKitBridge.swift in Sources */,
+				A1C0FFEE5A7E4D1B9C2E0002 /* VisitRecorder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

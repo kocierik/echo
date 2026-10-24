@@ -11,6 +11,8 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // Places visited: made at launch, as iOS may relaunch Echo only to deliver a visit
+    _ = VisitRecorder.shared
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -21,6 +23,9 @@ import UIKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoEventKit") {
       eventKit = EventKitBridge(messenger: registrar.messenger())
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoVisits") {
+      VisitRecorder.shared.attach(messenger: registrar.messenger())
     }
     // "echo/device": the model identifier ("iPhone16,1"), named in phone_name.dart
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoDevice") {

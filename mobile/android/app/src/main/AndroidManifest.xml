@@ -11,6 +11,10 @@
          saved with it (Saved), asked the first time one is saved, only while in use -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Places visited (off by default): "Allow all the time", asked only when the user
+         turns it on, so the stays are noticed while Echo runs in the background, kept
+         alive by EchoStatusService (positions at balanced power every few minutes) -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
