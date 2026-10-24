@@ -133,7 +133,13 @@ docker compose exec api python -m alembic upgrade head
 make create-user EMAIL=you@example.com     # asks the password (10+ characters) twice
 make set-password EMAIL=you@example.com    # to change it later (it asks whether to sign out every device)
 make create-user EMAIL=ada@example.com NEW=1   # another person, with their own memories
+make set-plan EMAIL=you@example.com PLAN=unlimited   # free (the default), plus or unlimited
 ```
+
+A plan sets the speech transcribed a month (free 5 h, plus 25 h, unlimited 150 h), web
+searches a day and routines; `PLANS` in `.env` changes the numbers. Past the month's
+budget Echo keeps the audio and transcribes the first 10 minutes of each day at once; the
+rest waits and is transcribed, oldest first, on the 1st or as soon as the plan is raised.
 
 Others can create their own account from the app (each with separate memories); set
 `REGISTRATION_OPEN=false` in `.env` to close that. `create-user` attaches the account to the

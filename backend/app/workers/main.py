@@ -4,7 +4,8 @@
   recorded and the user corrected;
 - voice requests (voice_requests.py) and photos (photos.py);
 - retention, summaries, digests, the expiry of saved things and of places visited
-  (90 days) on their schedules.
+  (90 days) on their schedules;
+- deferred speech (deferred.py), queued again when the plan's budget allows it.
 
 Items that fail after their retries go to the dead letter queue (dead_letter.py). On
 SIGTERM/SIGINT the loops finish the item in hand (up to SHUTDOWN_TIMEOUT_S), then stop.
@@ -20,6 +21,7 @@ from app.actions.composio_provider import preload_sdk
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.workers.analysis import process_analysis
+from app.workers.deferred import run_deferred_loop
 from app.workers.digest import run_digest_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.photos import process_photos
@@ -71,6 +73,9 @@ async def main():
         asyncio.create_task(run_places_cleanup_loop(shutdown_event), name="places_worker"),
         asyncio.create_task(
             run_routines_loop(redis_client, shutdown_event), name="routines_worker"
+        ),
+        asyncio.create_task(
+            run_deferred_loop(redis_client, shutdown_event), name="deferred_worker"
         ),
         asyncio.create_task(
             process_voice_queue(redis_client, shutdown_event), name="voice_worker"
