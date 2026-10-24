@@ -116,5 +116,35 @@ async def test_extending_moves_the_end_forward():
     assert latest.ended_at == START + timedelta(seconds=45)
 
 
+async def test_late_speech_joins_the_conversation_of_its_time(db_session):
+    """Speech transcribed late (deferred by the plan's budget) goes where it was said."""
+    from app.models.conversation import Conversation
+    from tests.conftest import TEST_USER_ID
+
+    morning = Conversation(
+        user_id=TEST_USER_ID, started_at=START, ended_at=START + timedelta(minutes=30),
+        analysis_status="completed",
+    )
+    afternoon = Conversation(
+        user_id=TEST_USER_ID, started_at=START + timedelta(hours=6),
+        ended_at=START + timedelta(hours=6, minutes=10), analysis_status="pending",
+    )
+    db_session.add_all([morning, afternoon])
+    await db_session.commit()
+
+    def said_at(offset):
+        segment = _segment(START + offset)
+        segment.user_id = TEST_USER_ID
+        return segment
+
+    assert await assign_to_conversation(db_session, said_at(timedelta(minutes=20))) is morning
+    noon = await assign_to_conversation(db_session, said_at(timedelta(hours=3)))
+    assert noon not in (morning, afternoon)
+    assert noon.started_at == START + timedelta(hours=3)
+    assert await assign_to_conversation(
+        db_session, said_at(timedelta(hours=6, minutes=5))
+    ) is afternoon
+
+
 def test_segment_end_tolerates_missing_duration():
     assert analysis_pipeline._segment_end(_segment(START, duration_ms=None)) == START

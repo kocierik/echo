@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/action_models.dart';
 import '../models/photo.dart';
+import '../models/plan.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/task_item.dart';
@@ -829,4 +830,45 @@ String workingLabel(WorkingItem item) {
     return item.text.isEmpty ? '📷 Taking a photo…' : '📷 Taking a photo: ${item.text}';
   }
   return 'Working on: ${item.text}';
+}
+
+/// Today's quiet line about the speech budget: before it runs out (four fifths used) and
+/// once it is used, what Echo does until it starts again. Nothing otherwise.
+final class PlanLine extends StatelessWidget {
+  const PlanLine({required this.plan, required this.onOpen, super.key});
+
+  final PlanInfo plan;
+  final VoidCallback onOpen;
+
+  static bool shows(PlanInfo? plan) => plan != null && (plan.overBudget || plan.nearBudget);
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final text = plan.overBudget
+        ? 'Echo is transcribing ${plan.dailyAllowance} a day until '
+            '${dayAndMonth(plan.resetsOn)}.'
+        : '${speechAmount(plan.usedSeconds)} of this month\'s '
+            '${speechAmount(plan.monthlySeconds)} of speech used.';
+    return InkWell(
+      key: const Key('plan-line'),
+      borderRadius: BorderRadius.circular(8),
+      onTap: onOpen,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.data_usage_rounded, size: 16, color: palette.text2),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.text2),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

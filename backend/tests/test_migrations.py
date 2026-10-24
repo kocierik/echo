@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 25)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 26)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -415,6 +415,20 @@ def test_migration_024_creates_the_place_visits(monkeypatch):
     assert indexes["ix_place_visits_user_key"]["column_names"] == ["user_id", "key"]
     assert indexes["ix_place_visits_user_arrived"]["column_names"] == ["user_id", "arrived_at"]
     assert visits["fks"] == []
+
+
+def test_migration_025_adds_the_user_plan(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        if module.revision >= "025":
+            break
+        _run(module, state, monkeypatch)
+    migration_025 = next(m for m in _migrations() if m.revision == "025")
+
+    _run(migration_025, state, monkeypatch)
+
+    # Every account has one: the existing ones start on free (the server default)
+    assert state.tables["users"]["columns"]["plan"] is False
 
 
 def test_migration_003_is_defined_once():

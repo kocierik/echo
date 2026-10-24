@@ -125,6 +125,32 @@ void main() {
     });
   });
 
+  group('Plan', () {
+    test('reads the plan and this month\'s speech', () async {
+      final calls = <String>[];
+      final service = _service((request) async {
+        calls.add('${request.method} ${request.url.path}');
+        return _jsonResponse(request, 200, {
+          'plan': 'free',
+          'monthly_seconds': 18000,
+          'used_seconds': 18000,
+          'daily_seconds': 600,
+          'deferred_seconds': 3 * 3600,
+          'resets_on': '2026-11-01',
+          'over_budget': true,
+          'web_searches_per_day': 5,
+          'routines': 2,
+        });
+      });
+
+      final plan = await service.getPlan();
+
+      expect(calls, ['GET /api/plan']);
+      expect(plan.overBudget, isTrue);
+      expect(plan.deferredSeconds, 10800);
+    });
+  });
+
   group('ApiService success statuses', () {
     test('decodes a 200 response', () async {
       final service = _service((request) => _jsonResponse(request, 200, {

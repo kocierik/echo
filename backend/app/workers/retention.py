@@ -1,4 +1,8 @@
-"""Delete expired audio while preserving segment metadata."""
+"""Delete expired audio while preserving segment metadata.
+
+Transcribed audio goes after `completed_audio_retention_hours`, audio that failed after
+`incomplete_audio_retention_days`; deferred audio waits for its transcription.
+"""
 
 import asyncio
 import logging
@@ -43,8 +47,11 @@ def _build_retention_query(now: datetime):
                     Segment.transcription_status == "completed",
                     Segment.recorded_at < completed_cutoff,
                 ),
+                # Deferred speech (past the plan's budget) keeps its audio until it is
+                # transcribed: it is late, never lost (services/plans.py)
                 and_(
                     Segment.transcription_status != "completed",
+                    Segment.transcription_status != "deferred",
                     Segment.recorded_at < incomplete_cutoff,
                 ),
             )

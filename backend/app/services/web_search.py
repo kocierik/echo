@@ -1,9 +1,9 @@
 """Web search for answers that need live information (weather, news, today's prices).
 
 The search is a tool the model may call while answering, offered only while the user is
-under `web_searches_per_day` searches (UTC day). Each search is counted in `llm_usage`
-(kind "web_search"); the pages the answer cites come back as its web sources. Nothing
-found on the web is written into the user's memory.
+under their plan's searches a day (UTC day, services/plans.py). Each search is counted in
+`llm_usage` (kind "web_search"); the pages the answer cites come back as its web sources.
+Nothing found on the web is written into the user's memory.
 
 OpenAI's built-in search is the only provider today; another (Perplexity) would implement
 the same `WebSearchProvider`.
@@ -19,6 +19,7 @@ from sqlalchemy import func, select
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.llm_usage import LlmUsage
+from app.services.plans import user_plan
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,9 @@ async def search_tool_for(llm, user_id: uuid.UUID | None, session_factory=None) 
     if provider is None or user_id is None or not getattr(llm, "can_search", False):
         return None
     try:
-        if await searches_today(user_id, session_factory) >= settings.web_searches_per_day:
+        async with (session_factory or async_session)() as db:
+            cap = (await user_plan(db, user_id)).web_searches_per_day
+        if await searches_today(user_id, session_factory) >= cap:
             return None
     except Exception:
         logger.warning("Could not count today's web searches", exc_info=True)

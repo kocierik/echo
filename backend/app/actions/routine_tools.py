@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actions.provider import ToolResult
 from app.core.config import settings
 from app.models.routine import Routine
-from app.services.routines import MAX_ROUTINES, describe_schedule, next_run, validate_schedule
+from app.services.plans import user_plan
+from app.services.routines import describe_schedule, next_run, validate_schedule
 
 CREATE = "ECHO_CREATE_ROUTINE"
 LIST = "ECHO_LIST_ROUTINES"
@@ -114,10 +115,15 @@ async def run_routine_tool(
         count = await db.scalar(
             select(func.count()).select_from(Routine).where(Routine.user_id == user_id)
         )
-        if count >= MAX_ROUTINES:
+        # As many as the plan has (services/plans.py); a lowered plan keeps the ones made
+        limit = (await user_plan(db, user_id)).routines
+        if count >= limit:
             return ToolResult(
                 ok=False,
-                error=f"At most {MAX_ROUTINES} routines. Delete one first (Profile → Routines).",
+                error=(
+                    f"At most {limit} routines on your plan. "
+                    "Delete one first (Profile → Routines)."
+                ),
             )
         tz = settings.user_timezone
         routine = Routine(

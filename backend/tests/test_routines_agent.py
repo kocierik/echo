@@ -11,8 +11,8 @@ from app.actions import availability
 from app.actions.agent import NO_APPS, run_action_agent
 from app.models.action_log import ActionLog
 from app.models.routine import Routine
+from app.models.user import User
 from app.services.llm_base import LLMResponse, LLMToolCall
-from app.services.routines import MAX_ROUTINES
 from tests.conftest import TEST_USER_ID
 from tests.mocks import MockLLMService
 
@@ -95,8 +95,8 @@ async def test_a_bad_schedule_is_told_to_the_model(db_session):
     assert "daily, weekdays, weekly or monthly" in llm.call_log[-1][-1].content
 
 
-async def test_at_most_ten(db_session):
-    for _ in range(MAX_ROUTINES):
+async def _create_until_refused(db_session, count: int) -> str:
+    for _ in range(count):
         llm = _ScriptedLLM([
             _call("ECHO_CREATE_ROUTINE", instruction="meteo", kind="daily", time="07:00"),
             _text("ok"),
@@ -105,13 +105,28 @@ async def test_at_most_ten(db_session):
     await db_session.commit()
     llm = _ScriptedLLM([
         _call("ECHO_CREATE_ROUTINE", instruction="meteo", kind="daily", time="08:00"),
-        _text("Ne hai già dieci."),
+        _text("Ne hai già abbastanza."),
     ])
-
     await _run(db_session, "ogni giorno il meteo alle 8", llm)
+    return llm.call_log[-1][-1].content
 
-    assert len(await _routines(db_session)) == MAX_ROUTINES
-    assert "At most 10 routines" in llm.call_log[-1][-1].content
+
+async def test_at_most_the_plans_routines(db_session):
+    # No account row: the free plan, 2 routines
+    refused = await _create_until_refused(db_session, 2)
+
+    assert len(await _routines(db_session)) == 2
+    assert "At most 2 routines on your plan" in refused
+
+
+async def test_plus_has_ten(db_session):
+    db_session.add(User(id=TEST_USER_ID, email="erik@example.com", password_hash="x", plan="plus"))
+    await db_session.commit()
+
+    refused = await _create_until_refused(db_session, 10)
+
+    assert len(await _routines(db_session)) == 10
+    assert "At most 10 routines on your plan" in refused
 
 
 async def test_list_and_delete(db_session):

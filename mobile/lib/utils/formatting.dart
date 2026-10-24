@@ -53,7 +53,26 @@ String formatDuration(Duration value) {
   return restHours == 0 ? '$days d' : '$days d $restHours h';
 }
 
-final _speakerPrefix = RegExp(r'^\[(Tu|Altri|You|Others?)\]\s*', caseSensitive: false);
+const _monthNames = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/// "1 November".
+String dayAndMonth(DateTime value) => '${value.day} ${_monthNames[value.month - 1]}';
+
+/// Speech, rounded down so it never says more than was spoken: "40 min", "2.5 h", "25 h".
+String speechAmount(int seconds) {
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes min';
+  if (seconds < 10 * 3600) {
+    final tenths = seconds ~/ 360;
+    return tenths % 10 == 0 ? '${tenths ~/ 10} h' : '${tenths ~/ 10}.${tenths % 10} h';
+  }
+  return '${seconds ~/ 3600} h';
+}
+
+final _speakerPrefix =RegExp(r'^\[(Tu|Altri|You|Others?)\]\s*', caseSensitive: false);
 
 /// A transcript line without the "[Tu]"/"[Others]" prefix the backend writes.
 String cleanTranscript(String text) => text.replaceFirst(_speakerPrefix, '').trim();

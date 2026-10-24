@@ -105,12 +105,21 @@ class _SttRedis:
         self.pushes.append((queue, payload))
 
 
+def _within_budget(monkeypatch):
+    async def allowed(_db, _user_id, *, late):
+        return True
+
+    monkeypatch.setattr(stt_worker, "may_transcribe", allowed)
+
+
 @pytest.mark.asyncio
 async def test_stt_claim_reads_audio_before_committing_processing(monkeypatch):
+    _within_budget(monkeypatch)
     events = []
     segment_id = uuid.uuid4()
     segment = SimpleNamespace(
         id=segment_id,
+        user_id=uuid.uuid4(),
         audio_path="audio.adpcm",
         transcription_status="pending",
     )
@@ -135,10 +144,12 @@ async def test_stt_claim_reads_audio_before_committing_processing(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("audio_path", [None, "", "missing.adpcm"])
 async def test_stt_claim_fails_and_dead_letters_missing_audio(monkeypatch, audio_path):
+    _within_budget(monkeypatch)
     events = []
     segment_id = uuid.uuid4()
     segment = SimpleNamespace(
         id=segment_id,
+        user_id=uuid.uuid4(),
         audio_path=audio_path,
         transcription_status="pending",
     )

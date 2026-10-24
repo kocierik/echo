@@ -1,6 +1,6 @@
 # Echo — Development Commands
 .PHONY: help up down build logs logs-api logs-worker test test-all lint fmt deploy db-reset db-migrate \
-	db-new-migration shell worker create-key create-user set-password revoke-example-key \
+	db-new-migration shell worker create-key create-user set-password set-plan revoke-example-key \
 	eval-llm eval-stt-collect eval-stt
 
 help: ## Show this help
@@ -105,6 +105,9 @@ create-user: ## Create an account (asks the password): make create-user EMAIL=yo
 
 set-password: ## Set an account's password (asks it, and whether to sign out every device): make set-password EMAIL=you@example.com
 	docker compose exec api python -m app.cli.users set-password --email "$(EMAIL)"
+
+set-plan: ## Set an account's plan (free, plus, unlimited); a raised plan transcribes waiting speech: make set-plan EMAIL=you@example.com PLAN=plus
+	docker compose exec -T api python -m app.cli.users set-plan --email "$(EMAIL)" --plan "$(PLAN)"
 
 revoke-example-key: ## Delete the README's example key 'my-secret-key' (publicly known)
 	docker compose exec -T postgres psql -U echo -d echo -c "DELETE FROM api_keys WHERE key_hash = encode(sha256('my-secret-key'::bytea), 'hex');"

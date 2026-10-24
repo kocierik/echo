@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_view_state.dart';
 import '../models/device_status.dart';
+import '../models/plan.dart';
 import '../services/api/api_service.dart';
 import '../services/app/app_controller.dart';
 import '../services/app/app_runtime.dart';
@@ -31,13 +32,14 @@ import 'settings/language_settings_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
 import 'settings/places_visited_screen.dart';
+import 'settings/plan_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/routines_screen.dart';
 import 'settings/settings_components.dart';
 import 'settings/voice_settings_screen.dart';
 
-/// Profile, the third tab: the account, Echo, then every setting in groups: what
-/// Echo does, what is about the user, what Echo can do, and one row for the rest.
+/// Profile, the third tab: the account, Echo, the plan, then every setting in groups:
+/// what Echo does, what is about the user, what Echo can do, and one row for the rest.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
     this.deviceController,
@@ -93,6 +95,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// The connected apps, by name ("Gmail, Google Calendar").
   String? _apps;
 
+  PlanInfo? _plan;
+
   @override
   void initState() {
     super.initState();
@@ -128,6 +132,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() => _apps = connected.isEmpty ? null : connected.map((t) => t.name).join(', '));
       }
+    } catch (_) {}
+    await _loadPlan();
+  }
+
+  /// The plan and this month's speech; a server that cannot say shows no row.
+  Future<void> _loadPlan() async {
+    try {
+      final plan = await _api.getPlan();
+      if (mounted) setState(() => _plan = plan);
     } catch (_) {}
   }
 
@@ -229,6 +242,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               builder: (context, state, _) =>
                   _EchoCard(status: state.device, onTap: _openDevice),
             ),
+            if (_plan case final plan?) ...[
+              const SizedBox(height: 8),
+              SettingsGroup(children: [
+                SettingsRow(
+                  key: const Key('profile-plan'),
+                  icon: Icons.data_usage_rounded,
+                  title: 'Plan',
+                  value: plan.name,
+                  subtitle: plan.usageLine,
+                  onTap: () async {
+                    await _push(PlanScreen(api: _api, initial: plan));
+                    if (mounted) unawaited(_loadPlan());
+                  },
+                ),
+              ]),
+            ],
             const SettingsSection('ECHO DOES'),
             SettingsGroup(children: [
               SettingsRow(

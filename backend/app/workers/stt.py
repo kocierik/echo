@@ -4,6 +4,12 @@
 the user's known names and topics as context; the voice fingerprint is computed meanwhile
 and decides who spoke (the known voices, else the audio energy). Meaningful text goes on to
 `queue:analysis`, and text that addresses Echo by name to `queue:voice`.
+
+Past the plan's monthly budget a segment is marked `deferred` instead (services/plans.py):
+its audio is kept and it waits. Deferred segments come back on `queue:stt:deferred`
+(workers/deferred.py), read only when `queue:stt` is empty so live speech never waits
+behind a backlog; there they use the month's budget only, never the daily allowance, and
+a request to Echo said back then is not done now.
 """
 
 import asyncio
@@ -20,6 +26,7 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
 from app.services.language import account_language
+from app.services.plans import may_transcribe
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
@@ -38,6 +45,8 @@ from app.workers.voice_requests import VOICE_QUEUE
 logger = logging.getLogger(__name__)
 
 STT_QUEUE = "queue:stt"
+# Deferred speech the budget allows again, oldest first
+DEFERRED_STT_QUEUE = "queue:stt:deferred"
 ANALYSIS_QUEUE = "queue:analysis"
 
 
@@ -55,13 +64,27 @@ async def _enqueue_voice_request(redis_client: redis.Redis, segment_id: uuid.UUI
         logger.exception(f"Could not queue voice request for segment {segment_id}")
 
 
-async def _claim_stt_audio(db, redis_client: redis.Redis, segment_id: uuid.UUID):
+async def _claim_stt_audio(
+    db, redis_client: redis.Redis, segment_id: uuid.UUID, *, late: bool = False
+):
+    """The segment and its audio, marked processing; None when it is not transcribed now
+    (missing, deferred by the budget, or `late` and no longer waiting)."""
     result = await db.execute(
         select(Segment).where(Segment.id == segment_id).with_for_update()
     )
     segment = result.scalar_one_or_none()
     if segment is None:
         logger.warning(f"Segment {segment_id} not found")
+        return None
+    if late and segment.transcription_status != "deferred":
+        # Queued twice (the hourly release and a plan change): done already
+        logger.info(f"Deferred segment {segment_id} is {segment.transcription_status}: skipped")
+        return None
+    if not await may_transcribe(db, segment.user_id, late=late):
+        if segment.transcription_status != "deferred":
+            logger.info(f"Segment {segment_id} deferred: the plan's budget is used")
+        segment.transcription_status = "deferred"
+        await db.commit()
         return None
 
     segment.transcription_status = "processing"
@@ -101,19 +124,21 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
 
     while not shutdown_event.is_set():
         # Blocking pop from Redis queue (short timeout to check shutdown flag)
-        result = await redis_client.brpop(STT_QUEUE, timeout=2)
+        # Live speech first: the deferred queue only when nothing new is waiting
+        result = await redis_client.brpop([STT_QUEUE, DEFERRED_STT_QUEUE], timeout=2)
         if result is None:
             continue
 
-        _, segment_id_bytes = result
+        queue, segment_id_bytes = result
+        late = (queue.decode() if isinstance(queue, bytes) else queue) == DEFERRED_STT_QUEUE
         segment_id = uuid.UUID(segment_id_bytes.decode())
-        logger.info(f"Processing STT for segment {segment_id}")
+        logger.info(f"Processing STT for segment {segment_id}{' (deferred)' if late else ''}")
         usage_owner.set(None)  # until the segment is known
 
         async with async_session() as db:
             segment = None
             try:
-                claimed_audio = await _claim_stt_audio(db, redis_client, segment_id)
+                claimed_audio = await _claim_stt_audio(db, redis_client, segment_id, late=late)
                 if claimed_audio is None:
                     continue
                 segment, audio_data = claimed_audio
@@ -181,7 +206,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                     logger.info(
                         f"STT completed for segment {segment_id}: '{cleaned_text[:80]}...'"
                     )
-                    await _enqueue_voice_request(redis_client, segment_id, cleaned_text)
+                    if not late:
+                        await _enqueue_voice_request(redis_client, segment_id, cleaned_text)
                 else:
                     logger.info(
                         f"STT completed but skipping analysis (trivial): "
@@ -200,7 +226,9 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
             except asyncio.CancelledError:
                 # Shutdown in progress — requeue the segment
                 logger.info(f"[Shutdown] STT interrupted for segment {segment_id}, requeueing")
-                await redis_client.lpush(STT_QUEUE, str(segment_id))
+                await redis_client.lpush(
+                    DEFERRED_STT_QUEUE if late else STT_QUEUE, str(segment_id)
+                )
                 raise
 
             except Exception as e:
