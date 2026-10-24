@@ -56,7 +56,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Fotocamera** (protocollo 3, [ADR 0007](adr/0007-camera-photos-on-request.md)): `TAKE_PHOTO` dall'app, foto JPEG
   (XGA) scattata in un task sul core 0 con il sensore acceso solo per lo scatto, tenuta in RAM fino a `UPLOAD_OK` e
   inviata prima dell'audio; `PHOTO_FAILED` se in muto, occupato, senza fotocamera o se lo scatto fallisce; LED acceso
-  durante lo scatto. **Mai provato sull'hardware.**
+  durante lo scatto. Provato sull'hardware il 24/10 con Echo (scatto, invio via Bluetooth, risposta in chat).
 - **Pulsante fisico** (D1/GPIO2): pressione breve = foto, lunga = muto/riattiva.
 - **Aggiornamento via Bluetooth** (protocollo 4, [ADR 0009](adr/0009-firmware-updates-over-ble.md)): l'app scarica
   la versione dal server, la invia a pezzi verificando lo SHA-256; il dispositivo torna alla versione precedente se
