@@ -60,10 +60,13 @@ final class _NotificationSettingsScreenState extends State<NotificationSettingsS
         _row(
           key: NotificationPreferences.briefingsKey,
           icon: Icons.event_note_outlined,
-          title: 'Before a meeting',
-          subtitle: '10 minutes before, when you have tasks, a promise or a recent '
-              'conversation with someone there. From Google Calendar, or from the '
-              "${PhoneWords.phone}'s calendar (Profile → ${PhoneWords.onThisPhone}).",
+          title: 'Briefings',
+          subtitle: 'Before a meeting: 10 minutes before, when you have tasks, a promise or a '
+              'recent conversation with someone there. From Google Calendar, or from the '
+              "${PhoneWords.phone}'s calendar (Profile → ${PhoneWords.onThisPhone}).\n"
+              'When someone you know starts talking: Echo recognizes a voice you named and '
+              'tells you at once what you promised each other and when you last talked. At '
+              'most once every 4 hours for each person.',
           value: _choices.briefings,
         ),
         _row(

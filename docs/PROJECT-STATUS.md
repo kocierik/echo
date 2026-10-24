@@ -100,6 +100,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).
 - Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano) e,
   per gli incarichi, quando arriva il comando `voice_update`; il tocco apre il thread in Ask.
+- **Chi hai davanti** (24/10): quando una voce nominata parla (soglia sicura, mai la tua), il server manda il comando
+  `person_brief` con quello che c'è da sapere (promesse nei due sensi, ultima conversazione), mostrato subito come
+  notifica che apre la persona; al massimo una volta ogni 4 ore per persona, mai entro un'ora da un briefing di
+  calendario su di lei, sotto l'interruttore dei briefing, ore di silenzio e tre al giorno in totale (registro in
+  Redis, `services/notice_ledger.py`); nessuna chiamata al modello.
 - **Foto:** pulsante 📷 in Ask (il testo scritto diventa la domanda), risposta nella chat con la miniatura (tocco =
   schermo intero); i comandi "Echo, cos'è questo?" arrivano con un long poll e vengono inoltrati al dispositivo; le
   foto si caricano anche con "solo Wi-Fi". Protocollo 2 e 3 accettati.

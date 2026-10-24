@@ -22,6 +22,8 @@ void main() {
     expect(at(NotificationPreferences.briefingsKey).value, isTrue);
     expect(at(NotificationPreferences.promisesKey).value, isTrue);
     expect(at(NotificationPreferences.eveningKey).value, isFalse);
+    // The briefings switch covers who is in front of you too
+    expect(find.textContaining('When someone you know starts talking'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key(NotificationPreferences.eveningKey)));
     await tester.pumpAndSettle();
