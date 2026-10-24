@@ -141,6 +141,12 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [x] Ricerca web (22/10): lo strumento di OpenAI in chat, voce, agente e incarichi, 30 ricerche al giorno per
       utente, contate in `make usage` (0,010 $ l'una, da verificare); fonti mostrate in Ask, mai nella memoria
 - [ ] Ricerca web con Perplexity al posto di OpenAI (stessa interfaccia, `services/web_search.py`)
+- [ ] Echo come client MCP (24/10: rimandato): per ora tutto resta su Composio, che ha già Notion, Linear,
+      GitHub, HubSpot, Jira... (Profile → Apps, ricerca). Prima misurare il costo delle azioni Composio in `make
+      usage`; il client MCP diretto (OAuth per servizio, chiavi cifrate per utente, Confirm per ciò che scrive) quando
+      servono servizi che Composio non ha, server interni di un'azienda, o i costi crescono. Gmail: niente app Google
+      verificata (il controllo CASA costa migliaia di $ l'anno); per la beta, se serve, un'app non verificata (fino a
+      100 utenti)
 - [ ] Echo con gli agenti di ChatGPT (Dots, OpenAI, 30/09): nessuna API per chiamarli da Echo, ma un Dot può
       usare Echo come fonte tramite il nostro server MCP ("compra il vino di cui ho parlato sabato": Echo dice
       quale, il Dot lo cerca e lo compra con le conferme e i pagamenti di ChatGPT). Da verificare che accettino
