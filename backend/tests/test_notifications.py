@@ -199,6 +199,26 @@ async def test_the_endpoint_returns_what_to_schedule(client, auth_headers, db_se
     assert off.json()["notifications"] == []
 
 
+async def test_the_endpoint_records_what_it_hands_out(client, auth_headers, db_session):
+    from app.main import app
+    from app.services import notice_ledger
+
+    tomorrow = datetime.now(user_zone()).date() + timedelta(days=1)
+    db_session.add(_promise("Mandare il preventivo", tomorrow, "Marco"))
+    await db_session.commit()
+    redis = app.state.redis
+
+    await client.get("/api/notifications/upcoming", headers=auth_headers)
+    assert await notice_ledger.count_on(redis, TEST_USER_ID, tomorrow) == 1
+    assert await notice_ledger.briefings_on(redis, TEST_USER_ID)
+
+    await client.post(
+        "/api/notifications/upcoming", json={"briefings": False}, headers=auth_headers
+    )
+    assert await notice_ledger.count_on(redis, TEST_USER_ID, tomorrow) == 1
+    assert not await notice_ledger.briefings_on(redis, TEST_USER_ID)
+
+
 def _phone_event(title, start, attendees=None, event_id="E1"):
     return n.phone_event(
         {"id": event_id, "title": title, "start": start, "attendees": attendees or []}
