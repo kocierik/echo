@@ -33,6 +33,8 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   answer in the thread with a notification; seen, paused and deleted in Profile → Routines.
 - **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
   their day; 10 minutes before a meeting, a briefing on the person if there is something to know.
+  When someone whose voice you named starts talking, the phone says at once what you promised
+  them, what they promised you and when you last talked (at most once per person every 4 hours).
   At most three notifications a day, none at night, each kind switchable.
 - **Knows who is speaking.** Record your voice once in Settings → Voices; name the others by tapping
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
@@ -368,6 +370,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
   schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),
   already filtered: only when there is something to do, at most 3 a day, none from 22 to 8.
+  What it hands out and the `briefings` switch are kept per day in Redis, so the briefs sent at
+  once when a known voice speaks count in the same three.
   `POST` with the same query takes the iPhone calendar's next events, so they get briefings too.
 
 ### Voices
@@ -385,7 +389,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   the question and answer go to the photo's chat.
 - `GET /api/device/commands?wait=0..25` — long poll for the phone's and the wearable's commands:
   `take_photo` (relayed to the wearable), `voice_update` (a routine ran: check the thread and
-  notify) and `phone_action` (Reminders or Calendar, run by the app,
+  notify), `person_brief` (`person_id`, `title`, `body`: a known voice started talking, shown at
+  once, valid 2 minutes) and `phone_action` (Reminders or Calendar, run by the app,
   which answers with `POST /api/device/commands/{id}/result`). `PUT /api/device/phone-apps`
   (`{reminders, calendar}`) — which of them the app has turned on.
 - `PUT /api/photos/{id}/image` — the JPEG (multipart `image`, header `X-Captured-At`); idempotent.

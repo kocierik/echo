@@ -1,3 +1,4 @@
+import 'package:echo_app/models/device_command.dart';
 import 'package:echo_app/models/upcoming_notification.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/notification_scheduler.dart';
@@ -48,6 +49,17 @@ final class _RecordingPort implements NotificationPort {
 
   @override
   Future<void> cancel(int id) async {}
+
+  final shown = <String?>[];
+
+  @override
+  Future<void> show({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) async =>
+      shown.add(payload);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
@@ -139,5 +151,25 @@ void main() {
     api.error = null;
     await scheduler.refresh();
     expect(port.scheduled, hasLength(1));
+  });
+
+  test('who is in front of you is shown only with briefings on', () async {
+    final briefs = PersonBriefs(
+      notifications: NotificationService(port),
+      preferences: NotificationPreferences(preferences),
+    );
+    const command = PersonBriefCommand(
+      personId: 'p1',
+      title: 'Talking with Marco',
+      body: 'You promised: the quote',
+    );
+
+    await briefs.show(command);
+    expect(port.shown, ['person:p1']);
+
+    await NotificationPreferences(preferences)
+        .set(NotificationPreferences.briefingsKey, false);
+    await briefs.show(command);
+    expect(port.shown, ['person:p1']);
   });
 }

@@ -103,6 +103,21 @@ void main() {
     expect(port.shown.last.body, contains('1 recording was'));
   });
 
+  test('who is in front of you shows at once and opens the person', () async {
+    final port = _FakeNotificationPort();
+    final service = NotificationService(port);
+
+    await service.showPersonBrief(
+        personId: 'p1', title: 'Talking with Marco', body: 'You promised: the quote');
+    await service.showPersonBrief(personId: 'p2', title: 'Talking with Ada', body: 'B');
+
+    // Two people, two notifications: the second does not replace the first
+    expect(port.shown.map((c) => (c.id, c.title, c.body, c.payload)), [
+      (400, 'Talking with Marco', 'You promised: the quote', 'person:p1'),
+      (401, 'Talking with Ada', 'B', 'person:p2'),
+    ]);
+  });
+
   test('normal transcript completion produces no notification', () async {
     final port = _FakeNotificationPort();
     final service = NotificationService(port);
@@ -181,6 +196,6 @@ final class _FakeNotificationPort implements NotificationPort {
     required String body,
     String? payload,
   }) async {
-    shown.add(_NotificationCall(id: id, title: title, body: body));
+    shown.add(_NotificationCall(id: id, title: title, body: body, payload: payload));
   }
 }

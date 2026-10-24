@@ -15,6 +15,7 @@ sends along. Rules:
 import logging
 import time
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
@@ -64,10 +65,19 @@ def is_quiet(moment: datetime) -> bool:
     return hour >= QUIET_FROM or hour < QUIET_UNTIL
 
 
-def select_notices(notices: list[Notice], now: datetime, until: datetime) -> list[Notice]:
-    """In the window, outside quiet hours, at most MAX_PER_DAY a day by priority."""
+def select_notices(
+    notices: list[Notice],
+    now: datetime,
+    until: datetime,
+    taken: dict[date, int] | None = None,
+) -> list[Notice]:
+    """In the window, outside quiet hours, at most MAX_PER_DAY a day by priority.
+
+    `taken`: per day, the notices already given (fired, or sent at once by
+    services/person_brief.py), which count towards the limit.
+    """
     kept: list[Notice] = []
-    per_day: dict[date, int] = {}
+    per_day: dict[date, int] = dict(taken or {})
     candidates = [n for n in notices if now < n.fire_at <= until and not is_quiet(n.fire_at)]
     for notice in sorted(candidates, key=lambda n: (PRIORITY[n.kind], n.fire_at)):
         day = notice.fire_at.astimezone(user_zone()).date()
@@ -253,9 +263,15 @@ def people_in_event(event: dict, people: list[Entity]) -> list[Entity]:
 
 
 async def _what_to_know(
-    db: AsyncSession, user_id: uuid.UUID, person: Entity, promises: list[Entity], now: datetime
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    person: Entity,
+    promises: list[Entity],
+    now: datetime,
+    waiting: Sequence[Entity] = (),
 ) -> list[str]:
-    """Open tasks, promises and a recent conversation with the person; [] when none."""
+    """Open tasks, promises both ways and a recent conversation with the person; [] when
+    none. `waiting`: the open "expected" tasks (open_waiting)."""
     facts = []
     open_tasks = (
         await db.execute(
@@ -271,7 +287,15 @@ async def _what_to_know(
     ]
     if promised:
         facts.append(f"you promised: {promised[0].name}")
-    other_tasks = open_tasks - len(promised)
+    theirs = [
+        w for w in waiting
+        if names_person(person.name, str((w.metadata_ or {}).get("expected_from", "")))
+    ]
+    if theirs:
+        facts.append(f"they promised: {theirs[0].name}")
+    # Those naming the person are among the open tasks: not counted twice
+    counted = [w for w in theirs if names_person(person.name, f"{w.name} {w.content or ''}")]
+    other_tasks = open_tasks - len(promised) - len(counted)
     if other_tasks > 0:
         facts.append(f"{other_tasks} open task{'s' if other_tasks > 1 else ''}")
     last = (
@@ -297,6 +321,7 @@ async def briefing_notices(
     until: datetime,
     promises: list[Entity],
     phone_events: list[dict] | None = None,
+    waiting: Sequence[Entity] = (),
 ) -> list[Notice]:
     # A copy: the Google events are cached for the next requests
     events = list(await _calendar_events(provider, user_id, now, until)) if provider else []
@@ -318,7 +343,7 @@ async def briefing_notices(
         if start is None:
             continue
         for person in people_in_event(event, people):
-            facts = await _what_to_know(db, user_id, person, promises, now)
+            facts = await _what_to_know(db, user_id, person, promises, now, waiting)
             if not facts:
                 continue
             title = event.get("summary") or "Meeting"
@@ -445,25 +470,26 @@ async def upcoming_notices(
     evening: bool = False,
     provider=None,
     phone_events: list[dict] | None = None,
+    taken: dict[date, int] | None = None,
 ) -> list[Notice]:
     """What to schedule for the next `hours`, already filtered by the rules above.
 
-    `phone_events`: the iPhone calendar's next events, already shaped by `phone_event`.
+    `phone_events`: the iPhone calendar's next events, already shaped by `phone_event`;
+    `taken`: per day, the notices already given (services/notice_ledger.py).
     """
     now = now or datetime.now(timezone.utc)
     until = now + timedelta(hours=hours)
     today = now.astimezone(user_zone()).date()
     open_ones = await open_promises(db, user_id)
+    waiting = await open_waiting(db, user_id) if promises or briefings else []
     notices: list[Notice] = []
     if promises:
         notices += promise_notices(open_ones, today, days=hours // 24 + 1)
-        notices += waiting_notices(
-            await open_waiting(db, user_id), today, days=hours // 24 + 1
-        )
+        notices += waiting_notices(waiting, today, days=hours // 24 + 1)
     if briefings and (provider is not None or phone_events):
         notices += await briefing_notices(
-            db, user_id, provider, now, until, open_ones, phone_events
+            db, user_id, provider, now, until, open_ones, phone_events, waiting
         )
     if evening:
         notices += await evening_notice(db, user_id, now)
-    return select_notices(notices, now, until)
+    return select_notices(notices, now, until, taken)

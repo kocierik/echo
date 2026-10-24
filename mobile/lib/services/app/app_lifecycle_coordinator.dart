@@ -209,6 +209,10 @@ final class AppLifecycleCoordinator {
       onPhoneAction: phoneActions.handle,
       onVoiceUpdate: () => voiceUpdates.check(),
       onGetLocation: phoneLocation.handle,
+      onPersonBrief: PersonBriefs(
+        notifications: notificationService,
+        preferences: NotificationPreferences(preferences),
+      ).show,
     )..start();
     final notificationScheduler = NotificationScheduler(
       api: credentialApiService,

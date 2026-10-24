@@ -3,7 +3,8 @@
 `queue:stt` holds segment ids. Each segment's ADPCM audio is decoded and transcribed with
 the user's known names and topics as context; the voice fingerprint is computed meanwhile
 and decides who spoke (the known voices, else the audio energy). Meaningful text goes on to
-`queue:analysis`, and text that addresses Echo by name to `queue:voice`.
+`queue:analysis`, and text that addresses Echo by name to `queue:voice`. Live speech whose
+voice is surely a named person may brief the phone on them (services/person_brief.py).
 
 Past the plan's monthly budget a segment is marked `deferred` instead (services/plans.py):
 its audio is kept and it waits. Deferred segments come back on `queue:stt:deferred`
@@ -26,6 +27,7 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
 from app.services.language import account_language
+from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
@@ -62,6 +64,14 @@ async def _enqueue_voice_request(redis_client: redis.Redis, segment_id: uuid.UUI
         logger.info(f"Voice request detected in segment {segment_id}")
     except Exception:
         logger.exception(f"Could not queue voice request for segment {segment_id}")
+
+
+async def _brief_known_voice(db, redis_client: redis.Redis, segment, profile) -> None:
+    """Who is in front of you. Never fails the STT step: the transcription is committed."""
+    try:
+        await brief_who_is_talking(db, redis_client, segment, profile)
+    except Exception:
+        logger.exception(f"Could not brief on the voice of segment {segment.id}")
 
 
 async def _claim_stt_audio(
@@ -171,11 +181,13 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
 
                 # Who spoke: the known voices, else the audio energy
                 speaker = None
+                known = None
                 embedding = await fingerprint
                 if embedding is not None:
                     segment.voice_embedding = embedding
                     profiles = await list_profiles(db, segment.user_id)
                     speaker = recognize(segment, embedding, profiles)
+                    known = confident_voice(segment, profiles)
                 if speaker is None:
                     speaker = await classify_segment(db, segment.user_id, segment.audio_energy)
                 segment.speaker = speaker
@@ -199,6 +211,10 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 # Update segment status
                 segment.transcription_status = "completed"
                 await db.commit()
+
+                # A late "who is in front of you" is noise: live speech only
+                if known is not None and not late:
+                    await _brief_known_voice(db, redis_client, segment, known)
 
                 # Only queue for analysis if transcription is meaningful
                 if is_meaningful_transcription(cleaned_text):

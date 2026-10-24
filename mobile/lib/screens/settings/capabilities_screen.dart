@@ -89,9 +89,16 @@ final class CapabilitiesScreen extends StatelessWidget {
           onTap: onOpenVoices,
         ),
         const SettingsRow(
+          icon: Icons.person_pin_outlined,
+          title: 'Who is in front of you',
+          subtitle: 'When Marco starts talking, your phone tells you what you promised him '
+              'and when you last talked. From the voices you named.',
+        ),
+        const SettingsRow(
           icon: Icons.notifications_none_rounded,
           title: 'Comes to you, rarely',
-          subtitle: 'Before a meeting and on the day of a promise. At most three a day.',
+          subtitle: 'Before a meeting, when someone you know starts talking and on the day '
+              'of a promise. At most three a day.',
         ),
       ],
     );

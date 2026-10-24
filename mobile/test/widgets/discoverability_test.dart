@@ -69,6 +69,17 @@ void main() {
     expect(asked, ['What did I promise this week?']);
   });
 
+  testWidgets('"What Echo can do" tells who is in front of you', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: const CapabilitiesScreen(),
+    ));
+    final row = find.text('Who is in front of you');
+    await tester.scrollUntilVisible(row, 300);
+    expect(row, findsOneWidget);
+    expect(find.textContaining('Marco starts talking'), findsOneWidget);
+  });
+
   testWidgets('Today suggests recording the own voice when there is none',
       (tester) async {
     tester.view.physicalSize = const Size(400, 1600);
