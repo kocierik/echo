@@ -78,7 +78,9 @@ this"), to change, move or remove something saved ("I found it", "I took the car
 or a question about how much the user spent (their receipts and expenses are kept in \
 Saved), is a save: set "saved" to true (it needs no app). A question about where something \
 is, what something was or what the user noted before is answered from memory (which \
-includes Saved): not a save, and not a to-do.{camera}
+includes Saved): not a save, and not a to-do. A question about where the user was or \
+went, or when they last went somewhere, is answered from memory too (Echo keeps the \
+places they visited): it needs no app and is not a save.{camera}
 Respond with ONLY a JSON object: \
 {{{camera_key}"routine": false, "todo": false, "saved": false, "needs_apps": true, \
 "apps": ["<slug>", ...]}} \

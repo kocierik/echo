@@ -15,6 +15,7 @@ model; nothing commits except the cleanup.
 """
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -22,7 +23,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.timezone import local_day_bounds
+from app.core.timezone import local_day_bounds, user_zone
 from app.models.place_visit import PlaceVisit
 from app.services.phone_location import valid_place
 
@@ -224,3 +225,111 @@ async def expire_visits(db: AsyncSession, now: datetime) -> int:
     )
     await db.commit()
     return result.rowcount or 0
+
+
+# --- For memory answers ---
+
+# A question about where the user was or went (Italian and English)
+_PLACE_QUESTION = re.compile(
+    r"\b(dove|dov'|where|posto|posti|luogo|luoghi|places?|ristorante|restaurant|"
+    r"stat[oaie]|andat[oaie]|venut[oaie]|went|been|go(ne)?|visit\w*|"
+    r"ultima volta|last time)\b",
+    re.IGNORECASE,
+)
+# Words of a question that say nothing about which place
+_STOP_WORDS = {
+    "dove", "quando", "quante", "quanti", "volte", "sono", "siamo", "stato", "stata",
+    "stati", "state", "andato", "andata", "andati", "andate", "ultima", "volta", "with",
+    "where", "when", "often", "went", "been", "last", "time", "have", "what", "which",
+    "questa", "questo", "settimana", "week", "ieri", "oggi", "yesterday", "today", "sera",
+    "evening", "mattina", "morning", "from", "that", "this", "abbiamo", "cenato",
+    "pranzato", "dinner", "lunch", "cena", "pranzo", "posto", "luogo", "place", "places",
+}
+CONTEXT_VISITS = 30
+CONTEXT_PLACES = 25
+
+
+def _local(moment: datetime) -> datetime:
+    return moment.astimezone(user_zone())
+
+
+def _span(visit: PlaceVisit) -> str:
+    arrived = _local(visit.arrived_at)
+    day = arrived.strftime("%A %d/%m/%Y")
+    if visit.left_at is None:
+        return f"{day} {arrived:%H:%M}–now"
+    left = _local(visit.left_at)
+    if left.date() != arrived.date():
+        return f"{day} {arrived:%H:%M}–{left.strftime('%A %d/%m/%Y %H:%M')}"
+    return f"{day} {arrived:%H:%M}–{left:%H:%M}"
+
+
+def _where(visit: PlaceVisit) -> str:
+    if visit.name and visit.address:
+        return f"{visit.name} ({visit.address})"
+    return label(visit) or f"{visit.latitude:.4f}, {visit.longitude:.4f}"
+
+
+def visit_line(visit: PlaceVisit) -> str:
+    """"- Saturday 17/10/2026 19:55–23:10: Pizzeria Da Gino (Via Garibaldi 5, Milano)"."""
+    return f"- {_span(visit)}: {_where(visit)}"
+
+
+def _place_words(question: str) -> list[str]:
+    words = []
+    for raw in re.split(r"[\s'’]+", question.lower()):
+        word = raw.strip("?.,!:;\"()«»")
+        if len(word) >= 4 and word not in _STOP_WORDS and word not in words:
+            words.append(word)
+    return words
+
+
+def _named(visit: PlaceVisit, words: list[str]) -> bool:
+    text = f"{visit.name or ''} {visit.address or ''}".lower()
+    return any(word in text for word in words)
+
+
+async def places_context(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    question: str,
+    date_from: datetime | None,
+    date_to: datetime | None,
+    *,
+    now: datetime,
+) -> str:
+    """The "Places visited" lines for a memory answer ("" when none fit).
+
+    With a period: its visits, in time order. Without one, for a question about where the
+    user was or one naming a place: the places of the last 90 days, the named ones and
+    then the latest first, each with its last visit and how many."""
+    if date_from is not None or date_to is not None:
+        visits = await visits_between(
+            db, user_id, date_from, date_to, now=now, limit=CONTEXT_VISITS
+        )
+        return "\n".join(visit_line(v) for v in visits)
+    visits = await visits_between(db, user_id, now - timedelta(days=KEEP_DAYS), None, now=now)
+    if not visits:
+        return ""
+    words = _place_words(question)
+    named = {v.id for v in visits if words and _named(v, words)}
+    if not named and not _PLACE_QUESTION.search(question):
+        return ""
+    by_place: dict[str, list[PlaceVisit]] = {}
+    for visit in reversed(visits):  # newest first
+        by_place.setdefault(_where(visit).lower(), []).append(visit)
+    groups = sorted(
+        by_place.values(),
+        key=lambda group: (
+            not any(v.id in named for v in group),
+            -group[0].arrived_at.timestamp(),
+        ),
+    )
+    lines = []
+    for group in groups[:CONTEXT_PLACES]:
+        count = "1 visit" if len(group) == 1 else f"{len(group)} visits"
+        lines.append(
+            f"- {_where(group[0])}: last on {_span(group[0])}; {count} in the last "
+            f"{KEEP_DAYS} days"
+        )
+    return "\n".join(lines)

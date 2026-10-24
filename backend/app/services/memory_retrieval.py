@@ -7,12 +7,16 @@ the conversations that person was mentioned in: similarity alone would favour an
 passage about "saying", not the ones with Marco.
 
 The things the user saved (Saved) that match the question are a section of their own,
-with their place, except for outside assistants (MCP: `include_places=False`).
+with their place, except for outside assistants (MCP: `include_places=False`). So are the
+places visited (when the user turned them on): the visits of the question's period, or
+the places of a question about where the user was; and each conversation listed says
+where it happened. Outside assistants see none of it.
 """
 
 import logging
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
+from app.services import places
 from app.services.people import in_person_conversations, names_person
 from app.services.saved import find_items, item_line
 from app.services.temporal import DateRange, conversation_overlaps
@@ -54,7 +59,8 @@ async def retrieve_memory_context(
 
     date_range is used as given (the caller resolves explicit filters or NLP extraction).
     embedding_service defaults to the configured one; callers may inject their own.
-    Without `include_places` the saved things come without address (outside assistants).
+    Without `include_places` the saved things come without address, and there are no
+    places visited (outside assistants).
     """
     if embedding_service is None:
         from app.services.embedding_openai import get_embedding_service
@@ -102,14 +108,22 @@ async def retrieve_memory_context(
 
     # Relevant entities (vector + keyword search)
     entities_context = await find_relevant_entities(db, user_id, question, question_embedding)
-    people_context = await describe_people(db, user_id, people, date_range)
+    people_context = await describe_people(
+        db, user_id, people, date_range, include_places=include_places
+    )
 
     # Conversation summaries for matched conversations (high-level context)
     conversation_summaries = ""
     if rows:
         matched_conv_ids = list({row.conversation_id for row in rows})
         summaries_query = (
-            select(Conversation.title, Conversation.summary, Conversation.started_at)
+            select(
+                Conversation.id,
+                Conversation.title,
+                Conversation.summary,
+                Conversation.started_at,
+                Conversation.ended_at,
+            )
             .where(Conversation.id.in_(matched_conv_ids))
             .where(Conversation.summary.isnot(None))
             .where(Conversation.summary != "")  # "" = too short to summarize
@@ -118,18 +132,26 @@ async def retrieve_memory_context(
         summaries_result = await db.execute(summaries_query)
         summaries_rows = summaries_result.all()
         if summaries_rows:
+            where = (
+                await conversation_places(db, user_id, summaries_rows) if include_places else {}
+            )
             summary_lines = []
             for s in summaries_rows:
                 date_str = s.started_at.strftime("%d/%m/%Y %H:%M")
                 title = s.title or "Conversation"
+                if s.id in where:
+                    title += f" (at {where[s.id]})"
                 summary_lines.append(f"- [{date_str}] {title}: {s.summary}")
             conversation_summaries = "\n".join(summary_lines)
 
     saved_context = await saved_things(
         db, user_id, question, question_embedding, date_range, include_places
     )
+    places_context = (
+        await places_visited(db, user_id, question, date_range) if include_places else ""
+    )
 
-    if not rows and not entities_context and not people_context and not saved_context:
+    if not (rows or entities_context or people_context or saved_context or places_context):
         return MemoryContext(context="", sources=[], date_range=date_range)
 
     context_parts = []
@@ -141,6 +163,12 @@ async def retrieve_memory_context(
     if saved_context:
         context_parts.append(
             f"Saved things (what the user asked Echo to keep):\n{saved_context}"
+        )
+
+    if places_context:
+        context_parts.append(
+            "Places visited (from the user's phone: stays of 10 minutes or more, with "
+            f"arrival and departure):\n{places_context}"
         )
 
     if conversation_summaries:
@@ -200,6 +228,45 @@ async def saved_things(
     return "\n".join(item_line(item, include_place=include_places) for item in items)
 
 
+async def places_visited(
+    db: AsyncSession, user_id: uuid.UUID, question: str, date_range: DateRange | None
+) -> str:
+    """The "Places visited" lines ("" when none fit, or when they cannot be read: the rest
+    of the memory still answers)."""
+    try:
+        async with db.begin_nested():
+            return await places.places_context(
+                db,
+                user_id,
+                question,
+                date_range.date_from if date_range else None,
+                date_range.date_to if date_range else None,
+                now=datetime.now(timezone.utc),
+            )
+    except Exception:
+        logger.warning("Could not read the places visited for a memory answer", exc_info=True)
+        return ""
+
+
+async def conversation_places(
+    db: AsyncSession, user_id: uuid.UUID, conversations
+) -> dict[uuid.UUID, str]:
+    """Where each conversation (rows with id, started_at, ended_at) happened, by name or
+    address; none when the places cannot be read."""
+    try:
+        async with db.begin_nested():
+            found = await places.places_of(
+                db,
+                user_id,
+                [(c.id, c.started_at, c.ended_at) for c in conversations],
+                now=datetime.now(timezone.utc),
+            )
+    except Exception:
+        logger.warning("Could not read where conversations happened", exc_info=True)
+        return {}
+    return {cid: name for cid, visit in found.items() if (name := places.label(visit))}
+
+
 async def _reranked(db: AsyncSession, user_id: uuid.UUID, rows: list) -> list:
     """Rows re-ranked by the user's feedback; those rated down are dropped."""
     if not rows:
@@ -235,14 +302,18 @@ async def describe_people(
     user_id: uuid.UUID,
     people: list[Entity],
     date_range: DateRange | None = None,
+    include_places: bool = False,
 ) -> str:
-    """Who each named person is and the latest conversations they were mentioned in."""
+    """Who each named person is and the latest conversations they were mentioned in (with
+    where they happened, given `include_places`)."""
     lines = []
     for person in people:
         line = f"- {person.name}"
         if person.content:
             line += f": {person.content}"
-        conversations = select(Conversation.title, Conversation.started_at).where(
+        conversations = select(
+            Conversation.id, Conversation.title, Conversation.started_at, Conversation.ended_at
+        ).where(
             Conversation.user_id == user_id, in_person_conversations(person)
         )
         if date_range:
@@ -257,8 +328,11 @@ async def describe_people(
             )
         ).all()
         if found:
+            where = await conversation_places(db, user_id, found) if include_places else {}
             listed = "; ".join(
-                f"{row.started_at:%d/%m/%Y %H:%M} {row.title or 'Conversation'}" for row in found
+                f"{row.started_at:%d/%m/%Y %H:%M} {row.title or 'Conversation'}"
+                + (f" (at {where[row.id]})" if row.id in where else "")
+                for row in found
             )
             line += f". Mentioned in: {listed}"
         lines.append(line)

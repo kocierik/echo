@@ -48,9 +48,11 @@ def _chunk_row():
 async def test_context_has_summary_entities_chunk_and_sources():
     row = _chunk_row()
     summary = SimpleNamespace(
+        id=row.conversation_id,
         title="Planning",
         summary="Planned the demo.",
         started_at=datetime(2026, 10, 1, 9, 30, tzinfo=timezone.utc),
+        ended_at=None,
     )
     db = _FakeDB([row], [summary])
     with (
