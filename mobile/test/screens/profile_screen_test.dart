@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/place.dart';
+import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/voice.dart';
 import 'package:echo_app/screens/profile_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
@@ -20,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/plan_test.dart' show planJson;
 import '../services/phone/places_visited_test.dart' show FakeNetwork, FakeSource;
 
 void main() {
@@ -116,6 +118,8 @@ void main() {
       'erik@x.io · Italiano',
       'Echo',
       'Listening · battery 72% · firmware 0.5.1',
+      'Plan',
+      '12 h of 25 h this month',
       'ECHO DOES',
       'Apps',
       'Routines',
@@ -140,6 +144,24 @@ void main() {
     expect(find.text('Gmail, Google Calendar'), findsOneWidget);
     expect(find.textContaining('Coming soon'), findsNothing);
     expect(find.textContaining('Placeholder'), findsNothing);
+  });
+
+  testWidgets('the Plan row names the plan and opens it', (tester) async {
+    await pumpSettings(tester);
+
+    expect(find.text('Plus'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('profile-plan')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Starts again on 1 November.'), findsOneWidget);
+  });
+
+  testWidgets('no Plan row when the server cannot say', (tester) async {
+    api.plan = null;
+    await pumpSettings(tester);
+
+    expect(find.byKey(const Key('profile-plan')), findsNothing);
+    expect(find.text('ECHO DOES'), findsOneWidget);
   });
 
   testWidgets('Places visited: off by default, one tap from You', (tester) async {
@@ -193,6 +215,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('24 hours'), findsOneWidget);
     expect(find.text('7 days'), findsOneWidget);
+    expect(find.text('Until transcribed'), findsOneWidget); // speech past the budget
     Navigator.of(tester.element(find.text('Privacy'))).pop();
     await tester.pumpAndSettle();
 
@@ -363,6 +386,12 @@ final class _FakeApiService extends ApiService {
 
   @override
   Future<AccountInfo> me() async => account;
+
+  /// None: the server cannot say (an older one).
+  PlanInfo? plan = PlanInfo.fromJson(planJson());
+
+  @override
+  Future<PlanInfo> getPlan() async => plan ?? (throw Exception('no plan'));
 
   @override
   Future<AccountInfo> setName(String? name) async {

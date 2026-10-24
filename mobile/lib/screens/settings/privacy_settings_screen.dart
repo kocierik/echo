@@ -68,6 +68,13 @@ class PrivacySettingsScreen extends StatelessWidget {
               title: 'Incomplete audio',
               value: '7 days',
             ),
+            // Deferred by the plan's budget: kept until it is transcribed (Profile → Plan)
+            const SettingsRow(
+              icon: Icons.hourglass_empty_rounded,
+              title: 'Waiting audio',
+              subtitle: 'Speech past the plan\'s budget.',
+              value: 'Until transcribed',
+            ),
             const SettingsSection('MICROPHONE'),
             SettingsRow(
               icon: connectionState == DeviceConnectionState.muted
