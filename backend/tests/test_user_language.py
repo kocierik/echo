@@ -132,7 +132,7 @@ async def test_stt_uses_the_owners_language(monkeypatch):
         async def __aexit__(self, *exc):
             return False
 
-    async def claim(_db, _redis, _segment_id):
+    async def claim(_db, _redis, _segment_id, **_):
         return segment, b""
 
     async def context(_db, _user_id):

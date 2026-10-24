@@ -919,7 +919,7 @@ async def _run_stt(monkeypatch, text):
         async def __aexit__(self, *exc):
             return False
 
-    async def claim(_db, _redis, _segment_id):
+    async def claim(_db, _redis, _segment_id, **_):
         return segment, b""
 
     async def context(_db, _user_id):
