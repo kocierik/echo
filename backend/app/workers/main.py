@@ -3,7 +3,8 @@
 - STT (stt.py), analysis (analysis.py) and reanalysis (reanalysis.py) of what the wearable
   recorded and the user corrected;
 - voice requests (voice_requests.py) and photos (photos.py);
-- retention, summaries, digests and the expiry of saved things on their schedules.
+- retention, summaries, digests, the expiry of saved things and of places visited
+  (90 days) on their schedules.
 
 Items that fail after their retries go to the dead letter queue (dead_letter.py). On
 SIGTERM/SIGINT the loops finish the item in hand (up to SHUTDOWN_TIMEOUT_S), then stop.
@@ -22,6 +23,7 @@ from app.workers.analysis import process_analysis
 from app.workers.digest import run_digest_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.photos import process_photos
+from app.workers.places import run_places_cleanup_loop
 from app.workers.reanalysis import process_reanalysis
 from app.workers.retention import run_retention_loop
 from app.workers.routines import run_routines_loop
@@ -66,6 +68,7 @@ async def main():
         asyncio.create_task(run_summary_loop(shutdown_event), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
         asyncio.create_task(run_saved_expiry_loop(shutdown_event), name="saved_worker"),
+        asyncio.create_task(run_places_cleanup_loop(shutdown_event), name="places_worker"),
         asyncio.create_task(
             run_routines_loop(redis_client, shutdown_event), name="routines_worker"
         ),

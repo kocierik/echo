@@ -13,6 +13,7 @@ import '../services/app/session_controller.dart';
 import '../services/app/spoken_language.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/phone_words.dart';
+import '../services/phone/places_visited.dart';
 import '../theme/app_theme.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/screen_header.dart';
@@ -29,6 +30,7 @@ import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
+import 'settings/places_visited_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/routines_screen.dart';
 import 'settings/settings_components.dart';
@@ -51,6 +53,7 @@ class ProfileScreen extends StatefulWidget {
     this.activityBuilder,
     this.integrationsBuilder,
     this.devicesBuilder,
+    this.placesVisited,
     super.key,
   });
 
@@ -69,6 +72,9 @@ class ProfileScreen extends StatefulWidget {
   final WidgetBuilder? activityBuilder;
   final WidgetBuilder? integrationsBuilder;
   final WidgetBuilder? devicesBuilder;
+
+  /// Places visited; the app's own by default (no row without one).
+  final PlacesVisitedService? placesVisited;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -184,6 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final phoneActions = AppRuntime.maybeCoordinator?.phoneActions;
+    final places = widget.placesVisited ?? AppRuntime.maybeCoordinator?.placesVisited;
     final language = spokenLanguages[_preferences.getString(SpokenLanguageStore.key) ??
         _account?.language];
     return Scaffold(
@@ -333,6 +340,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onOpenTranscripts: widget.onOpenTranscripts,
                 )),
               ),
+              if (places != null)
+                ValueListenableBuilder<bool>(
+                  valueListenable: places.on,
+                  builder: (context, on, _) => SettingsRow(
+                    key: const Key('profile-places'),
+                    icon: Icons.place_outlined,
+                    title: 'Places visited',
+                    subtitle: on
+                        ? 'On: where you stayed, kept for 90 days.'
+                        : 'Off. Echo can note where you stay.',
+                    onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
+                  ),
+                ),
               ValueListenableBuilder<AppViewState>(
                 valueListenable: _appController,
                 builder: (context, state, _) => SettingsRow(

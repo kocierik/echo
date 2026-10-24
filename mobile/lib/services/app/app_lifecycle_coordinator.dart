@@ -22,6 +22,8 @@ import '../device/firmware_update.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
 import '../phone/phone_location.dart';
+import '../phone/places_visited.dart';
+import '../phone/visit_sources.dart';
 import '../device/live_activity_service.dart';
 import '../device/phone_camera.dart';
 import '../device/phone_words.dart';
@@ -40,6 +42,7 @@ final class AppLifecycleCoordinator {
     required this.photoService,
     required this.phoneActions,
     required this.phoneLocation,
+    required this.placesVisited,
     required DeviceCommandLoop commandLoop,
     required this.notificationScheduler,
     required this.liveActivity,
@@ -66,6 +69,9 @@ final class AppLifecycleCoordinator {
 
   /// Where the phone is, only for a thing saved with its place (Saved).
   final PhoneLocationService phoneLocation;
+
+  /// The places where the user stayed, when they turned it on (Profile → Places visited).
+  final PlacesVisitedService placesVisited;
   final DeviceCommandLoop _commandLoop;
 
   /// Briefings, promises and the evening recap, scheduled on the phone.
@@ -179,6 +185,21 @@ final class AppLifecycleCoordinator {
           WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
       notifyOpen: notificationService.showSavePlace,
     );
+    // Places visited, off by default: iOS's visits, or stays from Android's positions
+    final placesVisited = PlacesVisitedService(
+      source: PhoneWords.isIPhone
+          ? IosVisitSource()
+          : AndroidStaySource(
+              location: const GeolocatorAndroidLocation(),
+              store: PreferencesStayStore(preferences),
+            ),
+      api: credentialApiService,
+      preferences: preferences,
+      networkAccess: networkAccess,
+      networkPolicy: networkPolicy,
+      geocode: const GeolocatorReader().address,
+    );
+    unawaited(placesVisited.resume());
     // The server's commands: photos for the wearable, actions for this iPhone
     // Set below: a routine's answer is checked (and notified) when its nudge arrives
     late final VoiceUpdatesService voiceUpdates;
@@ -233,6 +254,8 @@ final class AppLifecycleCoordinator {
         await phoneActions.report();
         // On screen again: the place a save could not read in the background
         await phoneLocation.onResumed();
+        // Stays waiting for the network (or for Wi-Fi)
+        await placesVisited.flush();
       },
     );
     return AppLifecycleCoordinator._(
@@ -246,6 +269,7 @@ final class AppLifecycleCoordinator {
       photoService: photoService,
       phoneActions: phoneActions,
       phoneLocation: phoneLocation,
+      placesVisited: placesVisited,
       commandLoop: commandLoop,
       notificationScheduler: notificationScheduler,
       liveActivity: liveActivity,
@@ -292,6 +316,7 @@ final class AppLifecycleCoordinator {
     _disposed = true;
     _commandLoop.stop();
     photoService.dispose();
+    placesVisited.dispose();
     await liveActivity.dispose();
     await _firmwareSubscription.cancel();
     firmwareUpdate.dispose();

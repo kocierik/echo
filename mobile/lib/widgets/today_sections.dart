@@ -569,7 +569,11 @@ final class _ConversationBlock extends StatelessWidget {
     final c = conversation;
     final title = conversationTitle(c);
     final duration = c.duration.inMinutes > 0 ? formatDuration(c.duration) : null;
-    final brief = c.people.isEmpty && c.taskCount == 0 && c.duration < const Duration(minutes: 10);
+    final place = c.place?.label;
+    final brief = c.people.isEmpty &&
+        c.taskCount == 0 &&
+        place == null &&
+        c.duration < const Duration(minutes: 10);
     final marked = c.taskCount > 0;
     final color = brief
         ? palette.surface2
@@ -579,6 +583,8 @@ final class _ConversationBlock extends StatelessWidget {
     final muted = marked ? palette.onAccentSoft : palette.text2;
     final meta = [
       if (c.people.isNotEmpty) c.people.take(2).join(', '),
+      // Where it happened, when Places visited is on: "Cena con Marco — Trattoria da Mario"
+      if (place != null) place,
       if (duration != null) duration,
     ];
     final radius = BorderRadius.circular(AppTheme.tileRadius);

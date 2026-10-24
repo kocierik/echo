@@ -419,3 +419,24 @@ CREATE TABLE saved_items (
 );
 CREATE INDEX ix_saved_items_user_id ON saved_items(user_id);
 CREATE INDEX ix_saved_items_list_id ON saved_items(list_id);
+
+-- ============================================================
+-- PLACES VISITED: the stays the phone noticed, when the user turned it on (Migration 024)
+-- ============================================================
+CREATE TABLE place_visits (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    key VARCHAR(80) NOT NULL,          -- the phone's id of the stay: sent open, then closed
+    arrived_at TIMESTAMPTZ NOT NULL,
+    left_at TIMESTAMPTZ,               -- NULL while still there
+    latitude DOUBLE PRECISION NOT NULL,
+    longitude DOUBLE PRECISION NOT NULL,
+    accuracy_m DOUBLE PRECISION,
+    name TEXT,                         -- Apple's place name on iPhone, when there is one
+    address TEXT,                      -- the phone's geocoder
+    source VARCHAR(10) NOT NULL,       -- ios | android
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE UNIQUE INDEX ix_place_visits_user_key ON place_visits(user_id, key);
+CREATE INDEX ix_place_visits_user_arrived ON place_visits(user_id, arrived_at);

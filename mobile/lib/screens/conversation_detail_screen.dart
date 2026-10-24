@@ -463,6 +463,26 @@ final class _Header extends StatelessWidget {
             '${dayLabel(card.startedAt, now)} · $range',
             style: textTheme.bodySmall,
           ),
+          if (card.place case final place? when place.label != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              key: const Key('conversation-place'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.place_outlined, size: 16, color: palette.text2),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    [
+                      place.label!,
+                      if (place.name != null && place.address != null) place.address!,
+                    ].join(' · '),
+                    style: textTheme.bodySmall,
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (card.isOpen) ...[
             const SizedBox(height: 4),
             Text(

@@ -27,6 +27,7 @@ from app.services.conversation_deleter import (
     delete_conversation,
     get_conversation_storage,
 )
+from app.services.places import place_out, places_of
 from app.services.temporal import conversation_overlaps
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -53,6 +54,8 @@ class ConversationListItem(BaseModel):
     # Photos from the wearable camera taken during it, and the first one (Today's photo row)
     photo_count: int = 0
     photo_id: uuid.UUID | None = None
+    # Where it mostly happened, when Places visited is on: {"visit_id", "name", "address"}
+    place: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -111,6 +114,7 @@ class ConversationDetail(BaseModel):
     transcriptions: list[TranscriptionOut]
     entities: list[EntityOut]
     photos: list[PhotoOut] = []
+    place: dict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -187,6 +191,7 @@ async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
     people, tasks = await _people_and_tasks(db, ids)
     photos = await _photo_counts(db, ids)
     now = datetime.now(timezone.utc)
+    where = await conversation_places(db, [conv for conv, _ in rows], now)
     return [
         ConversationListItem(
             id=conv.id,
@@ -203,9 +208,27 @@ async def list_items(db: AsyncSession, rows) -> list[ConversationListItem]:
             task_count=tasks[conv.id],
             photo_count=photos.get(conv.id, (0, None))[0],
             photo_id=photos.get(conv.id, (0, None))[1],
+            place=where.get(conv.id),
         )
         for conv, segment_count in rows
     ]
+
+
+async def conversation_places(
+    db: AsyncSession, conversations: list[Conversation], now: datetime
+) -> dict[uuid.UUID, dict]:
+    """Per conversation, the place of the visit it mostly happened in (none without
+    visits). Read here, for the app; outside assistants' tools leave it out."""
+    found: dict[uuid.UUID, dict] = {}
+    by_user: dict[uuid.UUID, list[Conversation]] = defaultdict(list)
+    for conv in conversations:
+        by_user[conv.user_id].append(conv)
+    for user_id, own in by_user.items():
+        visits = await places_of(
+            db, user_id, [(c.id, c.started_at, c.ended_at) for c in own], now=now
+        )
+        found.update({cid: place_out(visit) for cid, visit in visits.items()})
+    return found
 
 
 async def _photo_counts(
@@ -360,6 +383,9 @@ async def get_conversation(
         transcriptions=transcriptions,
         entities=entities,
         photos=photos,
+        place=(await conversation_places(db, [conversation], datetime.now(timezone.utc))).get(
+            conversation.id
+        ),
     )
 
 

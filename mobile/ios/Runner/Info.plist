@@ -55,7 +55,9 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Echo reads where you are only when you ask it to save a place, like where you parked.</string>
+	<string>Echo reads where you are when you ask it to save a place, like where you parked, and, if you turn on Places visited, notes the places where you stay.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>With Places visited on, Echo notes the places where you stay 10 minutes or more, also with the iPhone in your pocket, using the iPhone's low-power visit detection. Turn it off in Profile → Places visited.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Echo uses the camera when you ask it about something in front of you.</string>
 	<key>NSMicrophoneUsageDescription</key>

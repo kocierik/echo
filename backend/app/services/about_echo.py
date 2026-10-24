@@ -27,6 +27,9 @@ def about_echo(phone_apps_on: list[str]) -> str:
         "- keeps what the user asks it to save and find again (where the car is parked, "
         "where something was put, a wine, a book, receipts) in Saved (Today → Saved), "
         "each with its moment, and adds up what was spent;",
+        "- when the user turns it on (Profile → Places visited, off by default), notes "
+        "the places where they stay 10 minutes or more, so it can say where they were and "
+        "where a conversation happened; kept 90 days, never shared with outside assistants;",
         "- looks up live information on the web (weather, news, prices) and names the "
         "sources;",
         "- does things on its own at a regular time when asked (\"every morning at 7 tell "

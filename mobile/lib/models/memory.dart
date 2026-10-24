@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../utils/formatting.dart';
+import 'place.dart';
 
 /// A conversation as listed in Memories (`GET /api/conversations`, `/api/search`).
 @immutable
@@ -19,6 +20,7 @@ final class ConversationCard {
     this.taskCount = 0,
     this.photoCount = 0,
     this.photoId,
+    this.place,
   });
 
   factory ConversationCard.fromJson(Map<String, dynamic> json) {
@@ -39,6 +41,7 @@ final class ConversationCard {
       taskCount: (json['task_count'] as num? ?? 0).toInt(),
       photoCount: (json['photo_count'] as num? ?? 0).toInt(),
       photoId: json['photo_id'] as String?,
+      place: ConversationPlace.tryParse(json['place']),
     );
   }
 
@@ -62,6 +65,9 @@ final class ConversationCard {
 
   /// The first of them: a photo on its own is a photo row on Today.
   final String? photoId;
+
+  /// Where it mostly happened, when Places visited is on and the phone was there.
+  final ConversationPlace? place;
 
   /// Only a photo, nothing said: Today shows its thumbnail and title.
   bool get isPhoto => photoId != null && segmentCount == 0;

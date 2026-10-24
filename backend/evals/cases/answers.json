@@ -1,5 +1,5 @@
 {
-  "context": "Saved things (what the user asked Echo to keep):\n- [Vini] Barolo 2019: Cantina Rinaldi (vintage: 2019). Saved Saturday 2026-10-17 21:40, with Marco. Asked: \"Echo, tienimi questo vino\"\n- [La macchina] Macchina (level: -2, column: B4). Saved Tuesday 2026-10-20 09:40. Place: Via Roma 12, Milano. Asked: \"Echo, ricordati dove ho parcheggiato\"\n\n---\n\nRelevant conversation summaries:\n- [13/10/2026 12:30] Lunch with Ada about Atlas: Ada wants to launch Atlas in November; the user will send her the budget by Friday and involve Marco for the design.\n- [12/10/2026 20:15] Dinner plans: pizza on Saturday at 8 pm with Giulia and Marco at Da Gino.\n\nStructured knowledge:\n- person: Marco Rossi (designer, works on Atlas)\n- task: Mandare il budget ad Ada (due 2026-10-16)\n- event: Cena da Gino (2026-10-17 20:00)\n\n---\n\n[Altri] Allora Atlas lo lanciamo a novembre, mi serve il budget entro venerdì.\n\n---\n\n[Tu] Per il design coinvolgiamo Marco, lui conosce già il progetto.\n\n---\n\n[Altri] Sabato alle otto da Gino, prenoto io per quattro.",
+  "context": "Saved things (what the user asked Echo to keep):\n- [Vini] Barolo 2019: Cantina Rinaldi (vintage: 2019). Saved Saturday 2026-10-17 21:40, with Marco. Asked: \"Echo, tienimi questo vino\"\n- [La macchina] Macchina (level: -2, column: B4). Saved Tuesday 2026-10-20 09:40. Place: Via Roma 12, Milano. Asked: \"Echo, ricordati dove ho parcheggiato\"\n\n---\n\nPlaces visited (from the user's phone: stays of 10 minutes or more, with arrival and departure):\n- Saturday 17/10/2026 19:55–23:10: Pizzeria Da Gino (Via Garibaldi 5, Milano)\n- Friday 16/10/2026 18:30–19:45: Virgin Active (Corso Como 15, Milano)\n- Wednesday 14/10/2026 09:05–18:20: Via Tortona 31, Milano\n- Tuesday 13/10/2026 12:20–14:05: Osteria del Treno (Via San Gregorio 46, Milano)\n- Monday 12/10/2026 18:40–19:50: Virgin Active (Corso Como 15, Milano)\n\n---\n\nRelevant conversation summaries:\n- [13/10/2026 12:30] Lunch with Ada about Atlas (at Osteria del Treno): Ada wants to launch Atlas in November; the user will send her the budget by Friday and involve Marco for the design.\n- [12/10/2026 20:15] Dinner plans: pizza on Saturday at 8 pm with Giulia and Marco at Da Gino.\n\nStructured knowledge:\n- person: Marco Rossi (designer, works on Atlas)\n- task: Mandare il budget ad Ada (due 2026-10-16)\n- event: Cena da Gino (2026-10-17 20:00)\n\n---\n\n[Altri] Allora Atlas lo lanciamo a novembre, mi serve il budget entro venerdì.\n\n---\n\n[Tu] Per il design coinvolgiamo Marco, lui conosce già il progetto.\n\n---\n\n[Altri] Sabato alle otto da Gino, prenoto io per quattro.",
   "cases": [
     {
       "id": "fact-it",
@@ -201,6 +201,46 @@
       "language": "en",
       "must": [
         "roma"
+      ]
+    },
+    {
+      "id": "places-saturday-it",
+      "question": "Dove siamo stati sabato sera?",
+      "language": "it",
+      "must": [
+        "gino"
+      ]
+    },
+    {
+      "id": "places-gym-it",
+      "question": "Quando sono andato in palestra l'ultima volta?",
+      "language": "it",
+      "any": [
+        [
+          "16",
+          "venerdì"
+        ]
+      ]
+    },
+    {
+      "id": "places-lunch-ada-en",
+      "question": "Where did I have lunch with Ada?",
+      "language": "en",
+      "must": [
+        "treno"
+      ]
+    },
+    {
+      "id": "places-unknown-it",
+      "question": "Sono andato al cinema questa settimana?",
+      "language": "it",
+      "any": [
+        [
+          "non",
+          "nessun",
+          "nessuna",
+          "risulta"
+        ]
       ]
     }
   ]

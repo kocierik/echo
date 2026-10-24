@@ -1,4 +1,5 @@
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/place.dart';
 import 'package:echo_app/screens/conversation_detail_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +10,11 @@ import '../support/fake_memory_api.dart';
 void main() {
   final now = DateTime(2026, 10, 14, 18);
 
-  ConversationDetail detail({String? summary = 'Ada proposes Atlas.', bool isOpen = false}) {
+  ConversationDetail detail({
+    String? summary = 'Ada proposes Atlas.',
+    bool isOpen = false,
+    ConversationPlace? place,
+  }) {
     return ConversationDetail(
       card: card(
         'c1',
@@ -17,6 +22,7 @@ void main() {
         summary: summary,
         isOpen: isOpen,
         duration: const Duration(minutes: 45),
+        place: place,
       ),
       lines: [
         TranscriptLine(
@@ -110,6 +116,23 @@ void main() {
     expect(find.text('Fri, Oct 16 at 15:00'), findsOneWidget);
     expect(find.text('Ideas & notes'), findsOneWidget);
     expect(find.text('For the team'), findsOneWidget);
+  });
+
+  testWidgets('the place it happened, with its address', (tester) async {
+    const place = ConversationPlace(
+      visitId: 'v1',
+      name: 'Trattoria da Mario',
+      address: 'Via Roma 12, Milano',
+    );
+    await pump(tester, FakeMemoryApi(details: {'c1': detail(place: place)}));
+
+    expect(find.text('Trattoria da Mario · Via Roma 12, Milano'), findsOneWidget);
+  });
+
+  testWidgets('no place without Places visited', (tester) async {
+    await pump(tester, FakeMemoryApi(details: {'c1': detail()}));
+
+    expect(find.byKey(const Key('conversation-place')), findsNothing);
   });
 
   testWidgets('Ask about this conversation goes back and asks', (tester) async {
