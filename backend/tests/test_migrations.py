@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 24)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 25)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -393,6 +393,28 @@ def test_migration_023_creates_the_saved_tables(monkeypatch):
     assert {"ix_saved_items_user_id", "ix_saved_items_list_id"} <= {
         i["name"] for i in items["indexes"]
     }
+
+
+def test_migration_024_creates_the_place_visits(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        if module.revision >= "024":
+            break
+        _run(module, state, monkeypatch)
+    migration_024 = next(m for m in _migrations() if m.revision == "024")
+
+    op = _run(migration_024, state, monkeypatch)
+
+    assert [c[1] for c in op.calls if c[0] == "create_table"] == ["place_visits"]
+    visits = state.tables["place_visits"]
+    # A stay still going has no departure yet
+    assert visits["columns"]["left_at"] is True and visits["columns"]["arrived_at"] is False
+    indexes = {i["name"]: i for i in visits["indexes"]}
+    # One visit per stay the phone sends: its key
+    assert indexes["ix_place_visits_user_key"]["unique"] is True
+    assert indexes["ix_place_visits_user_key"]["column_names"] == ["user_id", "key"]
+    assert indexes["ix_place_visits_user_arrived"]["column_names"] == ["user_id", "arrived_at"]
+    assert visits["fks"] == []
 
 
 def test_migration_003_is_defined_once():

@@ -12,6 +12,7 @@ from app.models.llm_usage import LlmUsage
 from app.models.mcp_call import McpCall
 from app.models.pending_action import PendingAction
 from app.models.photo import Photo
+from app.models.place_visit import PlaceVisit
 from app.models.query_feedback import QueryFeedback
 from app.models.routine import Routine
 from app.models.saved import SavedItem, SavedList
@@ -37,6 +38,7 @@ __all__ = [
     "McpCall",
     "PendingAction",
     "Photo",
+    "PlaceVisit",
     "QueryFeedback",
     "Routine",
     "SavedItem",
