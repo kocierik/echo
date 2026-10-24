@@ -81,6 +81,8 @@ final class ConversationCardTile extends StatelessWidget {
                             icon: Icons.person_outline_rounded,
                             text: c.people.join(', '),
                           ),
+                        if (c.place?.label case final place?)
+                          _IconText(icon: Icons.place_outlined, text: place),
                         if (c.taskCount > 0)
                           _IconText(
                             icon: Icons.check_circle_outline_rounded,
@@ -117,6 +119,7 @@ final class ConversationCardTile extends StatelessWidget {
       meta,
       if (c.summary != null) c.summary!,
       if (c.people.isNotEmpty) 'With ${c.people.join(', ')}',
+      if (c.place?.label case final place?) 'At $place',
       if (c.taskCount > 0) c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
       if (c.photoCount > 0) c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
     ].join('. ');
@@ -145,6 +148,8 @@ final class ConversationRow extends StatelessWidget {
         _Chip(label: 'Processing', color: palette.surface2, text: palette.amber),
       if (c.people.isNotEmpty)
         _Chip(label: c.people.join(', '), color: palette.surface2, text: palette.text2),
+      if (c.place?.label case final place?)
+        _Chip(label: place, color: palette.surface2, text: palette.text2),
       if (c.taskCount > 0)
         _Chip(
           label: c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',

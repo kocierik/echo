@@ -182,7 +182,7 @@ final class FakeSource implements VisitSource {
   }
 }
 
-final class FakePlacesApi implements PlacesApi {
+class FakePlacesApi implements PlacesApi {
   final sent = <List<RecordedVisit>>[];
   final sources = <String>[];
   bool fail = false;

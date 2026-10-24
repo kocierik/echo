@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
+import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
 import 'package:echo_app/models/today_insights.dart';
@@ -278,6 +279,7 @@ ConversationCard card(
   int taskCount = 1,
   String? photoId,
   int segmentCount = 3,
+  ConversationPlace? place,
 }) {
   return ConversationCard(
     id: id,
@@ -293,6 +295,7 @@ ConversationCard card(
     taskCount: taskCount,
     photoId: photoId,
     segmentCount: segmentCount,
+    place: place,
   );
 }
 

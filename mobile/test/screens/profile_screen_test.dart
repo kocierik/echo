@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_status.dart';
+import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/voice.dart';
 import 'package:echo_app/screens/profile_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
@@ -13,10 +14,13 @@ import 'package:echo_app/services/device/device_protocol.dart';
 import 'package:echo_app/services/app/network_policy.dart';
 import 'package:echo_app/services/app/session_controller.dart';
 import 'package:echo_app/services/app/spoken_language.dart';
+import 'package:echo_app/services/phone/places_visited.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/phone/places_visited_test.dart' show FakeNetwork, FakeSource;
 
 void main() {
   late SharedPreferences preferences;
@@ -63,6 +67,7 @@ void main() {
   Future<void> pumpSettings(
     WidgetTester tester, {
     VoidCallback? onRequireOnboarding,
+    PlacesVisitedService? placesVisited,
   }) async {
     // Tall enough for every row: the list builds only what is on screen
     tester.view.physicalSize = const Size(400, 1400);
@@ -88,6 +93,7 @@ void main() {
             const Scaffold(body: Text('Integrations route')),
         devicesBuilder: (_) => const Scaffold(body: Text('Devices route')),
         onOpenDevice: () => openedDevice++,
+        placesVisited: placesVisited,
       ),
     ));
     await tester.pumpAndSettle();
@@ -134,6 +140,27 @@ void main() {
     expect(find.text('Gmail, Google Calendar'), findsOneWidget);
     expect(find.textContaining('Coming soon'), findsNothing);
     expect(find.textContaining('Placeholder'), findsNothing);
+  });
+
+  testWidgets('Places visited: off by default, one tap from You', (tester) async {
+    final places = PlacesVisitedService(
+      source: FakeSource(),
+      api: api,
+      preferences: preferences,
+      networkAccess: FakeNetwork({NetworkType.wifi}),
+      networkPolicy: networkPolicy,
+    );
+    await pumpSettings(tester, placesVisited: places);
+
+    expect(find.text('Off. Echo can note where you stay.'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Places visited')).dy,
+      greaterThan(tester.getTopLeft(find.text('Privacy')).dy),
+    );
+    await tester.tap(find.byKey(const Key('profile-places')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('places-switch')), findsOneWidget);
   });
 
   testWidgets('the name is set from Profile, prefilled from the own voice',
@@ -324,6 +351,10 @@ void main() {
 
 final class _FakeApiService extends ApiService {
   _FakeApiService();
+
+  @override
+  Future<VisitPage> listVisits({DateTime? before}) async =>
+      const VisitPage(visits: [], more: false);
 
   int validationCalls = 0;
   AccountInfo account =
