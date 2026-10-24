@@ -14,6 +14,10 @@
 #include "ota_receiver.h"
 #include "photo_slot.h"
 #include "psram_buffer.h"
+#include "tiered_queue.h"
+
+// The segments waiting for the phone: PSRAM, and the microSD when there is one
+using SegmentQueue = TieredQueue<PSRAMBuffer>;
 
 class BleTransport {
 public:
@@ -119,7 +123,7 @@ public:
         return true;
     }
 
-    void update(PSRAMBuffer& buffer) {
+    void update(SegmentQueue& buffer) {
         const uint32_t burstStartedUs = micros();
         const uint32_t deadlineUs = burstStartedUs + BleBurstDecision::BURST_BUDGET_US;
         uint8_t notificationsSent = 0;
@@ -367,7 +371,7 @@ private:
 
     // --- Firmware update, Arduino loop side ------------------------------------
 
-    void beginOta(const EchoBleProtocol::ControlFrame& frame, const PSRAMBuffer& buffer) {
+    void beginOta(const EchoBleProtocol::ControlFrame& frame, const SegmentQueue& buffer) {
         uint8_t error = EchoBleProtocol::OTA_ERROR_NONE;
         // The app sends everything first: a restart would lose what is still in RAM
         if (_active || buffer.count() > 0 || (_photoSlot != nullptr && !_photoSlot->isEmpty())) {
@@ -483,7 +487,7 @@ private:
         return true;
     }
 
-    bool notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs) {
+    bool notifyBufferStatus(const SegmentQueue& buffer, uint32_t deadlineUs) {
         if (_controlCharacteristic == nullptr) return false;
         uint8_t frame[EchoBleProtocol::DEVICE_STATUS_SIZE] = {};
         const EchoBleProtocol::DeviceStatus status = {
@@ -645,7 +649,7 @@ private:
         return pending;
     }
 
-    bool processNextEvent(PSRAMBuffer& buffer) {
+    bool processNextEvent(SegmentQueue& buffer) {
         BleTransportEvent event;
         portENTER_CRITICAL(&_eventMux);
         const bool available = _events.pop(event);
@@ -676,7 +680,7 @@ private:
         if (_active) _state.onRestartSegment(_segment.segmentId);
     }
 
-    void handleControl(const uint8_t* data, size_t length, PSRAMBuffer& buffer) {
+    void handleControl(const uint8_t* data, size_t length, SegmentQueue& buffer) {
         EchoBleProtocol::ControlFrame frame = {};
         if (!EchoBleProtocol::decodeControlFrame(data, length, frame)) {
             Serial.printf("[BLE] handleControl decode failed len=%u\n", (unsigned)length);
@@ -742,7 +746,7 @@ private:
         }
     }
 
-    void acceptUpload(uint32_t segmentId, PSRAMBuffer& buffer) {
+    void acceptUpload(uint32_t segmentId, SegmentQueue& buffer) {
         if (!_active) return;
         if (!_state.canAcceptUploadOk(segmentId)) {
             Serial.printf("[BLE] acceptUpload rejected segment=%u state=%d\n", segmentId, _state.phase());

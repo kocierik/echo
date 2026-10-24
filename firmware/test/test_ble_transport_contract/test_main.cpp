@@ -293,7 +293,7 @@ void test_transport_gates_each_notification_at_the_deadline() {
     TEST_ASSERT_TRUE(source.find("const uint32_t deadlineUs =") != std::string::npos);
     TEST_ASSERT_TRUE(source.find("notifyAudio(const uint8_t* data, size_t length, uint32_t deadlineUs)") !=
                      std::string::npos);
-    TEST_ASSERT_TRUE(source.find("notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs)") !=
+    TEST_ASSERT_TRUE(source.find("notifyBufferStatus(const SegmentQueue& buffer, uint32_t deadlineUs)") !=
                      std::string::npos);
     TEST_ASSERT_EQUAL_UINT32(1, countOccurrences(source, "_audioCharacteristic->notify("));
     // FORGET_BOND_OK, DEVICE_STATUS, PHOTO_FAILED, OTA_STATUS and DEVICE_INFO
@@ -352,7 +352,7 @@ void test_main_cancels_active_transfer_before_drop_without_dequeue() {
 void test_overflow_status_serializes_counter_and_retains_flag_until_notify_succeeds() {
     const std::string source = readSource("src/ble_transport.h");
     const size_t statusStart = source.find(
-        "bool notifyBufferStatus(const PSRAMBuffer& buffer, uint32_t deadlineUs)");
+        "bool notifyBufferStatus(const SegmentQueue& buffer, uint32_t deadlineUs)");
     const size_t statusEnd = source.find("bool sendSegmentStart", statusStart);
     TEST_ASSERT_TRUE(statusStart != std::string::npos);
     TEST_ASSERT_TRUE(statusEnd != std::string::npos);

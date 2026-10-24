@@ -23,6 +23,8 @@
 #include "adpcm_encoder.h"
 #include "ble_transport.h"
 #include "psram_buffer.h"
+#include "sd_storage.h"
+#include "segment_log.h"
 #include "indicators.h"
 #include "device_preferences.h"
 #include "mute_state.h"
@@ -39,7 +41,11 @@ AudioCapture audio;
 VAD vad;
 ADPCMEncoder encoder;
 BleTransport bleTransport;
-PSRAMBuffer buffer;
+PSRAMBuffer psram;
+// The segments for the phone: PSRAM, and the microSD when one is mounted
+SegmentQueue buffer(psram);
+SdStorage sdCard;
+SegmentLog sdLog(sdCard, SD_LOG_FILE_BYTES);
 Indicators indicators;
 DevicePreferences devicePreferences;
 PhotoSlot photoSlot;
@@ -88,6 +94,12 @@ void dropPhotoForPrivacy();
 extern "C" bool verifyRollbackLater() { return true; }
 
 /** Cannot run: a firmware on trial goes back to the previous one, otherwise wait. */
+/** A segment moves from PSRAM to the card: the transport stops sending it from PSRAM
+ *  (it is sent again later, from the card). */
+void moveToCard(uint32_t segmentId) {
+    bleTransport.cancelActiveForOverflow(segmentId);
+}
+
 void fatal(const char* message) {
     Serial.println(message);
     if (otaHealth.onTrial()) {
@@ -168,8 +180,22 @@ void setup() {
     uint8_t* photoBuffer = (uint8_t*)ps_malloc(PHOTO_MAX_BYTES);
     if (photoBuffer != nullptr) photoSlot.attach(photoBuffer, PHOTO_MAX_BYTES);
 
+    // microSD (optional): speech that does not fit in PSRAM waits there instead of being
+    // dropped. Its chip select is the LED's pin: with a card the LED stays dark
+    uint8_t* sdStaging = nullptr;
+    if (sdCard.begin()) {
+        indicators.release();
+        sdStaging = (uint8_t*)ps_malloc(SEGMENT_MAX_SIZE);
+    }
+
     // Initialize PSRAM buffer
-    if (!buffer.begin()) fatal("[FATAL] PSRAM buffer init failed");
+    if (!psram.begin()) fatal("[FATAL] PSRAM buffer init failed");
+
+    if (sdStaging != nullptr && sdLog.begin()) {
+        buffer.attachCard(&sdLog, sdStaging, SEGMENT_MAX_SIZE, moveToCard);
+        Serial.printf("[SD] speech overflow on the card (%llu KB waiting)\n",
+                      static_cast<unsigned long long>(sdLog.pendingBytes() / 1024));
+    }
 
     // Camera (optional): no camera, no photos
     const bool cameraAvailable = camera.begin(photoSlot);

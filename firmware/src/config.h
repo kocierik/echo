@@ -3,8 +3,8 @@
 // The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
-#define FIRMWARE_VERSION_MINOR 5
-#define FIRMWARE_VERSION_PATCH 1
+#define FIRMWARE_VERSION_MINOR 6
+#define FIRMWARE_VERSION_PATCH 0
 
 // ============================================================
 // Audio Configuration
@@ -80,11 +80,12 @@
 // Camera (XIAO ESP32-S3 Sense, OV3660 or OV2640 on the B2B connector)
 // ============================================================
 // Taken only on TAKE_PHOTO from the app; the JPEG stays in RAM until uploaded.
-// FRAMESIZE_XGA (1024x768) keeps text readable at ~60-120 KB (~3-5 s over BLE);
-// FRAMESIZE_SVGA (800x600) halves the transfer.
-#define PHOTO_FRAME_SIZE FRAMESIZE_XGA
+// FRAMESIZE_UXGA (1600x1200, 24/10: XGA was too soft to read small text) is ~150-350 KB,
+// ~6-10 s over BLE; the camera's frame buffer (~400 KB) fits in PSRAM_RESERVE.
+// FRAMESIZE_XGA (1024x768) halves the transfer.
+#define PHOTO_FRAME_SIZE FRAMESIZE_UXGA
 #define PHOTO_JPEG_QUALITY 12          // 0-63, lower is better
-#define PHOTO_MAX_BYTES (512 * 1024)   // PSRAM slot for one JPEG
+#define PHOTO_MAX_BYTES (768 * 1024)   // PSRAM slot for one JPEG (the server takes 1 MB)
 #define PHOTO_WARMUP_FRAMES 3          // dropped while auto-exposure settles
 #define PHOTO_FLASH_MS 300             // LED on while a photo is taken
 
@@ -128,6 +129,15 @@
 // Hardware Pins
 // ============================================================
 #define LED_PIN 21                     // Built-in LED on XIAO ESP32-S3
+
+// microSD on the Sense board (FAT32, up to 32 GB): SPI, CS shared with the LED
+#define SD_CS_PIN 21
+#define SD_SCK_PIN 7
+#define SD_MISO_PIN 8
+#define SD_MOSI_PIN 9
+#define SD_SPI_HZ 20000000
+// Speech waiting on the card: log files of this size (sd_storage.h, segment_log.h)
+#define SD_LOG_FILE_BYTES (4UL * 1024 * 1024)
 // The button, between D1 (GPIO2) and GND (internal pull-up): a short press takes a photo,
 // a long press mutes or resumes listening
 #define BUTTON_PIN 2

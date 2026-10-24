@@ -31,7 +31,14 @@ public:
 
     bool isMuted() const { return _muted; }
 
+    /** The LED pin (GPIO21) is the microSD's chip select: with a card mounted the LED is
+     *  never driven again, so it cannot disturb the card. */
+    void release();
+
 private:
+    void writeLed(uint8_t level);
+
+    bool _released = false;
     bool _recording = false;
     bool _blinking = false;
     bool _muted = false;
@@ -42,6 +49,16 @@ private:
 
 // Implementation
 
+void Indicators::release() {
+    // The microSD's chip select from now on: never driven again
+    _released = true;
+    Serial.println("[IO] LED released: GPIO21 is the SD card's chip select");
+}
+
+void Indicators::writeLed(uint8_t level) {
+    if (!_released) digitalWrite(LED_PIN, level);
+}
+
 void Indicators::begin() {
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LED_OFF);
@@ -51,10 +68,11 @@ void Indicators::begin() {
 }
 
 void Indicators::update() {
+    if (_released) return;
     // --- LED control ---
     if (_flashUntilMs != 0) {
         if (static_cast<int32_t>(millis() - _flashUntilMs) < 0) {
-            digitalWrite(LED_PIN, LED_ON);
+            writeLed(LED_ON);
             return;
         }
         _flashUntilMs = 0;
@@ -64,7 +82,7 @@ void Indicators::update() {
         // Double-blink every 2s to indicate muted state
         uint32_t phase = millis() % 2000;
         bool on = (phase < 100) || (phase > 200 && phase < 300);
-        digitalWrite(LED_PIN, on ? LED_ON : LED_OFF);
+        writeLed(on ? LED_ON : LED_OFF);
         return;
     }
 
@@ -73,44 +91,44 @@ void Indicators::update() {
         if (millis() - _lastBlinkMs >= 500) {
             _lastBlinkMs = millis();
             _ledState = !_ledState;
-            digitalWrite(LED_PIN, _ledState ? LED_ON : LED_OFF);
+            writeLed(_ledState ? LED_ON : LED_OFF);
         }
     } else if (_recording) {
         // Solid ON during recording
-        digitalWrite(LED_PIN, LED_ON);
+        writeLed(LED_ON);
     } else {
         // OFF when idle
-        digitalWrite(LED_PIN, LED_OFF);
+        writeLed(LED_OFF);
     }
 }
 
 void Indicators::setRecording(bool active) {
     _recording = active;
     if (!_blinking && !_muted) {
-        digitalWrite(LED_PIN, active ? LED_ON : LED_OFF);
+        writeLed(active ? LED_ON : LED_OFF);
     }
 }
 
 void Indicators::setBlinking(bool active) {
     _blinking = active;
     if (!active && !_recording) {
-        digitalWrite(LED_PIN, LED_OFF);
+        writeLed(LED_OFF);
     }
 }
 
 void Indicators::setMuted(bool muted) {
     _muted = muted;
     if (_muted) {
-        digitalWrite(LED_PIN, LED_OFF);
+        writeLed(LED_OFF);
     } else if (_recording) {
-        digitalWrite(LED_PIN, LED_ON);
+        writeLed(LED_ON);
     } else {
-        digitalWrite(LED_PIN, LED_OFF);
+        writeLed(LED_OFF);
     }
 }
 
 void Indicators::flash(uint16_t durationMs) {
     _flashUntilMs = millis() + durationMs;
     if (_flashUntilMs == 0) _flashUntilMs = 1;
-    digitalWrite(LED_PIN, LED_ON);
+    writeLed(LED_ON);
 }
