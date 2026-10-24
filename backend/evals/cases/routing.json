@@ -41,6 +41,12 @@
     {"id": "saved-found-car-it", "text": "Ho ritrovato la macchina, toglila pure", "expect": "agent"},
     {"id": "saved-where-it", "text": "Dov'è il passaporto?", "expect": "memory"},
     {"id": "saved-where-car-en", "text": "Where did I park?", "expect": "memory"},
-    {"id": "saved-wine-said-it", "text": "Cosa ha detto Marco del vino di sabato?", "expect": "memory"}
+    {"id": "saved-wine-said-it", "text": "Cosa ha detto Marco del vino di sabato?", "expect": "memory"},
+    {"id": "places-where-saturday-it", "text": "Dove siamo stati sabato?", "expect": "memory"},
+    {"id": "places-last-gym-en", "text": "When did I last go to the gym?", "expect": "memory"},
+    {"id": "places-restaurant-marco-it", "text": "In che ristorante abbiamo cenato con Marco?", "expect": "memory"},
+    {"id": "places-dentist-voice-it", "text": "Quando sono stato dal dentista?", "expect": "memory", "camera": true},
+    {"id": "places-afternoon-voice-en", "text": "Where was I yesterday afternoon?", "expect": "memory", "camera": true},
+    {"id": "places-save-this-place-it", "text": "Salvami questo posto, ci torno domani", "expect": "agent"}
   ]
 }
