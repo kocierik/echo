@@ -8,7 +8,9 @@ does not pick up in time is dropped. Kinds:
 - `phone_action`: run on the iPhone with EventKit (actions/phone_provider.py). Picking it
   up is remembered (DELIVERED_KEY): a call that gets no answer then may have run;
 - `get_location`: the phone's place for a thing being saved (services/phone_location.py);
-- `voice_update`: new answers in the thread with Echo (a routine ran).
+- `voice_update`: new answers in the thread with Echo (a routine ran);
+- `person_brief`: a known voice started talking, what to know about them, shown at once
+  (services/person_brief.py).
 """
 
 import json
