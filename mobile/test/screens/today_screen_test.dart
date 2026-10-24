@@ -5,6 +5,7 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/photo.dart';
+import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
@@ -16,6 +17,7 @@ import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../models/plan_test.dart' show planJson;
 import '../support/fake_memory_api.dart';
 
 void main() {
@@ -570,6 +572,37 @@ void main() {
       expect(find.text('Things to find again, each with its moment.'), findsOneWidget);
     });
 
+    testWidgets('past the speech budget: a quiet line, opening the plan', (tester) async {
+      await pumpToday(tester, api: _PlanTodayApi(PlanInfo.fromJson(planJson(
+        plan: 'free',
+        monthly: 300 * 60,
+        used: 300 * 60,
+        over: true,
+      ))));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Echo is transcribing 10 minutes a day until 1 November.'),
+          findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('plan-line')));
+      await tester.tap(find.byKey(const Key('plan-line')));
+      await tester.pumpAndSettle();
+      expect(find.text('Starts again on 1 November.'), findsOneWidget);
+    });
+
+    testWidgets('near the budget: how much is used, before it runs out', (tester) async {
+      await pumpToday(tester, api: _PlanTodayApi(PlanInfo.fromJson(planJson(used: 21 * 3600))));
+      await tester.pumpAndSettle();
+
+      expect(find.text('21 h of this month\'s 25 h of speech used.'), findsOneWidget);
+    });
+
+    testWidgets('well within the budget: no line', (tester) async {
+      await pumpToday(tester, api: _PlanTodayApi(PlanInfo.fromJson(planJson())));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('plan-line')), findsNothing);
+    });
+
     testWidgets('nothing saved: no Saved row', (tester) async {
       await pumpToday(tester, api: _SavedTodayApi(const SavedOverview(total: 0, places: [], lists: [])));
       await tester.pumpAndSettle();
@@ -751,6 +784,19 @@ final class _PhotoTodayApi extends FakeTodayApi implements PhotoApi {
 
   @override
   Future<void> reportPhotoFailure(String id, String reason) => throw UnimplementedError();
+}
+
+/// Today's API with the plan.
+final class _PlanTodayApi extends FakeTodayApi implements PlanApi {
+  _PlanTodayApi(this.plan);
+
+  final PlanInfo plan;
+
+  @override
+  Future<PlanInfo> getPlan() async => plan;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// Today's API with Saved.

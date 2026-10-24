@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/action_models.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
+import '../models/plan.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import '../services/api/api_exception.dart';
@@ -29,13 +30,14 @@ import 'people_screen.dart';
 import 'person_screen.dart';
 import 'saved_screen.dart';
 import 'navigation.dart';
+import 'settings/plan_screen.dart';
 import 'settings/voice_settings_screen.dart';
 import 'task_editing.dart';
 
 /// Today: the day and a greeting, the search over the whole memory, one card for the
 /// moment (something to confirm, an event within the hour, the conversation going on,
-/// or the day so far), what to do, the day, who came up, what was saved and the days
-/// before. Empty sections are left out. The wearable shows up only when something is wrong with it.
+/// or the day so far), what to do, a quiet line near and past the speech budget, the day,
+/// who came up, what was saved and the days before. Empty sections are left out. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
@@ -149,6 +151,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   /// Saved: how many things, and the list one was last saved in (no row without any).
   int _savedTotal = 0;
   String? _savedLatest;
+
+  /// The plan, for the line near and past the speech budget.
+  PlanInfo? _plan;
 
   @override
   MemoryApi get taskApi => _api;
@@ -274,7 +279,26 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadName(),
       _loadComingUp(),
       _loadSaved(),
+      _loadPlan(),
     ]);
+  }
+
+  Future<void> _loadPlan() async {
+    final api = _api;
+    if (api is! PlanApi) return;
+    try {
+      final plan = await (api as PlanApi).getPlan();
+      if (mounted) setState(() => _plan = plan);
+    } catch (_) {}
+  }
+
+  Future<void> _openPlan() async {
+    final api = _api;
+    if (api is! PlanApi) return;
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => PlanScreen(api: api as PlanApi, initial: _plan),
+    ));
+    if (mounted) await _loadPlan();
   }
 
   Future<void> _loadSaved() async {
@@ -750,6 +774,11 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         onSeeAll: widget.onOpenTasks,
                       ),
                       const SizedBox(height: 12),
+                    ],
+                    // Near and past the speech budget: why the day may come in later
+                    if (PlanLine.shows(_plan)) ...[
+                      PlanLine(plan: _plan!, onOpen: () => unawaited(_openPlan())),
+                      const SizedBox(height: 4),
                     ],
                     if (todayLoading || todayError != null || today.isNotEmpty) ...[
                       YourDayPanel(
