@@ -243,3 +243,34 @@ async def test_cleanup_is_oldest_first_capped_at_100_and_ignores_empty_paths():
 def test_retention_query_requires_utc_aware_now(invalid_now):
     with pytest.raises(ValueError, match="UTC-aware"):
         _build_retention_query(invalid_now)
+
+
+async def test_deferred_audio_is_kept_past_the_incomplete_limit(db_session):
+    """Speech waiting for the plan's budget keeps its audio, however long it waits."""
+    from app.models.segment import Segment
+    from tests.conftest import TEST_USER_ID, test_session
+
+    now = datetime(2026, 10, 24, 12, tzinfo=timezone.utc)
+    month_ago = now - timedelta(days=30)
+    segments = {
+        status: Segment(
+            id=uuid.uuid4(), user_id=TEST_USER_ID, received_at=month_ago,
+            recorded_at=month_ago, duration_ms=5000, audio_path=f"/data/audio/{status}.adpcm",
+            audio_size_bytes=10, transcription_status=status,
+        )
+        for status in ("deferred", "failed")
+    }
+    db_session.add_all(segments.values())
+    await db_session.commit()
+    deleted: list[Path] = []
+
+    cleared = await cleanup_old_audio(
+        now=now, session_factory=test_session, delete_file=deleted.append
+    )
+
+    assert cleared == 1
+    assert deleted == [Path("/data/audio/failed.adpcm")]
+    for segment in segments.values():
+        await db_session.refresh(segment)
+    assert segments["deferred"].audio_path == "/data/audio/deferred.adpcm"
+    assert segments["failed"].audio_path is None
