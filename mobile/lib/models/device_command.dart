@@ -26,6 +26,12 @@ sealed class DeviceCommand {
         final itemId = json['item_id'];
         if (id is! String) return null;
         return GetLocationCommand(id: id, itemId: itemId is String ? itemId : null);
+      case 'person_brief':
+        final personId = json['person_id'];
+        final title = json['title'];
+        final body = json['body'];
+        if (personId is! String || title is! String || body is! String) return null;
+        return PersonBriefCommand(personId: personId, title: title, body: body);
       default:
         return null;
     }
@@ -65,4 +71,17 @@ final class GetLocationCommand extends DeviceCommand {
 
   /// The thing the place is for: it goes there later when it cannot be read now.
   final String? itemId;
+}
+
+/// Someone the user knows started talking: what to know about them, shown at once.
+final class PersonBriefCommand extends DeviceCommand {
+  const PersonBriefCommand({
+    required this.personId,
+    required this.title,
+    required this.body,
+  });
+
+  final String personId;
+  final String title;
+  final String body;
 }

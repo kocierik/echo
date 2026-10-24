@@ -8,8 +8,9 @@ import '../api/device_api.dart';
 /// Long-polls the server's commands while the app runs (the wearable keeps it awake
 /// through the day) and hands each to its handler: TAKE_PHOTO to the wearable
 /// (PhotoService), Reminders and Calendar to this iPhone (PhoneActionsService), a
-/// voice update (a routine's answer) to the check that notifies it, and a place asked
-/// for a thing being saved to PhoneLocationService.
+/// voice update (a routine's answer) to the check that notifies it, a place asked
+/// for a thing being saved to PhoneLocationService, and who is in front of the user
+/// to PersonBriefs.
 final class DeviceCommandLoop {
   DeviceCommandLoop({
     required DeviceCommandsApi api,
@@ -17,6 +18,7 @@ final class DeviceCommandLoop {
     required Future<void> Function(PhoneActionCommand command) onPhoneAction,
     Future<void> Function()? onVoiceUpdate,
     Future<void> Function(GetLocationCommand command)? onGetLocation,
+    Future<void> Function(PersonBriefCommand command)? onPersonBrief,
     this.wait = const Duration(seconds: 20),
     Future<void> Function(Duration)? sleep,
   })  : _api = api,
@@ -24,6 +26,7 @@ final class DeviceCommandLoop {
         _onPhoneAction = onPhoneAction,
         _onVoiceUpdate = onVoiceUpdate,
         _onGetLocation = onGetLocation,
+        _onPersonBrief = onPersonBrief,
         _sleep = sleep ?? Future<void>.delayed;
 
   static const _retryDelays = [
@@ -38,6 +41,7 @@ final class DeviceCommandLoop {
   final Future<void> Function(PhoneActionCommand) _onPhoneAction;
   final Future<void> Function()? _onVoiceUpdate;
   final Future<void> Function(GetLocationCommand)? _onGetLocation;
+  final Future<void> Function(PersonBriefCommand)? _onPersonBrief;
   final Future<void> Function(Duration) _sleep;
   final Duration wait;
   bool _running = false;
@@ -73,6 +77,8 @@ final class DeviceCommandLoop {
             case GetLocationCommand():
               // Reading the place takes seconds: never in the way of a photo
               unawaited(_onGetLocation?.call(command));
+            case PersonBriefCommand():
+              unawaited(_onPersonBrief?.call(command));
           }
         }
       } catch (error) {

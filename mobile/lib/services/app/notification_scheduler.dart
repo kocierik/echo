@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../models/device_command.dart';
 import '../api/api_service.dart';
 import 'notification_service.dart';
 
@@ -77,6 +78,32 @@ final class NotificationScheduler {
     } catch (error) {
       // Offline or the server restarting: what was scheduled stays; next wake retries
       debugPrint('[Notifications] refresh failed: $error');
+    }
+  }
+}
+
+/// Who is in front of you, sent by the server when a known voice starts talking: shown
+/// at once, under the briefings switch (the server applies the other rules).
+final class PersonBriefs {
+  PersonBriefs({
+    required NotificationService notifications,
+    required NotificationPreferences preferences,
+  })  : _notifications = notifications,
+        _preferences = preferences;
+
+  final NotificationService _notifications;
+  final NotificationPreferences _preferences;
+
+  Future<void> show(PersonBriefCommand command) async {
+    if (!_preferences.briefings) return;
+    try {
+      await _notifications.showPersonBrief(
+        personId: command.personId,
+        title: command.title,
+        body: command.body,
+      );
+    } catch (error) {
+      debugPrint('[Notifications] person brief not shown: $error');
     }
   }
 }

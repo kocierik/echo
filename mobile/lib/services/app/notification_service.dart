@@ -34,12 +34,17 @@ final class NotificationService {
   static const int voiceAnswerIdCount = 50;
   static const String voicePayloadPrefix = 'voice:';
 
+  /// Who is in front of you: a few slots in turn, so two people do not replace each other.
+  static const int personBriefBaseId = 400;
+  static const int personBriefIdCount = 10;
+
   /// Briefings, promises and the evening recap: rescheduled as a whole on each refresh.
   static const int upcomingBaseId = 300;
   static const int upcomingIdCount = 10;
 
   final NotificationPort _port;
   bool _disconnectScheduled = false;
+  int _nextPersonBrief = 0;
 
   Future<void> initialize() => _port.initialize();
 
@@ -102,6 +107,18 @@ final class NotificationService {
         body: preview,
         payload: '$voicePayloadPrefix${sessionId ?? ''}',
       );
+
+  /// Someone the user knows started talking (the server's `person_brief`): a tap opens
+  /// their page.
+  Future<void> showPersonBrief({
+    required String personId,
+    required String title,
+    required String body,
+  }) {
+    final id = personBriefBaseId + _nextPersonBrief;
+    _nextPersonBrief = (_nextPersonBrief + 1) % personBriefIdCount;
+    return _port.show(id: id, title: title, body: body, payload: 'person:$personId');
+  }
 
   /// Replaces what was scheduled before with [items] (past ones are skipped).
   Future<void> replaceUpcoming(List<UpcomingNotification> items, DateTime now) async {

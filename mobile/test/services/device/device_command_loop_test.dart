@@ -93,6 +93,41 @@ void main() {
     expect(asked, ['car']);
   });
 
+  test('who is in front of you goes to its handler', () async {
+    final parsed = DeviceCommand.tryParse({
+      'type': 'person_brief',
+      'person_id': 'p1',
+      'title': 'Talking with Marco',
+      'body': 'You promised: the quote',
+    });
+    expect(
+      parsed,
+      isA<PersonBriefCommand>()
+          .having((c) => c.personId, 'personId', 'p1')
+          .having((c) => c.title, 'title', 'Talking with Marco')
+          .having((c) => c.body, 'body', 'You promised: the quote'),
+    );
+    expect(
+      DeviceCommand.tryParse({'type': 'person_brief', 'person_id': 'p1', 'title': 'T'}),
+      isNull,
+    );
+
+    final api = _FakeCommandsApi([parsed!]);
+    final briefed = <String>[];
+    final loop = DeviceCommandLoop(
+      api: api,
+      onTakePhoto: (_) async {},
+      onPhoneAction: (_) async {},
+      onPersonBrief: (command) async => briefed.add(command.personId),
+      sleep: (_) async {},
+    )..start();
+
+    await api.drained.future;
+    loop.stop();
+
+    expect(briefed, ['p1']);
+  });
+
   test('a slow phone action does not hold up the next command', () async {
     final slow = Completer<void>();
     final api = _FakeCommandsApi([
