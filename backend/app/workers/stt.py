@@ -25,8 +25,8 @@ from app.core.database import async_session
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
-from app.services.plans import may_transcribe
 from app.services.language import account_language
+from app.services.plans import may_transcribe
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
