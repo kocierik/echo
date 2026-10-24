@@ -44,7 +44,9 @@ async def _ask(db, question, **kwargs):
 
 async def test_a_period_lists_its_visits(db_session):
     await _visits(db_session)
-    day = DateRange(date_from=DAYS_AGO_3 - timedelta(hours=2), date_to=DAYS_AGO_3 + timedelta(hours=6))
+    day = DateRange(
+        date_from=DAYS_AGO_3 - timedelta(hours=2), date_to=DAYS_AGO_3 + timedelta(hours=6)
+    )
 
     memory = await _ask(db_session, "dove siamo stati sabato sera?", date_range=day)
 
