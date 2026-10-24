@@ -399,3 +399,32 @@ async def test_open_waiting_items_and_promises_stay_apart(db_session: AsyncSessi
     assert [e.name for e in await n.open_promises(db_session, TEST_USER_ID)] == [
         "Mandare le slide"
     ]
+
+
+async def test_a_briefing_says_what_the_person_promised(db_session: AsyncSession):
+    now = at(TODAY, 8)
+    marco = Entity(user_id=TEST_USER_ID, entity_type="person", name="Marco Rossi")
+    db_session.add_all([marco, _expected("Preventivo da Marco", None, "Marco")])
+    await db_session.commit()
+    calendar = FakeCalendar([_event("Call con Marco", at(TODAY, 11), event_id="m")])
+
+    [briefing] = await n.upcoming_notices(
+        db_session, TEST_USER_ID, now=now, provider=calendar, promises=False
+    )
+
+    # What Marco owes is said once: not counted again as an open task
+    assert briefing.body == "Marco Rossi: they promised: Preventivo da Marco"
+
+
+def test_notices_already_given_today_count_towards_three():
+    now = at(TODAY, 7)
+    tomorrow = TODAY + timedelta(days=1)
+    notices = [
+        notice("briefing", at(day, hour)) for day in (TODAY, tomorrow) for hour in (10, 12, 15)
+    ]
+
+    kept = n.select_notices(notices, now, now + timedelta(hours=48), taken={TODAY: 2})
+
+    assert [(k.fire_at.date(), k.fire_at.hour) for k in kept] == [
+        (TODAY, 10), (tomorrow, 10), (tomorrow, 12), (tomorrow, 15)
+    ]
