@@ -1,8 +1,10 @@
 """Who is in front of you: a known voice speaks, the phone says what is worth knowing."""
 
+import asyncio
 import json
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,8 @@ from app.services import notice_ledger as ledger
 from app.services import person_brief as pb
 from app.services.device_commands import DEVICE_COMMANDS_KEY
 from app.services.notifications import Notice
+from app.services.transcription_enhancer import STTContext
+from app.workers import stt as stt_worker
 from tests.conftest import TEST_USER_ID
 from tests.factories import make_conversation
 from tests.fakes.redis import InMemoryRedis
@@ -185,3 +189,118 @@ async def test_a_voice_without_person_link_finds_the_person_by_name(db_session: 
     assert await pb.brief_who_is_talking(
         db_session, InMemoryRedis(), _segment(), _profile(None, name="Zeno"), now=NOW
     ) is None
+
+
+# --- The STT worker ----------------------------------------------------------------------
+
+
+class _LoopRedis:
+    def __init__(self, items, shutdown):
+        self.items = list(items)
+        self.pushes = []
+        self.shutdown = shutdown
+
+    async def brpop(self, keys, timeout=0):
+        if self.items:
+            return self.items.pop(0)
+        self.shutdown.set()
+        return None
+
+    async def lpush(self, queue, payload):
+        self.pushes.append((queue, payload))
+
+
+async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=None):
+    """One segment through the STT worker, its voice matching Marco's profile (or not)."""
+    segment = SimpleNamespace(
+        id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=10, speaker=None,
+        transcription_status="processing", voice_embedding=None, voice_profile_id=None,
+        voice_match=None, voice_similarity=None,
+    )
+    marco = _profile()
+    marco.embedding = [1.0, 0.0]
+    briefed = []
+
+    class _Db:
+        def add(self, obj):
+            pass
+
+        async def commit(self):
+            pass
+
+    class _Factory:
+        async def __aenter__(self):
+            return _Db()
+
+        async def __aexit__(self, *exc):
+            return False
+
+    async def claim(_db, _redis, _segment_id, **_):
+        return segment, b""
+
+    async def context(_db, _user_id):
+        return STTContext(prompt="", keyterms=[])
+
+    async def retry(func, *args, **kwargs):
+        return SimpleNamespace(text="Ciao, come va il preventivo?", language="it", confidence=0.9)
+
+    async def language(_db, _user_id):
+        return "it"
+
+    async def classify(_db, _user_id, _energy):
+        return "other"
+
+    async def embed(_wav):
+        return list(voice)
+
+    async def profiles(_db, _user_id):
+        return [marco]
+
+    async def record(_db, _redis, seg, profile):
+        briefed.append((seg.id, profile.id))
+        if brief is not None:
+            await brief()
+
+    monkeypatch.setattr(
+        stt_worker, "get_stt_service",
+        lambda: SimpleNamespace(transcribe=None, provider="openai", model="m"),
+    )
+    monkeypatch.setattr(stt_worker, "async_session", lambda: _Factory())
+    monkeypatch.setattr(stt_worker, "_claim_stt_audio", claim)
+    monkeypatch.setattr(stt_worker, "adpcm_to_wav", lambda data: data)
+    monkeypatch.setattr(stt_worker, "build_stt_context", context)
+    monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
+    monkeypatch.setattr(stt_worker, "account_language", language)
+    monkeypatch.setattr(stt_worker, "classify_segment", classify)
+    monkeypatch.setattr(stt_worker, "embed_voice", embed)
+    monkeypatch.setattr(stt_worker, "list_profiles", profiles)
+    monkeypatch.setattr(stt_worker, "brief_who_is_talking", record)
+
+    shutdown = asyncio.Event()
+    redis = _LoopRedis([(queue, str(segment.id).encode())], shutdown)
+    await asyncio.wait_for(stt_worker.process_stt(redis, shutdown), timeout=2)
+    return segment, marco, briefed, redis
+
+
+async def test_the_worker_briefs_a_known_voice(monkeypatch):
+    segment, marco, briefed, _ = await _run_stt(monkeypatch)
+    assert briefed == [(segment.id, marco.id)]
+
+    # A voice that is nobody known: no brief
+    _, _, briefed, _ = await _run_stt(monkeypatch, voice=(0.0, 1.0))
+    assert briefed == []
+
+
+async def test_deferred_speech_is_not_briefed(monkeypatch):
+    _, _, briefed, _ = await _run_stt(monkeypatch, queue=b"queue:stt:deferred")
+    assert briefed == []
+
+
+async def test_a_failing_brief_does_not_fail_the_transcription(monkeypatch):
+    async def down():
+        raise ConnectionError("redis down")
+
+    segment, _, briefed, redis = await _run_stt(monkeypatch, brief=down)
+
+    assert briefed and segment.transcription_status == "completed"
+    assert ("queue:analysis", str(segment.id)) in redis.pushes
