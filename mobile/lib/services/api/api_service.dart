@@ -6,6 +6,7 @@ import 'device_api.dart';
 import 'memory_api.dart';
 import 'notifications_api.dart';
 import 'photo_api.dart';
+import 'places_api.dart';
 import 'routines_api.dart';
 import 'saved_api.dart';
 import 'voice_api.dart';
@@ -20,6 +21,7 @@ export 'device_api.dart';
 export 'memory_api.dart';
 export 'notifications_api.dart';
 export 'photo_api.dart';
+export 'places_api.dart';
 export 'routines_api.dart';
 export 'saved_api.dart';
 export 'voice_api.dart';
@@ -37,6 +39,7 @@ class ApiService extends ApiClient
         NotificationEndpoints,
         RoutineEndpoints,
         SavedEndpoints,
+        PlacesEndpoints,
         WearableEndpoints,
         AuthEndpoints
     implements TodayApi {

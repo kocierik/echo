@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/device_command.dart';
+import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/models/segment.dart';
 import 'package:echo_app/models/task_item.dart';
@@ -13,6 +14,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
+  group('Places visited', () {
+    test('sends stays, reads a page and deletes one, a day and all', () async {
+      final calls = <String>[];
+      final bodies = <String>[];
+      final service = _service((request) async {
+        calls.add('${request.method} ${request.url.path}?${request.url.query}');
+        if (request is http.Request) bodies.add(request.body);
+        if (request.method == 'DELETE' && request.url.path.endsWith('/v1')) {
+          return _response(request, 204);
+        }
+        if (request.method == 'DELETE') return _jsonResponse(request, 200, {'deleted': 2});
+        if (request.method == 'POST') {
+          return _jsonResponse(request, 200, {'kept': 1, 'dropped': 0});
+        }
+        return _jsonResponse(request, 200, {
+          'visits': [
+            {'id': 'v1', 'arrived_at': '2026-10-17T19:55:00Z', 'name': 'Da Gino'},
+          ],
+          'more': false,
+        });
+      });
+
+      await service.postVisits([
+        RecordedVisit(
+          key: 'ios:1',
+          arrivedAt: DateTime.utc(2026, 10, 17, 19, 55),
+          latitude: 45.4,
+          longitude: 9.1,
+        ),
+      ], source: 'ios');
+      final page = await service.listVisits(before: DateTime.utc(2026, 10, 18));
+      await service.deleteVisit('v1');
+      await service.deleteVisitDay(DateTime(2026, 10, 7));
+      await service.deleteAllVisits();
+
+      expect(page.visits.single.label, 'Da Gino');
+      expect(calls, [
+        'POST /api/places/visits?',
+        'GET /api/places/visits?before=2026-10-18T00%3A00%3A00.000Z',
+        'DELETE /api/places/visits/v1?',
+        'DELETE /api/places/days/2026-10-07?',
+        'DELETE /api/places/visits?',
+      ]);
+      final sent = jsonDecode(bodies.first) as Map<String, dynamic>;
+      expect(sent['source'], 'ios');
+      expect((sent['visits'] as List).single['key'], 'ios:1');
+    });
+  });
+
   group('Saved', () {
     Map<String, dynamic> item(String id) => {
           'id': id,
