@@ -221,6 +221,18 @@ async def assign_to_conversation(db: AsyncSession, segment: Segment) -> Conversa
     result = await db.execute(query)
     latest_conversation = result.scalar_one_or_none()
 
+    # Speech from well before the latest conversation (deferred by the plan's budget and
+    # transcribed later, or long buffered): the conversation of its own time instead
+    timeout = timedelta(milliseconds=settings.silence_timeout_ms)
+    if (
+        latest_conversation is not None
+        and segment.recorded_at < latest_conversation.started_at - timeout
+    ):
+        result = await db.execute(
+            query.where(Conversation.started_at <= segment.recorded_at)
+        )
+        latest_conversation = result.scalar_one_or_none()
+
     segment_end = _segment_end(segment)
     if starts_new_conversation(latest_conversation, segment):
         conversation = Conversation(
