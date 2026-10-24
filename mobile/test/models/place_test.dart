@@ -4,17 +4,17 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('a conversation carries its place, called by its name else its address', () {
-    final named = ConversationCard.fromJson({
+    final named = ConversationCard.fromJson(const {
       'id': 'c1',
       'started_at': '2026-10-17T19:00:00Z',
       'place': {'visit_id': 'v1', 'name': 'Trattoria da Mario', 'address': 'Via Roma 12'},
     });
-    final street = ConversationCard.fromJson({
+    final street = ConversationCard.fromJson(const {
       'id': 'c2',
       'started_at': '2026-10-17T19:00:00Z',
       'place': {'visit_id': 'v2', 'name': null, 'address': 'Via Roma 12'},
     });
-    final nowhere = ConversationCard.fromJson({
+    final nowhere = ConversationCard.fromJson(const {
       'id': 'c3',
       'started_at': '2026-10-17T19:00:00Z',
       'place': null,
@@ -49,7 +49,7 @@ void main() {
   });
 
   test('a page of visits with the conversations held there', () {
-    final page = VisitPage.fromJson({
+    final page = VisitPage.fromJson(const {
       'visits': [
         {
           'id': 'v1',

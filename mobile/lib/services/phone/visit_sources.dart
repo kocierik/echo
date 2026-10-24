@@ -163,7 +163,6 @@ final class AndroidStaySource implements VisitSource {
   final AndroidLocation _location;
   final StayStore _store;
   StreamSubscription<Fix>? _subscription;
-  StayDetector? _detector;
 
   @override
   String get name => 'android';
@@ -179,7 +178,6 @@ final class AndroidStaySource implements VisitSource {
     if (_subscription != null) return;
     final saved = _store.read();
     final detector = saved == null ? StayDetector() : StayDetector.fromJson(saved);
-    _detector = detector;
     _subscription = _location.fixes().listen(
       (fix) {
         final visits = detector.add(fix);
@@ -194,7 +192,6 @@ final class AndroidStaySource implements VisitSource {
   Future<void> stop() async {
     await _subscription?.cancel();
     _subscription = null;
-    _detector = null;
     await _store.write(null);
   }
 }
