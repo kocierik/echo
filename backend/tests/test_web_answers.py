@@ -61,7 +61,7 @@ class _SearchingLLM(MockLLMService):
 @pytest.fixture(autouse=True)
 def _openai_search(monkeypatch):
     monkeypatch.setattr(settings, "web_search_provider", "openai")
-    monkeypatch.setattr(settings, "web_searches_per_day", 30)
+    monkeypatch.setattr(settings, "plans", {"free": {"web_searches_per_day": 30}})
 
 
 def _patched(llm):

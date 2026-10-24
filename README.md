@@ -413,7 +413,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `COMPOSIO_API_KEY` | — | Composio API key; enables actions on connected apps |
 | `AUDIO_STORAGE_PATH` | `/data/audio` | Audio file storage |
 | `COMPLETED_AUDIO_RETENTION_HOURS` | `24` | Hours to keep audio after transcription completes |
-| `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio |
+| `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio (deferred speech, past the plan's budget, is kept until transcribed) |
 | `STT_PROVIDER` / `STT_MODEL` | `openai` / `gpt-4o-transcribe` | STT provider (`openai` or `deepgram`) and model |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
 | `LLM_ANALYSIS_MODEL` | `gpt-6-luna` | Entity extraction, summaries, digest, voice-request check |
@@ -428,7 +428,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `CHUNK_SIZE_TOKENS` / `CHUNK_OVERLAP_TOKENS` | `500` / `50` | Chunking for embeddings |
 | `SILENCE_TIMEOUT_MS` | `120000` | Silence (or time gap) that starts a new conversation |
 | `MAX_CONVERSATION_DURATION_MS` | `7200000` | Conversations are split after 2 hours |
-| `WEB_SEARCH_PROVIDER` / `WEB_SEARCHES_PER_DAY` | `openai` / `30` | Web search while answering (`none` turns it off); at the day's cap Echo says it cannot look it up |
+| `WEB_SEARCH_PROVIDER` | `openai` | Web search while answering (`none` turns it off); at the plan's daily cap Echo says it cannot look it up |
+| `PLANS` | (the defaults) | Per-plan changes as JSON: `monthly_minutes`, `daily_minutes`, `web_searches_per_day`, `routines` (`.env.example`) |
 | `USER_TIMEZONE` | `Europe/Rome` | Timezone for relative dates, the digest and calendar requests |
 | `DIGEST_LOCAL_HOUR` | `4` | Local hour when the digest of the previous day is written |
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |

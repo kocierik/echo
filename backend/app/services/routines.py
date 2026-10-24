@@ -11,9 +11,6 @@ import re
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-# At most this many routines per user
-MAX_ROUTINES = 10
-
 KINDS = ("daily", "weekdays", "weekly", "monthly")
 
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")

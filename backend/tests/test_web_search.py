@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import update
 
 from app.core.config import settings
 from app.models.llm_usage import LlmUsage
@@ -93,7 +94,7 @@ async def _searches(units: int) -> None:
 
 async def test_the_tool_is_offered_under_the_cap(monkeypatch):
     monkeypatch.setattr(settings, "web_search_provider", "openai")
-    await _searches(29)
+    await _searches(4)  # free: 5 a day
     service, _ = _service(None)
 
     tool = await web_search.search_tool_for(service, TEST_USER_ID, session_factory=test_session)
@@ -103,13 +104,29 @@ async def test_the_tool_is_offered_under_the_cap(monkeypatch):
 
 async def test_no_tool_at_the_cap(monkeypatch):
     monkeypatch.setattr(settings, "web_search_provider", "openai")
-    monkeypatch.setattr(settings, "web_searches_per_day", 30)
-    await _searches(30)
+    await _searches(5)
     service, _ = _service(None)
 
     assert await web_search.search_tool_for(
         service, TEST_USER_ID, session_factory=test_session
     ) is None
+
+
+async def test_the_cap_is_the_plans(monkeypatch):
+    from app.models.user import User
+
+    monkeypatch.setattr(settings, "web_search_provider", "openai")
+    async with test_session() as db:
+        db.add(User(id=TEST_USER_ID, email="erik@example.com", password_hash="x", plan="plus"))
+        await db.commit()
+    await _searches(29)  # past free's 5, under plus's 30
+    service, _ = _service(None)
+
+    assert await web_search.search_tool_for(service, TEST_USER_ID, test_session) is not None
+    async with test_session() as db:
+        await db.execute(update(LlmUsage).values(input_units=30))
+        await db.commit()
+    assert await web_search.search_tool_for(service, TEST_USER_ID, test_session) is None
 
 
 async def test_no_tool_with_provider_none_or_a_model_that_cannot_search(monkeypatch):
