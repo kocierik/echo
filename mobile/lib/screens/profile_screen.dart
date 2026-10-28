@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_view_state.dart';
 import '../models/device_status.dart';
 import '../models/plan.dart';
+import '../models/whatsapp.dart';
 import '../services/api/api_service.dart';
 import '../services/app/app_controller.dart';
 import '../services/app/app_runtime.dart';
@@ -40,6 +41,7 @@ import 'settings/routines_screen.dart';
 import 'settings/settings_components.dart';
 import 'settings/spoken_answers_screen.dart';
 import 'settings/voice_settings_screen.dart';
+import 'settings/whatsapp_screen.dart';
 
 /// Profile, the third tab: the account, Echo, the plan, then every setting in groups:
 /// what Echo does, what is about the user, what Echo can do, and one row for the rest.
@@ -106,6 +108,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   PlanInfo? _plan;
 
+  /// Null until the server says; a row only where it has WhatsApp.
+  WhatsAppStatus? _whatsapp;
+
   @override
   void initState() {
     super.initState();
@@ -143,6 +148,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
     } catch (_) {}
     await _loadPlan();
+    await _loadWhatsApp();
+  }
+
+  Future<void> _loadWhatsApp() async {
+    try {
+      final whatsapp = await _api.getWhatsApp();
+      if (mounted) setState(() => _whatsapp = whatsapp);
+    } catch (_) {}
   }
 
   /// The plan and this month's speech; a server that cannot say shows no row.
@@ -364,6 +377,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         : 'Off. Echo can note where you stay.',
                     onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
                   ),
+                ),
+              if (_whatsapp case final whatsapp? when whatsapp.available)
+                SettingsRow(
+                  key: const Key('profile-whatsapp'),
+                  icon: Icons.chat_outlined,
+                  title: 'WhatsApp',
+                  subtitle: whatsAppText(whatsapp),
+                  onTap: () async {
+                    await _push(WhatsAppScreen(api: _api));
+                    await _loadWhatsApp();
+                  },
                 ),
               if (widget.spokenAnswers ?? AppRuntime.maybeCoordinator?.spokenAnswers
                   case final spoken?)

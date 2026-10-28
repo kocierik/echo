@@ -5,6 +5,7 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/voice.dart';
+import 'package:echo_app/models/whatsapp.dart';
 import 'package:echo_app/screens/profile_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/app_controller.dart';
@@ -203,6 +204,22 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('spoken-answers-control')), findsOneWidget);
+  });
+
+  testWidgets('no WhatsApp row on a server without it', (tester) async {
+    await pumpSettings(tester);
+
+    expect(find.byKey(const Key('profile-whatsapp')), findsNothing);
+  });
+
+  testWidgets('WhatsApp says its state where the server has it', (tester) async {
+    api.whatsapp =
+        const WhatsAppStatus(available: true, state: 'linked', phone: '+393330000000');
+    await pumpSettings(tester);
+
+    final row = find.byKey(const Key('profile-whatsapp'));
+    expect(find.descendant(of: row, matching: find.text('WhatsApp')), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text('Linked: +393330000000')), findsOneWidget);
   });
 
   testWidgets('the account shows the email, with no name to add', (tester) async {
@@ -420,6 +437,11 @@ final class _FakeApiService extends ApiService {
 
   /// None: the server cannot say (an older one).
   PlanInfo? plan = PlanInfo.fromJson(planJson());
+
+  WhatsAppStatus whatsapp = const WhatsAppStatus(available: false, state: 'unlinked');
+
+  @override
+  Future<WhatsAppStatus> getWhatsApp() async => whatsapp;
 
   @override
   Future<PlanInfo> getPlan() async => plan ?? (throw Exception('no plan'));

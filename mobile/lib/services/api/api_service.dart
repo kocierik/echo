@@ -12,6 +12,7 @@ import 'routines_api.dart';
 import 'saved_api.dart';
 import 'voice_api.dart';
 import 'wearable_api.dart';
+import 'whatsapp_api.dart';
 
 export 'actions_api.dart';
 export 'api_client.dart' show ApiClient, JsonShape;
@@ -44,6 +45,7 @@ class ApiService extends ApiClient
         PlacesEndpoints,
         PlanEndpoints,
         WearableEndpoints,
+        WhatsAppEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({
