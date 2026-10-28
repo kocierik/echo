@@ -436,8 +436,6 @@ final class _AccountCard extends StatelessWidget {
                   children: [
                     Text(
                       email ?? 'Your account',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: textTheme.titleMedium,
                     ),
                     if (language != null) ...[

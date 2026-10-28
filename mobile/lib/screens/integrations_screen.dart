@@ -356,8 +356,6 @@ class _ToolkitRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     toolkit.description,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(fontSize: 12, color: palette.text2),
                   ),
                 ],

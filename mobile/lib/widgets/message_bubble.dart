@@ -468,8 +468,8 @@ final class _SourceTile extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           source.text,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
+                          maxLines: onTap == null ? null : 3,
+                          overflow: onTap == null ? null : TextOverflow.ellipsis,
                           style: textTheme.bodySmall,
                         ),
                       ],

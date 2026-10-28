@@ -7,6 +7,7 @@ import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatting.dart';
+import '../../widgets/expandable_text.dart';
 import '../../widgets/panel.dart';
 
 /// Profile → Routines: what Echo does on its own, and when. Routines are created by
@@ -227,10 +228,9 @@ final class _RoutineTile extends StatelessWidget {
                 Text(next, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
                 if (last != null) ...[
                   const SizedBox(height: 6),
-                  Text(
+                  ExpandableText(
                     last,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                    key: Key('routine-last-${routine.id}'),
                     style: textTheme.bodySmall?.copyWith(
                       color: routine.lastStatus == 'ok' ? palette.text : palette.red,
                     ),

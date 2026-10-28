@@ -293,8 +293,6 @@ final class _SoFarCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               moment.line,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: textTheme.bodyLarge,
             ),
           ],

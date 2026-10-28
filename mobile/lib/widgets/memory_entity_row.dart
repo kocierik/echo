@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/memory.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
+import 'expandable_text.dart';
 
 IconData entityIcon(String type) => switch (type) {
       'person' => Icons.person_outline_rounded,
@@ -88,10 +89,9 @@ final class MemoryEntityRow extends StatelessWidget {
                   children: [
                     Text(entity.name, style: textTheme.bodyMedium?.copyWith(height: 1.35)),
                     if (detail != null)
-                      Text(
+                      ExpandableText(
                         detail,
                         maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
                         style: textTheme.bodySmall,
                       ),
                     if (source != null) SourceQuote(text: source),
@@ -147,10 +147,9 @@ final class SourceQuote extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 2),
-      child: Text(
+      child: ExpandableText(
         '“${cleanTranscript(text)}”',
         maxLines: maxLines,
-        overflow: TextOverflow.ellipsis,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontSize: 13,
               fontStyle: FontStyle.italic,

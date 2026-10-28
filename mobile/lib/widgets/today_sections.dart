@@ -810,8 +810,6 @@ final class WorkingSection extends StatelessWidget {
                   Expanded(
                     child: Text(
                       workingLabel(item),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                       style: textTheme.bodyMedium,
                     ),
                   ),

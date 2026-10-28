@@ -10,6 +10,7 @@ import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
+import '../widgets/expandable_text.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
 import '../widgets/panel.dart';
@@ -687,10 +688,9 @@ final class _PhotoTile extends StatelessWidget {
         if (photo.answer != null)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(
+            child: ExpandableText(
               photo.answer!,
               maxLines: compact ? 2 : 4,
-              overflow: TextOverflow.ellipsis,
               style: textTheme.bodySmall,
             ),
           ),
