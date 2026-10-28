@@ -86,11 +86,15 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     unawaited(_loadUserLanguage());
   }
 
+  /// The phone's copy, else the account's (a phone that never opened Language).
   Future<void> _loadUserLanguage() async {
+    String? language;
     try {
-      final language = await widget.spokenLanguage();
-      if (mounted) setState(() => _userLanguage = language);
+      language = await widget.spokenLanguage();
+      final api = widget.api;
+      if (language == null && api is AccountApi) language = (await (api as AccountApi).me()).language;
     } catch (_) {}
+    if (mounted && language != null) setState(() => _userLanguage = language);
   }
 
   TranslateApi? get _translator {
@@ -657,7 +661,9 @@ final class _LineTile extends StatelessWidget {
             : 'Transcribing…';
     return Semantics(
       button: onTap != null,
-      label: '${formatTime(line.recordedAt)}, $speaker: $body',
+      label: '${formatTime(line.recordedAt)}, $speaker: '
+          '${languageTag == null ? '' : 'In $languageTag: '}$body'
+          '${translation == null ? '' : '. Translation: $translation'}',
       excludeSemantics: true,
       child: InkWell(
         key: Key('line-${line.segmentId}'),

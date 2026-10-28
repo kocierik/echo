@@ -1,14 +1,24 @@
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/screens/conversation_detail_screen.dart';
 import 'package:echo_app/services/api/memory_api.dart';
+import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/fake_memory_api.dart';
 
-final class _TranslatingApi extends FakeMemoryApi implements TranslateApi {
+final class _TranslatingApi extends FakeMemoryApi implements TranslateApi, AccountApi {
   _TranslatingApi({super.details});
+
+  @override
+  Future<AccountInfo> me() async => const AccountInfo(email: 'e@x.y', language: 'it');
+
+  @override
+  Future<AccountInfo> setLanguage(String language) => throw UnimplementedError();
+
+  @override
+  Future<AccountInfo> setOtherLanguages(List<String> languages) => throw UnimplementedError();
 
   int asked = 0;
   bool failing = false;
@@ -48,7 +58,7 @@ void main() {
         entities: const [],
       );
 
-  Future<void> pump(WidgetTester tester, FakeMemoryApi api) async {
+  Future<void> pump(WidgetTester tester, FakeMemoryApi api, {String? saved = 'it'}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 1000);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -58,7 +68,7 @@ void main() {
       home: ConversationDetailScreen(
         conversationId: 'c1',
         api: api,
-        spokenLanguage: () async => 'it',
+        spokenLanguage: () async => saved,
       ),
     ));
     await tester.pumpAndSettle();
@@ -97,6 +107,26 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Ci vediamo domani alle nove.'), findsOneWidget);
     expect(api.asked, 1);
+  });
+
+  testWidgets("without the phone's copy of your language, the account says it", (tester) async {
+    await pump(tester, _TranslatingApi(details: {'c1': detail()}), saved: null);
+
+    expect(find.text('Translate to Italiano'), findsOneWidget);
+  });
+
+  testWidgets('a screen reader hears the language and the translation', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await pump(tester, _TranslatingApi(details: {'c1': detail()}));
+
+    await tester.tap(find.byKey(const Key('transcript-translate')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.bySemanticsLabel(RegExp(r'In EN: See you tomorrow at nine\..*Translation: Ci vediamo')),
+      findsOneWidget,
+    );
+    semantics.dispose();
   });
 
   testWidgets('a conversation all in your language offers no translation', (tester) async {

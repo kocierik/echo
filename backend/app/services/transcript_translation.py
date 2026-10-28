@@ -8,6 +8,7 @@ line is translated once per language. Correcting a line drops its translations
 untranslated: the original is always there.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -30,8 +31,9 @@ LANGUAGE_NAMES = {
     "pt": "Portuguese",
 }
 
-# Lines per LLM call
+# Lines per LLM call, and calls at once: a long conversation fits the app's wait
 BATCH = 40
+AT_ONCE = 4
 
 _SPEAKER_TAG = re.compile(r"^\s*\[[^\]]{1,20}\]\s*")
 
@@ -78,11 +80,17 @@ async def translate_conversation(
         ).all()
     }
     missing = [row for row in rows if row.id not in kept]
-    for start in range(0, len(missing), BATCH):
-        batch = missing[start : start + BATCH]
-        translated = await _translate(
-            llm, [_SPEAKER_TAG.sub("", row.text).strip() for row in batch], target
-        )
+    batches = [missing[start : start + BATCH] for start in range(0, len(missing), BATCH)]
+    gate = asyncio.Semaphore(AT_ONCE)
+
+    async def translate(batch) -> list[str | None]:
+        async with gate:
+            return await _translate(
+                llm, [_SPEAKER_TAG.sub("", row.text).strip() for row in batch], target
+            )
+
+    answers = await asyncio.gather(*(translate(batch) for batch in batches))
+    for batch, translated in zip(batches, answers):
         for row, text in zip(batch, translated):
             if not text:
                 continue

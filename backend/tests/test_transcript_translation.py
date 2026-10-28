@@ -1,6 +1,7 @@
 """Translating a conversation's transcript: lines carry their language, and the lines in
 another language are translated into the user's, once each."""
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -108,6 +109,41 @@ async def test_a_corrected_line_is_translated_again(client, auth_headers, db_ses
 
     assert response.json()["lines"][str(lines[2].segment_id)] == "IT: Great, thanks."
     assert list(llm.asked[1].values()) == ["Great, thanks."]
+
+
+async def test_a_long_conversation_is_translated_in_batches_at_once(
+    client, auth_headers, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "stt_language", "it")
+    in_flight = 0
+    most = 0
+
+    class _Slow(_LLM):
+        async def complete(self, messages, temperature=0.3):
+            nonlocal in_flight, most
+            in_flight += 1
+            most = max(most, in_flight)
+            await asyncio.sleep(0.05)
+            in_flight -= 1
+            return await super().complete(messages, temperature)
+
+    slow = _Slow()
+    monkeypatch.setattr(conversations_router, "get_llm_query_service", lambda: slow)
+    conversation, lines = await make_conversation(
+        db_session, started_at=STARTED, texts=tuple(f"[Others] Line {i}." for i in range(90))
+    )
+    for line in lines:
+        line.language = "en"
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/translate", headers=auth_headers
+    )
+
+    assert len(response.json()["lines"]) == 90
+    assert len(slow.asked) == 3
+    # Not one after the other: a long conversation fits the app's wait
+    assert most > 1
 
 
 @pytest.mark.parametrize("reply", ["not json", json.dumps({"1": "IT: Solo la prima."})])
