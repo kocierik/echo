@@ -23,15 +23,22 @@ RoutineRun _run({
 
 void main() {
   late int asked;
+  late List<Uri> opened;
 
   Future<void> open(WidgetTester tester, RoutineRun run) async {
     asked = 0;
+    opened = [];
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       home: Scaffold(
         body: Builder(
           builder: (context) => TextButton(
-            onPressed: () => showRoutineRunSheet(context, run, onAskAbout: () async => asked++),
+            onPressed: () => showRoutineRunSheet(
+              context,
+              run,
+              onAskAbout: () async => asked++,
+              openLink: (uri) async => opened.add(uri),
+            ),
             child: const Text('open'),
           ),
         ),
@@ -46,11 +53,28 @@ void main() {
     await open(tester, _run(text: long));
 
     expect(long.length, greaterThan(2000));
-    expect(find.text(long), findsOneWidget);
-    expect(tester.widget<Text>(find.text(long)).maxLines, isNull);
+    // Markdown drops the trailing space
+    expect(find.text(long.trim()), findsOneWidget);
+    expect(tester.widget<Text>(find.text(long.trim())).maxLines, isNull);
     expect(find.text('dimmi se piove domani'), findsOneWidget);
     expect(find.textContaining('Tells you only when its condition holds'), findsOneWidget);
     expect(find.textContaining('07:00'), findsOneWidget);
+  });
+
+  testWidgets('a link in what it found opens; each found thing on its own line',
+      (tester) async {
+    await open(
+      tester,
+      _run(text: 'Nuove posizioni:\n• Job 1 — Milano https://x.io/1\n• Job 2 — Roma https://x.io/2'),
+    );
+
+    await tester.tapOnText(find.textRange.ofSubstring('https://x.io/2'));
+
+    expect(opened, [Uri.parse('https://x.io/2')]);
+    final shown = tester.widget<RichText>(find.byWidgetPredicate(
+      (widget) => widget is RichText && widget.text.toPlainText().contains('Job 2'),
+    ));
+    expect(shown.text.toPlainText(), contains('https://x.io/1\n• Job 2'));
   });
 
   testWidgets('its sources are listed', (tester) async {

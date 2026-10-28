@@ -246,6 +246,21 @@ async def test_only_if_that_holds_reports_its_text():
     assert _nudges(redis) == ["voice_update"]
 
 
+
+async def test_only_if_that_holds_with_no_text_says_so_not_the_raw_json():
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    redis = InMemoryRedis()
+    llm = _LLM(answer='{"report": true, "intro": "", "text": "", "items": []}')
+
+    await _run(llm, redis=redis)
+
+    [run] = await _runs(routine)
+    assert run.status == "reported"
+    assert "{" not in run.text
+    assert "dimmi se piove domani" in run.text
+    assert _nudges(redis) == ["voice_update"]
+
+
 def _jobs(*urls) -> str:
     return json.dumps(
         {
@@ -285,6 +300,28 @@ async def test_only_new_reports_only_items_not_seen_before():
     assert run.text == compose_text("Nuove posizioni:", [fresh])
     assert [item["key"] for item in run.items] == ["https://x.io/2"]
     assert _nudges(redis) == ["voice_update"]
+
+
+
+async def test_only_new_keeps_no_source_for_what_it_already_reported(monkeypatch):
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    await _seen_run(routine, "https://x.io/1")
+    pages = [
+        {"title": "Job 1", "url": "https://www.x.io/1/"},
+        {"title": "Job 2", "url": "https://x.io/2"},
+    ]
+
+    async def _agent(*args, **kwargs):
+        return SimpleNamespace(
+            answer=_jobs("https://x.io/1", "https://x.io/2"), web_sources=pages
+        )
+
+    monkeypatch.setattr(worker, "run_action_agent", _agent)
+
+    await _run(_LLM())
+
+    run = (await _runs(routine))[-1]
+    assert run.sources == [{"title": "Job 2", "url": "https://x.io/2"}]
 
 
 async def test_only_new_with_only_seen_items_is_nothing_and_not_nudged():

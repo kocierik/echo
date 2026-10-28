@@ -38,6 +38,7 @@ from app.services.routine_results import (
     compose_text,
     framed_request,
     fresh_items,
+    item_key,
     parse_result,
 )
 from app.services.routine_runs import delete_old_runs, record_run, seen_items, seen_keys
@@ -60,6 +61,12 @@ NOTIFIED = ("reported", "failed")
 FAILED = {
     "en": "This routine could not run. It will try again at its next time.",
     "it": "Non sono riuscito a eseguire questo incarico. Riproverò alla prossima ora.",
+}
+
+# An `only_if` whose condition holds but that said nothing: the request, never raw JSON
+HOLDS = {
+    "en": "What you asked me to watch for has happened: “{instruction}”",
+    "it": "Quello che mi hai chiesto di controllare si è verificato: «{instruction}»",
 }
 
 
@@ -152,10 +159,13 @@ async def _ask(db, llm, provider, routine: _Due) -> _Result:
         if not fresh:
             return _Result("nothing")
         kept = [{"key": i["key"], "title": i["title"], "url": i["url"]} for i in fresh]
-        return _Result("reported", compose_text(result.intro, fresh), sources, kept)
+        # No source for a page this routine already reported
+        cited = [s for s in sources if not s.get("url") or item_key(s) not in known]
+        return _Result("reported", compose_text(result.intro, fresh), cited, kept)
     if not result.report:
         return _Result("nothing")
-    return _Result("reported", result.text or result.intro or outcome.answer, sources)
+    said = result.text or result.intro or HOLDS[language].format(instruction=routine.instruction)
+    return _Result("reported", said, sources)
 
 
 async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) -> None:

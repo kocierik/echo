@@ -69,13 +69,14 @@ async def list_runs(
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """The user's runs, newest first: of one routine, from `since`, before `before`."""
+    """The user's runs, newest first: of one routine, from `since`, before `before`. A full
+    page also takes the runs at its last run's time (two routines missed at 07:00), since
+    the next page starts before that time."""
     query = (
         select(RoutineRun, Routine)
         .join(Routine, Routine.id == RoutineRun.routine_id)
         .where(RoutineRun.user_id == user_id)
-        .order_by(RoutineRun.ran_at.desc())
-        .limit(limit)
+        .order_by(RoutineRun.ran_at.desc(), RoutineRun.id.desc())
     )
     if routine_id is not None:
         query = query.where(RoutineRun.routine_id == routine_id)
@@ -83,9 +84,15 @@ async def list_runs(
         query = query.where(RoutineRun.ran_at >= _utc(since))
     if before is not None:
         query = query.where(RoutineRun.ran_at < _utc(before))
-    rows = (await db.execute(query)).all()
+    rows = (await db.execute(query.limit(limit))).all()
+    full = len(rows) == limit
+    if full:
+        last = rows[-1][0]
+        rows += (await db.execute(
+            query.where(RoutineRun.ran_at == last.ran_at, RoutineRun.id < last.id)
+        )).all()
     items = [_out(run, routine) for run, routine in rows]
-    return RunPage(items=items, next_before=items[-1].ran_at if len(items) == limit else None)
+    return RunPage(items=items, next_before=items[-1].ran_at if full else None)
 
 
 @router.post("/{run_id}/ask")

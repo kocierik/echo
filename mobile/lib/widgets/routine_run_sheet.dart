@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/routine.dart';
@@ -12,26 +13,37 @@ import '../utils/formatting.dart';
 String routineMissedLine(RoutineRun run) =>
     "Missed at ${formatTime(run.ranAt)}: Echo's server was off";
 
-/// A routine's run in full: the routine, when it ran, the whole answer, its sources and
-/// "Ask about this" (which closes the sheet first; none without [onAskAbout]).
+/// A routine's run in full: the routine, when it ran, the whole answer (its links open
+/// with [openLink], the browser by default), its sources and "Ask about this" (which
+/// closes the sheet first; none without [onAskAbout]).
 Future<void> showRoutineRunSheet(
   BuildContext context,
   RoutineRun run, {
   required Future<void> Function()? onAskAbout,
+  Future<void> Function(Uri)? openLink,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
-    builder: (context) => RoutineRunSheet(run: run, onAskAbout: onAskAbout),
+    builder: (context) =>
+        RoutineRunSheet(run: run, onAskAbout: onAskAbout, openLink: openLink),
   );
 }
 
+Future<void> _browse(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
+
 final class RoutineRunSheet extends StatelessWidget {
-  const RoutineRunSheet({required this.run, required this.onAskAbout, super.key});
+  const RoutineRunSheet({
+    required this.run,
+    required this.onAskAbout,
+    this.openLink,
+    super.key,
+  });
 
   final RoutineRun run;
   final Future<void> Function()? onAskAbout;
+  final Future<void> Function(Uri)? openLink;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +58,18 @@ final class RoutineRunSheet extends StatelessWidget {
         Text('Checked, nothing new', style: textTheme.bodyLarge?.copyWith(color: palette.text2)),
       'failed' =>
         Text(run.text ?? 'Could not run', style: textTheme.bodyLarge?.copyWith(color: palette.red)),
-      _ => Text(run.text ?? '', style: textTheme.bodyLarge),
+      // The answer as Ask shows it: markdown, links that open, one found thing a line
+      _ => MarkdownBody(
+          data: run.text ?? '',
+          softLineBreak: true,
+          onTapLink: (_, href, __) {
+            final uri = href == null ? null : Uri.tryParse(href);
+            if (uri != null && uri.hasScheme) unawaited((openLink ?? _browse)(uri));
+          },
+          styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+            p: textTheme.bodyLarge,
+          ),
+        ),
     };
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),

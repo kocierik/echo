@@ -95,6 +95,24 @@ async def test_runs_filter_by_routine_and_since_and_page_with_before(client, aut
     assert len(recent.json()["items"]) == 3  # 1 h and 2 h of rain, and the jobs run
 
 
+
+async def test_runs_at_the_same_time_are_never_split_across_pages(client, auth_headers):
+    # Two 07:00 routines both missed while the server was off
+    rain, jobs = await _routine(), await _routine(instruction="nuove posizioni")
+    missed = [await _run(r, ago=timedelta(days=2), status="skipped") for r in (rain, jobs)]
+    newer = await _run(rain)
+
+    first = (await client.get("/api/routine-runs?limit=2", headers=auth_headers)).json()
+    rest = await client.get(
+        "/api/routine-runs",
+        params={"limit": 2, "before": first["next_before"]},
+        headers=auth_headers,
+    )
+
+    seen = [r["id"] for r in first["items"]] + [r["id"] for r in rest.json()["items"]]
+    assert sorted(seen) == sorted(str(run.id) for run in [newer, *missed])
+
+
 async def test_a_limit_over_100_is_refused(client, auth_headers):
     response = await client.get("/api/routine-runs?limit=101", headers=auth_headers)
     assert response.status_code == 422

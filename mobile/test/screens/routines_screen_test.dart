@@ -154,7 +154,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.runRequests, [('r1', 1)]);
-    expect(tester.widget<Text>(find.text(long).last).maxLines, isNull);
+    // The sheet's text, without the trailing space markdown drops
+    expect(tester.widget<Text>(find.text(long.trim())).maxLines, isNull);
     await tester.ensureVisible(find.byKey(const Key('run-ask-about')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('run-ask-about')));
