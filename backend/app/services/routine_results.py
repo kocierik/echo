@@ -20,7 +20,8 @@ _CONTRACT = (
     "Reply with JSON only, no other text: "
     '{"report": true or false, "intro": "...", "text": "...", '
     '"items": [{"title": "...", "line": "...", "url": "..."}]}. '
-    "Write intro, text and items in the language of the request."
+    "Write intro, text and items in the language of the request above, not in English "
+    "unless it is in English."
 )
 
 _ONLY_IF = (

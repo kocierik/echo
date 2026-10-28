@@ -3,15 +3,23 @@
 A due routine is claimed and moved to its next run in one short transaction (FOR UPDATE
 SKIP LOCKED), so two workers never run it twice and a long run holds no lock. It then
 runs through the action agent as its user: memory, the connected apps' tools that need no
-confirmation, web search; no routine tools. The answer goes to the user's thread with
-Echo, and the phone is told to check it (a "voice_update" device command), which shows
-the notification. A run missed by more than two hours (the server was down) is skipped.
+confirmation, web search; no routine tools.
+
+Each run is recorded as a RoutineRun, never in the user's thread. An `always` routine
+reports its answer; `only_if` and `only_new` ask the agent for a JSON result
+(services/routine_results.py) and stay quiet ("nothing") when there is nothing to say or,
+for `only_new`, nothing this routine has not reported before. An answer that cannot be
+read is converted once by the model, else reported as it is: when in doubt, report.
+After a run that reports or fails the phone is told to check (a "voice_update" device
+command), which shows the notification; a quiet one tells it nothing. A run missed by more
+than two hours (the server was down) is recorded as skipped. Runs older than 90 days are
+deleted once a day.
 """
 
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -19,13 +27,21 @@ from sqlalchemy import select
 from app.actions.agent import NO_APPS, run_action_agent
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
-from app.actions.voice import get_or_create_voice_session
 from app.core.database import async_session
 from app.models.routine import Routine
 from app.services.device_commands import push_device_command
 from app.services.language import detect_language
+from app.services.llm_base import LLMMessage
 from app.services.llm_openai import get_llm_query_service
-from app.services.routines import describe_schedule, next_run
+from app.services.routine_results import (
+    CONVERT_PROMPT,
+    compose_text,
+    framed_request,
+    fresh_items,
+    parse_result,
+)
+from app.services.routine_runs import delete_old_runs, record_run, seen_items
+from app.services.routines import next_run
 from app.services.usage import owned_by
 from app.workers.lifecycle import sleep_or_shutdown
 
@@ -38,6 +54,8 @@ RUN_TIMEOUT_S = 60
 BATCH = 20
 # The phone checks for the answer while this nudge is valid
 NUDGE_TTL_S = 15 * 60
+# The runs the phone is told about; quiet and skipped ones are not
+NOTIFIED = ("reported", "failed")
 
 FAILED = {
     "en": "This routine could not run. It will try again at its next time.",
@@ -50,12 +68,21 @@ class _Due:
     id: uuid.UUID
     user_id: uuid.UUID
     instruction: str
-    # "Every day at 07:00", shown with the answer in the thread
-    schedule_text: str
+    # "always" | "only_if" | "only_new"
+    mode: str
+
+
+@dataclass
+class _Result:
+    status: str
+    text: str | None = None
+    sources: list[dict] = field(default_factory=list)
+    items: list[dict] = field(default_factory=list)
 
 
 async def _claim(session_factory, now: datetime) -> list[_Due]:
-    """The due routines to run now; each is moved to its next run (or marked skipped)."""
+    """The due routines to run now; each is moved to its next run (or recorded as
+    skipped, at the time it was missed)."""
     due: list[_Due] = []
     async with session_factory() as db:
         routines = await db.scalars(
@@ -66,16 +93,13 @@ async def _claim(session_factory, now: datetime) -> list[_Due]:
             .with_for_update(skip_locked=True)
         )
         for routine in routines:
-            late = now - routine.next_run_at > CATCH_UP
+            missed_at = routine.next_run_at
             routine.next_run_at = next_run(routine.schedule, routine.timezone, now)
-            if late:
-                routine.last_status = "skipped"
+            if now - missed_at > CATCH_UP:
+                await record_run(db, routine, status="skipped", ran_at=missed_at)
                 logger.info(f"[Routines] {routine.id} skipped: missed by more than {CATCH_UP}")
                 continue
-            due.append(_Due(
-                routine.id, routine.user_id, routine.instruction,
-                describe_schedule(routine.schedule),
-            ))
+            due.append(_Due(routine.id, routine.user_id, routine.instruction, routine.mode))
         await db.commit()
     return due
 
@@ -87,48 +111,58 @@ def _provider():
         return NO_APPS
 
 
+async def _ask(db, llm, provider, routine: _Due, seen: list[dict]) -> _Result:
+    """Run the agent on the routine's request and read what it found, by mode."""
+    outcome = await run_action_agent(
+        db, routine.user_id, framed_request(routine.instruction, routine.mode, seen), [],
+        session_id=None, source="routine", provider=provider, llm=llm,
+        routine_tools=False, allow_confirm=False,
+    )
+    sources = outcome.web_sources or []
+    if routine.mode == "always":
+        return _Result("reported", outcome.answer, sources)
+    result = parse_result(outcome.answer, routine.mode)
+    if result is None:
+        converted = await llm.complete([
+            LLMMessage(role="system", content=CONVERT_PROMPT),
+            LLMMessage(role="user", content=outcome.answer),
+        ])
+        result = parse_result(converted.content, routine.mode)
+    if result is None:
+        logger.info(f"[Routines] {routine.id}: no readable result, reported as it is")
+        return _Result("reported", outcome.answer, sources)
+    if routine.mode == "only_new":
+        fresh = fresh_items(result.items, {item.get("key") for item in seen})
+        if not fresh:
+            return _Result("nothing")
+        kept = [{"key": i["key"], "title": i["title"], "url": i["url"]} for i in fresh]
+        return _Result("reported", compose_text(result.intro, fresh), sources, kept)
+    if not result.report:
+        return _Result("nothing")
+    return _Result("reported", result.text or result.intro or outcome.answer, sources)
+
+
 async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) -> None:
-    status, answer = "ok", ""
     with owned_by(routine.user_id):
         async with session_factory() as db:
-            asked_at = datetime.now(timezone.utc).isoformat()
+            seen = await seen_items(db, routine.id) if routine.mode == "only_new" else []
             try:
-                outcome = await asyncio.wait_for(
-                    run_action_agent(
-                        db, routine.user_id, routine.instruction, [],
-                        session_id=None, source="routine", provider=provider, llm=llm,
-                        routine_tools=False, allow_confirm=False,
-                    ),
-                    RUN_TIMEOUT_S,
-                )
-                answer, extra = outcome.answer, (
-                    {"citations": outcome.web_sources} if outcome.web_sources else {}
+                # The conversion call, when there is one, is inside the same budget
+                result = await asyncio.wait_for(
+                    _ask(db, llm, provider, routine, seen), RUN_TIMEOUT_S
                 )
             except Exception:
                 logger.warning(f"[Routines] {routine.id} failed", exc_info=True)
                 await db.rollback()
-                status = "failed"
-                answer, extra = FAILED[detect_language(routine.instruction)], {}
-            thread = await get_or_create_voice_session(db, routine.user_id)
-            answered_at = datetime.now(timezone.utc)
-            tag = {"routine_id": str(routine.id), "routine_schedule": routine.schedule_text}
-            # Reassign (not mutate) so SQLAlchemy sees the JSONB change
-            thread.messages = [
-                *(thread.messages or []),
-                {"role": "user", "content": routine.instruction, "timestamp": asked_at, **tag},
-                {
-                    "role": "assistant", "content": answer,
-                    "timestamp": answered_at.isoformat(), **tag, **extra,
-                },
-            ]
-            thread.updated_at = answered_at
+                result = _Result("failed", FAILED[detect_language(routine.instruction)])
             row = await db.get(Routine, routine.id)
             if row is not None:
-                row.last_run_at = answered_at
-                row.last_status = status
-                row.last_answer = answer
+                await record_run(
+                    db, row, status=result.status, ran_at=datetime.now(timezone.utc),
+                    text=result.text, sources=result.sources, items=result.items,
+                )
             await db.commit()
-    if redis_client is not None:
+    if redis_client is not None and result.status in NOTIFIED:
         try:
             await push_device_command(
                 redis_client, routine.user_id, {"type": "voice_update"}, NUDGE_TTL_S
@@ -157,13 +191,25 @@ async def run_due_routines(
     return len(due)
 
 
+async def _delete_old_runs(now: datetime, session_factory=None) -> None:
+    async with (session_factory or async_session)() as db:
+        deleted = await delete_old_runs(db, now)
+    if deleted:
+        logger.info(f"[Routines] Deleted {deleted} runs older than 90 days")
+
+
 async def run_routines_loop(redis_client, shutdown_event: asyncio.Event | None = None):
     logger.info("[Routines] Loop started")
+    cleaned_on = None
     while not (shutdown_event and shutdown_event.is_set()):
+        now = datetime.now(timezone.utc)
         try:
-            ran = await run_due_routines(datetime.now(timezone.utc), redis_client=redis_client)
+            ran = await run_due_routines(now, redis_client=redis_client)
             if ran:
                 logger.info(f"[Routines] Ran {ran}")
+            if cleaned_on != now.date():
+                await _delete_old_runs(now)
+                cleaned_on = now.date()
         except Exception:
             logger.exception("[Routines] Loop iteration failed")
         if await sleep_or_shutdown(LOOP_INTERVAL_S, shutdown_event):

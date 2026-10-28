@@ -1,19 +1,23 @@
-"""Running routines: each due one runs once, as its user, with no confirm-tier tool; the
-answer lands in the user's thread with Echo and the phone is nudged to notify it."""
+"""Running routines: each due one runs once, as its user, with no confirm-tier tool; each
+run is recorded (never in the thread), and the phone is nudged only when a run has
+something to say or failed."""
 
 import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from sqlalchemy import select
 
 from app.actions.agent import NO_APPS
 from app.models.chat_session import ChatSession
 from app.models.routine import Routine
+from app.models.routine_run import RoutineRun
 from app.services import usage
 from app.services.device_commands import DEVICE_COMMANDS_KEY
 from app.services.llm_base import LLMResponse, LLMToolCall
+from app.services.routine_results import compose_text, item_key
 from app.workers import routines as worker
 from tests.conftest import TEST_USER_ID, test_session
 from tests.fakes.action_provider import FakeActionProvider
@@ -24,10 +28,15 @@ NOW = datetime(2026, 10, 22, 5, 0, tzinfo=timezone.utc)  # 07:00 in Rome
 
 
 class _LLM(MockLLMService):
-    def __init__(self, answer="Oggi a Milano sole, 19 °C.", responses=None, delay=0.0):
+    def __init__(
+        self, answer="Oggi a Milano sole, 19 °C.", responses=None, delay=0.0, conversions=None
+    ):
         super().__init__()
         self.answer = answer
         self.responses = list(responses or [])
+        # What the one conversion call (llm.complete) answers, in order
+        self.conversions = list(conversions or [])
+        self.complete_log: list = []
         self.tools_log: list[list[dict]] = []
         self.delay = delay
         self.owners: list = []
@@ -42,6 +51,11 @@ class _LLM(MockLLMService):
             return self.responses.pop(0)
         return LLMResponse(content=self.answer, model="mock")
 
+    async def complete(self, messages, temperature=0.3):
+        self.complete_log.append(messages)
+        content = self.conversions.pop(0) if self.conversions else ""
+        return LLMResponse(content=content, model="mock")
+
 
 async def _routine(**values) -> Routine:
     routine = Routine(
@@ -53,6 +67,7 @@ async def _routine(**values) -> Routine:
         active=values.get("active", True),
         next_run_at=values.get("next_run_at", NOW),
         source="voice",
+        mode=values.get("mode", "always"),
     )
     async with test_session() as db:
         db.add(routine)
@@ -70,6 +85,22 @@ async def _run(llm, redis=None, provider=NO_APPS, now=NOW) -> int:
 async def _reload(routine) -> Routine:
     async with test_session() as db:
         return await db.get(Routine, routine.id)
+
+
+async def _runs(routine) -> list[RoutineRun]:
+    async with test_session() as db:
+        return list(
+            await db.scalars(
+                select(RoutineRun)
+                .where(RoutineRun.routine_id == routine.id)
+                .order_by(RoutineRun.ran_at)
+            )
+        )
+
+
+def _nudges(redis) -> list[str]:
+    queued = redis.lists.get(DEVICE_COMMANDS_KEY.format(user_id=TEST_USER_ID), [])
+    return [json.loads(item)["type"] for item in queued]
 
 
 async def _thread():
@@ -90,7 +121,7 @@ async def test_a_due_routine_runs_once_and_is_rescheduled():
     assert await _run(llm) == 0
 
     done = await _reload(routine)
-    assert done.last_status == "ok" and done.last_answer == "Oggi a Milano sole, 19 °C."
+    assert done.last_status == "reported" and done.last_answer == "Oggi a Milano sole, 19 °C."
     assert done.last_run_at is not None
     assert done.next_run_at == datetime(2026, 10, 23, 5, 0, tzinfo=timezone.utc)
     assert len(llm.call_log) == 1
@@ -125,29 +156,182 @@ async def test_a_routine_more_than_two_hours_late_is_skipped():
     assert skipped.next_run_at > NOW
 
 
+async def test_a_late_routine_records_a_skipped_run():
+    routine = await _routine(next_run_at=NOW - timedelta(hours=3))
+    redis = InMemoryRedis()
+
+    await _run(_LLM(), redis=redis)
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text, run.ran_at) == ("skipped", None, NOW - timedelta(hours=3))
+    assert _nudges(redis) == []
+
+
 async def test_a_late_run_within_two_hours_still_runs():
     routine = await _routine(next_run_at=NOW - timedelta(minutes=90))
 
     await _run(_LLM())
 
-    assert (await _reload(routine)).last_status == "ok"
+    assert (await _reload(routine)).last_status == "reported"
 
 
-async def test_the_answer_lands_in_the_thread_and_nudges_the_phone():
+async def test_an_always_routine_reports_its_answer_as_a_run_not_in_the_thread():
     routine = await _routine()
     redis = InMemoryRedis()
 
     await _run(_LLM(), redis=redis)
 
+    [run] = await _runs(routine)
+    assert (run.status, run.text, run.user_id) == (
+        "reported",
+        "Oggi a Milano sole, 19 °C.",
+        TEST_USER_ID,
+    )
+    assert run.sources == [] and run.items == []
     thread = await _thread()
-    asked, answered = thread.messages[-2:]
-    assert asked["role"] == "user" and asked["content"] == "dimmi che tempo fa a Milano"
-    assert asked["routine_id"] == str(routine.id)
-    assert answered["role"] == "assistant" and answered["content"].startswith("Oggi")
-    assert answered["routine_id"] == str(routine.id)
-    assert answered["routine_schedule"] == "Every day at 07:00"
-    queued = redis.lists[DEVICE_COMMANDS_KEY.format(user_id=TEST_USER_ID)]
-    assert [json.loads(item)["type"] for item in queued] == ["voice_update"]
+    assert thread is None or not any(m.get("routine_id") for m in thread.messages or [])
+    assert (await _reload(routine)).last_status == "reported"
+    assert _nudges(redis) == ["voice_update"]
+
+
+async def test_the_agent_gets_an_always_instruction_unchanged():
+    await _routine()
+    llm = _LLM()
+
+    await _run(llm)
+
+    assert llm.call_log[0][-1].content == "dimmi che tempo fa a Milano"
+
+
+async def test_web_sources_are_kept_with_the_run(monkeypatch):
+    routine = await _routine()
+    pages = [{"title": "Meteo", "url": "https://meteo.it"}]
+
+    async def _agent(*args, **kwargs):
+        return SimpleNamespace(answer="Sole.", web_sources=pages)
+
+    monkeypatch.setattr(worker, "run_action_agent", _agent)
+
+    await _run(_LLM())
+
+    [run] = await _runs(routine)
+    assert (run.text, run.sources) == ("Sole.", pages)
+
+
+async def test_only_if_that_does_not_hold_is_nothing_and_not_nudged():
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    redis = InMemoryRedis()
+    llm = _LLM(answer='{"report": false, "intro": "", "text": "", "items": []}')
+
+    await _run(llm, redis=redis)
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text) == ("nothing", None)
+    assert _nudges(redis) == []
+    done = await _reload(routine)
+    assert done.last_status == "nothing" and done.last_run_at is not None
+    assert '"report"' in llm.call_log[0][-1].content
+
+
+async def test_only_if_that_holds_reports_its_text():
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    redis = InMemoryRedis()
+    llm = _LLM(answer='{"report": true, "intro": "", "text": "Domani piove dalle 15"}')
+
+    await _run(llm, redis=redis)
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text) == ("reported", "Domani piove dalle 15")
+    assert (await _reload(routine)).last_answer == "Domani piove dalle 15"
+    assert _nudges(redis) == ["voice_update"]
+
+
+def _jobs(*urls) -> str:
+    return json.dumps(
+        {
+            "report": True,
+            "intro": "Nuove posizioni:",
+            "text": "",
+            "items": [{"title": f"Job {u[-1]}", "line": "Milano", "url": u} for u in urls],
+        }
+    )
+
+
+async def _seen_run(routine, url: str) -> None:
+    async with test_session() as db:
+        db.add(
+            RoutineRun(
+                routine_id=routine.id,
+                user_id=TEST_USER_ID,
+                ran_at=NOW - timedelta(days=1),
+                status="reported",
+                text="old",
+                items=[{"key": item_key({"url": url}), "title": "Job 1", "url": url}],
+            )
+        )
+        await db.commit()
+
+
+async def test_only_new_reports_only_items_not_seen_before():
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    await _seen_run(routine, "https://x.io/1")
+    redis = InMemoryRedis()
+
+    await _run(_LLM(answer=_jobs("http://x.io/1/?utm=a", "https://x.io/2")), redis=redis)
+
+    run = (await _runs(routine))[-1]
+    fresh = {"title": "Job 2", "line": "Milano", "url": "https://x.io/2"}
+    assert run.status == "reported"
+    assert run.text == compose_text("Nuove posizioni:", [fresh])
+    assert [item["key"] for item in run.items] == ["https://x.io/2"]
+    assert _nudges(redis) == ["voice_update"]
+
+
+async def test_only_new_with_only_seen_items_is_nothing_and_not_nudged():
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    await _seen_run(routine, "https://x.io/1")
+    redis = InMemoryRedis()
+
+    await _run(_LLM(answer=_jobs("https://x.io/1")), redis=redis)
+
+    run = (await _runs(routine))[-1]
+    assert (run.status, run.text, run.items) == ("nothing", None, [])
+    assert _nudges(redis) == []
+
+
+async def test_only_new_tells_the_agent_what_it_already_reported():
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    await _seen_run(routine, "https://x.io/1")
+    llm = _LLM(answer=_jobs())
+
+    await _run(llm)
+
+    request = llm.call_log[0][-1].content
+    assert request.startswith("nuove posizioni backend") and "Job 1" in request
+
+
+async def test_an_unreadable_answer_is_converted_once_then_reported_raw():
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    llm = _LLM(answer="Piove domani", conversions=["Non so"])
+
+    await _run(llm)
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text) == ("reported", "Piove domani")
+    assert len(llm.complete_log) == 1
+    assert llm.complete_log[0][-1].content == "Piove domani"
+
+
+async def test_a_converted_answer_is_used():
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    redis = InMemoryRedis()
+    llm = _LLM(answer="Domani niente pioggia", conversions=['{"report": false}'])
+
+    await _run(llm, redis=redis)
+
+    [run] = await _runs(routine)
+    assert run.status == "nothing"
+    assert _nudges(redis) == []
 
 
 async def test_no_confirm_or_routine_tools_in_a_routine():
@@ -193,8 +377,21 @@ async def test_a_failing_run_is_reported_and_rescheduled():
     failed = await _reload(routine)
     assert failed.last_status == "failed"
     assert failed.next_run_at > NOW
-    answer = (await _thread()).messages[-1]
-    assert answer["role"] == "assistant" and "non" in answer["content"].lower()
+
+
+async def test_a_failed_run_is_recorded_and_nudged():
+    class _Broken(_LLM):
+        async def complete_with_tools(self, messages, tools, temperature=0.2):
+            raise RuntimeError("model down")
+
+    routine = await _routine()
+    redis = InMemoryRedis()
+
+    await _run(_Broken(), redis=redis)
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text) == ("failed", worker.FAILED["it"])
+    assert _nudges(redis) == ["voice_update"]
 
 
 async def test_usage_is_owned_by_the_routines_user():
