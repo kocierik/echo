@@ -16,16 +16,19 @@ void main() {
   late _FakeChatApi api;
   late _FakeVoiceInput voice;
   late ChatController controller;
+  late List<Duration> waits;
 
   setUp(() {
     api = _FakeChatApi();
     voice = _FakeVoiceInput();
+    waits = [];
     var requestIds = 0;
     controller = ChatController(
       api: api,
       voiceInput: voice,
       clock: () => DateTime.parse('2026-10-02T12:00:00Z'),
       requestIdFactory: () => 'req-${++requestIds}',
+      wait: (pause) async => waits.add(pause),
     );
   });
 
@@ -487,24 +490,54 @@ void main() {
     expect(controller.state.messages.last.text, 'Answer 3');
   });
 
-  test('409 "Still working on it" shows a friendly message and no retry runs',
-      () async {
-    api.queryHandler = (_, __) => Future.error(const ApiException(
-          statusCode: 409,
-          code: 'conflict',
-          message: 'Still working on it',
-          retryable: false,
-        ));
+  test('a timed-out request waits for the answer still being worked on', () async {
+    // The phone gave up while the server went on: the same request id gets 409
+    // until the answer is stored, then the answer itself
+    var attempts = 0;
+    api.queryHandler = (_, __) async {
+      attempts++;
+      if (attempts == 1) throw _timeout;
+      if (attempts < 4) throw _stillWorking;
+      return _response(answer: 'Sent to Ann');
+    };
 
     await controller.send('Email Ann');
 
-    expect(api.queries, ['Email Ann']);
+    expect(api.queries, ['Email Ann', 'Email Ann', 'Email Ann', 'Email Ann']);
+    expect(api.queryRequestIds.toSet(), {'req-1'});
+    expect(waits, everyElement(ChatController.stillWorkingPause));
+    expect(controller.state.error, isNull);
+    expect(controller.state.messages.first.failed, isFalse);
+    expect(controller.state.messages.last.text, 'Sent to Ann');
+    expect(controller.state.sending, isFalse);
+  });
+
+  test('409 "Still working on it" for too long shows a friendly message', () async {
+    api.queryHandler = (_, __) => Future.error(_stillWorking);
+
+    await controller.send('Email Ann');
+
+    expect(api.queries, hasLength(ChatController.stillWorkingRetries + 1));
     expect(
       controller.state.error,
       'Echo is still working on your last request.',
     );
     expect(controller.state.messages.single.failed, isTrue);
     expect(controller.state.sending, isFalse);
+  });
+
+  test('waiting stops when another chat is opened', () async {
+    api.details['history'] = _detail(id: 'history', title: 'History', messages: const []);
+    api.queryHandler = (_, __) async {
+      if (api.queries.length == 2) await controller.loadSession('history');
+      throw _stillWorking;
+    };
+
+    await controller.send('Email Ann');
+
+    expect(api.queries, hasLength(2));
+    expect(controller.state.sessionId, 'history');
+    expect(controller.state.error, isNull);
   });
 
   test('session switch discards a stale send response', () async {
@@ -677,6 +710,20 @@ void main() {
     controller = ChatController(api: api, voiceInput: voice);
   });
 }
+
+const _stillWorking = ApiException(
+  statusCode: 409,
+  code: 'conflict',
+  message: 'Still working on it',
+  retryable: false,
+);
+
+const _timeout = ApiException(
+  statusCode: null,
+  code: 'timeout',
+  message: 'The request timed out.',
+  retryable: true,
+);
 
 QueryResponse _response({
   required String answer,

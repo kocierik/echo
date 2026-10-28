@@ -1,5 +1,6 @@
 """POST /api/query/stream: a memory answer arrives in pieces, then the full response."""
 
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -33,9 +34,21 @@ class _FailingLLM(MockLLMService):
         return LLMResponse(content="Recovered answer.", model="mock")
 
 
+class _SlowLLM(_StreamingLLM):
+    """Thinks for a while before the first piece (an agent, a web search)."""
+
+    async def stream(self, messages, temperature=0.3):
+        await asyncio.sleep(0.2)
+        for piece in PIECES:
+            yield piece
+
+
 def _events(body: str) -> list[tuple[str, dict]]:
+    """The events, without the comments that keep the connection alive."""
     events = []
     for block in body.strip().split("\n\n"):
+        if block.startswith(":"):
+            continue
         lines = dict(line.split(": ", 1) for line in block.splitlines())
         events.append((lines["event"], json.loads(lines["data"])))
     return events
@@ -116,6 +129,28 @@ async def test_without_memory_the_model_still_answers_in_pieces(client, auth_hea
     assert [kind for kind, _ in events] == ["token", "token", "token", "done"]
     assert events[-1][1]["answer"] == "".join(PIECES)
     assert events[-1][1]["sources"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_slow_answer_keeps_the_connection_alive(client, auth_headers):
+    # The phone gives up after a stretch with nothing on the wire, while the server
+    # goes on: its retry then got 409 "Still working on it"
+    with (
+        _patched(_SlowLLM)[0],
+        _patched(_SlowLLM)[1],
+        patch("app.routers.query.HEARTBEAT_SECONDS", 0.05),
+    ):
+        response = await client.post(
+            "/api/query/stream", headers=auth_headers, json={"question": "Che tempo fa?"}
+        )
+
+    blocks = response.text.strip().split("\n\n")
+    # Something at once, then something while the answer is still being worked on
+    assert blocks[0].startswith(":")
+    assert sum(block.startswith(":") for block in blocks) >= 3
+    events = _events(response.text)
+    assert [kind for kind, _ in events] == ["token", "token", "token", "done"]
+    assert events[-1][1]["answer"] == "".join(PIECES)
 
 
 @pytest.mark.asyncio

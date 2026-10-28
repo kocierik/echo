@@ -1,7 +1,6 @@
 """Questions about Echo itself, general ones and live ones: the memory prompt knows what
 Echo is, and an empty memory still asks the model instead of a fixed text."""
 
-import json
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +11,7 @@ from app.services.memory_answers import _NO_RESULTS, rag_system_prompt
 from app.workers import voice_requests as vr
 from tests.conftest import TEST_USER_ID
 from tests.mocks import MockEmbeddingService, MockLLMService
+from tests.test_query_stream import _events
 
 
 class _BrokenLLM(MockLLMService):
@@ -28,14 +28,6 @@ class _StreamingLLM(MockLLMService):
         self.call_log.append(messages)
         for piece in ["Ricordo ", "le tue conversazioni."]:
             yield piece
-
-
-def _events(body: str) -> list[tuple[str, dict]]:
-    events = []
-    for block in body.strip().split("\n\n"):
-        lines = dict(line.split(": ", 1) for line in block.splitlines())
-        events.append((lines["event"], json.loads(lines["data"])))
-    return events
 
 
 def test_the_memory_prompt_knows_what_echo_is():

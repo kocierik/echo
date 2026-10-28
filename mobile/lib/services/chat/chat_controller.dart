@@ -114,14 +114,24 @@ final class ChatController extends ChangeNotifier {
     String Function()? requestIdFactory,
     PhotoTaker? photoTaker,
     Future<String?> Function()? spokenLanguage,
+    Future<void> Function(Duration pause)? wait,
   })  : _api = api,
         _spokenLanguage = spokenLanguage,
         _photoTaker = photoTaker,
         _voiceInput = voiceInput,
         _clock = clock ?? DateTime.now,
-        _newRequestId = requestIdFactory ?? newRequestId;
+        _newRequestId = requestIdFactory ?? newRequestId,
+        _wait = wait ?? Future<void>.delayed;
+
+  /// Between two asks for an answer the server is still working on.
+  static const stillWorkingPause = Duration(seconds: 3);
+
+  /// How many times to ask again (about three minutes) before saying Echo is still
+  /// working; the server keeps the answer for 10 minutes for a later retry.
+  static const stillWorkingRetries = 60;
 
   final ChatApi _api;
+  final Future<void> Function(Duration pause) _wait;
   final PhotoTaker? _photoTaker;
 
   /// The language the user speaks, for dictation (SpokenLanguageStore.current).
@@ -199,16 +209,8 @@ final class ChatController extends ChangeNotifier {
   Future<void> _query(String question, {required int userIndex}) async {
     final generation = _generation;
     try {
-      final response = await _api.query(
-        question,
-        sessionId: _state.sessionId,
-        clientRequestId: _state.messages[userIndex].clientRequestId,
-        onToken: (piece) {
-          if (!_isCurrent(generation)) return;
-          _emit(_state.copyWith(streamingText: (_state.streamingText ?? '') + piece));
-        },
-      );
-      if (!_isCurrent(generation)) return;
+      final response = await _askUntilAnswered(question, userIndex, generation);
+      if (response == null || !_isCurrent(generation)) return;
       final assistantIndex = _state.messages
               .where((message) => !message.isUser && message.index != null)
               .length +
@@ -238,19 +240,54 @@ final class ChatController extends ChangeNotifier {
       if (userIndex < messages.length) {
         messages[userIndex] = messages[userIndex].copyWith(failed: true);
       }
-      final stillWorking = error is ApiException &&
-          error.code == 'conflict' &&
-          error.message == stillWorkingDetail;
       _emit(_state.copyWith(
         messages: messages,
         sending: false,
         streamingText: null,
-        error: stillWorking
+        error: _isStillWorking(error)
             ? stillWorkingMessage
             : userMessage(error, 'Could not send your question.'),
       ));
     }
   }
+
+  /// The answer, asking again with the same request id while the server is still
+  /// working on it: after a timeout the server goes on, and the retry gets 409 until
+  /// the answer is stored, then the answer itself. Null once another chat is opened.
+  Future<QueryResponse?> _askUntilAnswered(
+    String question,
+    int userIndex,
+    int generation,
+  ) async {
+    for (var retries = 0;; retries++) {
+      try {
+        return await _api.query(
+          question,
+          sessionId: _state.sessionId,
+          clientRequestId: _state.messages[userIndex].clientRequestId,
+          onToken: (piece) {
+            if (!_isCurrent(generation)) return;
+            _emit(_state.copyWith(streamingText: (_state.streamingText ?? '') + piece));
+          },
+        );
+      } on ApiException catch (error) {
+        final timedOut = error.code == 'timeout';
+        if (!(timedOut || _isStillWorking(error)) || retries >= stillWorkingRetries) {
+          rethrow;
+        }
+        if (!_isCurrent(generation)) return null;
+        // A replay comes whole: what was written so far goes
+        _emit(_state.copyWith(streamingText: null));
+        await _wait(stillWorkingPause);
+        if (!_isCurrent(generation)) return null;
+      }
+    }
+  }
+
+  static bool _isStillWorking(Object error) =>
+      error is ApiException &&
+      error.code == 'conflict' &&
+      error.message == stillWorkingDetail;
 
   void newChat() {
     _generation++;

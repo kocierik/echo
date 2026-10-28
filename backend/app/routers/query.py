@@ -52,6 +52,8 @@ router = APIRouter(prefix="/query", tags=["query"])
 # A client_request_id is answered once: the marker holds "processing", then the response.
 REQUEST_MARKER_TTL_SECONDS = 10 * 60
 _PROCESSING = "processing"
+# A comment on a quiet stream this often: well under the phone's 90 s stall timeout
+HEARTBEAT_SECONDS = 10.0
 # Stored for a request whose action agent failed: tools may have run, so a retry of the
 # same client_request_id gets this answer instead of running them again.
 _UNFINISHED = {
@@ -201,7 +203,8 @@ async def query_memory_stream(
 
     Events: `token` ({"text"}) for each piece of a memory answer, then `done` with the
     full QueryResponse, or `error` ({"status", "detail"}). Answers from the action agent
-    and fixed notices arrive whole in `done`. Retries with the same `client_request_id`
+    and fixed notices arrive whole in `done`; until then, comment lines (`: …`) every
+    HEARTBEAT_SECONDS keep the connection alive. Retries with the same `client_request_id`
     behave as in `POST /api/query` (409 before the stream starts). If the client goes
     away, the answer is still completed and stored for its retry.
     """
@@ -238,8 +241,16 @@ async def query_memory_stream(
         task = asyncio.create_task(answer())
         _RUNNING.add(task)
         task.add_done_callback(_RUNNING.discard)
+        # Comments the client skips: bytes at once (a proxy may hold the headers until
+        # the body starts), then while the agent or a web search runs with nothing to
+        # send, so the phone does not take the silence for a dead connection
+        yield ": working\n\n"
         while True:
-            kind, data = await queue.get()
+            try:
+                kind, data = await asyncio.wait_for(queue.get(), HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                yield ": keep-alive\n\n"
+                continue
             yield _sse(kind, data)
             if kind != "token":
                 return
