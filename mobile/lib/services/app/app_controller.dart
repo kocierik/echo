@@ -67,6 +67,10 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// The routine Ask → Routines shows (null: all of them).
   final ValueNotifier<String?> routinesFilter = ValueNotifier(null);
 
+  /// True with a session request that is for asking (the session opens with the cursor
+  /// in the composer); Ask sets it back to false.
+  final ValueNotifier<bool> composerFocusRequest = ValueNotifier(false);
+
   /// Counts the times new routine runs arrived; Today and Ask → Routines reload them.
   final ValueNotifier<int> routineRunsChanged = ValueNotifier(0);
 
@@ -167,6 +171,8 @@ final class AppController extends ValueNotifier<AppViewState> {
   void requestOpenThread(String sessionId) {
     if (_disposed) return;
     askView.value = AskView.chat;
+    // Set first: the session request is what Ask acts on
+    composerFocusRequest.value = true;
     requestOpenSession(sessionId);
   }
 
@@ -271,6 +277,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     threadUpdates.dispose();
     askView.dispose();
     routinesFilter.dispose();
+    composerFocusRequest.dispose();
     routineRunsChanged.dispose();
     super.dispose();
   }

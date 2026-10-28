@@ -22,6 +22,7 @@ final class RoutineRunsView extends StatefulWidget {
     required this.onAskAbout,
     this.routineId,
     this.changes,
+    this.openLink,
     super.key,
   });
 
@@ -34,6 +35,9 @@ final class RoutineRunsView extends StatefulWidget {
 
   /// Counts up when new runs arrive: the list reloads.
   final ValueListenable<int>? changes;
+
+  /// Opens a link in a result; the browser by default.
+  final Future<void> Function(Uri)? openLink;
 
   @override
   State<RoutineRunsView> createState() => _RoutineRunsViewState();
@@ -140,7 +144,11 @@ final class _RoutineRunsViewState extends State<RoutineRunsView> {
         day = runDay;
         rows.add(_DayLabel(dayLabel(run.ranAt, now)));
       }
-      rows.add(_RunEntry(run: run, onAskAbout: () => widget.onAskAbout(run)));
+      rows.add(_RunEntry(
+        run: run,
+        onAskAbout: () => widget.onAskAbout(run),
+        openLink: widget.openLink,
+      ));
     }
     return ListView(
       key: const Key('routine-runs'),
@@ -235,10 +243,11 @@ final class _DayLabel extends StatelessWidget {
 }
 
 final class _RunEntry extends StatelessWidget {
-  const _RunEntry({required this.run, required this.onAskAbout});
+  const _RunEntry({required this.run, required this.onAskAbout, this.openLink});
 
   final RoutineRun run;
   final Future<void> Function() onAskAbout;
+  final Future<void> Function(Uri)? openLink;
 
   @override
   Widget build(BuildContext context) {
@@ -270,10 +279,13 @@ final class _RunEntry extends StatelessWidget {
             const SizedBox(height: 2),
             Text('$time · ${routineModeText(run.mode)}', style: muted),
             const SizedBox(height: 10),
-            Text(
-              run.text ?? (failed ? 'Could not run' : ''),
-              style: textTheme.bodyMedium?.copyWith(color: failed ? palette.red : null),
-            ),
+            if (failed)
+              Text(
+                run.text ?? 'Could not run',
+                style: textTheme.bodyMedium?.copyWith(color: palette.red),
+              )
+            else
+              RoutineRunText(run.text ?? '', style: textTheme.bodyMedium, openLink: openLink),
             if (run.sources.isNotEmpty) ...[
               const SizedBox(height: 6),
               for (final source in run.sources) RoutineSourceRow(source),

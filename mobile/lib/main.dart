@@ -508,6 +508,7 @@ class MainShell extends StatelessWidget {
                       headerAction: pill,
                       dictation: appController.askDictation,
                       openSessionRequest: appController.pendingChatSessionId,
+                      composerFocusRequest: appController.composerFocusRequest,
                       threadUpdates: appController.threadUpdates,
                       askView: appController.askView,
                       routinesFilter: appController.routinesFilter,

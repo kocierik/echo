@@ -129,6 +129,16 @@ void main() {
     expect(controller.value.selectedTab, AppController.askTab);
     expect(controller.askView.value, AskView.chat);
     expect(controller.pendingChatSessionId.value, 'thread-1');
+    // To ask about it: the cursor goes in the composer
+    expect(controller.composerFocusRequest.value, isTrue);
+  });
+
+  test('opening any other session does not ask for the composer', () async {
+    controller = await createController();
+
+    controller.requestOpenSession('s-1');
+
+    expect(controller.composerFocusRequest.value, isFalse);
   });
 
   test('routine runs changes count up, for Today to reload', () async {

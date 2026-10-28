@@ -85,6 +85,7 @@ void main() {
 
   late List<String?> filters;
   late List<String> asked;
+  late List<Uri> opened;
 
   Future<void> pump(WidgetTester tester, _Api api, {String? routineId}) async {
     // Tall enough for every row to be built
@@ -94,6 +95,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     filters = [];
     asked = [];
+    opened = [];
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       home: Scaffold(
@@ -102,11 +104,27 @@ void main() {
           routineId: routineId,
           onFilter: filters.add,
           onAskAbout: (run) async => asked.add(run.id),
+          openLink: (uri) async => opened.add(uri),
         ),
       ),
     ));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('a link in a result opens', (tester) async {
+    await pump(
+      tester,
+      _Api([
+        RoutineRunPage(items: [
+          _run('a', at: today, text: 'Nuove posizioni:\n• Job 2 — Roma https://x.io/2'),
+        ]),
+      ]),
+    );
+
+    await tester.tapOnText(find.textRange.ofSubstring('https://x.io/2'));
+
+    expect(opened, [Uri.parse('https://x.io/2')]);
+  });
 
   testWidgets('runs by day, newest first, with their full text and sources', (tester) async {
     await pump(
@@ -127,8 +145,8 @@ void main() {
     );
 
     expect(find.text('Today'), findsOneWidget);
-    expect(find.text(long), findsOneWidget);
-    expect(tester.widget<Text>(find.text(long)).maxLines, isNull);
+    expect(find.text(long.trim()), findsOneWidget); // markdown drops the trailing space
+    expect(tester.widget<Text>(find.text(long.trim())).maxLines, isNull);
     // Ask about this only where there is a result
     expect(find.byKey(const Key('ask-about-a')), findsOneWidget);
     expect(find.text('Jobs'), findsOneWidget);

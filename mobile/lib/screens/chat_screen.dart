@@ -35,6 +35,7 @@ final class ChatScreen extends StatefulWidget {
     this.api,
     this.voiceInput,
     this.openSessionRequest,
+    this.composerFocusRequest,
     this.askRequest,
     this.memoryApi,
     this.photoTaker,
@@ -67,6 +68,10 @@ final class ChatScreen extends StatefulWidget {
   /// A session id to open (set e.g. by a notification tap); the screen loads
   /// it and sets the notifier back to null.
   final ValueNotifier<String?>? openSessionRequest;
+
+  /// True when the session requested is opened to ask something ("Ask about this" on
+  /// Today or Profile): it opens with the cursor in the composer. Set back to false.
+  final ValueNotifier<bool>? composerFocusRequest;
 
   /// A question to send in the thread with Echo (or a new chat, without one),
   /// consumed (set to null) once sent.
@@ -344,7 +349,12 @@ final class _ChatScreenState extends State<ChatScreen> {
     final id = request.value;
     if (id == null) return;
     request.value = null;
-    unawaited(_controller.loadSession(id));
+    final focus = widget.composerFocusRequest;
+    final ask = focus?.value ?? false;
+    focus?.value = false;
+    unawaited(_controller.loadSession(id).then((_) {
+      if (ask && mounted) _composerFocus.requestFocus();
+    }));
   }
 
   void _onControllerChanged() {

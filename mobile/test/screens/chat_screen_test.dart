@@ -17,6 +17,7 @@ import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/chat/chat_controller.dart';
 import 'package:echo_app/services/chat/voice_input.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/chat_composer.dart';
 import 'package:echo_app/widgets/message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -272,6 +273,38 @@ void main() {
     expect(api.detailIds, ['voice-session', 'voice-session-2']);
     expect(request.value, isNull);
     expect(controller.state.sessionId, 'voice-session-2');
+  });
+
+  testWidgets('a thread opened to ask about something puts the cursor in the composer',
+      (tester) async {
+    final api = _FakeChatApi();
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+    final request = ValueNotifier<String?>(null);
+    addTearDown(request.dispose);
+    final focus = ValueNotifier(false);
+    addTearDown(focus.dispose);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: ChatScreen(
+        controller: controller,
+        openSessionRequest: request,
+        composerFocusRequest: focus,
+      ),
+    ));
+    await tester.pump();
+    EditableText composer() => tester.widget<EditableText>(
+          find.descendant(of: find.byType(ChatComposer), matching: find.byType(EditableText)),
+        );
+    expect(composer().focusNode.hasFocus, isFalse);
+
+    focus.value = true;
+    request.value = 'voice-session';
+    await tester.pump();
+    await tester.pump();
+
+    expect(composer().focusNode.hasFocus, isTrue);
+    expect(focus.value, isFalse);
   });
 
   testWidgets('MessageBubble accepts immutable feedback and source messages',

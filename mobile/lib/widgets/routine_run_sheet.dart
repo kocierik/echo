@@ -58,18 +58,7 @@ final class RoutineRunSheet extends StatelessWidget {
         Text('Checked, nothing new', style: textTheme.bodyLarge?.copyWith(color: palette.text2)),
       'failed' =>
         Text(run.text ?? 'Could not run', style: textTheme.bodyLarge?.copyWith(color: palette.red)),
-      // The answer as Ask shows it: markdown, links that open, one found thing a line
-      _ => MarkdownBody(
-          data: run.text ?? '',
-          softLineBreak: true,
-          onTapLink: (_, href, __) {
-            final uri = href == null ? null : Uri.tryParse(href);
-            if (uri != null && uri.hasScheme) unawaited((openLink ?? _browse)(uri));
-          },
-          styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-            p: textTheme.bodyLarge,
-          ),
-        ),
+      _ => RoutineRunText(run.text ?? '', style: textTheme.bodyLarge, openLink: openLink),
     };
     return ConstrainedBox(
       constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
@@ -108,6 +97,29 @@ final class RoutineRunSheet extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// What a run found, as Ask shows an answer: markdown, links that open ([openLink], the
+/// browser by default), each found thing on its own line.
+final class RoutineRunText extends StatelessWidget {
+  const RoutineRunText(this.text, {this.style, this.openLink, super.key});
+
+  final String text;
+  final TextStyle? style;
+  final Future<void> Function(Uri)? openLink;
+
+  @override
+  Widget build(BuildContext context) {
+    return MarkdownBody(
+      data: text,
+      softLineBreak: true,
+      onTapLink: (_, href, __) {
+        final uri = href == null ? null : Uri.tryParse(href);
+        if (uri != null && uri.hasScheme) unawaited((openLink ?? _browse)(uri));
+      },
+      styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(p: style),
     );
   }
 }
