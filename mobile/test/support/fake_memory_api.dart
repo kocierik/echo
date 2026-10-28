@@ -183,6 +183,10 @@ class FakeTodayApi extends FakeMemoryApi
   @override
   Future<AccountInfo> setLanguage(String language) => throw UnimplementedError();
 
+  @override
+  Future<AccountInfo> setOtherLanguages(List<String> languages) =>
+      throw UnimplementedError();
+
   /// The event in the next hour the server finds among the phone's ones.
   ComingUp? upcoming;
   final comingUpEvents = <List<Map<String, Object?>>>[];

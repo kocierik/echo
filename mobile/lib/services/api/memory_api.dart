@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../models/action_models.dart';
 import '../../models/memory.dart';
 import '../../models/person.dart';
@@ -54,9 +56,46 @@ abstract interface class TranscriptMemoryApi {
   Future<void> deleteConversation(String conversationId);
 }
 
+/// A conversation's lines heard in another language, in the user's [language], by
+/// segment id (`POST /api/conversations/{id}/translate`).
+@immutable
+final class TranscriptTranslation {
+  const TranscriptTranslation({required this.language, required this.lines});
+
+  factory TranscriptTranslation.fromJson(Map<String, dynamic> json) => TranscriptTranslation(
+        language: json['language'] as String,
+        lines: {
+          for (final MapEntry(:key, :value)
+              in (json['lines'] as Map<String, dynamic>? ?? const {}).entries)
+            if (value is String) key: value,
+        },
+      );
+
+  final String language;
+  final Map<String, String> lines;
+}
+
+/// Translating a transcript into the user's language.
+abstract interface class TranslateApi {
+  Future<TranscriptTranslation> translateConversation(String id);
+}
+
 /// Conversations, tasks, people, summaries and the user's whole data.
 mixin MemoryEndpoints on ApiClient
-    implements MemoryApi, TranscriptMemoryApi, WeeklySummaryApi, DigestApi {
+    implements MemoryApi, TranscriptMemoryApi, WeeklySummaryApi, DigestApi, TranslateApi {
+  @override
+  Future<TranscriptTranslation> translateConversation(String id) async {
+    // One model call for the whole transcript the first time
+    final response = await post(
+      '/api/conversations/${Uri.encodeComponent(id)}/translate',
+      timeout: const Duration(seconds: 90),
+    );
+    return parse(
+      response.data,
+      (data) => TranscriptTranslation.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
   @override
   Future<DailySummary?> getDigest(DateTime day) async {
     final date = '${day.year.toString().padLeft(4, '0')}-'

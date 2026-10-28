@@ -102,6 +102,12 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
   }
 
   @override
+  Future<AccountInfo> setOtherLanguages(List<String> languages) async {
+    final response = await patch('/api/auth/me', body: {'other_languages': languages});
+    return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
+  }
+
+  @override
   Future<AccountInfo> setInstructions(String? instructions) async {
     final response =
         await patch('/api/auth/me', body: {'instructions': instructions?.trim() ?? ''});

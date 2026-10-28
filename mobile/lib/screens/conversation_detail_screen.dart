@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/memory.dart';
 import '../models/person.dart';
@@ -8,6 +9,7 @@ import '../models/segment.dart';
 import '../models/task_item.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
+import '../services/app/spoken_language.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../widgets/expandable_text.dart';
@@ -29,7 +31,8 @@ import '../utils/conversation_text.dart';
 enum _DetailTab { summary, transcript }
 
 /// One conversation: what it was about (summary, tasks, events, people, ideas)
-/// and what was said, line by line, each line correctable.
+/// and what was said, line by line, each line correctable; lines heard in another
+/// language are tagged and can be translated into the user's.
 final class ConversationDetailScreen extends StatefulWidget {
   const ConversationDetailScreen({
     required this.conversationId,
@@ -37,6 +40,7 @@ final class ConversationDetailScreen extends StatefulWidget {
     this.onAsk,
     this.clock = DateTime.now,
     this.sharing = const SystemSharing(),
+    this.spokenLanguage = _savedSpokenLanguage,
     super.key,
   });
 
@@ -45,6 +49,12 @@ final class ConversationDetailScreen extends StatefulWidget {
   final Sharing sharing;
   final AskCallback? onAsk;
   final DateTime Function() clock;
+
+  /// The language the user speaks ("it"); the phone's copy by default.
+  final Future<String?> Function() spokenLanguage;
+
+  static Future<String?> _savedSpokenLanguage() async =>
+      (await SharedPreferences.getInstance()).getString(SpokenLanguageStore.key);
 
   @override
   State<ConversationDetailScreen> createState() => _ConversationDetailScreenState();
@@ -61,10 +71,68 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   bool _deleting = false;
   _DetailTab _tab = _DetailTab.summary;
 
+  /// The user's language: lines heard in another one can be translated.
+  String? _userLanguage;
+
+  /// By segment id, once asked for; shown while [_showTranslation].
+  Map<String, String>? _translations;
+  bool _showTranslation = false;
+  bool _translating = false;
+
   @override
   void initState() {
     super.initState();
     unawaited(_load());
+    unawaited(_loadUserLanguage());
+  }
+
+  Future<void> _loadUserLanguage() async {
+    try {
+      final language = await widget.spokenLanguage();
+      if (mounted) setState(() => _userLanguage = language);
+    } catch (_) {}
+  }
+
+  TranslateApi? get _translator {
+    final api = widget.api;
+    return api is TranslateApi ? api as TranslateApi : null;
+  }
+
+  bool _isForeign(TranscriptLine line) {
+    final user = _userLanguage;
+    return user != null && line.text != null && line.language != null && line.language != user;
+  }
+
+  /// Translate, or hide the translation; asks the server only for lines it has not got.
+  Future<void> _toggleTranslation(List<TranscriptLine> foreign) async {
+    final translator = _translator;
+    if (translator == null || _translating) return;
+    if (_showTranslation) {
+      setState(() => _showTranslation = false);
+      return;
+    }
+    final known = _translations;
+    if (known != null && foreign.every((line) => known.containsKey(line.segmentId))) {
+      setState(() => _showTranslation = true);
+      return;
+    }
+    setState(() => _translating = true);
+    try {
+      final translation = await translator.translateConversation(widget.conversationId);
+      if (!mounted) return;
+      setState(() {
+        _translations = translation.lines;
+        _showTranslation = true;
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not translate. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _translating = false);
+    }
   }
 
   Future<void> _load() async {
@@ -168,6 +236,8 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
       Navigator.of(context).pop();
       return;
     }
+    // A corrected line is translated again when asked
+    _translations?.remove(line.segmentId);
     await _load();
   }
 
@@ -395,7 +465,34 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     // Each photo where it was taken, between the lines
     final photos = loader == null ? const <ConversationPhoto>[] : detail.photos;
     var next = 0;
+    final foreign = detail.lines.where(_isForeign).toList();
+    final user = _userLanguage;
     return [
+      if (foreign.isNotEmpty && _translator != null && user != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 20, 0),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('transcript-translate'),
+              onPressed: _translating ? null : () => unawaited(_toggleTranslation(foreign)),
+              icon: _translating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.translate_rounded, size: 18),
+              label: Text(
+                _translating
+                    ? 'Translating…'
+                    : _showTranslation
+                        ? 'Hide translation'
+                        : 'Translate to ${spokenLanguages[user] ?? user}',
+              ),
+            ),
+          ),
+        ),
       if (voices != null)
         const Padding(
           padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
@@ -410,6 +507,8 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           _PhotoTile(photo: photos[next], loadSource: loader!, compact: true),
         _LineTile(
           line: line,
+          languageTag: _isForeign(line) ? line.language!.toUpperCase() : null,
+          translation: _showTranslation ? (_translations ?? const {})[line.segmentId] : null,
           onTap: line.text == null ? null : () => unawaited(_openLine(line)),
           onSpeakerTap: _voices == null || line.text == null
               ? null
@@ -522,6 +621,8 @@ final class _LineTile extends StatelessWidget {
   const _LineTile({
     required this.line,
     required this.onTap,
+    this.languageTag,
+    this.translation,
     this.onSpeakerTap,
     this.onConfirmVoice,
     this.onRejectVoice,
@@ -529,6 +630,12 @@ final class _LineTile extends StatelessWidget {
 
   final TranscriptLine line;
   final VoidCallback? onTap;
+
+  /// "EN" for a line heard in another language than the user's.
+  final String? languageTag;
+
+  /// The line in the user's language, shown under it.
+  final String? translation;
 
   /// "Who is speaking?"
   final VoidCallback? onSpeakerTap;
@@ -599,6 +706,19 @@ final class _LineTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (languageTag != null)
+                          Padding(
+                            key: Key('lang-${line.segmentId}'),
+                            padding: const EdgeInsets.only(left: 8),
+                            child: Text(
+                              languageTag!,
+                              style: textTheme.labelSmall?.copyWith(
+                                fontSize: 11,
+                                color: palette.text2,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ),
                         if (onConfirmVoice != null)
                           _VoiceButton(
                             key: Key('voice-yes-${line.segmentId}'),
@@ -626,6 +746,18 @@ final class _LineTile extends StatelessWidget {
                             )
                           : textTheme.bodyMedium,
                     ),
+                    if (translation != null)
+                      Padding(
+                        key: Key('translation-${line.segmentId}'),
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          translation!,
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: palette.text2,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

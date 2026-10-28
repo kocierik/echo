@@ -83,4 +83,8 @@ final class _Account implements AccountApi {
     this.language = language;
     return AccountInfo(email: 'erik@example.com', language: language);
   }
+
+  @override
+  Future<AccountInfo> setOtherLanguages(List<String> languages) async =>
+      AccountInfo(email: 'erik@example.com', language: language, otherLanguages: languages);
 }

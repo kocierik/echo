@@ -7,6 +7,7 @@ final class AccountInfo {
     required this.language,
     this.name,
     this.instructions,
+    this.otherLanguages = const [],
   });
 
   factory AccountInfo.fromJson(Map<String, dynamic> json) {
@@ -20,6 +21,9 @@ final class AccountInfo {
       language: json['language'] as String? ?? 'en',
       name: text('name'),
       instructions: text('instructions'),
+      otherLanguages: List.unmodifiable(
+        (json['other_languages'] as List<dynamic>? ?? const []).whereType<String>(),
+      ),
     );
   }
 
@@ -32,11 +36,18 @@ final class AccountInfo {
 
   /// The user's own instructions to Echo (Profile → Instructions), used in every answer.
   final String? instructions;
+
+  /// Other languages spoken around the user ("en", "es"): Echo recognises which one each
+  /// segment is in, and the app can translate them.
+  final List<String> otherLanguages;
 }
 
 abstract interface class AccountApi {
   Future<AccountInfo> me();
   Future<AccountInfo> setLanguage(String language);
+
+  /// At most [maxOtherLanguages] of [heardLanguages], never the main language.
+  Future<AccountInfo> setOtherLanguages(List<String> languages);
 }
 
 /// The user's own instructions to Echo ("Call me Erik, keep answers short").
@@ -47,6 +58,17 @@ abstract interface class InstructionsApi {
 
 /// The languages Echo transcribes and takes dictation in, as Settings names them.
 const spokenLanguages = {'en': 'English', 'it': 'Italiano'};
+
+/// The other languages Echo can recognise around the user, in their own names.
+const heardLanguages = {
+  'en': 'English',
+  'it': 'Italiano',
+  'es': 'Español',
+  'fr': 'Français',
+  'de': 'Deutsch',
+  'pt': 'Português',
+};
+const maxOtherLanguages = 4;
 
 /// The language the user speaks: the account's (the wearable's transcription), kept on
 /// the phone for dictation so holding the Ask button never waits for the server.
@@ -81,4 +103,17 @@ final class SpokenLanguageStore {
     final changed = await _api.setLanguage(language);
     await _preferences.setString(key, changed.language);
   }
+
+  /// The other languages the account hears; null when the server cannot say.
+  Future<List<String>?> otherLanguages() async {
+    try {
+      return (await _api.me()).otherLanguages;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Saves them; the account's list as kept. Throws when the server refuses.
+  Future<List<String>> setOtherLanguages(List<String> languages) async =>
+      (await _api.setOtherLanguages(languages)).otherLanguages;
 }

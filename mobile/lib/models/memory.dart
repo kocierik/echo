@@ -88,6 +88,7 @@ final class TranscriptLine {
     this.speaker,
     this.speakerName,
     this.voiceMatch,
+    this.language,
   });
 
   factory TranscriptLine.fromJson(Map<String, dynamic> json) {
@@ -99,10 +100,13 @@ final class TranscriptLine {
       recordedAt: DateTime.parse(json['recorded_at'] as String),
       speakerName: json['speaker_name'] as String?,
       voiceMatch: json['voice_match'] as String?,
+      language: json['language'] as String?,
     );
   }
 
   final String segmentId;
+
+  /// The language it was heard in ("en"); null while pending.
   final String? text;
   final String? speaker;
 
@@ -111,6 +115,8 @@ final class TranscriptLine {
 
   /// "auto", "confirmed", or "suggested" (Echo asks "Marco?").
   final String? voiceMatch;
+
+  final String? language;
 
   bool get isSuggestion => voiceMatch == 'suggested' && speakerName != null;
 
