@@ -508,6 +508,7 @@ class MainShell extends StatelessWidget {
                       askView: appController.askView,
                       routinesFilter: appController.routinesFilter,
                       routineRunsChanged: appController.routineRunsChanged,
+                      segmentUploadedStream: segmentUploadedStream,
                       askRequest: appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),

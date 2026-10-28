@@ -41,7 +41,12 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 ### Fase 4 — Esperienza d'uso
 - [x] App veloce anche offline: copia locale delle letture (cancellata al logout), Today si apre dalla copia,
       striscia "Offline · updated 14:32"
-- [x] "Echo sta lavorando…" in Today per i comandi vocali e le foto in arrivo, finché arriva la risposta
+- [x] "Echo sta lavorando…" per i comandi vocali e le foto in arrivo, finché arriva la risposta (dal 28/10 in Ask,
+      in fondo al thread)
+- [x] Today a modo tuo (28/10, [design](superpowers/specs/2026-10-28-today-your-way-design.md)): le sezioni
+      nell'ordine dell'utente, nascondibili ("Edit Today"); l'agenda di oggi; i luoghi visitati in Today; la ricerca
+      da un'icona; in cima solo le azioni da confermare
+- [ ] Risposte a voce dal telefono (sintesi vocale, altoparlante o cuffie, anche ad app in background): il prossimo
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [x] Live Activity (iOS 16.1+): schermata di blocco e Dynamic Island con stato (ascolta/muto/offline),

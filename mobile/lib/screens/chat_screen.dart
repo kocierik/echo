@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
 import '../models/routine_run.dart';
+import '../models/today_insights.dart';
 import '../models/saved.dart';
 import '../services/api/api_service.dart';
 import '../services/app/app_controller.dart';
@@ -17,6 +18,7 @@ import '../theme/app_theme.dart';
 import '../widgets/chat_composer.dart';
 import '../widgets/echo_nav_bar.dart';
 import '../widgets/screen_header.dart';
+import '../widgets/today_sections.dart' show workingLabel;
 import '../widgets/message_bubble.dart';
 import '../widgets/typing_indicator.dart';
 import '../utils/chat_suggestions.dart';
@@ -42,6 +44,8 @@ final class ChatScreen extends StatefulWidget {
     this.routinesFilter,
     this.routineRunsChanged,
     this.routinesApi,
+    this.segmentUploadedStream,
+    this.workingPollInterval = const Duration(seconds: 5),
     super.key,
   });
 
@@ -83,6 +87,12 @@ final class ChatScreen extends StatefulWidget {
   /// Routines.
   final RoutinesApi? routinesApi;
 
+  /// New speech reached the server: a voice request may be on its way.
+  final Stream<Object?>? segmentUploadedStream;
+
+  /// How often "Echo is working on…" is checked while something is working.
+  final Duration workingPollInterval;
+
   /// Opens the conversations sources come from (defaults to the chat's api).
   final MemoryApi? memoryApi;
 
@@ -103,6 +113,11 @@ final class _ChatScreenState extends State<ChatScreen> {
   late final bool _ownsView;
   late final ValueNotifier<String?> _filter;
   late final bool _ownsFilter;
+
+  /// Voice requests and photos Echo is answering, shown at the bottom of the thread.
+  List<WorkingItem> _working = const [];
+  Timer? _workingTimer;
+  StreamSubscription<Object?>? _uploads;
 
   RoutinesApi? get _routinesApi {
     final api = _api;
@@ -155,6 +170,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     _ownsFilter = widget.routinesFilter == null;
     _filter = widget.routinesFilter ?? ValueNotifier(null);
     _filter.addListener(_onView);
+    _uploads = widget.segmentUploadedStream?.listen((_) => unawaited(_loadWorking()));
+    unawaited(_loadWorking());
     // A request made before this screen existed (cold start from a tap); else Ask
     // opens on the thread with Echo
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -220,7 +237,32 @@ final class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _onThreadUpdate() {
-    if (mounted) unawaited(_controller.refreshThread());
+    if (!mounted) return;
+    unawaited(_controller.refreshThread());
+    unawaited(_loadWorking());
+  }
+
+  /// What Echo is working on; checked again while anything is left.
+  Future<void> _loadWorking() async {
+    final api = _api;
+    if (api is! VoiceWorkingApi) return;
+    _workingTimer?.cancel();
+    final List<WorkingItem> items;
+    try {
+      items = await (api as VoiceWorkingApi).getVoiceWorking();
+    } catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final finished = _working.any((old) => !items.any((now) => now.key == old.key));
+    setState(() => _working = items);
+    // An answer arrived: the thread has it
+    if (finished) unawaited(_controller.refreshThread());
+    // Two checks can overlap (a thread update, an upload): one timer, never orphaned
+    _workingTimer?.cancel();
+    if (items.isNotEmpty) {
+      _workingTimer = Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
+    }
   }
 
   void _onView() {
@@ -364,6 +406,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     if (_ownsView) _view.dispose();
     _filter.removeListener(_onView);
     if (_ownsFilter) _filter.dispose();
+    _workingTimer?.cancel();
+    unawaited(_uploads?.cancel());
     _composerFocus.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -441,6 +485,8 @@ final class _ChatScreenState extends State<ChatScreen> {
                 )
               else
                 Expanded(child: _messageArea(state, palette)),
+              if (!routines && state.isThread)
+                for (final item in _working) _WorkingBubble(item),
               if (!routines && state.photoContext != null && !state.listening)
                 _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
               if (routines)
@@ -705,6 +751,35 @@ final class _ErrorNotice extends StatelessWidget {
               onPressed: onRetry,
               child: const Text('Retry'),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Echo at work on a voice request or a photo, at the bottom of the thread, until its
+/// answer arrives.
+final class _WorkingBubble extends StatelessWidget {
+  const _WorkingBubble(this.item);
+
+  final WorkingItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Padding(
+      key: Key('chat-working-${item.key}'),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Row(
+        children: [
+          const TypingIndicator(),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              workingLabel(item),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.text2),
+            ),
+          ),
         ],
       ),
     );

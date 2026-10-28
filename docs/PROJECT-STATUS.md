@@ -84,10 +84,14 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **People** (in Memories): persone per ultima volta viste; la pagina di una persona ha ruolo e note, task ed
   eventi che la nominano, conversazioni in cui compare e "Ask about" (nuova chat con la domanda già inviata).
   Anche una conversazione ha "Ask about this conversation".
-- **Today:** il dispositivo solo se c'è un problema, la ricerca in tutta la memoria, **una scheda in cima che cambia
-  col momento** (un'azione da confermare con "+N more"; un impegno del calendario entro l'ora con "Last time: …"; la
-  conversazione in corso con l'ultima frase; "So far today"), **To do today** (promesse e to-do chiesti), **Your
-  day** (conversazioni e foto), People today, **Earlier** ("This week", poi i giorni, ognuno con il suo riassunto).
+- **Today, a modo tuo** (28/10, [design](superpowers/specs/2026-10-28-today-your-way-design.md)): il dispositivo solo
+  se c'è un problema, in cima solo le **azioni da confermare** ("+N more"), poi le sezioni nell'ordine scelto
+  dall'utente: From your routines, **To do today**, **Coming up today** (gli appuntamenti di oggi ancora da venire dal
+  calendario dell'iPhone, con "Last time: …" sotto quello entro l'ora), **Your day** (conversazioni e foto; la
+  conversazione in corso con durata, persone, titolo e ultima frase), People, Saved, **Where you've been** (i luoghi
+  di oggi se Places visited è acceso; un tocco apre la mappa) ed **Earlier days**. "Edit Today" in fondo nasconde e
+  sposta le sezioni (salvato sul telefono); la ricerca in tutta la memoria è un'icona in alto. "Echo is working
+  on…" è in Ask, in fondo al thread.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la

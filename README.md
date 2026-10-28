@@ -19,6 +19,10 @@ each person has their own memory; the Android app builds from the same code but 
   in the language of the question. A question that needs live information (the weather, the news,
   today's prices) is looked up on the web, with the sites named; up to 30 searches a day per user.
   Each day and each week get a summary on Today.
+- **Today, your way.** What needs you on top, then your sections in your order: what routines
+  found, to do today, the appointments still to come, your day's conversations, people, Saved,
+  where you've been (with Places visited on) and earlier days. Edit Today hides and moves them;
+  search is the icon on top.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
@@ -376,7 +380,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   photo texts, entities, chats, summaries, voice names); no embeddings, no images.
 
 ### Notifications
-- `POST /api/notifications/coming-up` (`{phone_events}`) — Today's card: the next phone-calendar
+- `POST /api/notifications/coming-up` (`{phone_events}`) — for Today's agenda: the phone-calendar
   event within the hour and what was said last time with its people or about its title.
 - `GET /api/notifications/upcoming?briefings=&promises=&evening=&hours=36` — what the phone should
   schedule (`key`, `kind`, `fire_at`, `title`, `body`, `target`: `person:<id>`, `tasks` or `today`),

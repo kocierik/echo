@@ -4,6 +4,7 @@ import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_message.dart';
 import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
+import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/screens/chat_history_screen.dart';
 import 'package:echo_app/services/api/api_exception.dart';
@@ -33,6 +34,53 @@ void main() {
 
     controller.setComposerText('still alive');
     expect(controller.state.composerText, 'still alive');
+  });
+
+  group('Echo at work', () {
+    late _WorkingChatApi api;
+    late ChatController controller;
+
+    Future<void> pump(WidgetTester tester) async {
+      api = _WorkingChatApi();
+      controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(
+          controller: controller,
+          workingPollInterval: const Duration(seconds: 1),
+        ),
+      ));
+      // The typing dots never settle: frames, not pumpAndSettle
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('the working bubble shows and goes when the answer arrives', (tester) async {
+      await pump(tester);
+
+      expect(controller.state.isThread, isTrue);
+      expect(find.byKey(const Key('chat-working-request:1')), findsOneWidget);
+      expect(find.text('Working on: che tempo fa domani'), findsOneWidget);
+
+      api.working = [];
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(find.byKey(const Key('chat-working-request:1')), findsNothing);
+    });
+
+    testWidgets('no working bubble in another chat', (tester) async {
+      await pump(tester);
+
+      await controller.loadSession('s-2');
+      // Past the typing dots' staggered start
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(controller.state.isThread, isFalse);
+      expect(find.byKey(const Key('chat-working-request:1')), findsNothing);
+    });
   });
 
   group('Chat | Routines', () {
@@ -469,6 +517,31 @@ final class _FakeChatApi implements ChatApi {
   @override
   Future<void> deleteSession(String id) async {}
 
+}
+
+/// The thread with Echo, and a voice request still being answered.
+final class _WorkingChatApi extends _FakeChatApi implements ThreadApi, VoiceWorkingApi {
+  List<WorkingItem> working = [
+    WorkingItem(
+      key: 'request:1',
+      kind: 'request',
+      text: 'che tempo fa domani',
+      since: DateTime(2026, 10, 28, 9),
+    ),
+  ];
+
+  @override
+  Future<ChatSessionDetail> getThread() async => ChatSessionDetail(
+        id: 'thread-1',
+        title: 'Echo',
+        kind: 'voice',
+        messages: const [ChatSessionMessage(role: 'assistant', content: 'Ciao')],
+        createdAt: DateTime.parse('2026-10-01T09:30:00Z'),
+        updatedAt: DateTime.parse('2026-10-01T09:31:00Z'),
+      );
+
+  @override
+  Future<List<WorkingItem>> getVoiceWorking() async => working;
 }
 
 final class _FakeVoiceInput implements VoiceInput {
