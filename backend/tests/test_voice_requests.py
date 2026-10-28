@@ -932,9 +932,9 @@ async def _run_stt(monkeypatch, text):
         return "self"
 
     async def language(_db, _user_id):
-        return "it"
+        return ("it", [])
 
-    monkeypatch.setattr(stt_worker, "account_language", language)
+    monkeypatch.setattr(stt_worker, "account_languages", language)
     monkeypatch.setattr(
         stt_worker,
         "get_stt_service",

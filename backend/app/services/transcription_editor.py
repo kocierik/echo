@@ -3,12 +3,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.segment import Segment
 from app.models.transcription_edit import TranscriptionEdit
+from app.models.transcription_translation import TranscriptionTranslation
 from app.schemas.transcription import SpeakerLabel
 
 
@@ -107,6 +108,13 @@ async def edit_transcription(
                 created_at=correction_time,
             )
         )
+        if transcription.text != normalized_text:
+            # A translation of the old words would be wrong now
+            await db.execute(
+                delete(TranscriptionTranslation).where(
+                    TranscriptionTranslation.transcription_id == transcription.id
+                )
+            )
         transcription.text = normalized_text
         transcription.speaker_label = normalized_speaker
         segment.speaker = normalized_speaker

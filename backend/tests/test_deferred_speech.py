@@ -156,7 +156,7 @@ async def _run(monkeypatch, queue: bytes, text: str):
         return "self"
 
     async def language(_db, _user_id):
-        return "it"
+        return ("it", [])
 
     monkeypatch.setattr(
         stt_worker, "get_stt_service",
@@ -168,7 +168,7 @@ async def _run(monkeypatch, queue: bytes, text: str):
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
-    monkeypatch.setattr(stt_worker, "account_language", language)
+    monkeypatch.setattr(stt_worker, "account_languages", language)
 
     shutdown = asyncio.Event()
     redis = _Redis([(queue, str(segment.id).encode())])

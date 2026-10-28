@@ -245,7 +245,7 @@ async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=N
         return SimpleNamespace(text="Ciao, come va il preventivo?", language="it", confidence=0.9)
 
     async def language(_db, _user_id):
-        return "it"
+        return ("it", [])
 
     async def classify(_db, _user_id, _energy):
         return "other"
@@ -270,7 +270,7 @@ async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=N
     monkeypatch.setattr(stt_worker, "adpcm_to_wav", lambda data: data)
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
-    monkeypatch.setattr(stt_worker, "account_language", language)
+    monkeypatch.setattr(stt_worker, "account_languages", language)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
     monkeypatch.setattr(stt_worker, "embed_voice", embed)
     monkeypatch.setattr(stt_worker, "list_profiles", profiles)

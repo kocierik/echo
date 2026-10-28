@@ -93,7 +93,7 @@ async def test_the_stt_job_runs_as_the_segment_owner(monkeypatch):
         return "self"
 
     async def language(_db, _user_id):
-        return "it"
+        return ("it", [])
 
     monkeypatch.setattr(
         stt_worker, "get_stt_service",
@@ -105,7 +105,7 @@ async def test_the_stt_job_runs_as_the_segment_owner(monkeypatch):
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
-    monkeypatch.setattr(stt_worker, "account_language", language)
+    monkeypatch.setattr(stt_worker, "account_languages", language)
 
     shutdown = asyncio.Event()
     await asyncio.wait_for(

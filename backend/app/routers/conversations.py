@@ -27,8 +27,10 @@ from app.services.conversation_deleter import (
     delete_conversation,
     get_conversation_storage,
 )
+from app.services.llm_openai import get_llm_query_service
 from app.services.places import place_out, places_of
 from app.services.temporal import conversation_overlaps
+from app.services.transcript_translation import translate_conversation
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -87,6 +89,8 @@ class TranscriptionOut(BaseModel):
     # The recognised voice: its name, and "auto", "suggested" (ask) or "confirmed"
     speaker_name: str | None = None
     voice_match: str | None = None
+    # The language it was heard in ("en"); None while pending
+    language: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -320,6 +324,7 @@ async def get_conversation(
             Segment.transcription_status,
             Transcription.text,
             Transcription.speaker_label,
+            Transcription.language,
             Segment.voice_match,
             VoiceProfile.name.label("speaker_name"),
         )
@@ -337,6 +342,7 @@ async def get_conversation(
             recorded_at=row.recorded_at,
             speaker_name=row.speaker_name,
             voice_match=row.voice_match if row.speaker_name else None,
+            language=row.language,
         )
         for row in segment_rows.all()
     ]
@@ -387,6 +393,34 @@ async def get_conversation(
             conversation.id
         ),
     )
+
+
+class TranslationOut(BaseModel):
+    # The user's language, which the lines are translated into
+    language: str
+    # By segment id: the lines heard in another language
+    lines: dict[str, str]
+
+
+@router.post("/{conversation_id}/translate", response_model=TranslationOut)
+async def translate_conversation_endpoint(
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """The conversation's lines in another language, translated into the user's (each
+    translated once, then kept)."""
+    owned = await db.scalar(
+        select(Conversation.id).where(
+            Conversation.id == conversation_id, Conversation.user_id == user_id
+        )
+    )
+    if owned is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    language, lines = await translate_conversation(
+        db, user_id, conversation_id, get_llm_query_service()
+    )
+    return TranslationOut(language=language, lines=lines)
 
 
 @router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
