@@ -109,6 +109,8 @@ final class PlaceVisit {
     this.leftAt,
     this.name,
     this.address,
+    this.latitude,
+    this.longitude,
     this.conversations = const [],
   });
 
@@ -118,6 +120,8 @@ final class PlaceVisit {
         leftAt: DateTime.tryParse(json['left_at'] as String? ?? ''),
         name: _text(json['name']),
         address: _text(json['address']),
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
         conversations: [
           for (final entry in json['conversations'] as List<dynamic>? ?? const [])
             if (entry is Map && entry['id'] is String)
@@ -132,6 +136,10 @@ final class PlaceVisit {
   final DateTime? leftAt;
   final String? name;
   final String? address;
+
+  /// Where it was, for the map; null when the server did not send it.
+  final double? latitude;
+  final double? longitude;
   final List<VisitConversation> conversations;
 
   /// Its name, else its address, else a plain word.
