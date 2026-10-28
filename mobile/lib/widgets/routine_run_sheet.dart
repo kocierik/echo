@@ -66,7 +66,7 @@ final class RoutineRunSheet extends StatelessWidget {
             const SizedBox(height: 20),
             Text('Sources', style: textTheme.labelLarge?.copyWith(color: palette.text2)),
             const SizedBox(height: 4),
-            for (final source in run.sources) _SourceRow(source),
+            for (final source in run.sources) RoutineSourceRow(source),
           ],
           if (run.status == 'reported' && run.hasText) ...[
             const SizedBox(height: 20),
@@ -89,8 +89,9 @@ final class RoutineRunSheet extends StatelessWidget {
   }
 }
 
-final class _SourceRow extends StatelessWidget {
-  const _SourceRow(this.source);
+/// A cited page: its title and site; a tap opens it in the browser.
+final class RoutineSourceRow extends StatelessWidget {
+  const RoutineSourceRow(this.source, {super.key});
 
   final RoutineSource source;
 

@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/chat_message.dart';
+import '../models/routine_run.dart';
 import '../models/saved.dart';
 import '../services/api/api_service.dart';
+import '../services/app/app_controller.dart';
 import '../services/app/spoken_language.dart';
 import '../services/chat/chat_controller.dart';
 import '../services/device/photo_service.dart';
@@ -21,6 +23,7 @@ import '../utils/chat_suggestions.dart';
 import '../utils/formatting.dart';
 import 'chat_history_screen.dart';
 import 'conversation_detail_screen.dart';
+import 'routine_runs_view.dart';
 import 'saved_item_screen.dart';
 
 final class ChatScreen extends StatefulWidget {
@@ -35,6 +38,10 @@ final class ChatScreen extends StatefulWidget {
     this.headerAction,
     this.dictation,
     this.threadUpdates,
+    this.askView,
+    this.routinesFilter,
+    this.routineRunsChanged,
+    this.routinesApi,
     super.key,
   });
 
@@ -62,6 +69,20 @@ final class ChatScreen extends StatefulWidget {
   /// Changes when the thread got messages from elsewhere: reloaded if it is shown.
   final ValueListenable<int>? threadUpdates;
 
+  /// Chat or Routines (the app's, so a notification can open Routines); without one
+  /// Ask keeps its own.
+  final ValueNotifier<AskView>? askView;
+
+  /// The routine Ask → Routines shows (null: all of them).
+  final ValueNotifier<String?>? routinesFilter;
+
+  /// Counts up when new routine runs arrive: Ask → Routines reloads.
+  final ValueListenable<int>? routineRunsChanged;
+
+  /// Routines and their runs; the chat API's when it has them. Without them Ask has no
+  /// Routines.
+  final RoutinesApi? routinesApi;
+
   /// Opens the conversations sources come from (defaults to the chat's api).
   final MemoryApi? memoryApi;
 
@@ -78,6 +99,15 @@ final class _ChatScreenState extends State<ChatScreen> {
   late final bool _ownsApi;
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  late final ValueNotifier<AskView> _view;
+  late final bool _ownsView;
+  late final ValueNotifier<String?> _filter;
+  late final bool _ownsFilter;
+
+  RoutinesApi? get _routinesApi {
+    final api = _api;
+    return widget.routinesApi ?? (api is RoutinesApi ? api as RoutinesApi : null);
+  }
   int _messageCount = 0;
 
   /// The language the user speaks, for dictation (kept on the phone, else the account's).
@@ -119,6 +149,12 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.askRequest?.addListener(_onAskRequest);
     widget.dictation?.addListener(_onDictation);
     widget.threadUpdates?.addListener(_onThreadUpdate);
+    _ownsView = widget.askView == null;
+    _view = widget.askView ?? ValueNotifier(AskView.chat);
+    _view.addListener(_onView);
+    _ownsFilter = widget.routinesFilter == null;
+    _filter = widget.routinesFilter ?? ValueNotifier(null);
+    _filter.addListener(_onView);
     // A request made before this screen existed (cold start from a tap); else Ask
     // opens on the thread with Echo
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -185,6 +221,27 @@ final class _ChatScreenState extends State<ChatScreen> {
 
   void _onThreadUpdate() {
     if (mounted) unawaited(_controller.refreshThread());
+  }
+
+  void _onView() {
+    if (mounted) setState(() {});
+  }
+
+  /// "Ask about this": the run goes into the thread with Echo, which opens in Chat
+  /// with the composer ready for the question.
+  Future<void> _askAbout(RoutineRun run) async {
+    try {
+      final thread = await _routinesApi!.askAboutRoutineRun(run.id);
+      if (!mounted) return;
+      _view.value = AskView.chat;
+      await _controller.loadSession(thread);
+      if (mounted) _composerFocus.requestFocus();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text('Could not open it in Ask.')));
+    }
   }
 
   /// A thing an answer saved, on its page.
@@ -303,6 +360,10 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.askRequest?.removeListener(_onAskRequest);
     widget.dictation?.removeListener(_onDictation);
     widget.threadUpdates?.removeListener(_onThreadUpdate);
+    _view.removeListener(_onView);
+    if (_ownsView) _view.dispose();
+    _filter.removeListener(_onView);
+    if (_ownsFilter) _filter.dispose();
     _composerFocus.dispose();
     _textController.dispose();
     _scrollController.dispose();
@@ -316,6 +377,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     final palette = EchoPalette.of(context);
     final state = _controller.state;
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final routinesApi = _routinesApi;
+    final routines = routinesApi != null && _view.value == AskView.routines;
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: palette.background,
@@ -332,25 +395,57 @@ final class _ChatScreenState extends State<ChatScreen> {
               ScreenHeader(
                 title: 'Ask',
                 actions: [
-                  HeaderIconButton(
-                    key: const Key('chat-history'),
-                    icon: Icons.history_rounded,
-                    tooltip: 'Chat history',
-                    onPressed: () => unawaited(_openHistory()),
-                  ),
-                  HeaderIconButton(
-                    key: const Key('chat-new'),
-                    icon: Icons.add_rounded,
-                    tooltip: 'New chat',
-                    onPressed: _controller.newChat,
-                  ),
+                  if (!routines) ...[
+                    HeaderIconButton(
+                      key: const Key('chat-history'),
+                      icon: Icons.history_rounded,
+                      tooltip: 'Chat history',
+                      onPressed: () => unawaited(_openHistory()),
+                    ),
+                    HeaderIconButton(
+                      key: const Key('chat-new'),
+                      icon: Icons.add_rounded,
+                      tooltip: 'New chat',
+                      onPressed: _controller.newChat,
+                    ),
+                  ],
                   if (widget.headerAction != null) widget.headerAction!,
                 ],
               ),
-              Expanded(child: _messageArea(state, palette)),
-              if (state.photoContext != null && !state.listening)
+              if (routinesApi != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<AskView>(
+                      key: const Key('ask-view'),
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: AskView.chat, label: Text('Chat')),
+                        ButtonSegment(value: AskView.routines, label: Text('Routines')),
+                      ],
+                      selected: {_view.value},
+                      onSelectionChanged: (selected) => _view.value = selected.first,
+                    ),
+                  ),
+                ),
+              if (routines)
+                Expanded(
+                  child: RoutineRunsView(
+                    api: routinesApi,
+                    routineId: _filter.value,
+                    onFilter: (id) => _filter.value = id,
+                    onAskAbout: _askAbout,
+                    changes: widget.routineRunsChanged,
+                  ),
+                )
+              else
+                Expanded(child: _messageArea(state, palette)),
+              if (!routines && state.photoContext != null && !state.listening)
                 _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
-              if (state.listening)
+              if (routines)
+                const SizedBox.shrink()
+              else if (state.listening)
                 DictationPanel(text: state.composerText)
               else
                 ChatComposer(

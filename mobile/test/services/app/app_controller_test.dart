@@ -103,17 +103,16 @@ void main() {
     expect(controller.routinesFilter.value, 'rt1');
   });
 
-  test('requestOpenThread opens Ask on Chat and reloads the thread', () async {
+  test('requestOpenThread opens Ask on Chat, on that thread', () async {
     controller = await createController();
     controller.askView.value = AskView.routines;
-    final before = controller.threadUpdates.value;
 
-    controller.requestOpenThread();
+    controller.requestOpenThread('thread-1');
     await Future<void>.delayed(Duration.zero);
 
     expect(controller.value.selectedTab, AppController.askTab);
     expect(controller.askView.value, AskView.chat);
-    expect(controller.threadUpdates.value, before + 1);
+    expect(controller.pendingChatSessionId.value, 'thread-1');
   });
 
   test('routine runs changes count up, for Today to reload', () async {

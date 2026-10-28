@@ -108,8 +108,9 @@ final class HomeScreen extends StatefulWidget {
   /// Counts up when new routine runs arrive: "From your routines" reloads.
   final ValueListenable<int>? routineRunsChanged;
 
-  /// Opens Ask on the thread with Echo, where "Ask about this" just put a run.
-  final VoidCallback? onOpenThread;
+  /// Opens Ask on the thread with Echo (its session id), where "Ask about this" just put
+  /// a run.
+  final void Function(String sessionId)? onOpenThread;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -316,8 +317,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final api = _api;
     await showRoutineRunSheet(context, run, onAskAbout: () async {
       try {
-        await (api as RoutinesApi).askAboutRoutineRun(run.id);
-        widget.onOpenThread?.call();
+        final thread = await (api as RoutinesApi).askAboutRoutineRun(run.id);
+        widget.onOpenThread?.call(thread);
       } catch (_) {
         if (mounted) _snack('Could not open it in Ask.');
       }

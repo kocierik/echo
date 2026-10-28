@@ -73,7 +73,7 @@ void main() {
             memories: memories,
             openPerson: openPerson,
             routineRunsChanged: routineRunsChanged,
-            onOpenThread: () => calls.add('thread'),
+            onOpenThread: (id) => calls.add('thread $id'),
           ),
         ),
       ),
@@ -404,7 +404,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.asked, ['r1']);
-      expect(calls, contains('thread'));
+      expect(calls, contains('thread thread-1'));
     });
 
     testWidgets('Ask about this failing says so', (tester) async {
@@ -419,7 +419,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Could not open it in Ask.'), findsOneWidget);
-      expect(calls, isNot(contains('thread')));
+      expect(calls.where((c) => c.startsWith('thread')), isEmpty);
     });
   });
 
@@ -919,7 +919,7 @@ final class _RoutinesTodayApi extends FakeTodayApi implements RoutinesApi {
   Future<String> askAboutRoutineRun(String runId) async {
     if (askFails) throw Exception('offline');
     asked.add(runId);
-    return 'thread';
+    return 'thread-1';
   }
 
   @override

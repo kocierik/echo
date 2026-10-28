@@ -160,12 +160,12 @@ final class AppController extends ValueNotifier<AppViewState> {
     unawaited(setSelectedTab(askTab));
   }
 
-  /// Selects Ask on Chat and reloads the thread ("Ask about this" just added to it).
-  void requestOpenThread() {
+  /// Selects Ask on Chat and opens the thread with Echo, [sessionId] ("Ask about this"
+  /// just added a routine's result to it).
+  void requestOpenThread(String sessionId) {
     if (_disposed) return;
     askView.value = AskView.chat;
-    threadChanged();
-    unawaited(setSelectedTab(askTab));
+    requestOpenSession(sessionId);
   }
 
   /// New routine runs arrived (voice updates found some).

@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_message.dart';
+import 'package:echo_app/models/routine.dart';
+import 'package:echo_app/models/routine_run.dart';
+import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/screens/chat_history_screen.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/models/chat_session.dart';
@@ -30,6 +33,73 @@ void main() {
 
     controller.setComposerText('still alive');
     expect(controller.state.composerText, 'still alive');
+  });
+
+  group('Chat | Routines', () {
+    late ChatController controller;
+    late _FakeChatApi api;
+    late _FakeRoutinesApi routines;
+    late ValueNotifier<AskView> view;
+
+    Future<void> pump(WidgetTester tester) async {
+      api = _FakeChatApi();
+      routines = _FakeRoutinesApi();
+      controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+      view = ValueNotifier(AskView.chat);
+      addTearDown(controller.dispose);
+      addTearDown(view.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(controller: controller, askView: view, routinesApi: routines),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('Routines shows the results, without the chat buttons', (tester) async {
+      await pump(tester);
+      expect(find.byKey(const Key('chat-history')), findsOneWidget);
+
+      await tester.tap(find.text('Routines'));
+      await tester.pumpAndSettle();
+
+      expect(view.value, AskView.routines);
+      expect(find.text('Domani piove dalle 15'), findsOneWidget);
+      expect(find.byKey(const Key('chat-history')), findsNothing);
+      expect(find.byKey(const Key('chat-new')), findsNothing);
+    });
+
+    testWidgets('set from outside (a notification), Ask shows Routines', (tester) async {
+      await pump(tester);
+
+      view.value = AskView.routines;
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routine-runs')), findsOneWidget);
+    });
+
+    testWidgets('Ask about this switches to Chat on the thread', (tester) async {
+      await pump(tester);
+      view.value = AskView.routines;
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('ask-about-r1')));
+      await tester.pumpAndSettle();
+
+      expect(routines.asked, ['r1']);
+      expect(view.value, AskView.chat);
+      expect(api.detailIds, contains('thread-1'));
+    });
+
+    testWidgets('without routines there is no switch', (tester) async {
+      final controller = ChatController(api: _FakeChatApi(), voiceInput: _FakeVoiceInput());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(controller: controller),
+      ));
+
+      expect(find.byKey(const Key('ask-view')), findsNothing);
+    });
   });
 
   testWidgets('holding the Ask button dictates into the question',
@@ -302,6 +372,46 @@ void main() {
     final chatY = tester.getTopLeft(find.text('Planning')).dy;
     expect(voiceY, lessThan(chatY));
   });
+}
+
+/// Routines and their runs, for Ask → Routines.
+final class _FakeRoutinesApi implements RoutinesApi {
+  final asked = <String>[];
+
+  @override
+  Future<RoutineRunPage> listRoutineRuns({
+    String? routineId,
+    DateTime? since,
+    DateTime? before,
+    int limit = 30,
+  }) async =>
+      RoutineRunPage(items: [
+        RoutineRun(
+          id: 'r1',
+          routineId: 'rt1',
+          instruction: 'dimmi se piove domani',
+          mode: 'only_if',
+          scheduleText: 'Every day at 07:00',
+          ranAt: DateTime(2026, 10, 28, 7),
+          status: 'reported',
+          text: 'Domani piove dalle 15',
+        ),
+      ]);
+
+  @override
+  Future<String> askAboutRoutineRun(String runId) async {
+    asked.add(runId);
+    return 'thread-1';
+  }
+
+  @override
+  Future<List<Routine>> listRoutines() async => const [];
+
+  @override
+  Future<Routine> setRoutineActive(String id, bool active) => throw UnimplementedError();
+
+  @override
+  Future<void> deleteRoutine(String id) => throw UnimplementedError();
 }
 
 final class _FakeChatApi implements ChatApi {
