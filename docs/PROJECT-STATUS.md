@@ -1,4 +1,4 @@
-# Echo — Stato del progetto (22/10/2026)
+# Echo — Stato del progetto (28/10/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
@@ -6,7 +6,8 @@ Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le
 dal vivo). Aggiornato il 16/10 dopo la nuova interfaccia, il primo avvio con account e registrazione,
 l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. Aggiornato il 22/10 dopo la
 ricerca web, gli incarichi ricorrenti, le nuove schede Today · Ask · Profile, i to-do solo su richiesta e le
-promesse più rigide. Il dettaglio di quanto resta è in [ROADMAP.md](ROADMAP.md).
+promesse più rigide. Aggiornato il 28/10 dopo gli incarichi che parlano solo quando serve. Il dettaglio di
+quanto resta è in [ROADMAP.md](ROADMAP.md).
 
 ---
 
@@ -93,10 +94,14 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   conversazione), suggerimenti dalle conversazioni e persone recenti; "Add to calendar" dagli eventi passa
   dall'agente (conferma se ci sono invitati).
 - Ask: **un unico thread con Echo** (22/10): domande scritte, richieste a voce ("By voice · 08:02"), foto con la
-  risposta e le azioni rapide (Translate it, Ask more, Remind me quando la foto mostra una data), risposte degli
-  incarichi ("ROUTINE · EVERY DAY AT 07:00"); New chat apre una chat a parte; fonti web cliccabili; storico
-  completo, input vocale, markdown, **schede Confirm/Cancel**.
-- **Profile → Routines:** gli incarichi con orario, prossima esecuzione e ultimo risultato; pausa e cancellazione.
+  risposta e le azioni rapide (Translate it, Ask more, Remind me quando la foto mostra una data), i risultati
+  degli incarichi solo quando l'utente li porta con "Ask about this"; New chat apre una chat a parte; fonti web
+  cliccabili; storico completo, input vocale, markdown, **schede Confirm/Cancel**.
+- **Ask → Routines** (28/10): in cima ad Ask un selettore Chat | Routines; i risultati degli incarichi per giorno,
+  con il testo intero e le fonti, filtrabili per incarico; i controlli senza novità in una riga grigia.
+- **Today → From your routines** (28/10): i risultati di oggi sopra "To do today"; un tocco apre il testo intero.
+- **Profile → Routines:** gli incarichi con orario, modo ("Tells you only if…"), prossima esecuzione e ultimo
+  risultato (si apre intero), "See all results"; pausa e cancellazione.
 - Settings → Automations: **Integrations** (collega/scollega app tramite Composio, ricerca) e **Activity** (registro azioni).
 - Notifiche delle risposte vocali al primo risveglio dell'app (upload di un segmento o ritorno in primo piano) e,
   per gli incarichi, quando arriva il comando `voice_update`; il tocco apre il thread in Ask.
@@ -117,7 +122,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   pagina da citare; una ricerca di notizie può impiegare ~12 s.
 - **Incarichi ricorrenti** (22/10, `workers/routines.py`): creati dall'agente con i suoi strumenti (anche senza app
   collegate), eseguiti ogni minuto con `FOR UPDATE SKIP LOCKED`, senza strumenti da confermare, ora locale anche
-  col cambio dell'ora; se il server era giù da più di 2 h l'esecuzione è saltata. Migrazione 020.
+  col cambio dell'ora; se il server era giù da più di 2 h l'esecuzione è saltata. Migrazione 020. Dal 28/10
+  (migrazione 026) ogni esecuzione è una riga di `routine_runs` (90 giorni) e ogni incarico ha un modo: `always`,
+  `only_if` (risposta JSON, parla solo se vale la condizione) e `only_new` (il server scarta quanto già
+  riferito, riconoscendo lo stesso link anche con parametri diversi); una risposta illeggibile è convertita una
+  volta, poi riferita com'è. Il telefono è avvisato solo per risultati ed errori.
 - **To-do e promesse** (22/10): dalle conversazioni nascono solo le promesse esplicite dell'utente; gli altri to-do
   li chiede l'utente ("Ehi Echo, segnami…"): nella lista di Echo, nell'app che nomina o nei Promemoria per un'ora.
 - **Account** (`routers/auth.py`): `POST /api/auth/login` e `/register` danno una chiave per telefono (solo l'hash

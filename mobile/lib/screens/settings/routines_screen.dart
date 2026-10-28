@@ -3,21 +3,35 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/routine.dart';
+import '../../models/routine_run.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/formatting.dart';
-import '../../widgets/expandable_text.dart';
 import '../../widgets/panel.dart';
+import '../../widgets/routine_run_sheet.dart';
 
-/// Profile → Routines: what Echo does on its own, and when. Routines are created by
-/// asking Echo; here they are paused, resumed or deleted.
+/// Profile → Routines: what Echo does on its own, when, and when it speaks. Routines are
+/// created by asking Echo; here they are paused, resumed or deleted, and lead to what
+/// they found: the last result in full, and all of them in Ask → Routines.
 class RoutinesScreen extends StatefulWidget {
-  const RoutinesScreen({this.api, this.clock = DateTime.now, super.key});
+  const RoutinesScreen({
+    this.api,
+    this.clock = DateTime.now,
+    this.onOpenResults,
+    this.onOpenThread,
+    super.key,
+  });
 
   /// Injected API (not disposed by the screen); a private one is created when omitted.
   final RoutinesApi? api;
   final DateTime Function() clock;
+
+  /// Ask → Routines on one routine (its id); this screen closes first.
+  final void Function(String routineId)? onOpenResults;
+
+  /// Ask on the thread with Echo (its session id), after "Ask about this".
+  final void Function(String sessionId)? onOpenThread;
 
   @override
   State<RoutinesScreen> createState() => _RoutinesScreenState();
@@ -109,6 +123,54 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
     }
   }
 
+  /// Back to the app's tabs, where Ask is.
+  void _closeToTabs() => Navigator.of(context).popUntil((route) => route.isFirst);
+
+  void _openResults(Routine routine) {
+    final open = widget.onOpenResults;
+    if (open == null) return;
+    _closeToTabs();
+    open(routine.id);
+  }
+
+  /// The last result in full: its run, or what the routine kept from before runs.
+  Future<void> _openLast(Routine routine) async {
+    RoutineRun? latest;
+    try {
+      final page = await _api.listRoutineRuns(routineId: routine.id, limit: 1);
+      latest = page.items.isEmpty ? null : page.items.first;
+    } catch (_) {}
+    if (!mounted) return;
+    final run = latest ??
+        RoutineRun(
+          id: '',
+          routineId: routine.id,
+          instruction: routine.instruction,
+          mode: routine.mode,
+          scheduleText: routine.scheduleText,
+          ranAt: routine.lastRunAt ?? widget.clock(),
+          status: routine.lastStatus ?? 'reported',
+          text: routine.lastAnswer,
+        );
+    final open = widget.onOpenThread;
+    await showRoutineRunSheet(
+      context,
+      run,
+      onAskAbout: latest == null || open == null ? null : () => _askAbout(run, open),
+    );
+  }
+
+  Future<void> _askAbout(RoutineRun run, void Function(String) open) async {
+    try {
+      final thread = await _api.askAboutRoutineRun(run.id);
+      if (!mounted) return;
+      _closeToTabs();
+      open(thread);
+    } catch (_) {
+      if (mounted) _say('Could not open it in Ask.');
+    }
+  }
+
   void _say(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -175,6 +237,8 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
               now: widget.clock(),
               onActive: (active) => unawaited(_setActive(routine, active)),
               onDelete: () => unawaited(_delete(routine)),
+              onOpenLast: () => unawaited(_openLast(routine)),
+              onOpenResults: widget.onOpenResults == null ? null : () => _openResults(routine),
             ),
           ),
         note,
@@ -189,6 +253,8 @@ final class _RoutineTile extends StatelessWidget {
     required this.now,
     required this.onActive,
     required this.onDelete,
+    required this.onOpenLast,
+    this.onOpenResults,
   });
 
   final Routine routine;
@@ -196,8 +262,15 @@ final class _RoutineTile extends StatelessWidget {
   final ValueChanged<bool> onActive;
   final VoidCallback onDelete;
 
+  /// The last result in full, in a sheet.
+  final VoidCallback onOpenLast;
+
+  /// Every result, in Ask → Routines.
+  final VoidCallback? onOpenResults;
+
   String? get _last => switch (routine.lastStatus) {
         'reported' => routine.lastAnswer,
+        'nothing' => 'Checked, nothing new',
         'failed' => 'Could not run',
         'skipped' => 'Missed while Echo was offline',
         _ => null,
@@ -225,16 +298,40 @@ final class _RoutineTile extends StatelessWidget {
                 Text(routine.scheduleText,
                     style: textTheme.labelMedium?.copyWith(color: palette.accent)),
                 const SizedBox(height: 2),
+                Text(routineModeText(routine.mode),
+                    style: textTheme.bodySmall?.copyWith(color: palette.text2)),
+                const SizedBox(height: 2),
                 Text(next, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
                 if (last != null) ...[
                   const SizedBox(height: 6),
-                  ExpandableText(
-                    last,
+                  // Two lines; the sheet behind them has it all
+                  InkWell(
                     key: Key('routine-last-${routine.id}'),
-                    style: textTheme.bodySmall?.copyWith(
-                      color: routine.lastStatus == 'reported' ? palette.text : palette.red,
+                    onTap: onOpenLast,
+                    child: Text(
+                      last,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodySmall?.copyWith(
+                        color: switch (routine.lastStatus) {
+                          'reported' => palette.text,
+                          'failed' => palette.red,
+                          _ => palette.text2,
+                        },
+                      ),
                     ),
                   ),
+                  if (onOpenResults != null)
+                    TextButton(
+                      key: Key('routine-results-${routine.id}'),
+                      onPressed: onOpenResults,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 36),
+                        alignment: Alignment.centerLeft,
+                      ),
+                      child: const Text('See all results'),
+                    ),
                 ],
               ],
             ),

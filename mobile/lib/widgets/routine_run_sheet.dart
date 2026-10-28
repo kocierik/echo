@@ -13,11 +13,11 @@ String routineMissedLine(RoutineRun run) =>
     "Missed at ${formatTime(run.ranAt)}: Echo's server was off";
 
 /// A routine's run in full: the routine, when it ran, the whole answer, its sources and
-/// "Ask about this" (which closes the sheet first).
+/// "Ask about this" (which closes the sheet first; none without [onAskAbout]).
 Future<void> showRoutineRunSheet(
   BuildContext context,
   RoutineRun run, {
-  required Future<void> Function() onAskAbout,
+  required Future<void> Function()? onAskAbout,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -31,7 +31,7 @@ final class RoutineRunSheet extends StatelessWidget {
   const RoutineRunSheet({required this.run, required this.onAskAbout, super.key});
 
   final RoutineRun run;
-  final Future<void> Function() onAskAbout;
+  final Future<void> Function()? onAskAbout;
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +68,7 @@ final class RoutineRunSheet extends StatelessWidget {
             const SizedBox(height: 4),
             for (final source in run.sources) RoutineSourceRow(source),
           ],
-          if (run.status == 'reported' && run.hasText) ...[
+          if (onAskAbout != null && run.status == 'reported' && run.hasText) ...[
             const SizedBox(height: 20),
             Align(
               alignment: Alignment.centerLeft,
@@ -76,7 +76,7 @@ final class RoutineRunSheet extends StatelessWidget {
                 key: const Key('run-ask-about'),
                 onPressed: () {
                   Navigator.pop(context);
-                  unawaited(onAskAbout());
+                  unawaited(onAskAbout!());
                 },
                 icon: const Icon(Icons.chat_bubble_outline, size: 18),
                 label: const Text('Ask about this'),

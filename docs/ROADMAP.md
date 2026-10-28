@@ -116,12 +116,16 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [ ] Esperimento "Cosa so di te" (16/10: da vedere se funziona): un profilo di fatti stabili, visibile e
       correggibile in Settings, usato in ogni risposta; niente deduzioni su salute, politica, religione, vita sessuale
 - [x] Incarichi ricorrenti (22/10): creati a voce o in Ask ("ogni mattina alle 7 dimmi il meteo a Milano"),
-      eseguiti dal server all'ora (giornalieri, feriali, settimanali, mensili; max 10), risposta nel thread con una
-      notifica, in Profile → Routines; senza strumenti che chiedono Confirm. Poi: incarichi che creano task o
-      promemoria, notifiche push ad app chiusa (APNs)
+      eseguiti dal server all'ora (giornalieri, feriali, settimanali, mensili; max 10), in Profile → Routines;
+      senza strumenti che chiedono Confirm
+- [x] Incarichi che parlano solo quando serve (28/10, [design](superpowers/specs/2026-10-28-routines-that-speak-when-needed-design.md)):
+      tre modi (sempre, solo se vale la condizione, solo le novità), un'esecuzione per riga (`routine_runs`, 90
+      giorni), niente più messaggi nel thread; risultati in Today ("From your routines"), in Ask → Routines per
+      giorno e per incarico, testo intero con le fonti, "Ask about this" che li porta nella chat. Poi: incarichi
+      che creano task o promemoria, notifiche push ad app chiusa (APNs), cambiare il modo dall'app
 - [ ] Regole a evento ("quando prometto qualcosa a un cliente, crea un task in Todoist"); azioni verso altri
       sempre con Confirm
-- [ ] Dati del proprio agente: quote, storico delle esecuzioni, pausa di tutti gli incarichi
+- [ ] Dati del proprio agente: quote, pausa di tutti gli incarichi (lo storico delle esecuzioni c'è dal 28/10)
 - [ ] Esecuzioni durevoli: ogni passo salvato, un incarico interrotto (riavvio, deploy) riprende da dove era
 - [ ] Decisioni veloci (instradamento, "è un comando per Echo?", scelta degli strumenti): prima misurare i tempi
       reali di ogni passo; con molti strumenti (client MCP) scegliere i pertinenti con gli embedding che già

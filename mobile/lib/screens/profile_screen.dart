@@ -252,7 +252,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.schedule_rounded,
                 title: 'Routines',
                 subtitle: 'What Echo does on its own, and when.',
-                onTap: () => _push(const RoutinesScreen()),
+                onTap: () => _push(RoutinesScreen(
+                  onOpenResults: (id) => _appController.requestOpenRoutines(routineId: id),
+                  onOpenThread: _appController.requestOpenThread,
+                )),
               ),
               if (phoneActions != null)
                 SettingsRow(

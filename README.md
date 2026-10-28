@@ -29,8 +29,11 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   Italian "Echo" transcribed as "ecco" is heard; "ecco" alone is just the word. The answer appears
   in Ask, in your one thread with Echo, with a notification the next time the app wakes up.
 - **Does things on its own.** "Ehi Echo, ogni mattina alle 7 dimmi che tempo fa a Milano": a
-  routine, run by the server at its time (daily, weekdays, weekly or monthly, at most 10), its
-  answer in the thread with a notification; seen, paused and deleted in Profile → Routines.
+  routine, run by the server at its time (daily, weekdays, weekly or monthly, at most 10). It
+  always reports, only when its condition holds ("dimmi se piove"), or only what is new ("nuove
+  posizioni di lavoro"), and stays quiet otherwise. What it found shows on Today ("From your
+  routines"), in Ask → Routines by day, in full with its sources, and as a notification; "Ask about
+  this" brings a result into the chat. Paused and deleted in Profile → Routines.
 - **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
   their day; 10 minutes before a meeting, a briefing on the person if there is something to know.
   When someone whose voice you named starts talking, the phone says at once what you promised
@@ -327,8 +330,9 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   confirmation, `pending_action` (`id`, `summary`, `status`, `expires_at`).
   An answer that searched the web also carries `web_sources` (`title`, `url`), kept in the
   history as the message's `citations`.
-- `GET /api/chat-sessions/thread` — the thread with Echo (created on first use): voice requests,
-  photos and routine answers land there, and typed questions unless a new chat is started.
+- `GET /api/chat-sessions/thread` — the thread with Echo (created on first use): voice requests
+  and photos land there, typed questions unless a new chat is started, and a routine's result
+  only when the user asks about it.
 - `GET /api/chat-sessions` (the thread first), `GET /api/chat-sessions/{id}`,
   `DELETE /api/chat-sessions/{id}` — complete chat history.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
@@ -356,9 +360,16 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 
 ### Routines
 - Created by asking Echo (chat or voice), never by REST. `GET /api/routines` — newest first, with
-  `instruction`, `schedule` and `schedule_text` ("Every day at 07:00"), `next_run_at`,
-  `last_status` (`ok`, `failed`, `skipped`) and `last_answer`. `PATCH /api/routines/{id}`
-  (`{active}`; resuming counts from now), `DELETE /api/routines/{id}`.
+  `instruction`, `schedule` and `schedule_text` ("Every day at 07:00"), `mode` (`always`,
+  `only_if`, `only_new`), `next_run_at`, `last_status` (`reported`, `nothing`, `failed`,
+  `skipped`) and `last_answer`. `PATCH /api/routines/{id}` (`{active}`; resuming counts from
+  now), `DELETE /api/routines/{id}`.
+- `GET /api/routine-runs?routine_id=&since=&before=&limit=` — the runs, newest first (30 by
+  default, at most 100), each with its routine's `instruction`, `mode` and `schedule_text`, its
+  `status`, full `text` and `sources`; `next_before` asks for the next page. Kept 90 days.
+- `POST /api/routine-runs/{id}/ask` — "Ask about this": adds the run to the thread with Echo
+  once, so the next question has it; returns the thread's `session_id` (409 for a run with
+  nothing to say).
 
 ### Export
 - `GET /api/export` — everything about the user as one JSON file (conversations with transcripts and
@@ -388,8 +399,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `POST /api/photos/{id}/ask` (`{"question"}`) — a follow-up about the same photo ("Translate it");
   the question and answer go to the photo's chat.
 - `GET /api/device/commands?wait=0..25` — long poll for the phone's and the wearable's commands:
-  `take_photo` (relayed to the wearable), `voice_update` (a routine ran: check the thread and
-  notify), `person_brief` (`person_id`, `title`, `body`: a known voice started talking, shown at
+  `take_photo` (relayed to the wearable), `voice_update` (a routine found something or failed:
+  check `/api/actions/voice-updates`, which also returns new `routine_runs`, and notify), `person_brief` (`person_id`, `title`, `body`: a known voice started talking, shown at
   once, valid 2 minutes) and `phone_action` (Reminders or Calendar, run by the app,
   which answers with `POST /api/device/commands/{id}/result`). `PUT /api/device/phone-apps`
   (`{reminders, calendar}`) — which of them the app has turned on.
