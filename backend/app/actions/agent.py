@@ -34,6 +34,7 @@ from app.actions.saved_tools import (
     saved_lists_prompt,
 )
 from app.actions.todo_tools import TODO_TOOL_NAMES, TODO_TOOLS, run_todo_tool
+from app.actions.whatsapp_provider import WHATSAPP_NAMES
 from app.core.config import settings
 from app.core.timezone import user_zone
 from app.models.pending_action import PendingAction
@@ -105,7 +106,7 @@ TEXTS = {
     },
 }
 
-TOOLKIT_NAMES = {**APP_NAMES, **PHONE_APP_NAMES}
+TOOLKIT_NAMES = {**APP_NAMES, **PHONE_APP_NAMES, **WHATSAPP_NAMES}
 
 
 class _NoApps:

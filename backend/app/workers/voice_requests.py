@@ -38,6 +38,7 @@ from app.actions.voice import (
     is_assistant_request,
     strip_speaker_tag,
 )
+from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
 from app.models.segment import Segment
 from app.services.about_echo import about_echo_for
@@ -187,6 +188,7 @@ async def _answer(
         logger.info("[Voice] Action provider not configured")
     # The iPhone's Reminders and Calendar, when the app offers them
     provider = await with_phone_apps(provider, redis_client, user_id)
+    provider = await with_whatsapp(provider, redis_client, user_id)
     if provider is None:
         # Still checked for the camera and routines; app requests have nothing to act on
         route = await route_request(get_llm_intent_service(), command, history, [], camera=True)

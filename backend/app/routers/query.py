@@ -23,6 +23,7 @@ from app.actions.composio_provider import get_action_provider
 from app.actions.phone_provider import with_phone_apps
 from app.actions.provider import ActionProviderError
 from app.actions.saved_tools import SavedContext
+from app.actions.whatsapp_provider import with_whatsapp
 from app.core.auth import get_current_user_id
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
@@ -138,6 +139,8 @@ _TOOL_HINT = re.compile(
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
     r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria|"
+    # WhatsApp: what someone wrote
+    r"whatsapp|scritt|scrive|scriss|wrote|written|texted|"
     # Routines: something regular, or the routines themselves
     r"ogni\b|tutti i giorni|tutte le (mattine|sere)|every\b|each (day|morning|evening|week)|"
     r"daily|weekly|monthly|routine|incaric|smetti|stop\b|"
@@ -395,6 +398,8 @@ async def _answer_query(
             # Composio not configured on this server: only the iPhone's apps, if any
             logger.info("Action provider not configured")
         provider = await with_phone_apps(provider, redis_client, user_id)
+        # The user's WhatsApp, while it is linked
+        provider = await with_whatsapp(provider, redis_client, user_id)
         if provider is not None:
             reachable: list[str] | None = None
             try:

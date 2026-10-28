@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
     deepgram_model: str = "nova-3"
 
+    # WhatsApp, read-only, through the bridge (whatsapp/); unset: no WhatsApp at all
+    whatsapp_bridge_url: str = ""
+    whatsapp_bridge_token: str = ""
+
     # LLM - analysis (async, economico)
     llm_analysis_provider: str = "openai"
     # Best on the evaluations (docs/MODEL-EVALUATION.md); gpt-4o-mini shuts down 2027-01-14

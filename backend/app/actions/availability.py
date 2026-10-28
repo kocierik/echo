@@ -13,6 +13,8 @@ import re
 from dataclasses import dataclass, field
 
 from app.actions.phone_provider import PHONE_APP_NAMES
+from app.actions.whatsapp_provider import WHATSAPP_NAMES
+from app.core.config import settings
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage
 
@@ -30,6 +32,7 @@ APP_NAMES = {
 TEXTS = {
     "en": {
         "unreachable": "I couldn't reach your connected apps right now. Try again in a moment.",
+        "whatsapp": "WhatsApp isn't linked. Link it in Profile → WhatsApp.",
         "not_connected": (
             "{app} isn't connected. Connect it in Profile → Apps."
         ),
@@ -41,6 +44,7 @@ TEXTS = {
         "unreachable": (
             "Non riesco a raggiungere le app collegate in questo momento. Riprova tra poco."
         ),
+        "whatsapp": "WhatsApp non è collegato. Collegalo da Profile → WhatsApp.",
         "not_connected": (
             "{app} non è collegato. Collegalo da Profile → Apps."
         ),
@@ -237,6 +241,9 @@ def unreachable_answer(request: str) -> str:
 
 def not_connected_answer(request: str, slug: str) -> str:
     """`slug` is a known slug or, for an app Echo cannot resolve, the name as given."""
+    if slug == "whatsapp":
+        # Linked in Profile → WhatsApp, not among the apps
+        return TEXTS[detect_language(request)]["whatsapp"]
     app = APP_NAMES.get(slug) or (slug if slug != slug.lower() else slug.title())
     return TEXTS[detect_language(request)]["not_connected"].format(app=app)
 
@@ -263,7 +270,9 @@ async def route_request(
     to be saved when the request saves it. A save (in chat also one about a photo: the
     agent attaches the thread's last one) -> the agent.
     """
-    intent = await classify_request(llm, request, history, connected, APP_NAMES, camera)
+    # WhatsApp is an app Echo knows only where the server has its bridge
+    known = {**APP_NAMES, **WHATSAPP_NAMES} if settings.whatsapp_bridge_url else APP_NAMES
+    intent = await classify_request(llm, request, history, connected, known, camera)
     if camera and intent.camera:
         return Route("photo", save=intent.saved)
     if intent.routine or intent.todo or intent.saved:

@@ -27,6 +27,7 @@ from sqlalchemy import select
 from app.actions.agent import NO_APPS, TEXTS, run_action_agent
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
+from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
 from app.models.routine import Routine
 from app.services.device_commands import push_device_command
@@ -169,6 +170,8 @@ async def _ask(db, llm, provider, routine: _Due) -> _Result:
 
 
 async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) -> None:
+    # "Ogni sera riassumimi WhatsApp": the user's WhatsApp, while it is linked
+    provider = await with_whatsapp(provider, redis_client, routine.user_id)
     with owned_by(routine.user_id):
         async with session_factory() as db:
             try:
