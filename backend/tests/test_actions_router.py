@@ -49,7 +49,7 @@ class FakeDb:
 
     async def scalars(self, stmt):
         # Routine runs for /voice-updates: none here (tests/test_routine_runs_api.py)
-        return _Scalars([])
+        return []
 
     async def get(self, model, pk, **kwargs):
         if model is PendingAction:
