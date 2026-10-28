@@ -95,7 +95,7 @@ request ("Echo, remind me to …") and its answer.
   conversation collects answers to "Echo, …" requests spoken to the wearable.
 - **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
   Activity, Notifications, Voices, Language (the language you speak: transcription and
-  dictation), Spoken answers (Off, Headphones, Always: the phone reads answers to "Echo, …"
+  dictation; the other languages you hear, recognised and translatable), Spoken answers (Off, Headphones, Always: the phone reads answers to "Echo, …"
   aloud), Appearance (System, Light, Dark), Privacy, What Echo can do,
   Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones; connected apps:
   **Connect an assistant** gives Claude Code or Cursor a read-only key and the lines to paste;

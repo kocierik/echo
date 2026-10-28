@@ -48,7 +48,8 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       da un'icona; in cima solo le azioni da confermare
 - [x] Risposte a voce dal telefono (28/10, [design](superpowers/specs/2026-10-28-spoken-answers-design.md)):
       sintesi vocale del telefono, solo in cuffia o anche sull'altoparlante, anche ad app in background
-- [ ] Traduzione delle trascrizioni (#4): il prossimo
+- [x] Traduzione delle trascrizioni (28/10, [design](superpowers/specs/2026-10-28-transcript-translation-design.md)):
+      le altre lingue sentite, riconosciute nella trascrizione; le righe in un'altra lingua tradotte nell'app
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [x] Live Activity (iOS 16.1+): schermata di blocco e Dynamic Island con stato (ascolta/muto/offline),

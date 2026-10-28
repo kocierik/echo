@@ -26,6 +26,9 @@ each person has their own memory; the Android app builds from the same code but 
 - **Answers out loud.** With Spoken answers on (Profile), the phone reads the answer to an
   "Echo, …" request aloud, also with the screen locked: in headphones only, or also on the speaker.
   Echo stops listening while the phone speaks, so it never records its own answer.
+- **Other languages, translated.** Add the other languages spoken around you (Profile → Language):
+  Echo recognises which one each segment is in, and a conversation's lines in another language
+  are tagged and can be translated into yours, under the originals.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
@@ -296,9 +299,12 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `POST /api/auth/register` — the same body; creates the account (password of 10+ characters) and
   signs the phone in. 409 if the email has an account, 403 with `REGISTRATION_OPEN=false`, at most
   5 accounts an hour from one address.
-- `GET /api/auth/me` → `{email, language}`; `PATCH /api/auth/me` `{language: "en" | "it"}` — the
-  language the account speaks: the wearable's transcription and the app's dictation use it
-  (registration takes the phone's; one Echo does not transcribe yet becomes English).
+- `GET /api/auth/me` → `{email, language, other_languages}`; `PATCH /api/auth/me`
+  `{language: "en" | "it"}` — the language the account speaks: the wearable's transcription and
+  the app's dictation use it (registration takes the phone's; one Echo does not transcribe yet
+  becomes English). `{other_languages: ["en", "es"]}` — up to 4 of en, it, es, fr, de, pt heard
+  around the user: transcription then recognises which one each segment is in (Deepgram
+  `detect_language` among them; without any, the request is as before).
 - `POST /api/auth/connected-apps` (`{name}`) → `{id, name, api_key}`: a **read-only** key for an
   assistant (Claude, Cursor…), shown once, at most 10 per account. It works only on the MCP
   server; the REST API answers it 403 "This key is for connected apps only." Listed by
@@ -348,7 +354,10 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `GET /api/conversations?limit=&offset=&date_from=&date_to=` — newest first, with `emoji`,
   `duration_s`, `is_open` (still capturing), up to three `people` and `task_count`.
 - `GET /api/conversations/{id}` — Segments in order (`segment_id`, `text`, `speaker_label`,
-  `status`, pending ones included) and the extracted entities with their `source_text`.
+  `status`, `language`, pending ones included) and the extracted entities with their `source_text`.
+- `POST /api/conversations/{id}/translate` → `{language, lines: {segment_id: text}}` — the lines
+  heard in another language, translated into the account's with the LLM; each is kept, so it is
+  translated once (a corrected line is translated again).
 - `DELETE /api/conversations/{id}` — deletes audio, Segments, transcriptions, chunks and
   conversation entities.
 - `GET /api/search?q=` — conversations (title, summary, transcript) and entities (name, content).

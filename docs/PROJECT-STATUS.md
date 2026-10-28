@@ -97,6 +97,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   muto mentre il telefono parla (anche in cuffia: un'auto o una cassa Bluetooth sembrano cuffie) e torna ad
   ascoltare dopo (se l'app muore a metà, lo rimette in ascolto alla riconnessione). Testo senza markdown né link,
   tagliato a ~500 caratteri ("Il resto è in Ask."); tenere premuto Ask ferma la voce, e mentre detti non parla.
+- **Altre lingue e traduzione** (28/10, Profile → Language): fino a 4 lingue sentite intorno (en, it, es, fr, de,
+  pt). Con almeno una, la trascrizione riconosce in quale lingua è ogni segmento (Deepgram `detect_language`
+  ristretto a quelle; se rifiuta le keyterm insieme, riprova senza) e la salva; senza, nulla cambia. Nella
+  conversazione le righe in un'altra lingua hanno l'etichetta "EN" e "Translate to Italiano" mostra la traduzione
+  sotto l'originale (LLM, una volta per riga, salvata; una riga corretta si ritraduce).
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la
