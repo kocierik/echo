@@ -128,6 +128,8 @@ async def test_ask_about_a_run_adds_it_to_the_thread_once(client, auth_headers):
     message = tagged[0]
     assert (message["role"], message["content"]) == ("assistant", "Domani piove dalle 15")
     assert message["notify"] is False
+    # Follow-ups go to the agent, which can look again ("e domani?")
+    assert message["actions"] is True
     assert message["routine_id"] == str(routine.id)
     assert message["routine_schedule"] == "Every day at 07:00"
     assert message["citations"] == [{"title": "Meteo", "url": "https://meteo.it"}]
@@ -142,7 +144,11 @@ async def test_the_next_question_has_the_run_in_its_history(client, auth_headers
         history = await load_thread_history(
             InMemoryRedis(), db, TEST_USER_ID, uuid.UUID(response.json()["session_id"])
         )
-    assert history[-1] == {"role": "assistant", "content": "Domani piove dalle 15"}
+    assert history[-1] == {
+        "role": "assistant",
+        "content": "Domani piove dalle 15",
+        "actions": True,
+    }
 
 
 async def test_ask_about_a_quiet_run_is_409(client, auth_headers):

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from app.actions.agent import NO_APPS, run_action_agent
+from app.actions.agent import NO_APPS, TEXTS, run_action_agent
 from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.core.database import async_session
@@ -40,7 +40,7 @@ from app.services.routine_results import (
     fresh_items,
     parse_result,
 )
-from app.services.routine_runs import delete_old_runs, record_run, seen_items
+from app.services.routine_runs import delete_old_runs, record_run, seen_items, seen_keys
 from app.services.routines import next_run
 from app.services.usage import owned_by
 from app.workers.lifecycle import sleep_or_shutdown
@@ -111,14 +111,27 @@ def _provider():
         return NO_APPS
 
 
-async def _ask(db, llm, provider, routine: _Due, seen: list[dict]) -> _Result:
+def _could_not_answer(answer: str, language: str) -> bool:
+    """One of the agent's own texts for an answer it could not give (apps unreachable, too
+    many steps, no answer): a failed run, not a quiet one."""
+    texts = TEXTS[language]
+    return any(answer.startswith(texts[key]) for key in ("unreachable", "step_limit", "no_answer"))
+
+
+async def _ask(db, llm, provider, routine: _Due) -> _Result:
     """Run the agent on the routine's request and read what it found, by mode."""
+    only_new = routine.mode == "only_new"
+    seen = await seen_items(db, routine.id) if only_new else []
+    known = await seen_keys(db, routine.id) if only_new else set()
+    language = detect_language(routine.instruction)
     outcome = await run_action_agent(
         db, routine.user_id, framed_request(routine.instruction, routine.mode, seen), [],
         session_id=None, source="routine", provider=provider, llm=llm,
-        routine_tools=False, allow_confirm=False,
+        routine_tools=False, allow_confirm=False, language=language,
     )
     sources = outcome.web_sources or []
+    if _could_not_answer(outcome.answer, language):
+        return _Result("failed", outcome.answer)
     if routine.mode == "always":
         return _Result("reported", outcome.answer, sources)
     result = parse_result(outcome.answer, routine.mode)
@@ -131,8 +144,11 @@ async def _ask(db, llm, provider, routine: _Due, seen: list[dict]) -> _Result:
     if result is None:
         logger.info(f"[Routines] {routine.id}: no readable result, reported as it is")
         return _Result("reported", outcome.answer, sources)
-    if routine.mode == "only_new":
-        fresh = fresh_items(result.items, {item.get("key") for item in seen})
+    if only_new:
+        if result.report and not result.items and (result.text or result.intro):
+            # What it found is in the text, not in items: told as it is, never dropped
+            return _Result("reported", result.text or result.intro, sources)
+        fresh = fresh_items(result.items, known)
         if not fresh:
             return _Result("nothing")
         kept = [{"key": i["key"], "title": i["title"], "url": i["url"]} for i in fresh]
@@ -145,12 +161,9 @@ async def _ask(db, llm, provider, routine: _Due, seen: list[dict]) -> _Result:
 async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) -> None:
     with owned_by(routine.user_id):
         async with session_factory() as db:
-            seen = await seen_items(db, routine.id) if routine.mode == "only_new" else []
             try:
                 # The conversion call, when there is one, is inside the same budget
-                result = await asyncio.wait_for(
-                    _ask(db, llm, provider, routine, seen), RUN_TIMEOUT_S
-                )
+                result = await asyncio.wait_for(_ask(db, llm, provider, routine), RUN_TIMEOUT_S)
             except Exception:
                 logger.warning(f"[Routines] {routine.id} failed", exc_info=True)
                 await db.rollback()
@@ -187,8 +200,28 @@ async def run_due_routines(
     llm = llm or get_llm_query_service()
     provider = provider or _provider()
     for routine in due:
-        await _run_one(session_factory, redis_client, llm, provider, routine)
+        try:
+            await _run_one(session_factory, redis_client, llm, provider, routine)
+        except Exception:
+            # Its session broke (a cancelled call, a failed rollback): recorded as failed
+            # in a fresh one, and the next routines still run
+            logger.exception(f"[Routines] {routine.id} crashed")
+            await _record_crash(session_factory, routine)
     return len(due)
+
+
+async def _record_crash(session_factory, routine: _Due) -> None:
+    try:
+        async with session_factory() as db:
+            row = await db.get(Routine, routine.id)
+            if row is not None:
+                await record_run(
+                    db, row, status="failed", ran_at=datetime.now(timezone.utc),
+                    text=FAILED[detect_language(routine.instruction)],
+                )
+                await db.commit()
+    except Exception:
+        logger.exception(f"[Routines] {routine.id}: could not record the failed run")
 
 
 async def _delete_old_runs(now: datetime, session_factory=None) -> None:

@@ -9,12 +9,22 @@ database, no model calls.
 import json
 import re
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 MODES = ("always", "only_if", "only_new")
 
 # How many already-reported items the request lists; the server filters all of them anyway
 SEEN_IN_PROMPT = 50
+
+# Query parameters that track a click rather than name the page (utm_source, gclid, ...)
+_TRACKING = re.compile(
+    r"^(utm|utm_.*|gclid|fbclid|msclkid|mc_cid|mc_eid|ref|refid|trk|trackingid)$", re.IGNORECASE
+)
+
+_COULD_NOT = (
+    'If you could not check (no web search, an app failed), set "report" to true and say '
+    "what you could not check."
+)
 
 _CONTRACT = (
     "Reply with JSON only, no other text: "
@@ -27,21 +37,22 @@ _CONTRACT = (
 _ONLY_IF = (
     "This runs on a schedule and must speak only when the condition in the request holds. "
     'Set "report" to true only when it holds, with "text" the message for the user; '
-    'otherwise "report" false and "text" empty. Leave "items" empty.'
+    'otherwise "report" false and "text" empty. Leave "items" empty. ' + _COULD_NOT
 )
 
 _ONLY_NEW = (
     "This runs on a schedule and must speak only about things that are new. "
     'Put one entry in "items" per thing found: its "title", a "line" of a few words '
     '(where, who, when) and its "url" when there is one. "intro" is one short line '
-    'before the list. Set "report" to false when nothing new was found.'
+    'before the list. Set "report" to false when nothing new was found. ' + _COULD_NOT
 )
 
 CONVERT_PROMPT = (
     "Turn the assistant's answer below into JSON, without adding anything it does not say. "
     + _CONTRACT
     + ' "report" is true when the answer has something to tell the user; '
-    'for a list of things found, one entry in "items" each.'
+    'for a list of things found, one entry in "items" each. When it says it could not check '
+    'or something failed, "report" is true.'
 )
 
 
@@ -100,14 +111,22 @@ def parse_result(answer: str, mode: str) -> RoutineResult | None:
 
 
 def item_key(item: dict) -> str:
-    """Stable across runs: the link without scheme, query, fragment or trailing slash
-    (host lowercased), else the title lowercased with no punctuation."""
+    """Stable across runs: the link as https, host lowercased without "www.", no trailing
+    slash or fragment, and its query sorted without tracking parameters (the query that
+    names the item, Indeed's `jk=`, stays); else the title lowercased with no punctuation."""
     url = (item.get("url") or "").strip()
     if url:
+        if "://" not in url:
+            url = f"https://{url}"
         parts = urlsplit(url)
         if parts.netloc:
-            path = parts.path.rstrip("/")
-            return urlunsplit(("https", parts.netloc.lower(), path, "", ""))
+            host = parts.netloc.lower().removeprefix("www.")
+            query = urlencode(sorted(
+                (name, value)
+                for name, value in parse_qsl(parts.query, keep_blank_values=True)
+                if not _TRACKING.match(name)
+            ))
+            return urlunsplit(("https", host, parts.path.rstrip("/"), query, ""))
     title = re.sub(r"[^\w\s]", " ", (item.get("title") or "").lower())
     return " ".join(title.split())
 

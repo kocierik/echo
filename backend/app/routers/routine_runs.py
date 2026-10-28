@@ -118,6 +118,8 @@ async def ask_about_run(
                 "routine_schedule": describe_schedule(routine.schedule) if routine else "",
                 "citations": run.sources or [],
                 "notify": False,
+                # The next question goes to the agent, which can look again ("e domani?")
+                "actions": True,
             },
         ]
         thread.updated_at = now

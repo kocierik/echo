@@ -11,7 +11,7 @@ from app.models.routine import Routine
 from app.models.routine_run import RoutineRun
 
 KEEP_DAYS = 90
-# How far back an only_new routine remembers what it reported
+# The newest reported items listed for the request; the filter uses all of them (seen_keys)
 SEEN_LIMIT = 200
 
 
@@ -33,6 +33,16 @@ async def seen_items(db: AsyncSession, routine_id: uuid.UUID) -> list[dict]:
             if len(seen) >= SEEN_LIMIT:
                 return seen
     return seen
+
+
+async def seen_keys(db: AsyncSession, routine_id: uuid.UUID) -> set[str]:
+    """Every key this routine's kept runs reported (90 days): what an only_new run drops."""
+    rows = await db.scalars(
+        select(RoutineRun.items).where(
+            RoutineRun.routine_id == routine_id, RoutineRun.items != []
+        )
+    )
+    return {item.get("key") for items in rows for item in items or [] if item.get("key")}
 
 
 async def record_run(

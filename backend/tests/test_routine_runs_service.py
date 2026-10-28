@@ -99,3 +99,22 @@ async def test_old_runs_are_deleted_after_90_days(db_session):
 
     left = (await db_session.scalars(select(RoutineRun))).all()
     assert [run.ran_at for run in left] == [NOW - timedelta(days=89)]
+
+
+async def test_seen_keys_are_every_key_the_routine_kept(db_session):
+    routine = await _routine(db_session)
+    for day in range(3):
+        db_session.add(
+            RoutineRun(
+                routine_id=routine.id,
+                user_id=TEST_USER_ID,
+                ran_at=NOW - timedelta(days=day),
+                status="reported",
+                items=[_item(f"k{day}-{i}") for i in range(100)],
+            )
+        )
+    await db_session.commit()
+
+    keys = await routine_runs.seen_keys(db_session, routine.id)
+
+    assert len(keys) == 300 and "k2-0" in keys

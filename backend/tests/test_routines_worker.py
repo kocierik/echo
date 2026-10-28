@@ -401,3 +401,89 @@ async def test_usage_is_owned_by_the_routines_user():
     await _run(llm)
 
     assert llm.owners == [TEST_USER_ID]
+
+
+async def test_only_new_filters_with_every_item_ever_reported():
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    async with test_session() as db:
+        for day in range(3):
+            db.add(
+                RoutineRun(
+                    routine_id=routine.id,
+                    user_id=TEST_USER_ID,
+                    ran_at=NOW - timedelta(days=day + 1),
+                    status="reported",
+                    items=[
+                        {"key": item_key({"url": f"https://x.io/{day}-{i}"}), "title": "t",
+                         "url": None}
+                        for i in range(100)
+                    ],
+                )
+            )
+        await db.commit()
+
+    # The oldest of 300 openings, past the 200 the request lists
+    await _run(_LLM(answer=_jobs("https://x.io/2-99")))
+
+    run = (await _runs(routine))[-1]
+    assert run.status == "nothing"
+
+
+async def test_only_new_with_its_findings_in_text_but_no_items_reports_the_text():
+    routine = await _routine(mode="only_new", instruction="nuove posizioni backend")
+    answer = json.dumps(
+        {"report": True, "intro": "", "text": "Backend Engineer da Satispay", "items": []}
+    )
+
+    await _run(_LLM(answer=answer))
+
+    [run] = await _runs(routine)
+    assert (run.status, run.text) == ("reported", "Backend Engineer da Satispay")
+
+
+async def test_the_agent_speaks_the_instruction_s_language(monkeypatch):
+    await _routine(mode="only_if", instruction="dimmi se piove domani")
+    seen = []
+
+    async def _agent(*args, **kwargs):
+        seen.append(kwargs.get("language"))
+        return SimpleNamespace(answer='{"report": false}', web_sources=[])
+
+    monkeypatch.setattr(worker, "run_action_agent", _agent)
+
+    await _run(_LLM())
+
+    assert seen == ["it"]
+
+
+async def test_an_agent_that_could_not_answer_is_a_failed_run(monkeypatch):
+    from app.actions.agent import TEXTS
+
+    routine = await _routine(mode="only_if", instruction="dimmi se piove domani")
+    redis = InMemoryRedis()
+
+    async def _agent(*args, **kwargs):
+        return SimpleNamespace(answer=TEXTS["it"]["unreachable"], web_sources=[])
+
+    monkeypatch.setattr(worker, "run_action_agent", _agent)
+
+    await _run(_LLM(), redis=redis)
+
+    [run] = await _runs(routine)
+    assert run.status == "failed"
+    assert _nudges(redis) == ["voice_update"]
+
+
+async def test_one_routine_crashing_does_not_stop_the_others(monkeypatch):
+    broken = await _routine(mode="only_new", next_run_at=NOW - timedelta(minutes=1))
+    fine = await _routine()
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("database gone")
+
+    monkeypatch.setattr(worker, "seen_keys", _boom)
+
+    await _run(_LLM())
+
+    assert [r.status for r in await _runs(fine)] == ["reported"]
+    assert [r.status for r in await _runs(broken)] == ["failed"]

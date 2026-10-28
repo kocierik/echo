@@ -141,3 +141,30 @@ def test_compose_text_without_intro_or_line():
 
 def test_the_conversion_prompt_asks_for_the_same_json():
     assert '"report"' in CONVERT_PROMPT and "JSON" in CONVERT_PROMPT
+
+
+def test_item_key_keeps_the_query_that_names_the_item():
+    assert item_key({"url": "https://it.indeed.com/viewjob?jk=abc123", "title": "A"}) != item_key(
+        {"url": "https://it.indeed.com/viewjob?jk=zzz999", "title": "A"}
+    )
+
+
+def test_item_key_drops_tracking_www_and_order_of_the_query():
+    assert item_key(
+        {"url": "http://www.Indeed.com/viewjob/?utm_source=li&jk=abc&from=x&gclid=1#top"}
+    ) == item_key({"url": "https://indeed.com/viewjob?from=x&jk=abc"})
+
+
+def test_item_key_reads_a_link_without_scheme():
+    assert item_key({"url": "jobs.example.com/a"}) == item_key(
+        {"url": "https://jobs.example.com/a"}
+    )
+
+
+def test_a_run_that_could_not_check_is_told_to_report():
+    for request in (
+        framed_request("dimmi se piove", "only_if", []),
+        framed_request("nuove posizioni", "only_new", []),
+    ):
+        assert "could not" in request
+    assert "could not" in CONVERT_PROMPT

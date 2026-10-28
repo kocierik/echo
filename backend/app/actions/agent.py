@@ -369,6 +369,7 @@ async def run_action_agent(
     routine_tools: bool = True,
     allow_confirm: bool = True,
     saved: SavedContext | None = None,
+    language: str | None = None,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
@@ -380,7 +381,8 @@ async def run_action_agent(
     Without `allow_confirm` (a routine: no one is there to confirm), confirm-tier tools
     are not offered and a call that needs confirmation is refused.
     """
-    texts = TEXTS[detect_language(request)]
+    # A routine's request ends with English instructions: it says its own language
+    texts = TEXTS[language or detect_language(request)]
 
     try:
         external_tools = await _offered_tools(provider, user_id, connected_toolkits)
