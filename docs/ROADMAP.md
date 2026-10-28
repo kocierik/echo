@@ -52,6 +52,10 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       le altre lingue sentite, riconosciute nella trascrizione; le righe in un'altra lingua tradotte nell'app
 - [x] WhatsApp in lettura (29/10, [design](superpowers/specs/2026-10-28-whatsapp-design.md)): bridge Baileys sul
       proprio numero (non ufficiale, scelto dall'utente), chat private, solo in RAM per 7 giorni; domande e routine
+- [ ] WhatsApp più stabile (29/10): tenere Baileys aggiornato (WhatsApp cambia il protocollo); se dà problemi
+      nell'uso reale (messaggi che non si decifrano, scollegamenti), passare a whatsmeow, la libreria Go del bridge
+      Matrix (mautrix-whatsapp), più matura. Stesso rischio di blocco: entrambe sono client non ufficiali, e il
+      bridge Matrix non lo riduce (aggiungerebbe solo un server Matrix in mezzo)
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [x] Live Activity (iOS 16.1+): schermata di blocco e Dynamic Island con stato (ascolta/muto/offline),
