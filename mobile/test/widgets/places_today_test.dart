@@ -56,17 +56,28 @@ void main() {
   test("today's stays only, oldest first", () {
     final stays = visitsOn([
       _visit('late', DateTime(2026, 10, 28, 18)),
-      _visit('yesterday', DateTime(2026, 10, 27, 20)),
+      _visit('yesterday', DateTime(2026, 10, 27, 20), left: DateTime(2026, 10, 27, 23)),
       _visit('early', DateTime(2026, 10, 28, 8)),
     ], DateTime(2026, 10, 28, 21));
 
     expect(stays.map((v) => v.id), ['early', 'late']);
   });
 
+  test('a stay going on since yesterday, or that ended this morning, is on today', () {
+    final stays = visitsOn([
+      _visit('gone', DateTime(2026, 10, 27, 18), left: DateTime(2026, 10, 27, 23)),
+      _visit('night', DateTime(2026, 10, 27, 23, 10), left: DateTime(2026, 10, 28, 7, 30)),
+      _visit('home', DateTime(2026, 10, 28, 19)),
+      _visit('still', DateTime(2026, 10, 26, 20)),
+    ], DateTime(2026, 10, 28, 21));
+
+    expect(stays.map((v) => v.id), ['still', 'night', 'home']);
+  });
+
   late List<String> opened;
   late int seeAll;
 
-  Future<void> pump(WidgetTester tester, List<PlaceVisit> visits) async {
+  Future<void> pump(WidgetTester tester, List<PlaceVisit> visits, {DateTime? now}) async {
     opened = [];
     seeAll = 0;
     await tester.pumpWidget(MaterialApp(
@@ -77,6 +88,7 @@ void main() {
             visits: visits,
             onOpen: (v) => opened.add(v.id),
             onSeeAll: () => seeAll++,
+            now: now,
           ),
         ),
       ),
@@ -101,6 +113,18 @@ void main() {
 
     expect(opened, ['v2']);
     expect(seeAll, 1);
+  });
+
+  testWidgets('a stay from before today says since when, or until when', (tester) async {
+    await pump(tester, [
+      _visit('still', DateTime(2026, 10, 27, 20)),
+      _visit('night', DateTime(2026, 10, 27, 23, 10), left: DateTime(2026, 10, 28, 7, 30)),
+      _visit('older', DateTime(2026, 10, 25, 20)),
+    ], now: DateTime(2026, 10, 28, 21));
+
+    expect(find.text('Since yesterday'), findsOneWidget);
+    expect(find.text('Until 07:30'), findsOneWidget);
+    expect(find.text('Since Oct 25'), findsOneWidget);
   });
 
   testWidgets('no stays, no panel', (tester) async {

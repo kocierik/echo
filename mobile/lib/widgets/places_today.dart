@@ -5,12 +5,14 @@ import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
 import 'panel.dart';
 
-/// The stays that began on [day], oldest first.
+/// The stays on [day], oldest first: the ones that began on it, and the ones from before
+/// that ended on it or are still going (the night at home).
 List<PlaceVisit> visitsOn(List<PlaceVisit> visits, DateTime day) {
   final date = dayOf(day);
+  final next = DateTime(date.year, date.month, date.day + 1);
   return [
     for (final visit in visits)
-      if (dayOf(visit.arrivedAt) == date) visit,
+      if (visit.arrivedAt.isBefore(next) && (visit.leftAt?.isAfter(date) ?? true)) visit,
   ]..sort((a, b) => a.arrivedAt.compareTo(b.arrivedAt));
 }
 
@@ -21,6 +23,7 @@ final class PlacesTodayPanel extends StatelessWidget {
     required this.visits,
     required this.onOpen,
     required this.onSeeAll,
+    this.now,
     super.key,
   });
 
@@ -28,11 +31,31 @@ final class PlacesTodayPanel extends StatelessWidget {
   final void Function(PlaceVisit visit) onOpen;
   final VoidCallback onSeeAll;
 
+  /// Today, for a stay from before it; the phone's time by default.
+  final DateTime? now;
+
+  /// "09:00–11:00", "09:00" while there; from before today, "Until 07:30" or "Since
+  /// yesterday".
+  String _when(PlaceVisit visit, DateTime today) {
+    final left = visit.leftAt;
+    if (!visit.arrivedAt.isBefore(today)) {
+      return left == null
+          ? formatTime(visit.arrivedAt)
+          : '${formatTime(visit.arrivedAt)}–${formatTime(left)}';
+    }
+    if (left != null) return 'Until ${formatTime(left)}';
+    final yesterday = DateTime(today.year, today.month, today.day - 1);
+    return dayOf(visit.arrivedAt) == yesterday
+        ? 'Since yesterday'
+        : 'Since ${shortDate(visit.arrivedAt.toLocal())}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (visits.isEmpty) return const SizedBox.shrink();
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
+    final today = dayOf(now ?? DateTime.now());
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Panel(
@@ -59,9 +82,7 @@ final class PlacesTodayPanel extends StatelessWidget {
                       SizedBox(
                         width: 96,
                         child: Text(
-                          visit.leftAt == null
-                              ? formatTime(visit.arrivedAt)
-                              : '${formatTime(visit.arrivedAt)}–${formatTime(visit.leftAt!)}',
+                          _when(visit, today),
                           style: textTheme.labelMedium?.copyWith(color: palette.accent),
                         ),
                       ),

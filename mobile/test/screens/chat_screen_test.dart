@@ -137,6 +137,26 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
     });
 
+    testWidgets("the thread leaves out a photo asked about in another chat", (tester) async {
+      await pump(tester);
+      api.working = [
+        ...api.working,
+        WorkingItem(key: 'photo:9', kind: 'photo', text: 'cosa vedi',
+            since: DateTime(2026, 10, 28, 9), sessionId: 'chat-7'),
+        WorkingItem(key: 'photo:10', kind: 'photo', text: 'e qui',
+            since: DateTime(2026, 10, 28, 9), sessionId: 'thread-1'),
+      ];
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(find.byKey(const Key('chat-working-request:1')), findsOneWidget);
+      expect(find.byKey(const Key('chat-working-photo:10')), findsOneWidget);
+      expect(find.byKey(const Key('chat-working-photo:9')), findsNothing);
+      api.working = [];
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 400));
+    });
+
     testWidgets('no working bubble in another chat', (tester) async {
       await pump(tester);
 

@@ -898,7 +898,8 @@ void main() {
       addTearDown(on.dispose);
       final api = _PlacesTodayApi([
         PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
-        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20), name: 'Cinema'),
+        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20),
+            leftAt: DateTime(2026, 10, 13, 23), name: 'Cinema'),
       ]);
       await pumpToday(tester, api: api, placesOn: on);
       await tester.pumpAndSettle();
@@ -921,7 +922,8 @@ void main() {
         {'id': 'E2', 'title': 'Dinner', 'start': at(DateTime(2026, 10, 14, 20))},
       ];
       final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
+        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9),
+            leftAt: DateTime(2026, 10, 14, 17, 30), name: 'Office'),
       ]);
       final on = ValueNotifier(true);
       addTearDown(on.dispose);
@@ -1015,7 +1017,8 @@ void main() {
 
     testWidgets('no stays today, no panel', (tester) async {
       final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20), name: 'Cinema'),
+        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20),
+            leftAt: DateTime(2026, 10, 13, 23), name: 'Cinema'),
       ]);
       await pumpToday(tester, api: api, placesOn: ValueNotifier(true));
       await tester.pumpAndSettle();

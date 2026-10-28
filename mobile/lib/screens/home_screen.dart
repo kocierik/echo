@@ -835,6 +835,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
             PlacesTodayPanel(
               // Filtered again: loaded yesterday, shown this morning
               visits: visitsOn(_visits, now),
+              now: now,
               onOpen: (visit) => unawaited(_openVisit(visit)),
               onSeeAll: () => unawaited(_openPlaces()),
             ),

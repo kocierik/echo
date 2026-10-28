@@ -527,7 +527,10 @@ final class _ChatScreenState extends State<ChatScreen> {
               else
                 Expanded(child: _messageArea(state, palette)),
               if (!routines && state.isThread)
-                for (final item in _working) _WorkingBubble(item),
+                for (final item in _working)
+                  // Not what was asked in another chat (a photo asked about there)
+                  if (item.sessionId == null || item.sessionId == state.sessionId)
+                    _WorkingBubble(item),
               if (!routines && state.photoContext != null && !state.listening)
                 _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
               if (routines)
