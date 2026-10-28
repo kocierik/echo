@@ -1,10 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../models/device_status.dart';
 import '../../utils/spoken_text.dart';
 import '../app/spoken_answers_store.dart';
+import '../device/device_controller.dart';
 
 /// The phone's voice: speaks [text] in [language] ("it" or "en"), done when it is said or
 /// stopped.
@@ -61,6 +65,9 @@ final class AnswerSpeaker {
   /// Bumped by [stop]: the answers waiting in line are dropped.
   int _generation = 0;
 
+  /// Echo is muted for the answer being spoken: [recover] waits for its end.
+  bool _muting = false;
+
   /// Speaks [answer] after the ones before it, when the setting allows.
   Future<void> say(String answer) => _enqueue((generation) async {
         final choice = _setting.value;
@@ -89,8 +96,13 @@ final class AnswerSpeaker {
   }
 
   /// Unmutes Echo when an answer left it muted (the app died while speaking); the flag
-  /// stays until that works.
+  /// stays until that works. Nothing while an answer is spoken: it unmutes at its end.
   Future<void> recover() async {
+    if (_muting) return;
+    await _unmute();
+  }
+
+  Future<void> _unmute() async {
     final mic = _mic;
     if (mic == null || _preferences.getBool(mutedKey) != true) return;
     try {
@@ -125,6 +137,7 @@ final class AnswerSpeaker {
     // In headphones Echo cannot hear it; a muted Echo is the user's choice
     final mute = mic != null && !headphones && mic.listening;
     var muted = false;
+    _muting = mute;
     try {
       if (mute) {
         await _preferences.setBool(mutedKey, true);
@@ -135,11 +148,92 @@ final class AnswerSpeaker {
     } catch (_) {
       // The answer is still in Ask and in the notification
     } finally {
+      _muting = false;
       if (muted) {
-        await recover();
+        await _unmute();
       } else if (mute) {
         await _preferences.remove(mutedKey);
       }
     }
   }
+}
+
+/// The phone's own text-to-speech. Done when the answer is said, stopped or failed (iOS
+/// does not end an awaited speak that is stopped, so the plugin's handlers end it);
+/// other audio is lowered meanwhile.
+final class FlutterTtsVoice implements AnswerVoice {
+  FlutterTtsVoice([FlutterTts? tts]) : _tts = tts ?? FlutterTts();
+
+  final FlutterTts _tts;
+  Completer<void>? _done;
+  bool _ready = false;
+
+  Future<void> _prepare() async {
+    if (_ready) return;
+    void finish([dynamic _]) {
+      final done = _done;
+      if (done != null && !done.isCompleted) done.complete();
+    }
+
+    _tts
+      ..setCompletionHandler(finish)
+      ..setCancelHandler(finish)
+      ..setErrorHandler(finish);
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _tts.setSharedInstance(true);
+      await _tts.setIosAudioCategory(
+        IosTextToSpeechAudioCategory.playback,
+        [
+          IosTextToSpeechAudioCategoryOptions.duckOthers,
+          IosTextToSpeechAudioCategoryOptions.interruptSpokenAudioAndMixWithOthers,
+        ],
+        IosTextToSpeechAudioMode.voicePrompt,
+      );
+    }
+    _ready = true;
+  }
+
+  @override
+  Future<void> speak(String text, String language) async {
+    await _prepare();
+    await _tts.setLanguage(language == 'it' ? 'it-IT' : 'en-US');
+    final done = _done = Completer<void>();
+    await _tts.speak(text);
+    // Never longer than a slow reading of it: a lost callback must not stop the line
+    await done.future.timeout(
+      Duration(seconds: 15 + text.length ~/ 8),
+      onTimeout: () {},
+    );
+  }
+
+  @override
+  Future<void> stop() async {
+    await _tts.stop();
+    final done = _done;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+}
+
+/// Headphones from the native "echo/device" channel (AppDelegate.swift, EchoEngine.kt).
+final class ChannelAudioOutput implements AudioOutput {
+  const ChannelAudioOutput();
+
+  static const _channel = MethodChannel('echo/device');
+
+  @override
+  Future<bool> headphones() async =>
+      await _channel.invokeMethod<bool>('headphones') ?? false;
+}
+
+/// The wearable, through its controller.
+final class DeviceEchoMic implements EchoMic {
+  const DeviceEchoMic(this._device);
+
+  final DeviceController _device;
+
+  @override
+  bool get listening => _device.state.connectionState == DeviceConnectionState.listening;
+
+  @override
+  Future<void> setMuted(bool muted) => _device.setMuted(muted);
 }

@@ -15,10 +15,13 @@ import 'notification_scheduler.dart';
 import 'notification_service.dart';
 import '../device/photo_service.dart';
 import 'session_controller.dart';
+import 'spoken_answers_store.dart';
+import 'spoken_language.dart';
 import '../chat/voice_updates_service.dart';
 import '../api/response_cache.dart';
 import '../device/device_command_loop.dart';
 import '../device/firmware_update.dart';
+import '../phone/answer_speaker.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
 import '../phone/phone_location.dart';
@@ -43,6 +46,10 @@ final class AppLifecycleCoordinator {
     required this.phoneActions,
     required this.phoneLocation,
     required this.placesVisited,
+    required this.spokenAnswers,
+    required this.answerSpeaker,
+    required StreamSubscription<DeviceStatus> speakerSubscription,
+    required VoidCallback onDictation,
     required DeviceCommandLoop commandLoop,
     required this.notificationScheduler,
     required this.liveActivity,
@@ -51,6 +58,8 @@ final class AppLifecycleCoordinator {
     required AppLifecycleBinding binding,
     required StreamSubscription<DeviceStatus> firmwareSubscription,
   })  : _credentialApiService = credentialApiService,
+        _speakerSubscription = speakerSubscription,
+        _onDictation = onDictation,
         _commandLoop = commandLoop,
         _binding = binding,
         _firmwareSubscription = firmwareSubscription;
@@ -72,6 +81,12 @@ final class AppLifecycleCoordinator {
 
   /// The places where the user stayed, when they turned it on (Profile → Places visited).
   final PlacesVisitedService placesVisited;
+
+  /// Profile → Spoken answers, and the voice that reads the answers aloud.
+  final SpokenAnswersStore spokenAnswers;
+  final AnswerSpeaker answerSpeaker;
+  final StreamSubscription<DeviceStatus> _speakerSubscription;
+  final VoidCallback _onDictation;
   final DeviceCommandLoop _commandLoop;
 
   /// Briefings, promises and the evening recap, scheduled on the phone.
@@ -236,12 +251,35 @@ final class AppLifecycleCoordinator {
     final firmwareSubscription = deviceController.stateStream
         .listen((_) => firmwareUpdate.deviceChanged());
     unawaited(firmwareUpdate.check());
+    final spokenAnswers = SpokenAnswersStore(preferences);
+    final answerSpeaker = AnswerSpeaker(
+      voice: FlutterTtsVoice(),
+      output: const ChannelAudioOutput(),
+      setting: spokenAnswers,
+      preferences: preferences,
+      language: () => preferences.getString(SpokenLanguageStore.key) ?? 'en',
+      mic: DeviceEchoMic(deviceController),
+    );
+    // Echo found muted (often on reconnecting): an answer may have left it so
+    final speakerSubscription = deviceController.stateStream.listen((status) {
+      if (status.connectionState == DeviceConnectionState.muted) {
+        unawaited(answerSpeaker.recover());
+      }
+    });
+    unawaited(answerSpeaker.recover());
+    // Holding Ask to dictate: the phone stops talking
+    void onDictation() {
+      if (appController.askDictation.value) unawaited(answerSpeaker.stop());
+    }
+
+    appController.askDictation.addListener(onDictation);
     voiceUpdates = VoiceUpdatesService(
       credentialApiService,
       notificationService,
       preferences,
       onNewMessages: appController.threadChanged,
       onNewRuns: appController.routineRunsFound,
+      onNewAnswer: (answer) => unawaited(answerSpeaker.say(answer)),
     );
     final binding = await startBinding(
       initialStatus: deviceController.state,
@@ -275,6 +313,10 @@ final class AppLifecycleCoordinator {
       phoneActions: phoneActions,
       phoneLocation: phoneLocation,
       placesVisited: placesVisited,
+      spokenAnswers: spokenAnswers,
+      answerSpeaker: answerSpeaker,
+      speakerSubscription: speakerSubscription,
+      onDictation: onDictation,
       commandLoop: commandLoop,
       notificationScheduler: notificationScheduler,
       liveActivity: liveActivity,
@@ -320,6 +362,10 @@ final class AppLifecycleCoordinator {
     if (_disposed) return;
     _disposed = true;
     _commandLoop.stop();
+    await _speakerSubscription.cancel();
+    appController.askDictation.removeListener(_onDictation);
+    await answerSpeaker.stop();
+    spokenAnswers.dispose();
     photoService.dispose();
     placesVisited.dispose();
     await liveActivity.dispose();

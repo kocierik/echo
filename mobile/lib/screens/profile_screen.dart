@@ -365,7 +365,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
                   ),
                 ),
-              if (widget.spokenAnswers case final spoken?)
+              if (widget.spokenAnswers ?? AppRuntime.maybeCoordinator?.spokenAnswers
+                  case final spoken?)
                 ValueListenableBuilder<SpokenAnswers>(
                   valueListenable: spoken,
                   builder: (context, choice, _) => SettingsRow(
@@ -375,7 +376,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     subtitle: spokenAnswersText(choice),
                     onTap: () => _push(SpokenAnswersScreen(
                       store: spoken,
-                      onTry: widget.onTrySpeaking ?? () async {},
+                      onTry: widget.onTrySpeaking ??
+                          AppRuntime.maybeCoordinator?.answerSpeaker.sample ??
+                          () async {},
                     )),
                   ),
                 ),

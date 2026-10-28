@@ -20,7 +20,7 @@ void main() {
   });
 
   test('a long answer is cut at a sentence end, then says the rest is in Ask', () {
-    final sentence = 'Tomorrow it rains in Milan from three in the afternoon. ';
+    const sentence = 'Tomorrow it rains in Milan from three in the afternoon. ';
     final answer = sentence * 20;
 
     final spoken = spokenText(answer, language: 'en');

@@ -193,6 +193,20 @@ void main() {
     expect(preferences.getBool(AnswerSpeaker.mutedKey), isNull);
   });
 
+  test('recover while an answer is spoken leaves Echo muted until it ends', () async {
+    voice.hold = Completer();
+    final echo = speaker();
+    final speaking = echo.say('Domani piove.');
+    await pumpEventQueue();
+
+    await echo.recover();
+    expect(mic.listening, isFalse);
+
+    voice.hold!.complete();
+    await speaking;
+    expect(mic.listening, isTrue);
+  });
+
   test('recover leaves Echo alone without the flag', () async {
     mic.listening = false;
 

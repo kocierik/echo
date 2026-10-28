@@ -51,6 +51,38 @@ void main() {
     expect(changed, 1);
   });
 
+  test('each new answer is handed whole to be spoken, once; routine runs are not', () async {
+    await setUpService({
+      VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),
+    });
+    final spoken = <String>[];
+    service = VoiceUpdatesService(api, NotificationService(port), prefs,
+        onNewAnswer: spoken.add);
+    final long = 'Domani a Milano piove dalle 15 alle 21. ' * 10;
+    api.response = VoiceUpdates(
+      messages: [
+        message(long, t0.add(const Duration(minutes: 1))),
+        const ChatSessionMessage(role: 'user', content: 'che tempo fa', sessionId: 's1'),
+        message('two', t0.add(const Duration(minutes: 2))),
+      ],
+      routineRuns: [
+        RoutineRunUpdate(
+          id: 'r1',
+          routineId: 'rt1',
+          status: 'reported',
+          text: 'Domani piove dalle 15',
+          ranAt: t0.add(const Duration(minutes: 1)),
+        ),
+      ],
+      now: t0.add(const Duration(minutes: 3)),
+    );
+
+    await service.check();
+    await service.check(); // the same answers again: nothing new
+
+    expect(spoken, [long, 'two']);
+  });
+
   test('new routine runs notify once each and tell Today, once per check', () async {
     await setUpService({
       VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),

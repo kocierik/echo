@@ -21,14 +21,19 @@ final class VoiceUpdatesService {
     this._preferences, {
     void Function()? onNewMessages,
     void Function()? onNewRuns,
+    void Function(String answer)? onNewAnswer,
   })  : _onNewMessages = onNewMessages,
-        _onNewRuns = onNewRuns;
+        _onNewRuns = onNewRuns,
+        _onNewAnswer = onNewAnswer;
 
   /// Called once per check that found new answers: Ask reloads the thread.
   final void Function()? _onNewMessages;
 
   /// Called once per check that found new routine runs: Today and Ask reload them.
   final void Function()? _onNewRuns;
+
+  /// Each new answer, whole, as it is notified: Spoken answers reads it aloud.
+  final void Function(String answer)? _onNewAnswer;
 
   static const lastSeenKey = 'voice_updates_last_seen';
   static const seenKeysKey = 'voice_updates_seen_keys';
@@ -67,6 +72,7 @@ final class VoiceUpdatesService {
             sessionId: message.sessionId,
             id: _nextId(),
           );
+          _onNewAnswer?.call(message.content);
           seen.add(key);
           found = true;
           if (seen.length > maxSeenKeys) {

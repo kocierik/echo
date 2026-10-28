@@ -1,3 +1,4 @@
+import AVFoundation
 import Flutter
 import UIKit
 
@@ -27,10 +28,19 @@ import UIKit
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoVisits") {
       VisitRecorder.shared.attach(messenger: registrar.messenger())
     }
-    // "echo/device": the model identifier ("iPhone16,1"), named in phone_name.dart
+    // "echo/device": the model identifier ("iPhone16,1"), named in phone_name.dart, and
+    // whether sound goes to headphones (Spoken answers, answer_speaker.dart)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "EchoDevice") {
       let channel = FlutterMethodChannel(name: "echo/device", binaryMessenger: registrar.messenger())
       channel.setMethodCallHandler { call, result in
+        if call.method == "headphones" {
+          let worn: [AVAudioSession.Port] = [
+            .headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .usbAudio,
+          ]
+          let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+          result(outputs.contains { worn.contains($0.portType) })
+          return
+        }
         guard call.method == "model" else {
           result(FlutterMethodNotImplemented)
           return

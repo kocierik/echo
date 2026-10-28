@@ -2,6 +2,8 @@ package com.kocierik.echo
 
 import android.content.Context
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -33,6 +35,25 @@ object EchoEngine {
         MethodChannel(messenger, "echo/device").setMethodCallHandler { call, result ->
             when (call.method) {
                 "model" -> result.success("${Build.MANUFACTURER}|${Build.MODEL}")
+                // Spoken answers (answer_speaker.dart): is sound going to headphones?
+                "headphones" -> {
+                    val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    val worn = mutableSetOf(
+                        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                        AudioDeviceInfo.TYPE_USB_HEADSET,
+                    )
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        worn.add(AudioDeviceInfo.TYPE_BLE_HEADSET)
+                    }
+                    // Output devices are listed from Android 6; before, none counts
+                    result.success(
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in worn }
+                    )
+                }
                 "openAppSettings" -> {
                     app.startActivity(
                         Intent(
