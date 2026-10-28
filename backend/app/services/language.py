@@ -42,6 +42,11 @@ def detect_language(text: str) -> Language:
 # The languages Echo transcribes and takes dictation in
 SUPPORTED_LANGUAGES = ("en", "it")
 
+# The other languages a user can hear around them: transcription recognises which one
+# each segment is in (users.other_languages)
+HEARD_LANGUAGES = ("en", "it", "es", "fr", "de", "pt")
+MAX_OTHER_LANGUAGES = 4
+
 
 async def account_language(db, user_id) -> Language:
     """The language this account speaks; the server's default without an account row."""
@@ -52,6 +57,22 @@ async def account_language(db, user_id) -> Language:
 
     language = await db.scalar(select(User.language).where(User.id == user_id))
     return language or settings.stt_language
+
+
+async def account_languages(db, user_id) -> tuple[Language, list[str]]:
+    """The language this account speaks and the other ones it hears; the server's default
+    and none without an account row."""
+    from sqlalchemy import select
+
+    from app.core.config import settings
+    from app.models.user import User
+
+    row = (
+        await db.execute(select(User.language, User.other_languages).where(User.id == user_id))
+    ).first()
+    if row is None:
+        return settings.stt_language, []
+    return row.language or settings.stt_language, list(row.other_languages or [])
 
 
 def clear_language(text: str) -> Language | None:

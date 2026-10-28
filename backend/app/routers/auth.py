@@ -30,7 +30,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
-from app.services.language import SUPPORTED_LANGUAGES
+from app.services.language import HEARD_LANGUAGES, MAX_OTHER_LANGUAGES, SUPPORTED_LANGUAGES
 from app.services.passwords import (
     DUMMY_PASSWORD_HASH,
     MIN_PASSWORD_LENGTH,
@@ -72,12 +72,16 @@ class Me(BaseModel):
     language: str
     name: str | None = None
     instructions: str | None = None
+    # Other languages heard around the user (Profile → Language)
+    other_languages: list[str] = []
 
 
 class MeUpdate(BaseModel):
     """Only the fields sent change; a blank name removes it."""
 
     language: Literal[SUPPORTED_LANGUAGES] | None = None  # type: ignore[valid-type]
+    # In the user's order; duplicates and the main language are dropped
+    other_languages: list[Literal[HEARD_LANGUAGES]] | None = None  # type: ignore[valid-type]
     name: str | None = Field(default=None, max_length=100)
     instructions: str | None = Field(default=None, max_length=MAX_INSTRUCTIONS)
 
@@ -233,9 +237,13 @@ async def read_me(
     user = await db.get(User, current.user_id)
     if user is None:  # a key made with make create-key, before any account
         return Me(email=None, language=settings.stt_language)
+    return _me(user)
+
+
+def _me(user: User) -> Me:
     return Me(
         email=user.email, language=user.language, name=user.name,
-        instructions=user.instructions,
+        instructions=user.instructions, other_languages=list(user.other_languages or []),
     )
 
 
@@ -254,15 +262,20 @@ async def update_me(
         )
     if body.language is not None:
         user.language = body.language
+    others = body.other_languages if body.other_languages is not None else user.other_languages
+    kept = [code for code in dict.fromkeys(others or []) if code != user.language]
+    if len(kept) > MAX_OTHER_LANGUAGES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"At most {MAX_OTHER_LANGUAGES} other languages.",
+        )
+    user.other_languages = kept
     if "name" in body.model_fields_set:
         user.name = (body.name or "").strip() or None
     if "instructions" in body.model_fields_set:
         user.instructions = (body.instructions or "").strip() or None
     await db.commit()
-    return Me(
-        email=user.email, language=user.language, name=user.name,
-        instructions=user.instructions,
-    )
+    return _me(user)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
