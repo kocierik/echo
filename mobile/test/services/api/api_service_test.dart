@@ -151,6 +151,53 @@ void main() {
     });
   });
 
+  group('Routine runs', () {
+    test('lists runs with their filters and asks about one', () async {
+      final calls = <String>[];
+      final service = _service((request) async {
+        calls.add('${request.method} ${request.url.path}?${request.url.query}');
+        if (request.method == 'POST') {
+          return _jsonResponse(request, 200, {'session_id': 's1'});
+        }
+        return _jsonResponse(request, 200, {
+          'items': [
+            {
+              'id': 'r1',
+              'routine_id': 'rt1',
+              'instruction': 'meteo',
+              'mode': 'always',
+              'schedule_text': 'Every day at 07:00',
+              'ran_at': '2026-10-28T06:00:00Z',
+              'status': 'reported',
+              'text': 'Sole',
+              'sources': <Object?>[],
+            },
+          ],
+          'next_before': null,
+        });
+      });
+
+      final all = await service.listRoutineRuns();
+      await service.listRoutineRuns(
+        routineId: 'rt1',
+        since: DateTime.utc(2026, 10, 28),
+        before: DateTime.utc(2026, 10, 29),
+        limit: 10,
+      );
+      final session = await service.askAboutRoutineRun('r1');
+
+      expect(all.items.single.text, 'Sole');
+      expect(all.nextBefore, isNull);
+      expect(session, 's1');
+      expect(calls, [
+        'GET /api/routine-runs?limit=30',
+        'GET /api/routine-runs?routine_id=rt1&since=2026-10-28T00%3A00%3A00.000Z'
+            '&before=2026-10-29T00%3A00%3A00.000Z&limit=10',
+        'POST /api/routine-runs/r1/ask?',
+      ]);
+    });
+  });
+
   group('ApiService success statuses', () {
     test('decodes a 200 response', () async {
       final service = _service((request) => _jsonResponse(request, 200, {

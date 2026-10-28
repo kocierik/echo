@@ -197,7 +197,7 @@ final class _RoutineTile extends StatelessWidget {
   final VoidCallback onDelete;
 
   String? get _last => switch (routine.lastStatus) {
-        'ok' => routine.lastAnswer,
+        'reported' => routine.lastAnswer,
         'failed' => 'Could not run',
         'skipped' => 'Missed while Echo was offline',
         _ => null,
@@ -232,7 +232,7 @@ final class _RoutineTile extends StatelessWidget {
                     last,
                     key: Key('routine-last-${routine.id}'),
                     style: textTheme.bodySmall?.copyWith(
-                      color: routine.lastStatus == 'ok' ? palette.text : palette.red,
+                      color: routine.lastStatus == 'reported' ? palette.text : palette.red,
                     ),
                   ),
                 ],

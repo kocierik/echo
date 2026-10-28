@@ -157,10 +157,15 @@ final class VoiceUpdates {
   VoiceUpdates({
     required List<ChatSessionMessage> messages,
     required this.now,
-  }) : messages = List<ChatSessionMessage>.unmodifiable(messages);
+    List<RoutineRunUpdate> routineRuns = const [],
+  })  : messages = List<ChatSessionMessage>.unmodifiable(messages),
+        routineRuns = List<RoutineRunUpdate>.unmodifiable(routineRuns);
 
   final List<ChatSessionMessage> messages;
   final DateTime now;
+
+  /// Routine runs since the last check that reported something or failed.
+  final List<RoutineRunUpdate> routineRuns;
 
   factory VoiceUpdates.fromJson(Map<String, dynamic> json) {
     final raw = json['messages'];
@@ -180,8 +185,39 @@ final class VoiceUpdates {
         return ChatSessionMessage.fromJson(message);
       }).toList(),
       now: now,
+      routineRuns: [
+        for (final run in json['routine_runs'] as List<dynamic>? ?? const [])
+          if (run is Map<String, dynamic>) RoutineRunUpdate.fromJson(run),
+      ],
     );
   }
+}
+
+/// A routine run the phone notifies: what it found, or that it could not run.
+final class RoutineRunUpdate {
+  const RoutineRunUpdate({
+    required this.id,
+    required this.routineId,
+    required this.status,
+    required this.ranAt,
+    this.text,
+  });
+
+  factory RoutineRunUpdate.fromJson(Map<String, dynamic> json) => RoutineRunUpdate(
+        id: _string(json, 'id'),
+        routineId: _string(json, 'routine_id'),
+        status: _string(json, 'status'),
+        ranAt: DateTime.parse(_string(json, 'ran_at')).toLocal(),
+        text: json['text'] is String ? json['text'] as String : null,
+      );
+
+  final String id;
+  final String routineId;
+
+  /// "reported" or "failed".
+  final String status;
+  final DateTime ranAt;
+  final String? text;
 }
 
 String _string(

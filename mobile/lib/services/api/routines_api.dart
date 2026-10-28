@@ -1,4 +1,5 @@
 import '../../models/routine.dart';
+import '../../models/routine_run.dart';
 import 'api_client.dart';
 
 /// Routines: what Echo does on its own, and when (created by asking Echo).
@@ -9,6 +10,17 @@ abstract interface class RoutinesApi {
   Future<Routine> setRoutineActive(String id, bool active);
 
   Future<void> deleteRoutine(String id);
+
+  /// The runs, newest first: of one routine, from [since], before [before].
+  Future<RoutineRunPage> listRoutineRuns({
+    String? routineId,
+    DateTime? since,
+    DateTime? before,
+    int limit = 30,
+  });
+
+  /// Puts the run into the thread with Echo ("Ask about this"); returns the thread's id.
+  Future<String> askAboutRoutineRun(String runId);
 }
 
 mixin RoutineEndpoints on ApiClient implements RoutinesApi {
@@ -31,4 +43,33 @@ mixin RoutineEndpoints on ApiClient implements RoutinesApi {
 
   @override
   Future<void> deleteRoutine(String id) => delete('/api/routines/$id');
+
+  @override
+  Future<RoutineRunPage> listRoutineRuns({
+    String? routineId,
+    DateTime? since,
+    DateTime? before,
+    int limit = 30,
+  }) async {
+    final path = Uri(path: '/api/routine-runs', queryParameters: {
+      if (routineId != null) 'routine_id': routineId,
+      if (since != null) 'since': since.toUtc().toIso8601String(),
+      if (before != null) 'before': before.toUtc().toIso8601String(),
+      'limit': '$limit',
+    }).toString();
+    final response = await get(path);
+    return parse(
+      response.data,
+      (data) => RoutineRunPage.fromJson(data as Map<String, dynamic>),
+    );
+  }
+
+  @override
+  Future<String> askAboutRoutineRun(String runId) async {
+    final response = await post('/api/routine-runs/$runId/ask');
+    return parse(
+      response.data,
+      (data) => (data as Map<String, dynamic>)['session_id'] as String,
+    );
+  }
 }

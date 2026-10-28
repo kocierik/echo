@@ -10,6 +10,7 @@ final class Routine {
     required this.scheduleText,
     required this.active,
     required this.nextRunAt,
+    this.mode = 'always',
     this.lastRunAt,
     this.lastStatus,
     this.lastAnswer,
@@ -24,8 +25,10 @@ final class Routine {
       scheduleText: json['schedule_text'] as String? ?? '',
       active: json['active'] as bool? ?? true,
       nextRunAt: time('next_run_at') ?? DateTime.now(),
+      mode: json['mode'] as String? ?? 'always',
       lastRunAt: time('last_run_at'),
-      lastStatus: json['last_status'] as String?,
+      // Runs before modes said "ok" for what is now "reported"
+      lastStatus: json['last_status'] == 'ok' ? 'reported' : json['last_status'] as String?,
       lastAnswer: json['last_answer'] as String?,
     );
   }
@@ -39,9 +42,14 @@ final class Routine {
   final String scheduleText;
   final bool active;
   final DateTime nextRunAt;
+
+  /// "always", "only_if" (speaks only when its condition holds) or "only_new" (only
+  /// what it did not report before).
+  final String mode;
   final DateTime? lastRunAt;
 
-  /// "ok", "failed" or "skipped" (missed while the server was down); null before a run.
+  /// "reported", "nothing" (checked, nothing to say), "failed" or "skipped" (missed while
+  /// the server was down); null before a run.
   final String? lastStatus;
   final String? lastAnswer;
 
@@ -51,8 +59,16 @@ final class Routine {
         scheduleText: scheduleText,
         active: active ?? this.active,
         nextRunAt: nextRunAt ?? this.nextRunAt,
+        mode: mode,
         lastRunAt: lastRunAt,
         lastStatus: lastStatus,
         lastAnswer: lastAnswer,
       );
 }
+
+/// When a routine speaks, in words.
+String routineModeText(String mode) => switch (mode) {
+      'only_if' => 'Tells you only if…',
+      'only_new' => 'Tells you only what is new',
+      _ => 'Always tells you',
+    };

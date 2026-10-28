@@ -1,4 +1,5 @@
 import 'package:echo_app/models/routine.dart';
+import 'package:echo_app/models/routine_run.dart';
 import 'package:echo_app/screens/settings/routines_screen.dart';
 import 'package:echo_app/services/api/routines_api.dart';
 import 'package:echo_app/theme/app_theme.dart';
@@ -46,6 +47,18 @@ final class _FakeRoutinesApi implements RoutinesApi {
     deletes.add(id);
     routines = routines.where((r) => r.id != id).toList();
   }
+
+  @override
+  Future<RoutineRunPage> listRoutineRuns({
+    String? routineId,
+    DateTime? since,
+    DateTime? before,
+    int limit = 30,
+  }) async =>
+      const RoutineRunPage(items: []);
+
+  @override
+  Future<String> askAboutRoutineRun(String runId) async => 'thread';
 }
 
 Future<void> _show(WidgetTester tester, RoutinesApi api) async {
