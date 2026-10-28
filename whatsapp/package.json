@@ -1,0 +1,19 @@
+{
+  "name": "echo-whatsapp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Echo's read-only WhatsApp bridge: private chats kept in RAM for 7 days",
+  "type": "module",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "baileys": "7.0.0-rc14",
+    "pino": "9.6.0"
+  }
+}
