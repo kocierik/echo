@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/action_models.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
 import '../models/plan.dart';
+import '../models/routine_run.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
 import '../services/api/api_exception.dart';
@@ -15,6 +17,8 @@ import '../services/device/firmware_update.dart';
 import '../services/phone/phone_actions.dart';
 import '../theme/app_theme.dart';
 import '../widgets/echo_nav_bar.dart';
+import '../widgets/routine_run_sheet.dart';
+import '../widgets/routine_sections.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
@@ -35,7 +39,7 @@ import 'task_editing.dart';
 
 /// Today: the day and a greeting, the search over the whole memory, one card for the
 /// moment (something to confirm, an event within the hour, the conversation going on,
-/// or the day so far), what to do, a quiet line near and past the speech budget, the day,
+/// or the day so far), what today's routines found, what to do, a quiet line near and past the speech budget, the day,
 /// who came up, what was saved and the days before. Empty sections are left out. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -57,6 +61,8 @@ final class HomeScreen extends StatefulWidget {
     this.phoneEvents,
     this.memories,
     this.openPerson,
+    this.routineRunsChanged,
+    this.onOpenThread,
     super.key,
   });
 
@@ -98,6 +104,12 @@ final class HomeScreen extends StatefulWidget {
 
   /// Opens a person; returns once their page is closed.
   final ConversationOpener? openPerson;
+
+  /// Counts up when new routine runs arrive: "From your routines" reloads.
+  final ValueListenable<int>? routineRunsChanged;
+
+  /// Opens Ask on the thread with Echo, where "Ask about this" just put a run.
+  final VoidCallback? onOpenThread;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -152,6 +164,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   /// The plan, for the line near and past the speech budget.
   PlanInfo? _plan;
 
+  /// Today's routine runs, for "From your routines".
+  List<RoutineRun> _runs = const [];
+
   @override
   MemoryApi get taskApi => _api;
 
@@ -165,6 +180,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _memories.addListener(_onMemories);
     unawaited(_memories.initialize());
     _subscribeToUploads();
+    widget.routineRunsChanged?.addListener(_onRoutineRuns);
     unawaited(_prefillFromPhone());
     unawaited(_refreshAll());
   }
@@ -200,6 +216,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(_uploadSubscription?.cancel());
       _subscribeToUploads();
     }
+    if (oldWidget.routineRunsChanged != widget.routineRunsChanged) {
+      oldWidget.routineRunsChanged?.removeListener(_onRoutineRuns);
+      widget.routineRunsChanged?.addListener(_onRoutineRuns);
+    }
     if (oldWidget.deviceStatus.connectionState != widget.deviceStatus.connectionState &&
         _deviceError != null) {
       setState(() => _deviceError = null);
@@ -208,6 +228,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   @override
   void dispose() {
+    widget.routineRunsChanged?.removeListener(_onRoutineRuns);
     _pendingView.dispose();
     _memories.removeListener(_onMemories);
     if (_ownsMemories) _memories.dispose();
@@ -276,7 +297,31 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadComingUp(),
       _loadSaved(),
       _loadPlan(),
+      _loadRuns(),
     ]);
+  }
+
+  void _onRoutineRuns() => unawaited(_loadRuns());
+
+  Future<void> _loadRuns() async {
+    final api = _api;
+    if (api is! RoutinesApi) return;
+    try {
+      final page = await (api as RoutinesApi).listRoutineRuns(since: dayOf(widget.clock()));
+      if (mounted) setState(() => _runs = page.items);
+    } catch (_) {}
+  }
+
+  Future<void> _openRun(RoutineRun run) async {
+    final api = _api;
+    await showRoutineRunSheet(context, run, onAskAbout: () async {
+      try {
+        await (api as RoutinesApi).askAboutRoutineRun(run.id);
+        widget.onOpenThread?.call();
+      } catch (_) {
+        if (mounted) _snack('Could not open it in Ask.');
+      }
+    });
   }
 
   Future<void> _loadPlan() async {
@@ -748,6 +793,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         onMore: () => unawaited(_openPending()),
                         onOpenConversation: (c) => unawaited(_openConversation(c)),
                       ),
+                    RoutinesTodayPanel(runs: _runs, onOpen: (run) => unawaited(_openRun(run))),
                     // Promises are among the to-dos; nothing open at all: no panel
                     if (_tasksLoading || _tasksError != null || _openTasks.isNotEmpty) ...[
                       TodoPanel(

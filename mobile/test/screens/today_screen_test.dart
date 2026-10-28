@@ -6,6 +6,8 @@ import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/photo.dart';
 import 'package:echo_app/models/plan.dart';
+import 'package:echo_app/models/routine.dart';
+import 'package:echo_app/models/routine_run.dart';
 import 'package:echo_app/models/saved.dart';
 import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
@@ -14,6 +16,7 @@ import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -44,6 +47,7 @@ void main() {
     List<Map<String, Object?>> phoneEvents = const [],
     MemoriesController? memories,
     ConversationOpener? openPerson,
+    ValueListenable<int>? routineRunsChanged,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
@@ -68,6 +72,8 @@ void main() {
             phoneEvents: () async => phoneEvents,
             memories: memories,
             openPerson: openPerson,
+            routineRunsChanged: routineRunsChanged,
+            onOpenThread: () => calls.add('thread'),
           ),
         ),
       ),
@@ -332,6 +338,88 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false', 'people']));
+    });
+  });
+
+  group('from your routines', () {
+    RoutineRun run(String id, {String status = 'reported'}) => RoutineRun(
+          id: id,
+          routineId: 'rt1',
+          instruction: 'dimmi se piove domani',
+          mode: 'only_if',
+          scheduleText: 'Every day at 07:00',
+          ranAt: DateTime(2026, 10, 14, 7),
+          status: status,
+          text: status == 'reported' ? 'Domani piove dalle 15' : null,
+        );
+
+    testWidgets("today's runs, above To do today", (tester) async {
+      final api = _RoutinesTodayApi([run('r1')], openTasks: [
+        task('today', 'Call Ada', due: DateTime(2026, 10, 14)),
+      ]);
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      expect(api.since, [DateTime(2026, 10, 14)]);
+      final panel = find.byKey(const Key('routines-today'));
+      expect(panel, findsOneWidget);
+      expect(
+        tester.getTopLeft(panel).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('todo-panel'))).dy),
+      );
+    });
+
+    testWidgets('no runs today, no panel', (tester) async {
+      await pumpToday(tester, api: _RoutinesTodayApi(const []));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routines-today')), findsNothing);
+    });
+
+    testWidgets('new runs reload the panel', (tester) async {
+      final api = _RoutinesTodayApi(const []);
+      final changes = ValueNotifier(0);
+      addTearDown(changes.dispose);
+      await pumpToday(tester, api: api, routineRunsChanged: changes);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('routines-today')), findsNothing);
+
+      api.runs = [run('r1')];
+      changes.value++;
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('routines-today')), findsOneWidget);
+    });
+
+    testWidgets('a row opens the whole result; Ask about this opens the thread',
+        (tester) async {
+      final api = _RoutinesTodayApi([run('r1')]);
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('routine-run-r1')));
+      await tester.tap(find.byKey(const Key('routine-run-r1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('run-ask-about')));
+      await tester.pumpAndSettle();
+
+      expect(api.asked, ['r1']);
+      expect(calls, contains('thread'));
+    });
+
+    testWidgets('Ask about this failing says so', (tester) async {
+      final api = _RoutinesTodayApi([run('r1')])..askFails = true;
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.byKey(const Key('routine-run-r1')));
+      await tester.tap(find.byKey(const Key('routine-run-r1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('run-ask-about')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Could not open it in Ask.'), findsOneWidget);
+      expect(calls, isNot(contains('thread')));
     });
   });
 
@@ -802,6 +890,40 @@ final class _SavedTodayApi extends FakeTodayApi implements SavedApi {
 
   @override
   Future<SavedOverview> getSaved() async => overview;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Today's API with routines and their runs.
+final class _RoutinesTodayApi extends FakeTodayApi implements RoutinesApi {
+  _RoutinesTodayApi(this.runs, {super.openTasks});
+
+  List<RoutineRun> runs;
+  final since = <DateTime?>[];
+  final asked = <String>[];
+  bool askFails = false;
+
+  @override
+  Future<RoutineRunPage> listRoutineRuns({
+    String? routineId,
+    DateTime? since,
+    DateTime? before,
+    int limit = 30,
+  }) async {
+    this.since.add(since);
+    return RoutineRunPage(items: runs);
+  }
+
+  @override
+  Future<String> askAboutRoutineRun(String runId) async {
+    if (askFails) throw Exception('offline');
+    asked.add(runId);
+    return 'thread';
+  }
+
+  @override
+  Future<List<Routine>> listRoutines() async => const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

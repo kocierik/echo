@@ -483,6 +483,8 @@ class MainShell extends StatelessWidget {
                       segmentUploadedStream: segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
                       onOpenDevice: () => _openDevice(context),
+                      routineRunsChanged: appController.routineRunsChanged,
+                      onOpenThread: appController.requestOpenThread,
                     ),
                     ChatScreen(
                       headerAction: pill,
