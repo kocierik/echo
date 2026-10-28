@@ -6,6 +6,7 @@ Create Date: 2026-10-28
 
 Existing routines are `always`: they keep reporting every run, as before.
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa

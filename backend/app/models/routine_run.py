@@ -22,7 +22,9 @@ class RoutineRun(UUIDPrimaryKey, Base):
     __table_args__ = (Index("ix_routine_runs_user_ran", "user_id", "ran_at"),)
 
     routine_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("routines.id", ondelete="CASCADE"), nullable=False,
+        UUID(as_uuid=True),
+        ForeignKey("routines.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
