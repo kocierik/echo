@@ -11,6 +11,7 @@ import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/settings/places_visited_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
 import 'services/api/build_defaults.dart';
@@ -410,6 +411,17 @@ class MainShell extends StatelessWidget {
     ));
   }
 
+  /// Places visited, every stay (Today's "See all").
+  void _openPlaces(BuildContext context) {
+    final places = AppRuntime.maybeCoordinator?.placesVisited;
+    if (places == null) return;
+    final api = ApiService();
+    unawaited(Navigator.push(
+      context,
+      MaterialPageRoute<void>(builder: (_) => PlacesVisitedScreen(places: places, api: api)),
+    ).whenComplete(api.dispose));
+  }
+
   void _openTasks(BuildContext context) {
     Navigator.push(
       context,
@@ -485,6 +497,8 @@ class MainShell extends StatelessWidget {
                       onOpenDevice: () => _openDevice(context),
                       routineRunsChanged: appController.routineRunsChanged,
                       onOpenThread: appController.requestOpenThread,
+                      placesOn: AppRuntime.maybeCoordinator?.placesVisited.on,
+                      onOpenPlaces: () => _openPlaces(context),
                     ),
                     ChatScreen(
                       headerAction: pill,

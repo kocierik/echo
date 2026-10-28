@@ -5,6 +5,7 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/photo.dart';
+import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
@@ -13,12 +14,15 @@ import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/widgets/panel.dart';
 import 'package:echo_app/models/today_insights.dart';
+import 'package:echo_app/models/today_layout.dart';
+import 'package:echo_app/services/app/today_layout_store.dart';
 import 'package:echo_app/screens/home_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/plan_test.dart' show planJson;
 import '../support/fake_memory_api.dart';
@@ -48,7 +52,12 @@ void main() {
     MemoriesController? memories,
     ConversationOpener? openPerson,
     ValueListenable<int>? routineRunsChanged,
+    TodayLayout? layout,
+    ValueListenable<bool>? placesOn,
   }) async {
+    SharedPreferences.setMockInitialValues({
+      if (layout != null) TodayLayoutStore.key: layout.toJson(),
+    });
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = size;
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -74,6 +83,8 @@ void main() {
             openPerson: openPerson,
             routineRunsChanged: routineRunsChanged,
             onOpenThread: (id) => calls.add('thread $id'),
+            layoutStore: TodayLayoutStore(),
+            placesOn: placesOn,
           ),
         ),
       ),
@@ -756,7 +767,7 @@ void main() {
     expect(find.byKey(const Key('acts-in')), findsNothing);
   });
 
-  testWidgets('a request being answered shows until its answer arrives', (tester) async {
+  testWidgets('working requests are not on Today any more', (tester) async {
     final api = FakeTodayApi()
       ..working = [
         WorkingItem(
@@ -770,14 +781,154 @@ void main() {
     await pumpToday(tester, api: api);
     await tester.pump();
 
-    expect(find.text('📷 Taking a photo: Che pianta è?'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('working-photo:p1')));
-    expect(calls.last, 'chat s1');
-
-    api.working = [];
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pump();
+    expect(find.text('📷 Taking a photo: Che pianta è?'), findsNothing);
     expect(find.byKey(const Key('working-section')), findsNothing);
+  });
+
+  group('in your order', () {
+    FakeTodayApi full() => FakeTodayApi(
+          conversations: [
+            card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30), people: const ['Ada']),
+          ],
+          openTasks: [task('today', 'Call Ada', due: DateTime(2026, 10, 14))],
+        )..people = [
+            PersonSummary(id: 'p1', name: 'Ada', lastSeen: DateTime(2026, 10, 14, 12, 30)),
+          ];
+
+    double top(WidgetTester tester, String key) => tester.getTopLeft(find.byKey(Key(key))).dy;
+
+    testWidgets('sections follow the saved order', (tester) async {
+      tester.view.physicalSize = const Size(375, 2400);
+      await pumpToday(
+        tester,
+        api: full(),
+        size: const Size(375, 2400),
+        layout: const TodayLayout(order: [
+          TodaySection.people,
+          TodaySection.yourDay,
+          TodaySection.todo,
+          TodaySection.routines,
+          TodaySection.comingUp,
+          TodaySection.saved,
+          TodaySection.places,
+          TodaySection.earlier,
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(top(tester, 'people-panel'), lessThan(top(tester, 'your-day')));
+      expect(top(tester, 'your-day'), lessThan(top(tester, 'todo-panel')));
+    });
+
+    testWidgets('a hidden section is not shown', (tester) async {
+      await pumpToday(tester, api: full(), layout: TodayLayout.defaults.toggled(TodaySection.todo));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('todo-panel')), findsNothing);
+      expect(find.byKey(const Key('your-day')), findsOneWidget);
+    });
+
+    testWidgets('with every section hidden Edit Today is still there', (tester) async {
+      var layout = TodayLayout.defaults;
+      for (final section in TodaySection.values) {
+        layout = layout.toggled(section);
+      }
+      final api = full()
+        ..pending.add(PendingAction(id: 'a1', summary: 'Email Ada', status: 'pending',
+            expiresAt: DateTime(2026, 10, 14, 18, 30)));
+      await pumpToday(tester, api: api, layout: layout);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('today-top-card')), findsOneWidget);
+      expect(find.byKey(const Key('your-day')), findsNothing);
+      expect(find.byKey(const Key('today-edit')), findsOneWidget);
+    });
+
+    testWidgets('Edit Today saves the new layout', (tester) async {
+      await pumpToday(tester, api: full());
+      await tester.pumpAndSettle();
+
+      await tester.scrollUntilVisible(find.byKey(const Key('today-edit')), 200,
+          scrollable: find.descendant(
+              of: find.byKey(const Key('today')), matching: find.byType(Scrollable)).first);
+      await tester.tap(find.byKey(const Key('today-edit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('edit-today-switch-people')));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('people-panel')), findsNothing);
+      final saved = (await SharedPreferences.getInstance()).getString(TodayLayoutStore.key);
+      expect(TodayLayout.fromJson(saved).isHidden(TodaySection.people), isTrue);
+    });
+
+    testWidgets('the agenda lists what is still to come today', (tester) async {
+      final api = FakeTodayApi()
+        ..upcoming = ComingUp(
+            title: 'Review with Ada', start: DateTime(2026, 10, 14, 18, 30),
+            recap: 'Last time: the budget');
+      String at(int hour, [int minute = 0]) =>
+          DateTime(2026, 10, 14, hour, minute).toUtc().toIso8601String();
+      final events = [
+        {'id': 'E0', 'title': 'Stand-up', 'start': at(9)},
+        {'id': 'E1', 'title': 'Review with Ada', 'start': at(18, 30)},
+        {'id': 'E2', 'title': 'Dinner', 'start': at(20)},
+      ];
+      await pumpToday(tester, api: api, phoneEvents: events);
+      await tester.pumpAndSettle();
+
+      // What was said last time: asked for the event within the hour only
+      expect(api.comingUpEvents, [
+        [events[1]],
+      ]);
+      final agenda = find.byKey(const Key('coming-up-today'));
+      expect(agenda, findsOneWidget);
+      expect(find.descendant(of: agenda, matching: find.text('Review with Ada')), findsOneWidget);
+      expect(find.descendant(of: agenda, matching: find.text('Dinner')), findsOneWidget);
+      expect(find.descendant(of: agenda, matching: find.text('Stand-up')), findsNothing);
+      expect(find.text('Last time: the budget'), findsOneWidget);
+    });
+
+    testWidgets("today's stays are on Today when places are on", (tester) async {
+      final on = ValueNotifier(true);
+      addTearDown(on.dispose);
+      final api = _PlacesTodayApi([
+        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
+        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20), name: 'Cinema'),
+      ]);
+      await pumpToday(tester, api: api, placesOn: on);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('places-today')), findsOneWidget);
+      expect(find.text('Office'), findsOneWidget);
+      expect(find.text('Cinema'), findsNothing);
+
+      on.value = false;
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('places-today')), findsNothing);
+    });
+
+    testWidgets('places off, no panel', (tester) async {
+      final api = _PlacesTodayApi([
+        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
+      ]);
+      await pumpToday(tester, api: api, placesOn: ValueNotifier(false));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('places-today')), findsNothing);
+      expect(api.listed, 0);
+    });
+
+    testWidgets('no stays today, no panel', (tester) async {
+      final api = _PlacesTodayApi([
+        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20), name: 'Cinema'),
+      ]);
+      await pumpToday(tester, api: api, placesOn: ValueNotifier(true));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('places-today')), findsNothing);
+    });
   });
 
   testWidgets('the daily and weekly summaries live in Memories now', (tester) async {
@@ -926,6 +1077,23 @@ final class _RoutinesTodayApi extends FakeTodayApi implements RoutinesApi {
 
   @override
   Future<List<Routine>> listRoutines() async => const [];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Today's API with the places visited.
+final class _PlacesTodayApi extends FakeTodayApi implements PlacesApi {
+  _PlacesTodayApi(this.visits);
+
+  final List<PlaceVisit> visits;
+  int listed = 0;
+
+  @override
+  Future<VisitPage> listVisits({DateTime? before}) async {
+    listed++;
+    return VisitPage(visits: visits, more: false);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

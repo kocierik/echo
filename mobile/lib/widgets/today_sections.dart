@@ -779,7 +779,7 @@ final class _NowRow extends StatelessWidget {
       fontWeight: FontWeight.w600,
     );
     final label = recording ? 'Recording' : 'In progress';
-    final going = now == null ? null : now!.difference(conversation.startedAt);
+    final going = now?.difference(conversation.startedAt);
     final title = conversation.title;
     final people = conversation.people;
     return Semantics(

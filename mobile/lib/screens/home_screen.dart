@@ -2,33 +2,42 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/action_models.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
+import '../models/person.dart';
+import '../models/place.dart';
 import '../models/plan.dart';
 import '../models/routine_run.dart';
 import '../models/task_item.dart';
 import '../models/today_insights.dart';
+import '../models/today_layout.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../services/app/app_runtime.dart';
+import '../services/app/today_layout_store.dart';
 import '../services/device/firmware_update.dart';
 import '../services/phone/phone_actions.dart';
 import '../theme/app_theme.dart';
+import '../widgets/coming_up_today.dart';
 import '../widgets/echo_nav_bar.dart';
+import '../widgets/places_today.dart';
 import '../widgets/routine_run_sheet.dart';
 import '../widgets/routine_sections.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
 import '../widgets/today_top_card.dart';
+import '../utils/directions.dart';
 import '../utils/formatting.dart';
 import '../services/memory/memories_controller.dart';
 import '../widgets/memory_sections.dart';
 import '../widgets/saved_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
+import 'edit_today_screen.dart';
 import 'memory_search_screen.dart';
 import 'people_screen.dart';
 import 'person_screen.dart';
@@ -64,6 +73,9 @@ final class HomeScreen extends StatefulWidget {
     this.openPerson,
     this.routineRunsChanged,
     this.onOpenThread,
+    this.layoutStore,
+    this.placesOn,
+    this.onOpenPlaces,
     super.key,
   });
 
@@ -113,6 +125,15 @@ final class HomeScreen extends StatefulWidget {
   /// a run.
   final void Function(String sessionId)? onOpenThread;
 
+  /// Where the user's order and hidden sections are kept; the phone's preferences.
+  final TodayLayoutStore? layoutStore;
+
+  /// Places visited is on (Profile): today's stays show.
+  final ValueListenable<bool>? placesOn;
+
+  /// Places visited, every stay ("See all").
+  final VoidCallback? onOpenPlaces;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -152,7 +173,18 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   /// The actions and the busy ones, for the "+N more" page while it is open.
   final _pendingView = ValueNotifier<(List<PendingAction>, Set<String>)>((const [], const {}));
 
+  /// The event within the hour and what was said last time, for the agenda.
   ComingUp? _comingUp;
+
+  /// Today's appointments still to come, from the phone's calendar.
+  List<TodayEvent> _events = const [];
+
+  /// Today's stays, while Places visited is on.
+  List<PlaceVisit> _visits = const [];
+
+  /// The user's order and hidden sections (Edit Today).
+  late final TodayLayoutStore _layoutStore = widget.layoutStore ?? TodayLayoutStore();
+  TodayLayout _layout = TodayLayout.defaults;
 
   /// The last line heard in the conversation going on.
   String? _lastLine;
@@ -180,6 +212,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     unawaited(_memories.initialize());
     _subscribeToUploads();
     widget.routineRunsChanged?.addListener(_onRoutineRuns);
+    widget.placesOn?.addListener(_onPlacesOn);
+    unawaited(_loadLayout());
     unawaited(_prefillFromPhone());
     unawaited(_refreshAll());
   }
@@ -215,6 +249,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(_uploadSubscription?.cancel());
       _subscribeToUploads();
     }
+    if (oldWidget.placesOn != widget.placesOn) {
+      oldWidget.placesOn?.removeListener(_onPlacesOn);
+      widget.placesOn?.addListener(_onPlacesOn);
+    }
     if (oldWidget.routineRunsChanged != widget.routineRunsChanged) {
       oldWidget.routineRunsChanged?.removeListener(_onRoutineRuns);
       widget.routineRunsChanged?.addListener(_onRoutineRuns);
@@ -228,6 +266,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   @override
   void dispose() {
     widget.routineRunsChanged?.removeListener(_onRoutineRuns);
+    widget.placesOn?.removeListener(_onPlacesOn);
     _pendingView.dispose();
     _memories.removeListener(_onMemories);
     if (_ownsMemories) _memories.dispose();
@@ -292,7 +331,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadPending(),
       _loadWorking(),
       _loadOwnVoice(),
-      _loadComingUp(),
+      _loadAgenda(),
+      _loadVisits(),
       _loadSaved(),
       _loadPlan(),
       _loadRuns(),
@@ -369,18 +409,47 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _loadSaved();
   }
 
-  /// An event of the phone's calendar within the hour; nothing without a calendar.
-  Future<void> _loadComingUp() async {
-    final api = _api;
-    if (api is! ComingUpApi) return;
+  Future<void> _loadLayout() async {
+    final layout = await _layoutStore.load();
+    if (mounted) setState(() => _layout = layout);
+  }
+
+  /// What is still to come today on the phone's calendar, and what was said last time
+  /// for the event within the hour; nothing without a calendar.
+  Future<void> _loadAgenda() async {
+    final now = widget.clock();
+    final endOfDay = DateTime(now.year, now.month, now.day + 1);
     final read = widget.phoneEvents ??
-        () async =>
-            await _phoneActions?.upcomingEvents(within: const Duration(hours: 1)) ??
+        () async => await _phoneActions?.upcomingEvents(within: endOfDay.difference(now)) ??
             const <Map<String, Object?>>[];
     try {
       final events = await read();
-      final soon = events.isEmpty ? null : await (api as ComingUpApi).comingUp(events);
-      if (mounted) setState(() => _comingUp = soon);
+      if (mounted) setState(() => _events = TodayEvent.fromPhone(events, now));
+      final api = _api;
+      if (api is! ComingUpApi) return;
+      final soon = [
+        for (final event in events)
+          if (DateTime.tryParse(event['start'] as String? ?? '')?.toLocal() case final start?
+              when !start.isBefore(now) && start.difference(now) <= const Duration(hours: 1))
+            event,
+      ];
+      final recap = soon.isEmpty ? null : await (api as ComingUpApi).comingUp(soon);
+      if (mounted) setState(() => _comingUp = recap);
+    } catch (_) {}
+  }
+
+  void _onPlacesOn() => unawaited(_loadVisits());
+
+  /// Today's stays, while Places visited is on.
+  Future<void> _loadVisits() async {
+    final api = _api;
+    if (api is! PlacesApi || widget.placesOn?.value != true) {
+      if (_visits.isNotEmpty && mounted) setState(() => _visits = const []);
+      return;
+    }
+    try {
+      final page = await (api as PlacesApi).listVisits();
+      if (mounted) setState(() => _visits = visitsOn(page.visits, widget.clock()));
     } catch (_) {}
   }
 
@@ -673,6 +742,137 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     };
   }
 
+  /// One section of Today, empty when it has nothing to show.
+  List<Widget> _section(
+    TodaySection section, {
+    required DateTime now,
+    required List<TaskItem> todo,
+    required List<ConversationCard> today,
+    required bool todayLoading,
+    required String? todayError,
+    required List<PersonSummary> peopleToday,
+    required List<List<ConversationCard>> earlier,
+  }) {
+    final device = widget.deviceStatus;
+    final memory = _memories.state;
+    final api = _api;
+    return switch (section) {
+      TodaySection.routines => [
+          RoutinesTodayPanel(runs: _runs, onOpen: (run) => unawaited(_openRun(run))),
+        ],
+      // Promises are among the to-dos; nothing open at all: no panel
+      TodaySection.todo => [
+          if (_tasksLoading || _tasksError != null || _openTasks.isNotEmpty) ...[
+            TodoPanel(
+              loading: _tasksLoading,
+              tasks: todo,
+              error: _tasksError,
+              busy: isTaskBusy,
+              now: now,
+              onRetry: () => unawaited(_loadTasks(showLoading: true)),
+              onToggle: (t) => unawaited(toggleTask(t)),
+              onDismiss: (t) => unawaited(dismissTask(t)),
+              onSeeAll: widget.onOpenTasks,
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      TodaySection.comingUp => [
+          ComingUpTodayPanel(
+            events: [for (final event in _events) if (event.allDay || !event.start.isBefore(now)) event],
+            recap: _comingUp,
+          ),
+        ],
+      TodaySection.yourDay => [
+          if (todayLoading || todayError != null || today.isNotEmpty) ...[
+            YourDayPanel(
+              loading: todayLoading,
+              conversations: today,
+              error: todayError,
+              recording: device.connectionState == DeviceConnectionState.listening,
+              onRetry: () => unawaited(_memories.refresh()),
+              onOpen: (c) => unawaited(_openConversation(c)),
+              onSeeAll: () => unawaited(_openDay(today)),
+              loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
+              now: now,
+              lastLine: _lastLine,
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      TodaySection.people => [
+          if (peopleToday.isNotEmpty) ...[
+            PeoplePanel(
+              people: peopleToday,
+              onOpen: (id) => unawaited(_openPerson(id)),
+              onAll: () => unawaited(_openPeople()),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      TodaySection.saved => [
+          if (_savedTotal > 0) ...[
+            SavedRow(
+              total: _savedTotal,
+              latestList: _savedLatest,
+              onOpen: () => unawaited(_openSaved()),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      TodaySection.places => [
+          if (widget.placesOn?.value == true)
+            PlacesTodayPanel(
+              visits: _visits,
+              onOpen: (visit) => unawaited(_openVisit(visit)),
+              onSeeAll: widget.onOpenPlaces ?? () {},
+            ),
+        ],
+      TodaySection.earlier => [
+          if (_week != null || earlier.isNotEmpty)
+            EarlierPanel(
+              days: earlier,
+              now: now,
+              week: _week,
+              onOpenWeek: _week == null
+                  ? null
+                  : () => unawaited(Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) => WeekScreen(week: _week!, now: now),
+                        ),
+                      )),
+              onOpenDay: (day) => unawaited(_openDay(day)),
+              hasMore: memory.hasMore,
+              loadingMore: memory.loadingMore,
+              onMore: () => unawaited(_memories.loadMore()),
+            ),
+        ],
+    };
+  }
+
+  /// Edit Today: every change is shown at once and kept on this phone.
+  Future<void> _editToday() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => EditTodayScreen(
+        layout: _layout,
+        onChanged: (layout) {
+          if (mounted) setState(() => _layout = layout);
+          unawaited(_layoutStore.save(layout));
+        },
+      ),
+    ));
+  }
+
+  /// A stay, in the phone's maps.
+  Future<void> _openVisit(PlaceVisit visit) async {
+    final uri = visitMapsUri(visit, iOS: defaultTargetPlatform == TargetPlatform.iOS);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) _snack('Could not open the map.');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
@@ -687,7 +887,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final moment = pickMoment(pending: _pending);
     final peopleToday = peopleSeenOn(memory.people, now);
     final earlier = _earlierDays;
-    final api = _api;
 
     // A Material, not a ColoredBox: row ink splashes paint on it
     return Material(
@@ -761,12 +960,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                           );
                         },
                       ),
-                    WorkingSection(
-                      items: _working,
-                      onOpen: widget.onOpenChat == null
-                          ? null
-                          : (item) => widget.onOpenChat!(item.sessionId),
-                    ),
                     if (moment != null)
                       TodayTopCard(
                         moment: moment,
@@ -775,75 +968,30 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         onCancel: (a) => unawaited(_cancel(a)),
                         onMore: () => unawaited(_openPending()),
                       ),
-                    RoutinesTodayPanel(runs: _runs, onOpen: (run) => unawaited(_openRun(run))),
-                    // Promises are among the to-dos; nothing open at all: no panel
-                    if (_tasksLoading || _tasksError != null || _openTasks.isNotEmpty) ...[
-                      TodoPanel(
-                        loading: _tasksLoading,
-                        tasks: todo,
-                        error: _tasksError,
-                        busy: isTaskBusy,
-                        now: now,
-                        onRetry: () => unawaited(_loadTasks(showLoading: true)),
-                        onToggle: (t) => unawaited(toggleTask(t)),
-                        onDismiss: (t) => unawaited(dismissTask(t)),
-                        onSeeAll: widget.onOpenTasks,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
                     // Near and past the speech budget: why the day may come in later
                     if (PlanLine.shows(_plan)) ...[
                       PlanLine(plan: _plan!, onOpen: () => unawaited(_openPlan())),
                       const SizedBox(height: 4),
                     ],
-                    if (todayLoading || todayError != null || today.isNotEmpty) ...[
-                      YourDayPanel(
-                        loading: todayLoading,
-                        conversations: today,
-                        error: todayError,
-                        recording: device.connectionState == DeviceConnectionState.listening,
-                        onRetry: () => unawaited(_memories.refresh()),
-                        onOpen: (c) => unawaited(_openConversation(c)),
-                        onSeeAll: () => unawaited(_openDay(today)),
-                        loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
+                    for (final section in _layout.visible)
+                      ..._section(
+                        section,
                         now: now,
-                        lastLine: _lastLine,
+                        todo: todo,
+                        today: today,
+                        todayLoading: todayLoading,
+                        todayError: todayError,
+                        peopleToday: peopleToday,
+                        earlier: earlier,
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (peopleToday.isNotEmpty) ...[
-                      PeoplePanel(
-                        people: peopleToday,
-                        onOpen: (id) => unawaited(_openPerson(id)),
-                        onAll: () => unawaited(_openPeople()),
+                    Center(
+                      child: TextButton.icon(
+                        key: const Key('today-edit'),
+                        onPressed: () => unawaited(_editToday()),
+                        icon: const Icon(Icons.tune_rounded, size: 18),
+                        label: const Text('Edit Today'),
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_savedTotal > 0) ...[
-                      SavedRow(
-                        total: _savedTotal,
-                        latestList: _savedLatest,
-                        onOpen: () => unawaited(_openSaved()),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_week != null || earlier.isNotEmpty)
-                      EarlierPanel(
-                        days: earlier,
-                        now: now,
-                        week: _week,
-                        onOpenWeek: _week == null
-                            ? null
-                            : () => unawaited(Navigator.of(context).push<void>(
-                                  MaterialPageRoute(
-                                    builder: (_) => WeekScreen(week: _week!, now: now),
-                                  ),
-                                )),
-                        onOpenDay: (day) => unawaited(_openDay(day)),
-                        hasMore: memory.hasMore,
-                        loadingMore: memory.loadingMore,
-                        onMore: () => unawaited(_memories.loadMore()),
-                      ),
+                    ),
                   ],
                 ),
               ),
