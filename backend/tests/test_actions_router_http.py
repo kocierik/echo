@@ -2,8 +2,8 @@
 
 The router runs in a FastAPI app through TestClient: the real X-API-Key check
 (`get_current_user_id`), the real provider dependency and real query parsing. Only
-`get_db` is overridden, with a fake session that answers the API-key lookup and the
-voice-session query.
+`get_db` is overridden, with a fake session that answers the API-key lookup, the
+voice-session query and (with none) the routine runs query.
 """
 
 import uuid
@@ -48,6 +48,11 @@ class FakeSession:
         if "chat_sessions" in sql:
             return _Result([self.voice_session] if self.voice_session else [])
         raise AssertionError(f"unexpected query: {sql}")
+
+    async def scalars(self, stmt):
+        # The routine runs /voice-updates also brings: none here (tests/test_routine_runs_api.py)
+        assert "routine_runs" in str(stmt), f"unexpected query: {stmt}"
+        return []
 
     async def commit(self):
         self.committed += 1

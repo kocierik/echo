@@ -37,6 +37,7 @@ from app.routers import (
     places,
     plan,
     query,
+    routine_runs,
     routines,
     saved,
     search,
@@ -127,6 +128,7 @@ app.include_router(voices.router, prefix=settings.api_prefix)
 app.include_router(firmware.router, prefix=settings.api_prefix)
 app.include_router(device.router, prefix=settings.api_prefix)
 app.include_router(routines.router, prefix=settings.api_prefix)
+app.include_router(routine_runs.router, prefix=settings.api_prefix)
 app.include_router(saved.router, prefix=settings.api_prefix)
 app.include_router(places.router, prefix=settings.api_prefix)
 app.include_router(plan.router, prefix=settings.api_prefix)

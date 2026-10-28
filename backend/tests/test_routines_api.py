@@ -21,6 +21,7 @@ async def _routine(user_id=TEST_USER_ID, **values) -> Routine:
         next_run_at=values.get("next_run_at", datetime.now(timezone.utc) + timedelta(hours=3)),
         source="voice",
         created_at=values.get("created_at", datetime.now(timezone.utc)),
+        mode=values.get("mode", "always"),
     )
     async with test_session() as db:
         db.add(routine)
@@ -82,3 +83,11 @@ async def test_another_users_routine_is_not_found(client, auth_headers):
     delete = await client.delete(f"/api/routines/{routine.id}", headers=auth_headers)
 
     assert patch.status_code == 404 and delete.status_code == 404
+
+
+async def test_the_routines_list_has_each_mode(client, auth_headers):
+    await _routine(mode="only_new")
+
+    response = await client.get("/api/routines", headers=auth_headers)
+
+    assert response.json()[0]["mode"] == "only_new"

@@ -24,6 +24,8 @@ class RoutineOut(BaseModel):
     instruction: str
     schedule: dict
     schedule_text: str
+    # "always" | "only_if" | "only_new"
+    mode: str
     timezone: str
     active: bool
     next_run_at: datetime
@@ -44,6 +46,7 @@ def _out(routine: Routine) -> RoutineOut:
         instruction=routine.instruction,
         schedule=routine.schedule,
         schedule_text=describe_schedule(routine.schedule),
+        mode=routine.mode,
         timezone=routine.timezone,
         active=routine.active,
         next_run_at=routine.next_run_at,

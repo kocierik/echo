@@ -28,6 +28,7 @@ from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
 from app.models.photo import Photo
+from app.models.routine_run import RoutineRun
 from app.services.chat_history import save_session_history
 from app.services.language import detect_language
 
@@ -357,7 +358,34 @@ async def voice_updates(
                     "photo_id": m.get("photo_id"),
                 }
             )
-    return {"messages": messages, "now": datetime.now(timezone.utc).isoformat()}
+    # Routine runs with something to say, or that failed; with no `since` the phone's
+    # first check only sets its clock, as for messages
+    routine_runs = []
+    if since is not None:
+        runs = await db.scalars(
+            select(RoutineRun)
+            .where(
+                RoutineRun.user_id == user_id,
+                RoutineRun.status.in_(("reported", "failed")),
+                RoutineRun.ran_at > since,
+            )
+            .order_by(RoutineRun.ran_at)
+        )
+        routine_runs = [
+            {
+                "id": str(run.id),
+                "routine_id": str(run.routine_id),
+                "status": run.status,
+                "text": run.text,
+                "ran_at": run.ran_at.isoformat(),
+            }
+            for run in runs
+        ]
+    return {
+        "messages": messages,
+        "routine_runs": routine_runs,
+        "now": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 # A photo still waiting for the wearable or the vision model this long is shown as working
