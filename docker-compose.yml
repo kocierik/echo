@@ -93,8 +93,10 @@ services:
     dns:
       - 8.8.8.8
       - 1.1.1.1
-    env_file:
-      - .env
+    # Only what it needs: none of the server's other keys
+    environment:
+      - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN}
+      - LOG_LEVEL=${WHATSAPP_LOG_LEVEL:-warn}
     volumes:
       # The linked devices' keys; the messages stay in memory only
       - whatsapp_data:/data

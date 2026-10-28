@@ -28,7 +28,15 @@ export class MessageStore {
   #user(userId) {
     let user = this.users.get(userId);
     if (!user) {
-      user = { messages: [], ids: new Set(), names: new Map(), pushNames: new Map(), sorted: true };
+      user = {
+        messages: [],
+        ids: new Set(),
+        names: new Map(),
+        pushNames: new Map(),
+        // lid -> phone number jid: the same person, one chat
+        aliases: new Map(),
+        sorted: true,
+      };
       this.users.set(userId, user);
     }
     return user;
@@ -49,9 +57,10 @@ export class MessageStore {
   }
 
   /** A message from `extractMessage`; one too old or seen before is ignored. */
-  add(userId, message) {
-    if (message.at < this.now() - this.keepFor) return;
+  add(userId, original) {
+    if (original.at < this.now() - this.keepFor) return;
     const user = this.#user(userId);
+    const message = { ...original, chat: user.aliases.get(original.chat) ?? original.chat };
     const key = `${message.chat}|${message.id}`;
     if (user.ids.has(key)) return;
     user.ids.add(key);
@@ -62,9 +71,42 @@ export class MessageStore {
     if (user.messages.length > this.cap) this.#prune(user);
   }
 
+  /** WhatsApp says `lid` is `pn`: their messages and names become one chat. */
+  alias(userId, lid, pn) {
+    if (!lid || !pn || lid === pn) return;
+    const user = this.#user(userId);
+    user.aliases.set(lid, pn);
+    for (const message of user.messages) {
+      if (message.chat !== lid) continue;
+      user.ids.delete(`${lid}|${message.id}`);
+      message.chat = pn;
+      user.ids.add(`${pn}|${message.id}`);
+    }
+    for (const names of [user.names, user.pushNames]) {
+      if (names.has(lid) && !names.has(pn)) names.set(pn, names.get(lid));
+    }
+  }
+
+  /** A message deleted for everyone (`text` null) goes; an edited one takes its new text. */
+  change(userId, { chat, id, text }) {
+    const user = this.users.get(userId);
+    if (!user) return;
+    const where = user.aliases.get(chat) ?? chat;
+    const index = user.messages.findIndex((m) => m.chat === where && m.id === id);
+    if (index < 0) return;
+    if (text === null) {
+      user.messages.splice(index, 1);
+      user.ids.delete(`${where}|${id}`);
+    } else {
+      user.messages[index].text = text;
+    }
+  }
+
   /** The name the phone's contacts give a chat. */
   setName(userId, jid, name) {
-    if (name) this.#user(userId).names.set(jid, name);
+    if (!name) return;
+    const user = this.#user(userId);
+    user.names.set(user.aliases.get(jid) ?? jid, name);
   }
 
   #name(user, jid) {

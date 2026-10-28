@@ -85,3 +85,31 @@ export function extractMessage(waMessage) {
     at: seconds(waMessage.messageTimestamp) * 1000,
   };
 }
+
+const REVOKE = 0;
+const MESSAGE_EDIT = 14;
+
+function chatOf(key) {
+  if (!key || !isPrivateJid(key.remoteJid)) return null;
+  return key.remoteJid.endsWith('@lid') && key.remoteJidAlt?.endsWith('@s.whatsapp.net')
+    ? key.remoteJidAlt
+    : key.remoteJid;
+}
+
+/**
+ * A message deleted for everyone (`text` null) or edited (`text` the new one), as
+ * `{chat, id, text}`; null for anything else.
+ */
+export function extractChange(waMessage) {
+  const protocol = unwrap(waMessage?.message)?.protocolMessage;
+  const target = protocol?.key;
+  if (!target?.id) return null;
+  const chat = chatOf(target) ?? chatOf(waMessage.key);
+  if (!chat) return null;
+  if (protocol.type === REVOKE) return { chat, id: target.id, text: null };
+  if (protocol.type === MESSAGE_EDIT) {
+    const text = textOf(unwrap(protocol.editedMessage));
+    return text?.trim() ? { chat, id: target.id, text: text.trim() } : null;
+  }
+  return null;
+}
