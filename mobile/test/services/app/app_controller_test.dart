@@ -92,6 +92,22 @@ void main() {
     expect(controller.routinesFilter.value, isNull);
   });
 
+  test('every way into a chat puts Ask back on Chat', () async {
+    controller = await createController();
+    final ways = <String, void Function()>{
+      'a session': () => controller.requestOpenSession('s-1'),
+      'a question': () => controller.requestAsk('What did Ada say?'),
+      'dictation': () => controller.setAskDictation(true),
+      'a voice answer': () => controller.handleNotificationPayload('voice:'),
+    };
+    for (final MapEntry(key: way, value: open) in ways.entries) {
+      controller.askView.value = AskView.routines;
+      open();
+      await Future<void>.delayed(Duration.zero);
+      expect(controller.askView.value, AskView.chat, reason: way);
+    }
+  });
+
   test('requestOpenRoutines can open on one routine', () async {
     controller = await createController();
 

@@ -146,7 +146,8 @@ final class _RoutineRunsViewState extends State<RoutineRunsView> {
       key: const Key('routine-runs'),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
-        if (_routines.length > 1)
+        // A filter set from elsewhere can always be cleared, even on a routine now gone
+        if (_routines.length > 1 || widget.routineId != null)
           _Filters(
             routines: _routines,
             selected: widget.routineId,

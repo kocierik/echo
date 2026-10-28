@@ -68,7 +68,7 @@ final class Routine {
 
 /// When a routine speaks, in words.
 String routineModeText(String mode) => switch (mode) {
-      'only_if' => 'Tells you only if…',
+      'only_if' => 'Tells you only when its condition holds',
       'only_new' => 'Tells you only what is new',
       _ => 'Always tells you',
     };

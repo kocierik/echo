@@ -38,6 +38,11 @@ Routine _routine(String id, String instruction) => Routine.fromJson({
 final class _Api implements RoutinesApi {
   _Api(this.pages);
 
+  List<Routine> routines = [
+    _routine('rt1', 'dimmi se piove domani'),
+    _routine('rt2', 'nuove posizioni'),
+  ];
+
   /// The pages in order; the filter keeps a routine's runs.
   final List<RoutineRunPage> pages;
   final calls = <(String?, DateTime?)>[];
@@ -61,8 +66,7 @@ final class _Api implements RoutinesApi {
   }
 
   @override
-  Future<List<Routine>> listRoutines() async =>
-      [_routine('rt1', 'dimmi se piove domani'), _routine('rt2', 'nuove posizioni')];
+  Future<List<Routine>> listRoutines() async => routines;
 
   @override
   Future<String> askAboutRoutineRun(String runId) async => 'thread-1';
@@ -165,6 +169,17 @@ void main() {
     expect(api.calls.first.$1, 'rt2');
     expect(find.text('Text of b'), findsOneWidget);
     expect(find.text('Text of a'), findsNothing);
+  });
+
+  testWidgets('a filter on a routine no longer there can be cleared', (tester) async {
+    final api = _Api([const RoutineRunPage(items: [])])
+      ..routines = [_routine('rt1', 'dimmi se piove domani')];
+    await pump(tester, api, routineId: 'gone');
+
+    await tester.tap(find.byKey(const Key('routines-filter-all')));
+    await tester.pumpAndSettle();
+
+    expect(filters, [null]);
   });
 
   testWidgets('Ask about this asks about that run', (tester) async {

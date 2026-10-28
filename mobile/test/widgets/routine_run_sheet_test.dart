@@ -49,7 +49,7 @@ void main() {
     expect(find.text(long), findsOneWidget);
     expect(tester.widget<Text>(find.text(long)).maxLines, isNull);
     expect(find.text('dimmi se piove domani'), findsOneWidget);
-    expect(find.textContaining('Tells you only if…'), findsOneWidget);
+    expect(find.textContaining('Tells you only when its condition holds'), findsOneWidget);
     expect(find.textContaining('07:00'), findsOneWidget);
   });
 

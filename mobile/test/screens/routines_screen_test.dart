@@ -110,7 +110,7 @@ void main() {
     ]));
 
     expect(find.text('Tells you only what is new'), findsOneWidget);
-    expect(find.text('Tells you only if…'), findsOneWidget);
+    expect(find.text('Tells you only when its condition holds'), findsOneWidget);
     expect(find.text('Always tells you'), findsOneWidget);
   });
 

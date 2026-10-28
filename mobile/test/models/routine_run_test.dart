@@ -87,7 +87,7 @@ void main() {
 
   test('each mode in words', () {
     expect(routineModeText('always'), 'Always tells you');
-    expect(routineModeText('only_if'), 'Tells you only if…');
+    expect(routineModeText('only_if'), 'Tells you only when its condition holds');
     expect(routineModeText('only_new'), 'Tells you only what is new');
     expect(routineModeText('other'), 'Always tells you');
   });

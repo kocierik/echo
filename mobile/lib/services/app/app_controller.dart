@@ -134,6 +134,7 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// Selects the Ask tab and asks the chat screen to open session [id].
   void requestOpenSession(String id) {
     if (_disposed || id.isEmpty) return;
+    askView.value = AskView.chat;
     pendingChatSessionId.value = id;
     unawaited(setSelectedTab(askTab));
   }
@@ -142,6 +143,7 @@ final class AppController extends ValueNotifier<AppViewState> {
   void requestAsk(String question) {
     final text = question.trim();
     if (_disposed || text.isEmpty) return;
+    askView.value = AskView.chat;
     pendingChatQuestion.value = text;
     unawaited(setSelectedTab(askTab));
   }
@@ -184,7 +186,10 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// The Ask button: held, Ask opens and dictates until it is let go.
   void setAskDictation(bool holding) {
     if (_disposed) return;
-    if (holding) unawaited(setSelectedTab(askTab));
+    if (holding) {
+      askView.value = AskView.chat;
+      unawaited(setSelectedTab(askTab));
+    }
     askDictation.value = holding;
   }
 
@@ -215,6 +220,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     if (!payload.startsWith(prefix)) return;
     final id = payload.substring(prefix.length).trim();
     if (id.isEmpty) {
+      askView.value = AskView.chat;
       unawaited(setSelectedTab(askTab));
     } else {
       requestOpenSession(id);
