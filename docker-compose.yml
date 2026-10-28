@@ -84,6 +84,22 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # WhatsApp, read-only (whatsapp/): only with COMPOSE_PROFILES=whatsapp in .env. Its port
+  # is not published: api and worker reach it as http://whatsapp:3100 with the token
+  whatsapp:
+    build:
+      context: ./whatsapp
+    profiles: ["whatsapp"]
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    env_file:
+      - .env
+    volumes:
+      # The linked devices' keys; the messages stay in memory only
+      - whatsapp_data:/data
+    restart: unless-stopped
+
   tunnel:
     image: cloudflare/cloudflared:latest
     command: tunnel --no-autoupdate run
@@ -97,3 +113,4 @@ volumes:
   postgres_data:
   redis_data:
   audio_data:
+  whatsapp_data:
