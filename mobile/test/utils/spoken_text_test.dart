@@ -7,15 +7,30 @@ void main() {
         '**Pioggia** dalle 15, porta l\'ombrello.\n'
         '- Minima `12 °C`\n'
         '• Massima 18 °C\n'
-        'Fonte: [Meteo.it](https://meteo.it/milano) e https://ilmeteo.it/x?y=1';
+        'Fonte: [Meteo.it](https://meteo.it/milano) e https://www.ilmeteo.it/x?y=1';
+
+    // Each line ends as a sentence, so the voice pauses; a bare link says its site
+    expect(
+      spokenText(answer, language: 'it'),
+      'Domani a Milano.\n'
+      'Pioggia dalle 15, porta l\'ombrello.\n'
+      'Minima 12 °C.\n'
+      'Massima 18 °C.\n'
+      'Fonte: Meteo.it e ilmeteo.it.',
+    );
+  });
+
+  test('italics, emoji and tables are read as words', () {
+    const answer = 'Domani _forse_ piove ☔️🌧\n'
+        '| Giorno | Meteo |\n'
+        '|---|:---:|\n'
+        '| Lunedì | Sole |';
 
     expect(
       spokenText(answer, language: 'it'),
-      'Domani a Milano\n'
-      'Pioggia dalle 15, porta l\'ombrello.\n'
-      'Minima 12 °C\n'
-      'Massima 18 °C\n'
-      'Fonte: Meteo.it e',
+      'Domani forse piove.\n'
+      'Giorno, Meteo.\n'
+      'Lunedì, Sole.',
     );
   });
 
@@ -27,6 +42,15 @@ void main() {
 
     expect(spoken.length, lessThanOrEqualTo(500 + ' The rest is in Ask.'.length));
     expect(spoken, endsWith('afternoon. The rest is in Ask.'));
+  });
+
+  test('a sentence end early on does not cut the answer short', () {
+    final answer = 'Sì. ${'e poi ancora una parola ' * 40}';
+
+    final spoken = spokenText(answer, language: 'it');
+
+    expect(spoken.length, greaterThan(400));
+    expect(spoken, endsWith('… Il resto è in Ask.'));
   });
 
   test('without a sentence end it is cut at a word; Italian says so in Italian', () {

@@ -267,6 +267,18 @@ void main() {
     expect(mic.listening, isFalse);
   });
 
+  test('Try it tapped again while it speaks says it once', () async {
+    voice.hold = Completer();
+    final echo = speaker();
+    final taps = [echo.sample(), echo.sample(), echo.sample()];
+    await pumpEventQueue();
+
+    voice.hold!.complete();
+    await Future.wait(taps);
+
+    expect(voice.said, hasLength(1));
+  });
+
   test('Try it speaks a sample in the language even when off', () async {
     setting.value = SpokenAnswers.off;
     language = 'en';

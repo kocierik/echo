@@ -23,7 +23,6 @@ import 'action_log_screen.dart';
 import 'device_messages_screen.dart';
 import 'echo_device_screen.dart';
 import 'integrations_screen.dart';
-import 'settings/spoken_answers_screen.dart';
 import 'settings/about_settings_screen.dart';
 import 'settings/appearance_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
@@ -39,6 +38,7 @@ import 'settings/plan_screen.dart';
 import 'settings/privacy_settings_screen.dart';
 import 'settings/routines_screen.dart';
 import 'settings/settings_components.dart';
+import 'settings/spoken_answers_screen.dart';
 import 'settings/voice_settings_screen.dart';
 
 /// Profile, the third tab: the account, Echo, the plan, then every setting in groups:

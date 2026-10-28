@@ -83,6 +83,28 @@ void main() {
     expect(spoken, [long, 'two']);
   });
 
+  test('an answer from long ago is notified but not read aloud', () async {
+    await setUpService({
+      VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),
+    });
+    final spoken = <String>[];
+    service = VoiceUpdatesService(api, NotificationService(port), prefs,
+        onNewAnswer: spoken.add);
+    final now = t0.add(const Duration(hours: 3));
+    api.response = VoiceUpdates(
+      messages: [
+        message('old', t0.add(const Duration(minutes: 1))),
+        message('fresh', now.subtract(const Duration(minutes: 2))),
+      ],
+      now: now,
+    );
+
+    await service.check();
+
+    expect(spoken, ['fresh']);
+    expect(port.shown, hasLength(2));
+  });
+
   test('new routine runs notify once each and tell Today, once per check', () async {
     await setUpService({
       VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),

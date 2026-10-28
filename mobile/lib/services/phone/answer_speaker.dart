@@ -77,6 +77,9 @@ final class AnswerSpeaker {
   /// The device's last state, for [deviceSeen].
   DeviceConnectionState? _lastSeen;
 
+  /// A sample is waiting or being spoken: another "Try it" tap adds nothing.
+  bool _sampling = false;
+
   /// Speaks [answer] after the ones before it, when the setting allows.
   Future<void> say(String answer) => _enqueue((generation) async {
         final choice = _setting.value;
@@ -86,14 +89,18 @@ final class AnswerSpeaker {
         await _speak(spokenText(answer, language: language), language, generation);
       });
 
-  /// "Try it": a sample sentence, whatever the setting.
-  Future<void> sample() => _enqueue((generation) async {
-        final language = _language();
-        final text = language == 'it'
-            ? 'Ciao, sono Echo. Ti leggerò le risposte così.'
-            : "Hi, I'm Echo. This is how I'll read you my answers.";
-        await _speak(text, language, generation);
-      });
+  /// "Try it": a sample sentence, whatever the setting; once, however many taps.
+  Future<void> sample() {
+    if (_sampling) return Future.value();
+    _sampling = true;
+    return _enqueue((generation) async {
+      final language = _language();
+      final text = language == 'it'
+          ? 'Ciao, sono Echo. Ti leggerò le risposte così.'
+          : "Hi, I'm Echo. This is how I'll read you my answers.";
+      await _speak(text, language, generation);
+    }).whenComplete(() => _sampling = false);
+  }
 
   /// Stops the answer being spoken and drops the ones waiting.
   Future<void> stop() async {
@@ -183,17 +190,27 @@ final class AnswerSpeaker {
 
 /// The phone's own text-to-speech. Done when the answer is said, stopped or failed (iOS
 /// does not end an awaited speak that is stopped, so the plugin's handlers end it);
-/// other audio is lowered meanwhile.
+/// other audio is lowered meanwhile (iOS: a ducking session; Android: audio focus).
+/// A stopped answer's cancel can come late: the next answer waits for it briefly, so
+/// it cannot end that one.
 final class FlutterTtsVoice implements AnswerVoice {
   FlutterTtsVoice([FlutterTts? tts]) : _tts = tts ?? FlutterTts();
 
   final FlutterTts _tts;
   Completer<void>? _done;
+
+  /// Set by [stop]: the engine's report of that cancel, still to come.
+  Completer<void>? _draining;
   bool _ready = false;
 
   Future<void> _prepare() async {
     if (_ready) return;
     void finish([dynamic _]) {
+      final draining = _draining;
+      if (draining != null && !draining.isCompleted) {
+        draining.complete();
+        return;
+      }
       final done = _done;
       if (done != null && !done.isCompleted) done.complete();
     }
@@ -235,18 +252,29 @@ final class FlutterTtsVoice implements AnswerVoice {
 
   Future<void> _say(String text, String language) async {
     await _prepare();
+    final draining = _draining;
+    if (draining != null) {
+      await draining.future.timeout(const Duration(milliseconds: 500), onTimeout: () {});
+      _draining = null;
+    }
     await _tts.setLanguage(language == 'it' ? 'it-IT' : 'en-US');
     final done = _done = Completer<void>();
     // 1 when it started; anything else (Android without a working engine): no callback
-    if (await _tts.speak(text) != 1) return;
+    final started = await _tts.speak(
+      text,
+      focus: defaultTargetPlatform == TargetPlatform.android,
+    );
+    if (started != 1) return;
     await done.future;
   }
 
   @override
   Future<void> stop() async {
-    await _tts.stop();
     final done = _done;
-    if (done != null && !done.isCompleted) done.complete();
+    final speaking = done != null && !done.isCompleted;
+    if (speaking) _draining = Completer<void>();
+    await _tts.stop();
+    if (speaking) done.complete();
   }
 }
 

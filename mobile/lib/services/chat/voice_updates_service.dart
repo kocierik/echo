@@ -40,6 +40,9 @@ final class VoiceUpdatesService {
   static const maxSeenKeys = 50;
   static const overlap = Duration(seconds: 60);
 
+  /// Older answers are only notified, never read aloud (after a long time offline).
+  static const speakWithin = Duration(minutes: 10);
+
   final VoiceUpdatesApi _api;
   final NotificationService _notifications;
   final SharedPreferences _preferences;
@@ -72,7 +75,10 @@ final class VoiceUpdatesService {
             sessionId: message.sessionId,
             id: _nextId(),
           );
-          _onNewAnswer?.call(message.content);
+          final at = message.timestamp;
+          if (at == null || updates.now.difference(at) <= speakWithin) {
+            _onNewAnswer?.call(message.content);
+          }
           seen.add(key);
           found = true;
           if (seen.length > maxSeenKeys) {
