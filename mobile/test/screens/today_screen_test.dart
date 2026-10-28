@@ -38,6 +38,7 @@ void main() {
   const bluetoothOff = DeviceStatus(connectionState: DeviceConnectionState.bluetoothOff);
 
   final calls = <String>[];
+  var phoneReads = 0;
 
   Future<void> pumpToday(
     WidgetTester tester, {
@@ -56,7 +57,9 @@ void main() {
     ValueListenable<bool>? placesOn,
     DateTime Function()? clock,
     Future<void> Function()? onOpenPlaces,
+    TodayLayoutStore? layoutStore,
   }) async {
+    phoneReads = 0;
     SharedPreferences.setMockInitialValues({
       if (layout != null) TodayLayoutStore.key: layout.toJson(),
     });
@@ -80,12 +83,15 @@ void main() {
             openConversation: (context, id) async => calls.add('open $id'),
             segmentUploadedStream: uploads,
             clock: clock ?? () => now,
-            phoneEvents: () async => phoneEvents,
+            phoneEvents: () async {
+              phoneReads++;
+              return phoneEvents;
+            },
             memories: memories,
             openPerson: openPerson,
             routineRunsChanged: routineRunsChanged,
             onOpenThread: (id) => calls.add('thread $id'),
-            layoutStore: TodayLayoutStore(),
+            layoutStore: layoutStore ?? TodayLayoutStore(),
             placesOn: placesOn,
             onOpenPlaces: onOpenPlaces,
           ),
@@ -207,6 +213,22 @@ void main() {
       expect(find.byKey(const Key('today-top-card')), findsNothing);
       expect(find.text('SO FAR TODAY'), findsNothing);
       expect(find.text('Lunch with Ada'), findsOneWidget);
+    });
+
+    testWidgets("the conversation going on: its time keeps up with the clock", (tester) async {
+      var clock = now;
+      final api = FakeTodayApi(conversations: [
+        card('live', startedAt: DateTime(2026, 10, 14, 17, 48), title: 'Call about Atlas',
+            isOpen: true, people: const ['Marco']),
+      ]);
+      await pumpToday(tester, api: api, clock: () => clock);
+      await tester.pumpAndSettle();
+      expect(find.text('Now · 12 min'), findsOneWidget);
+
+      clock = now.add(const Duration(minutes: 5));
+      await tester.pump(const Duration(minutes: 1));
+
+      expect(find.text('Now · 17 min'), findsOneWidget);
     });
 
     testWidgets('the conversation going on, with the last line heard', (tester) async {
@@ -845,6 +867,57 @@ void main() {
       expect(find.byKey(const Key('today-top-card')), findsOneWidget);
       expect(find.byKey(const Key('your-day')), findsNothing);
       expect(find.byKey(const Key('today-edit')), findsOneWidget);
+    });
+
+    testWidgets('a hidden agenda reads no calendar; shown again, it loads', (tester) async {
+      final api = FakeTodayApi()
+        ..upcoming = ComingUp(title: 'Review with Ada', start: DateTime(2026, 10, 14, 18, 30));
+      final events = [
+        {
+          'id': 'E1',
+          'title': 'Review with Ada',
+          'start': DateTime(2026, 10, 14, 18, 30).toUtc().toIso8601String(),
+        },
+      ];
+      await pumpToday(tester, api: api, phoneEvents: events,
+          layout: TodayLayout.defaults.toggled(TodaySection.comingUp));
+      await tester.pumpAndSettle();
+
+      expect(phoneReads, 0);
+      expect(api.comingUpEvents, isEmpty);
+
+      await tester.scrollUntilVisible(find.byKey(const Key('today-edit')), 200,
+          scrollable: find.descendant(
+              of: find.byKey(const Key('today')), matching: find.byType(Scrollable)).first);
+      await tester.tap(find.byKey(const Key('today-edit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('edit-today-switch-comingUp')));
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(phoneReads, 1);
+      expect(find.byKey(const Key('coming-up-today')), findsOneWidget);
+    });
+
+    testWidgets('a hidden section never shows, not even before the layout is read',
+        (tester) async {
+      final prefs = Completer<SharedPreferences>();
+      await pumpToday(
+        tester,
+        api: full(),
+        layout: TodayLayout.defaults.toggled(TodaySection.todo),
+        layoutStore: TodayLayoutStore(preferences: () => prefs.future),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('todo-panel')), findsNothing);
+
+      prefs.complete(await SharedPreferences.getInstance());
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('todo-panel')), findsNothing);
+      expect(find.byKey(const Key('your-day')), findsOneWidget);
     });
 
     testWidgets('Edit Today saves the new layout', (tester) async {

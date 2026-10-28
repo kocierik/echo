@@ -186,7 +186,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   late final TodayLayoutStore _layoutStore = widget.layoutStore ?? TodayLayoutStore();
   TodayLayout _layout = TodayLayout.defaults;
 
+  /// Read once at start; no section shows before it, so a hidden one never flashes.
+  late final Future<void> _layoutRead;
+  bool _layoutReady = false;
+
   late final AppLifecycleListener _lifecycle;
+
+  /// A rebuild a minute: the live conversation's time, an appointment that ends.
+  Timer? _minuteTimer;
 
   /// The last line heard in the conversation going on.
   String? _lastLine;
@@ -221,7 +228,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(_loadVisits());
       unawaited(_loadRuns());
     });
-    unawaited(_loadLayout());
+    _layoutRead = _loadLayout();
+    _minuteTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
     unawaited(_prefillFromPhone());
     unawaited(_refreshAll());
   }
@@ -276,6 +286,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     widget.routineRunsChanged?.removeListener(_onRoutineRuns);
     widget.placesOn?.removeListener(_onPlacesOn);
     _lifecycle.dispose();
+    _minuteTimer?.cancel();
     _pendingView.dispose();
     _memories.removeListener(_onMemories);
     if (_ownsMemories) _memories.dispose();
@@ -420,12 +431,19 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   Future<void> _loadLayout() async {
     final layout = await _layoutStore.load();
-    if (mounted) setState(() => _layout = layout);
+    if (!mounted) return;
+    setState(() {
+      _layout = layout;
+      _layoutReady = true;
+    });
   }
 
   /// What is still to come today on the phone's calendar, and what was said last time
   /// for the event within the hour; nothing without a calendar.
   Future<void> _loadAgenda() async {
+    await _layoutRead;
+    // Hidden: no calendar read, no recap asked for
+    if (!mounted || _layout.isHidden(TodaySection.comingUp)) return;
     final now = widget.clock();
     final endOfDay = DateTime(now.year, now.month, now.day + 1);
     final read = widget.phoneEvents ??
@@ -451,6 +469,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   /// Today's stays, while Places visited is on.
   Future<void> _loadVisits() async {
+    await _layoutRead;
+    if (!mounted || _layout.isHidden(TodaySection.places)) return;
     final api = _api;
     if (api is! PlacesApi || widget.placesOn?.value != true) {
       if (_visits.isNotEmpty && mounted) setState(() => _visits = const []);
@@ -868,8 +888,15 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       builder: (_) => EditTodayScreen(
         layout: _layout,
         onChanged: (layout) {
+          final shown = {
+            for (final section in TodaySection.values)
+              if (_layout.isHidden(section) && !layout.isHidden(section)) section,
+          };
           if (mounted) setState(() => _layout = layout);
           unawaited(_layoutStore.save(layout));
+          // What a hidden section did not load
+          if (shown.contains(TodaySection.comingUp)) unawaited(_loadAgenda());
+          if (shown.contains(TodaySection.places)) unawaited(_loadVisits());
         },
       ),
     ));
@@ -993,7 +1020,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                       PlanLine(plan: _plan!, onOpen: () => unawaited(_openPlan())),
                       const SizedBox(height: 4),
                     ],
-                    for (final section in _layout.visible)
+                    for (final section in _layoutReady ? _layout.visible : const <TodaySection>[])
                       ..._section(
                         section,
                         now: now,
