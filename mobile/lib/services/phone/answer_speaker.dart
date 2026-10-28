@@ -31,9 +31,10 @@ abstract interface class EchoMic {
 }
 
 /// Reads Echo's answers aloud as Profile → Spoken answers says: one after the other, as
-/// plain speech in the user's language. On the speaker Echo is muted while the phone
-/// speaks, so it does not record its own answer, and listens again after; a flag kept
-/// on the phone lets [recover] unmute it if the app died in between. Never throws.
+/// plain speech in the user's language, never while the user dictates. Echo is muted
+/// while the phone speaks, so it does not record its own answer (headphones cannot be
+/// told from a car or a Bluetooth speaker), and listens again after; a flag kept on the
+/// phone lets [recover] unmute it if the app died in between. Never throws.
 final class AnswerSpeaker {
   AnswerSpeaker({
     required AnswerVoice voice,
@@ -42,12 +43,14 @@ final class AnswerSpeaker {
     required SharedPreferences preferences,
     required String Function() language,
     EchoMic? mic,
+    ValueListenable<bool>? quiet,
   })  : _voice = voice,
         _output = output,
         _setting = setting,
         _preferences = preferences,
         _language = language,
-        _mic = mic;
+        _mic = mic,
+        _quiet = quiet;
 
   /// Set while Echo is muted for an answer.
   static const mutedKey = 'spoken_answers_muted_echo';
@@ -59,6 +62,9 @@ final class AnswerSpeaker {
   final String Function() _language;
   final EchoMic? _mic;
 
+  /// True while the user dictates in Ask: an answer then is left to the notification.
+  final ValueListenable<bool>? _quiet;
+
   /// The answers in line; each starts once the one before is done.
   Future<void> _line = Future.value();
 
@@ -68,14 +74,16 @@ final class AnswerSpeaker {
   /// Echo is muted for the answer being spoken: [recover] waits for its end.
   bool _muting = false;
 
+  /// The device's last state, for [deviceSeen].
+  DeviceConnectionState? _lastSeen;
+
   /// Speaks [answer] after the ones before it, when the setting allows.
   Future<void> say(String answer) => _enqueue((generation) async {
         final choice = _setting.value;
-        if (choice == SpokenAnswers.off) return;
-        final headphones = await _headphones();
-        if (choice == SpokenAnswers.headphones && !headphones) return;
+        if (choice == SpokenAnswers.off || (_quiet?.value ?? false)) return;
+        if (choice == SpokenAnswers.headphones && !await _headphones()) return;
         final language = _language();
-        await _speak(spokenText(answer, language: language), language, headphones, generation);
+        await _speak(spokenText(answer, language: language), language, generation);
       });
 
   /// "Try it": a sample sentence, whatever the setting.
@@ -84,7 +92,7 @@ final class AnswerSpeaker {
         final text = language == 'it'
             ? 'Ciao, sono Echo. Ti leggerò le risposte così.'
             : "Hi, I'm Echo. This is how I'll read you my answers.";
-        await _speak(text, language, await _headphones(), generation);
+        await _speak(text, language, generation);
       });
 
   /// Stops the answer being spoken and drops the ones waiting.
@@ -100,6 +108,21 @@ final class AnswerSpeaker {
   Future<void> recover() async {
     if (_muting) return;
     await _unmute();
+  }
+
+  /// Echo's state as the device reports it. Muted with the flag set: an answer left it
+  /// so. Listening on a working connection (not the guess made on connecting, before
+  /// its telemetry): nothing is left to recover, and a later mute is the user's own.
+  Future<void> deviceSeen(DeviceConnectionState state) async {
+    final before = _lastSeen;
+    _lastSeen = state;
+    if (_muting) return;
+    if (state == DeviceConnectionState.muted) {
+      await _unmute();
+    } else if (state == DeviceConnectionState.listening &&
+        (before == DeviceConnectionState.listening || before == DeviceConnectionState.muted)) {
+      await _preferences.remove(mutedKey);
+    }
   }
 
   Future<void> _unmute() async {
@@ -131,11 +154,11 @@ final class AnswerSpeaker {
     }
   }
 
-  Future<void> _speak(String text, String language, bool headphones, int generation) async {
+  Future<void> _speak(String text, String language, int generation) async {
     if (text.isEmpty || generation != _generation) return;
     final mic = _mic;
-    // In headphones Echo cannot hear it; a muted Echo is the user's choice
-    final mute = mic != null && !headphones && mic.listening;
+    // A muted Echo is the user's choice
+    final mute = mic != null && mic.listening;
     var muted = false;
     _muting = mute;
     try {
@@ -180,7 +203,7 @@ final class FlutterTtsVoice implements AnswerVoice {
       ..setCancelHandler(finish)
       ..setErrorHandler(finish);
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await _tts.setSharedInstance(true);
+      // The category first: the session then starts mixable, lowering music, not pausing it
       await _tts.setIosAudioCategory(
         IosTextToSpeechAudioCategory.playback,
         [
@@ -189,21 +212,34 @@ final class FlutterTtsVoice implements AnswerVoice {
         ],
         IosTextToSpeechAudioMode.voicePrompt,
       );
+      await _tts.setSharedInstance(true);
     }
     _ready = true;
   }
 
+  /// Never longer than a slow reading of [text]: a lost callback or a platform call that
+  /// never answers must not keep Echo muted, and the voice is stopped then.
   @override
   Future<void> speak(String text, String language) async {
+    var late = false;
+    await _say(text, language).timeout(
+      Duration(seconds: 15 + text.length ~/ 8),
+      onTimeout: () => late = true,
+    );
+    if (late) {
+      try {
+        await _tts.stop().timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _say(String text, String language) async {
     await _prepare();
     await _tts.setLanguage(language == 'it' ? 'it-IT' : 'en-US');
     final done = _done = Completer<void>();
-    await _tts.speak(text);
-    // Never longer than a slow reading of it: a lost callback must not stop the line
-    await done.future.timeout(
-      Duration(seconds: 15 + text.length ~/ 8),
-      onTimeout: () {},
-    );
+    // 1 when it started; anything else (Android without a working engine): no callback
+    if (await _tts.speak(text) != 1) return;
+    await done.future;
   }
 
   @override

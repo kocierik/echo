@@ -93,10 +93,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   sposta le sezioni (salvato sul telefono); la ricerca in tutta la memoria è un'icona in alto. "Echo is working
   on…" è in Ask, in fondo al thread.
 - **Spoken answers** (28/10, Profile): il telefono legge ad alta voce le risposte alle richieste a voce, anche a
-  schermo bloccato (`flutter_tts`, modalità audio in background su iOS). Off / solo in cuffia / sempre; sul vivavoce
-  Echo va in muto mentre il telefono parla e torna ad ascoltare dopo (se l'app muore a metà, lo rimette in ascolto
-  alla riconnessione). Testo senza markdown né link, tagliato a ~500 caratteri ("Il resto è in Ask."); tenere
-  premuto Ask ferma la voce.
+  schermo bloccato (`flutter_tts`, modalità audio in background su iOS). Off / solo in cuffia / sempre; Echo va in
+  muto mentre il telefono parla (anche in cuffia: un'auto o una cassa Bluetooth sembrano cuffie) e torna ad
+  ascoltare dopo (se l'app muore a metà, lo rimette in ascolto alla riconnessione). Testo senza markdown né link,
+  tagliato a ~500 caratteri ("Il resto è in Ask."); tenere premuto Ask ferma la voce, e mentre detti non parla.
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la

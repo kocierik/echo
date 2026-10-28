@@ -66,8 +66,8 @@ final class SpokenAnswersScreen extends StatelessWidget {
             child: Text(
               switch (choice) {
                 SpokenAnswers.off => 'Answers come as notifications, as now.',
-                SpokenAnswers.headphones =>
-                  'Only when headphones or AirPods are connected; otherwise a notification.',
+                SpokenAnswers.headphones => 'Only when headphones or AirPods are connected; '
+                    'otherwise a notification. While the phone speaks, Echo stops listening.',
                 SpokenAnswers.always => 'Also on the speaker. While the phone speaks, Echo '
                     'stops listening, so it does not record its own answer.',
               },

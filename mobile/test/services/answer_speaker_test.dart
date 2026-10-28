@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/services/app/spoken_answers_store.dart';
 import 'package:echo_app/services/phone/answer_speaker.dart';
 import 'package:flutter/foundation.dart';
@@ -62,6 +63,7 @@ void main() {
   late ValueNotifier<SpokenAnswers> setting;
   late SharedPreferences preferences;
   late String language;
+  late ValueNotifier<bool> dictating;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -71,6 +73,7 @@ void main() {
     mic = _Mic(voice.log);
     setting = ValueNotifier(SpokenAnswers.always);
     language = 'it';
+    dictating = ValueNotifier(false);
   });
 
   AnswerSpeaker speaker() => AnswerSpeaker(
@@ -80,6 +83,7 @@ void main() {
         preferences: preferences,
         language: () => language,
         mic: mic,
+        quiet: dictating,
       );
 
   test('off: nothing is spoken', () async {
@@ -100,8 +104,54 @@ void main() {
     output.on = true;
     await echo.say('**Domani** piove.');
     expect(voice.said, [('Domani piove.', 'it')]);
-    // In headphones Echo cannot hear it: never muted
-    expect(voice.log.where((e) => e.contains('mute')), isEmpty);
+  });
+
+  test('Echo is muted even in headphones: a car or a Bluetooth speaker looks the same',
+      () async {
+    output.on = true;
+
+    await speaker().say('Domani piove.');
+
+    expect(voice.log, ['mute', 'speak Domani piove.', 'done Domani piove.', 'unmute']);
+  });
+
+  test('nothing is spoken while the user dictates in Ask', () async {
+    dictating.value = true;
+
+    await speaker().say('Domani piove.');
+
+    expect(voice.said, isEmpty);
+    expect(mic.listening, isTrue);
+  });
+
+  test('Echo reported listening: the flag goes, a later mute of theirs stays', () async {
+    await preferences.setBool(AnswerSpeaker.mutedKey, true);
+    final echo = speaker();
+
+    // The user unmuted it on the wearable before the app reconnected
+    await echo.deviceSeen(DeviceConnectionState.connecting);
+    await echo.deviceSeen(DeviceConnectionState.listening); // before its telemetry
+    expect(preferences.getBool(AnswerSpeaker.mutedKey), isTrue);
+    await echo.deviceSeen(DeviceConnectionState.listening); // its telemetry
+    expect(preferences.getBool(AnswerSpeaker.mutedKey), isNull);
+
+    // Days later they mute it themselves
+    mic.listening = false;
+    await echo.deviceSeen(DeviceConnectionState.muted);
+    expect(mic.listening, isFalse);
+  });
+
+  test('Echo reported muted after reconnecting, with the flag set, is unmuted', () async {
+    await preferences.setBool(AnswerSpeaker.mutedKey, true);
+    mic.listening = false;
+    final echo = speaker();
+
+    await echo.deviceSeen(DeviceConnectionState.connecting);
+    await echo.deviceSeen(DeviceConnectionState.listening); // before its telemetry
+    await echo.deviceSeen(DeviceConnectionState.muted);
+
+    expect(mic.listening, isTrue);
+    expect(preferences.getBool(AnswerSpeaker.mutedKey), isNull);
   });
 
   test('on the speaker Echo is muted while the phone speaks, then listens again', () async {
@@ -200,7 +250,9 @@ void main() {
     await pumpEventQueue();
 
     await echo.recover();
+    await echo.deviceSeen(DeviceConnectionState.muted);
     expect(mic.listening, isFalse);
+    expect(preferences.getBool(AnswerSpeaker.mutedKey), isTrue);
 
     voice.hold!.complete();
     await speaking;

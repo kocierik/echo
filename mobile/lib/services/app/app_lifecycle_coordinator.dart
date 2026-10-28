@@ -259,13 +259,12 @@ final class AppLifecycleCoordinator {
       preferences: preferences,
       language: () => preferences.getString(SpokenLanguageStore.key) ?? 'en',
       mic: DeviceEchoMic(deviceController),
+      quiet: appController.askDictation,
     );
-    // Echo found muted (often on reconnecting): an answer may have left it so
-    final speakerSubscription = deviceController.stateStream.listen((status) {
-      if (status.connectionState == DeviceConnectionState.muted) {
-        unawaited(answerSpeaker.recover());
-      }
-    });
+    // Echo found muted (often on reconnecting) may have been left so by an answer
+    final speakerSubscription = deviceController.stateStream.listen(
+      (status) => unawaited(answerSpeaker.deviceSeen(status.connectionState)),
+    );
     unawaited(answerSpeaker.recover());
     // Holding Ask to dictate: the phone stops talking
     void onDictation() {
@@ -291,6 +290,7 @@ final class AppLifecycleCoordinator {
       startController: deviceController.start,
       reconnectOnResume: deviceController.reconnect,
       onWake: () async {
+        await answerSpeaker.recover();
         await voiceUpdates.check();
         await notificationScheduler.refresh();
         await firmwareUpdate.check();

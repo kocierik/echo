@@ -28,8 +28,9 @@ app in the background, so a request made by voice gets its answer by voice.
 - The voice speaks the user's language (the account's spoken language, `en` or `it`,
   kept on the phone by `SpokenLanguageStore`).
 - Other audio (music, a podcast) is lowered while Echo speaks, then comes back.
-- On the speaker, Echo (the wearable) is muted while the phone speaks and unmuted after,
-  so it does not record and transcribe its own answer. Only when it was listening
+- Echo (the wearable) is muted while the phone speaks and unmuted after, so it does not
+  record and transcribe its own answer. Also in "headphones": a car or a Bluetooth
+  speaker reports the same outputs as headphones (call after the final review). Only when it was listening
   before; never unmuted if the user had muted it. If the app dies mid-answer, the next
   start unmutes it (a flag kept on the phone).
 - Holding the Ask button (dictation) stops any answer being spoken and clears the queue.

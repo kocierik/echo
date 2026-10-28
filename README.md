@@ -24,8 +24,8 @@ each person has their own memory; the Android app builds from the same code but 
   where you've been (with Places visited on) and earlier days. Edit Today hides and moves them;
   search is the icon on top.
 - **Answers out loud.** With Spoken answers on (Profile), the phone reads the answer to an
-  "Echo, …" request aloud, also with the screen locked: in headphones only, or also on the speaker,
-  where Echo stops listening while the phone speaks.
+  "Echo, …" request aloud, also with the screen locked: in headphones only, or also on the speaker.
+  Echo stops listening while the phone speaks, so it never records its own answer.
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
