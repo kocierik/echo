@@ -29,6 +29,10 @@ each person has their own memory; the Android app builds from the same code but 
 - **Other languages, translated.** Add the other languages spoken around you (Profile → Language):
   Echo recognises which one each segment is in, and a conversation's lines in another language
   are tagged and can be translated into yours, under the originals.
+- **Reads WhatsApp (optional, unofficial).** Link your number in Profile → WhatsApp and ask "cosa mi
+  ha scritto Marco?", or make a routine of it. Private chats only, read-only, held in the bridge's
+  memory for 7 days and never written to disk; the connection is not official and WhatsApp may
+  block the number (see [the design](docs/superpowers/specs/2026-10-28-whatsapp-design.md)).
 - **Acts, only when asked.** "Riassumimi le ultime mail", "Echo, segnami il dentista giovedì alle 15":
   Echo uses your connected apps through [Composio](https://composio.dev), and the iPhone's own
 Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminders-and-calendar.md)). Reading and creating run
@@ -448,6 +452,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio (deferred speech, past the plan's budget, is kept until transcribed) |
 | `STT_PROVIDER` / `STT_MODEL` | `openai` / `gpt-4o-transcribe` | STT provider (`openai` or `deepgram`) and model |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
+| `COMPOSE_PROFILES` | — | `whatsapp` starts the WhatsApp bridge (`whatsapp/`) |
+| `WHATSAPP_BRIDGE_URL` / `WHATSAPP_BRIDGE_TOKEN` | — | `http://whatsapp:3100` and a long random token shared with the bridge; unset: no WhatsApp |
 | `LLM_ANALYSIS_MODEL` | `gpt-6-luna` | Entity extraction, summaries, digest, voice-request check |
 | `LLM_QUERY_MODEL` | `gpt-6-luna` | Memory answers and the actions agent |
 | `LLM_INTENT_MODEL` | `gpt-6-luna` | Intent check: routes a chat or voice request to memory, an app, or "connect it first" |

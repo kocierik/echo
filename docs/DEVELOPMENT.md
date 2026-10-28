@@ -217,6 +217,27 @@ By default it records only speech (VAD, `-t` sets the threshold); `--continuous`
 in fixed chunks and skips silence. Other options (`--gain`, `--save-wav`, `--list-devices`,
 `--device`) are in [simulator/README.md](../simulator/README.md).
 
+## WhatsApp bridge
+
+`whatsapp/` is a small Node service (Baileys) that links the user's WhatsApp as a read-only
+device and keeps private chats in memory for 7 days; api and worker read it over the compose
+network (`/api/whatsapp`, and the agent's `WHATSAPP_*` tools). It is unofficial: WhatsApp may
+block the number.
+
+```bash
+# .env
+COMPOSE_PROFILES=whatsapp
+WHATSAPP_BRIDGE_URL=http://whatsapp:3100
+WHATSAPP_BRIDGE_TOKEN=$(openssl rand -hex 32)
+
+docker compose up -d --build whatsapp api worker
+cd whatsapp && npm ci && npm test   # node --test
+```
+
+Then link from the app: Profile → WhatsApp → your number → type the code in WhatsApp → Linked
+devices → Link with phone number instead. The keys stay in the `whatsapp_data` volume (so a
+restart does not unlink); the messages do not, so a restart starts again from new ones.
+
 ## Troubleshooting
 
 | Error | Cause | Fix |
