@@ -26,7 +26,7 @@ from app.core.database import async_session
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
-from app.services.language import account_language
+from app.services.language import account_languages
 from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
 from app.services.speaker_detector import classify_segment
@@ -163,11 +163,14 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 # Known names and topics, as a prompt or keyterms depending on the provider
                 stt_context = await build_stt_context(db, segment.user_id)
 
+                # The language the user speaks, and the others they hear around them
+                language, others = await account_languages(db, segment.user_id)
                 try:
                     stt_result = await retry_with_backoff(
                         stt_service.transcribe,
                         wav_data,
-                        language=await account_language(db, segment.user_id),
+                        language=language,
+                        also=others or None,
                         prompt=stt_context.prompt or None,
                         keyterms=stt_context.keyterms,
                         operation_name=f"STT segment {segment_id}",

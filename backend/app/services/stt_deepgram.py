@@ -9,7 +9,7 @@ Requires: DEEPGRAM_API_KEY env var.
 import httpx
 
 from app.core.config import settings
-from app.services.stt_base import STTResult, STTService
+from app.services.stt_base import STTResult, STTService, heard_language
 from app.services.usage import record_usage, wav_seconds
 
 DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
@@ -35,6 +35,7 @@ class DeepgramSTTService(STTService):
         language: str = "it",
         prompt: str | None = None,
         keyterms: list[str] | None = None,
+        also: list[str] | None = None,
     ) -> STTResult:
         """Transcribe audio via Deepgram REST API.
 
@@ -43,15 +44,19 @@ class DeepgramSTTService(STTService):
             language: Language code.
             prompt: Not supported by Deepgram, ignored.
             keyterms: Sent as Nova-3 keyterm prompting (one `keyterm` parameter each).
+            also: Other languages heard: Deepgram then detects among [language, *also]
+                (one `detect_language` each) instead of being told the language.
         """
-        params: list[tuple[str, str]] = [
-            ("model", self.model),
-            ("language", language),
-            ("punctuate", "true"),
-            ("smart_format", "true"),
-        ]
+        detecting = bool(also)
+        params: list[tuple[str, str]] = [("model", self.model)]
+        if detecting:
+            params += [("detect_language", code) for code in [language, *also]]
+        else:
+            params.append(("language", language))
+        params += [("punctuate", "true"), ("smart_format", "true")]
+        terms: list[tuple[str, str]] = []
         if self.model.startswith("nova-3"):
-            params += [("keyterm", term) for term in (keyterms or [])[:MAX_KEYTERMS]]
+            terms = [("keyterm", term) for term in (keyterms or [])[:MAX_KEYTERMS]]
 
         headers = {
             "Authorization": f"Token {self.api_key}",
@@ -61,10 +66,18 @@ class DeepgramSTTService(STTService):
         async with httpx.AsyncClient(timeout=60.0, transport=self._transport) as client:
             response = await client.post(
                 DEEPGRAM_API_URL,
-                params=params,
+                params=params + terms,
                 headers=headers,
                 content=audio_data,
             )
+            if response.status_code == 400 and detecting and terms:
+                # Keyterms may not go with detection: once more without them
+                response = await client.post(
+                    DEEPGRAM_API_URL,
+                    params=params,
+                    headers=headers,
+                    content=audio_data,
+                )
             response.raise_for_status()
         await record_usage("stt", self.model, input_units=wav_seconds(audio_data))
 
@@ -75,13 +88,14 @@ class DeepgramSTTService(STTService):
         if not channels:
             return STTResult(text="", language=language, confidence=None)
 
+        heard = heard_language(channels[0].get("detected_language"), language, also)
         alternatives = channels[0].get("alternatives", [])
         if not alternatives:
-            return STTResult(text="", language=language, confidence=None)
+            return STTResult(text="", language=heard, confidence=None)
 
         best = alternatives[0]
         return STTResult(
             text=best.get("transcript", ""),
-            language=language,
+            language=heard,
             confidence=best.get("confidence"),
         )

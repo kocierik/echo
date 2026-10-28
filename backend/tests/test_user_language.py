@@ -151,7 +151,7 @@ async def test_stt_uses_the_owners_language(monkeypatch):
         return "self"
 
     async def language_of(_db, user_id):
-        return "en" if user_id == owner else "it"
+        return ("en", []) if user_id == owner else ("it", [])
 
     monkeypatch.setattr(
         stt_worker,
@@ -164,7 +164,7 @@ async def test_stt_uses_the_owners_language(monkeypatch):
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
-    monkeypatch.setattr(stt_worker, "account_language", language_of)
+    monkeypatch.setattr(stt_worker, "account_languages", language_of)
 
     shutdown = asyncio.Event()
     await asyncio.wait_for(
