@@ -14,6 +14,7 @@ import 'package:echo_app/services/device/device_identity_store.dart';
 import 'package:echo_app/services/device/device_protocol.dart';
 import 'package:echo_app/services/app/network_policy.dart';
 import 'package:echo_app/services/app/session_controller.dart';
+import 'package:echo_app/services/app/spoken_answers_store.dart';
 import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/services/phone/places_visited.dart';
 import 'package:echo_app/theme/app_theme.dart';
@@ -70,6 +71,7 @@ void main() {
     WidgetTester tester, {
     VoidCallback? onRequireOnboarding,
     PlacesVisitedService? placesVisited,
+    SpokenAnswersStore? spokenAnswers,
   }) async {
     // Tall enough for every row: the list builds only what is on screen
     tester.view.physicalSize = const Size(400, 1400);
@@ -96,6 +98,8 @@ void main() {
         devicesBuilder: (_) => const Scaffold(body: Text('Devices route')),
         onOpenDevice: () => openedDevice++,
         placesVisited: placesVisited,
+        spokenAnswers: spokenAnswers,
+        onTrySpeaking: () async {},
       ),
     ));
     await tester.pumpAndSettle();
@@ -182,6 +186,23 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('places-switch')), findsOneWidget);
+  });
+
+  testWidgets('Spoken answers says the choice and opens its page', (tester) async {
+    final store = SpokenAnswersStore(preferences);
+    await store.set(SpokenAnswers.headphones);
+    await pumpSettings(tester, spokenAnswers: store);
+
+    final row = find.byKey(const Key('profile-spoken-answers'));
+    expect(find.descendant(of: row, matching: find.text('Spoken answers')), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.textContaining('headphones')),
+      findsOneWidget,
+    );
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('spoken-answers-control')), findsOneWidget);
   });
 
   testWidgets('the account shows the email, with no name to add', (tester) async {

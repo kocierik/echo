@@ -11,6 +11,7 @@ import '../services/app/app_controller.dart';
 import '../services/app/app_runtime.dart';
 import '../services/app/network_policy.dart';
 import '../services/app/session_controller.dart';
+import '../services/app/spoken_answers_store.dart';
 import '../services/app/spoken_language.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/phone_words.dart';
@@ -22,6 +23,7 @@ import 'action_log_screen.dart';
 import 'device_messages_screen.dart';
 import 'echo_device_screen.dart';
 import 'integrations_screen.dart';
+import 'settings/spoken_answers_screen.dart';
 import 'settings/about_settings_screen.dart';
 import 'settings/appearance_settings_screen.dart';
 import 'settings/capabilities_screen.dart';
@@ -57,6 +59,8 @@ class ProfileScreen extends StatefulWidget {
     this.integrationsBuilder,
     this.devicesBuilder,
     this.placesVisited,
+    this.spokenAnswers,
+    this.onTrySpeaking,
     super.key,
   });
 
@@ -78,6 +82,10 @@ class ProfileScreen extends StatefulWidget {
 
   /// Places visited; the app's own by default (no row without one).
   final PlacesVisitedService? placesVisited;
+
+  /// Spoken answers and its "Try it"; the app's own by default (no row without them).
+  final SpokenAnswersStore? spokenAnswers;
+  final Future<void> Function()? onTrySpeaking;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -355,6 +363,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ? 'On: where you stayed, kept for 90 days.'
                         : 'Off. Echo can note where you stay.',
                     onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
+                  ),
+                ),
+              if (widget.spokenAnswers case final spoken?)
+                ValueListenableBuilder<SpokenAnswers>(
+                  valueListenable: spoken,
+                  builder: (context, choice, _) => SettingsRow(
+                    key: const Key('profile-spoken-answers'),
+                    icon: Icons.record_voice_over_outlined,
+                    title: 'Spoken answers',
+                    subtitle: spokenAnswersText(choice),
+                    onTap: () => _push(SpokenAnswersScreen(
+                      store: spoken,
+                      onTry: widget.onTrySpeaking ?? () async {},
+                    )),
                   ),
                 ),
               ValueListenableBuilder<AppViewState>(
