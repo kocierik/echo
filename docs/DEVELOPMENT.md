@@ -224,12 +224,11 @@ device and keeps private chats in memory for 7 days; api and worker read it over
 network (`/api/whatsapp`, and the agent's `WHATSAPP_*` tools). It is unofficial: WhatsApp may
 block the number.
 
-```bash
-# .env
-COMPOSE_PROFILES=whatsapp
-WHATSAPP_BRIDGE_URL=http://whatsapp:3100
-WHATSAPP_BRIDGE_TOKEN=$(openssl rand -hex 32)
+It starts with the other services, with a default token (the port is not published). In
+`.env`, `WHATSAPP_BRIDGE_TOKEN=$(openssl rand -hex 32)` sets your own and
+`WHATSAPP_BRIDGE_URL=` (empty) turns WhatsApp off.
 
+```bash
 docker compose up -d --build whatsapp api worker
 cd whatsapp && npm ci && npm test   # node --test
 ```

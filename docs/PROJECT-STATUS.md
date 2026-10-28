@@ -107,7 +107,7 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   le chat private (entrambi i lati, niente gruppi) solo in RAM, 7 giorni e 20.000 messaggi al massimo; le chiavi
   della sessione nel volume `whatsapp_data`. L'agente ha `WHATSAPP_LIST_CHATS` e `WHATSAPP_READ_CHAT` in Ask, nelle
   richieste a voce e nelle routine, solo mentre è collegato. Non ufficiale: WhatsApp può bloccare il numero.
-  Da attivare sul server (`COMPOSE_PROFILES=whatsapp`, URL e token nel `.env`).
+  Acceso di default nel compose (token predefinito finché non se ne mette uno nel `.env`; URL vuoto lo spegne).
 - Relay BLE con riassemblaggio pacchetti, riconnessione automatica con backoff, restore state iOS (`bluetooth-central`).
 - Policy di rete (Wi-Fi only opzionale), notifiche locali (disconnessione, perdita audio, upload falliti).
 - Ask: risposte in streaming mentre vengono scritte, fonti con titolo e giorno della conversazione (aprono la

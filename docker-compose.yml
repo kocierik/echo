@@ -18,6 +18,9 @@ services:
       - AUDIO_STORAGE_PATH=/data/audio
       - COMPLETED_AUDIO_RETENTION_HOURS=24
       - INCOMPLETE_AUDIO_RETENTION_DAYS=7
+      # WhatsApp on by default; WHATSAPP_BRIDGE_URL= (empty) in .env turns it off
+      - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
+      - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
@@ -44,6 +47,9 @@ services:
       - AUDIO_STORAGE_PATH=/data/audio
       - COMPLETED_AUDIO_RETENTION_HOURS=24
       - INCOMPLETE_AUDIO_RETENTION_DAYS=7
+      # WhatsApp on by default; WHATSAPP_BRIDGE_URL= (empty) in .env turns it off
+      - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
+      - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
@@ -84,18 +90,17 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # WhatsApp, read-only (whatsapp/): only with COMPOSE_PROFILES=whatsapp in .env. Its port
-  # is not published: api and worker reach it as http://whatsapp:3100 with the token
+  # WhatsApp, read-only (whatsapp/). Its port is not published: api and worker reach it as
+  # http://whatsapp:3100 with the token (a default one until WHATSAPP_BRIDGE_TOKEN is set)
   whatsapp:
     build:
       context: ./whatsapp
-    profiles: ["whatsapp"]
     dns:
       - 8.8.8.8
       - 1.1.1.1
     # Only what it needs: none of the server's other keys
     environment:
-      - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN}
+      - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
       - LOG_LEVEL=${WHATSAPP_LOG_LEVEL:-warn}
     volumes:
       # The linked devices' keys; the messages stay in memory only

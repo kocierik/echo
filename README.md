@@ -452,8 +452,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `INCOMPLETE_AUDIO_RETENTION_DAYS` | `7` | Days to keep pending, processing, failed, or unknown-status audio (deferred speech, past the plan's budget, is kept until transcribed) |
 | `STT_PROVIDER` / `STT_MODEL` | `openai` / `gpt-4o-transcribe` | STT provider (`openai` or `deepgram`) and model |
 | `STT_LANGUAGE` | `it` | Primary language for STT |
-| `COMPOSE_PROFILES` | — | `whatsapp` starts the WhatsApp bridge (`whatsapp/`) |
-| `WHATSAPP_BRIDGE_URL` / `WHATSAPP_BRIDGE_TOKEN` | — | `http://whatsapp:3100` and a long random token shared with the bridge; unset: no WhatsApp |
+| `WHATSAPP_BRIDGE_URL` / `WHATSAPP_BRIDGE_TOKEN` | `http://whatsapp:3100` / a default token (compose) | The WhatsApp bridge (`whatsapp/`) and the token shared with it; set your own token, or an empty URL to turn WhatsApp off |
 | `LLM_ANALYSIS_MODEL` | `gpt-6-luna` | Entity extraction, summaries, digest, voice-request check |
 | `LLM_QUERY_MODEL` | `gpt-6-luna` | Memory answers and the actions agent |
 | `LLM_INTENT_MODEL` | `gpt-6-luna` | Intent check: routes a chat or voice request to memory, an app, or "connect it first" |
