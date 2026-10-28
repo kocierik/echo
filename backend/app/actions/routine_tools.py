@@ -15,6 +15,7 @@ from app.actions.provider import ToolResult
 from app.core.config import settings
 from app.models.routine import Routine
 from app.services.plans import user_plan
+from app.services.routine_results import MODES
 from app.services.routines import describe_schedule, next_run, validate_schedule
 
 CREATE = "ECHO_CREATE_ROUTINE"
@@ -52,6 +53,19 @@ ROUTINE_TOOLS = [
                         "type": "integer", "minimum": 1, "maximum": 28,
                         "description": "monthly only.",
                     },
+                    "mode": {
+                        "type": "string",
+                        "enum": list(MODES),
+                        "description": (
+                            "When it speaks. only_if: the request has a condition ('se piove', "
+                            "'if it is below zero'): it tells the user only when it holds. "
+                            "only_new: the user wants what is new ('new', 'nuove', 'se ci sono "
+                            "novità', job openings, listings): it tells only what it did not "
+                            "report before. always (default): it reports every time. Keep the "
+                            "condition in the instruction. Say to the user in their words "
+                            "when it will speak."
+                        ),
+                    },
                 },
                 "required": ["instruction", "kind", "time"],
             },
@@ -86,11 +100,21 @@ def _local(when: datetime, tz: str) -> str:
     return when.astimezone(ZoneInfo(tz)).strftime("%A %Y-%m-%d %H:%M")
 
 
+# What each mode means, for the model to say in the user's language
+MODE_TEXT = {
+    "always": "always tells you",
+    "only_if": "tells you only if the condition holds",
+    "only_new": "tells you only what is new",
+}
+
+
 def _described(routine: Routine) -> dict:
     return {
         "id": str(routine.id),
         "instruction": routine.instruction,
         "schedule": describe_schedule(routine.schedule),
+        "mode": routine.mode,
+        "mode_text": MODE_TEXT.get(routine.mode, MODE_TEXT["always"]),
         "active": routine.active,
         "next_run": _local(routine.next_run_at, routine.timezone),
     }
@@ -112,6 +136,9 @@ async def run_routine_tool(
             })
         except ValueError as exc:
             return ToolResult(ok=False, error=str(exc))
+        mode = arguments.get("mode") or "always"
+        if mode not in MODES:
+            return ToolResult(ok=False, error="mode must be always, only_if or only_new")
         count = await db.scalar(
             select(func.count()).select_from(Routine).where(Routine.user_id == user_id)
         )
@@ -135,6 +162,7 @@ async def run_routine_tool(
             active=True,
             next_run_at=next_run(schedule, tz, datetime.now(timezone.utc)),
             source=source if source in ("chat", "voice") else "chat",
+            mode=mode,
         )
         db.add(routine)
         await db.flush()

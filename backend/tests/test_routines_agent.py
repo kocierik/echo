@@ -211,3 +211,72 @@ def test_routine_wording_reaches_the_intent_check():
         "quali incarichi ho?",
     ):
         assert might_need_tools(request, []), request
+
+
+async def test_create_stores_the_mode(db_session):
+    llm = _ScriptedLLM([
+        _call("ECHO_CREATE_ROUTINE", instruction="nuove posizioni backend a Milano",
+              kind="daily", time="09:00", mode="only_new"),
+        _text("Ti scrivo solo quando ci sono posizioni nuove."),
+    ])
+
+    await _run(db_session, "ogni giorno alle 9 dimmi se ci sono nuove posizioni backend", llm)
+    await db_session.commit()
+
+    [routine] = await _routines(db_session)
+    assert routine.mode == "only_new"
+    tool_message = llm.call_log[-1][-1]
+    assert '"mode": "only_new"' in tool_message.content
+    assert "tells you only what is new" in tool_message.content
+
+
+async def test_create_without_a_mode_is_always(db_session):
+    llm = _ScriptedLLM([
+        _call("ECHO_CREATE_ROUTINE", instruction="meteo", kind="daily", time="07:00"),
+        _text("ok"),
+    ])
+
+    await _run(db_session, "ogni giorno il meteo", llm)
+    await db_session.commit()
+
+    [routine] = await _routines(db_session)
+    assert routine.mode == "always"
+
+
+async def test_an_unknown_mode_is_refused(db_session):
+    llm = _ScriptedLLM([
+        _call("ECHO_CREATE_ROUTINE", instruction="meteo", kind="daily", time="07:00",
+              mode="sometimes"),
+        _text("Non ho capito."),
+    ])
+
+    await _run(db_session, "ogni giorno il meteo", llm)
+
+    assert await _routines(db_session) == []
+    assert "always, only_if or only_new" in llm.call_log[-1][-1].content
+
+
+async def test_the_mode_parameter_tells_the_model_how_to_pick_it(db_session):
+    llm = _ScriptedLLM([_text("ok")])
+
+    await _run(db_session, "ogni giorno il meteo", llm)
+
+    [create] = [t for t in llm.tools_log[0] if t["function"]["name"] == "ECHO_CREATE_ROUTINE"]
+    mode = create["function"]["parameters"]["properties"]["mode"]
+    assert mode["enum"] == ["always", "only_if", "only_new"]
+    assert "se piove" in mode["description"] and "nuove" in mode["description"]
+
+
+async def test_the_list_says_each_mode(db_session):
+    llm = _ScriptedLLM([
+        _call("ECHO_CREATE_ROUTINE", instruction="dimmi se piove", kind="daily", time="07:00",
+              mode="only_if"),
+        _call("ECHO_LIST_ROUTINES"),
+        _text("ok"),
+    ])
+
+    await _run(db_session, "ogni mattina dimmi se piove", llm)
+
+    listed = llm.call_log[-1][-1].content
+    assert '"mode": "only_if"' in listed
+    assert "tells you only if the condition holds" in listed
