@@ -551,7 +551,7 @@ void main() {
   });
 
   group('the memory', () {
-    testWidgets('search over the whole memory, in place of the day', (tester) async {
+    testWidgets('search over the whole memory, from the icon on top', (tester) async {
       final api = FakeTodayApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
         ..searchResults = MemorySearchResults(
           conversations: [card('hit', startedAt: DateTime(2026, 10, 12, 9), title: 'Atlas kickoff')],
@@ -575,6 +575,10 @@ void main() {
       );
       addTearDown(memories.dispose);
       await pumpToday(tester, api: api, memories: memories);
+      await tester.pumpAndSettle();
+      // Not a field on Today any more: an icon in the header
+      expect(find.byKey(const Key('memories-search')), findsNothing);
+      await tester.tap(find.byKey(const Key('today-search')));
       await tester.pumpAndSettle();
 
       await tester.enterText(find.byKey(const Key('memories-search')), 'atlas');
@@ -600,6 +604,12 @@ void main() {
 
       await tester.tap(find.byKey(const Key('memories-search-clear')));
       await tester.pumpAndSettle();
+      expect(find.text('No results'), findsNothing);
+
+      // Back on Today, the search is over
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(memories.state.query, isEmpty);
       expect(find.byKey(const Key('your-day')), findsOneWidget);
     });
 

@@ -29,6 +29,7 @@ import '../widgets/memory_sections.dart';
 import '../widgets/saved_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
+import 'memory_search_screen.dart';
 import 'people_screen.dart';
 import 'person_screen.dart';
 import 'saved_screen.dart';
@@ -131,7 +132,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   late final MemoriesController _memories;
   late final bool _ownsMemories;
   List<ConversationCard> _cachedToday = const [];
-  final _search = TextEditingController();
   WeeklySummary? _week;
   String? _openId;
 
@@ -150,8 +150,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   final Set<String> _pendingBusy = {};
 
   /// The actions and the busy ones, for the "+N more" page while it is open.
-  final _pendingView =
-      ValueNotifier<(List<PendingAction>, Set<String>)>((const [], const {}));
+  final _pendingView = ValueNotifier<(List<PendingAction>, Set<String>)>((const [], const {}));
 
   ComingUp? _comingUp;
 
@@ -176,8 +175,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     super.initState();
     _api = widget.api ?? (_ownedApi = ApiService());
     _ownsMemories = widget.memories == null;
-    _memories = widget.memories ??
-        MemoriesController(api: _api);
+    _memories = widget.memories ?? MemoriesController(api: _api);
     _memories.addListener(_onMemories);
     unawaited(_memories.initialize());
     _subscribeToUploads();
@@ -233,7 +231,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _pendingView.dispose();
     _memories.removeListener(_onMemories);
     if (_ownsMemories) _memories.dispose();
-    _search.dispose();
     _tasksGeneration++;
     _workingTimer?.cancel();
     unawaited(_uploadSubscription?.cancel());
@@ -377,7 +374,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final api = _api;
     if (api is! ComingUpApi) return;
     final read = widget.phoneEvents ??
-        () async => await _phoneActions?.upcomingEvents(within: const Duration(hours: 1)) ??
+        () async =>
+            await _phoneActions?.upcomingEvents(within: const Duration(hours: 1)) ??
             const <Map<String, Object?>>[];
     try {
       final events = await read();
@@ -441,16 +439,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       return;
     }
     if (!mounted) return;
-    final finished =
-        _working.any((old) => !items.any((now) => now.key == old.key));
+    final finished = _working.any((old) => !items.any((now) => now.key == old.key));
     setState(() => _working = items);
     if (finished) {
       unawaited(_loadPending());
       unawaited(_loadTasks());
     }
     if (items.isNotEmpty) {
-      _workingTimer =
-          Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
+      _workingTimer = Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
     }
   }
 
@@ -460,8 +456,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     try {
       final voices = await (api as VoiceApi).getVoiceProfiles();
       if (mounted) {
-        setState(() => _ownVoiceMissing =
-            voices.fingerprintsEnabled && voices.own == null);
+        setState(() => _ownVoiceMissing = voices.fingerprintsEnabled && voices.own == null);
       }
     } catch (_) {}
   }
@@ -499,8 +494,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     } catch (error) {
       if (!mounted) return;
       _snack(userMessage(error, 'Could not confirm this action.'));
-      unawaited(
-          _loadPending()); // it may have expired or been handled elsewhere
+      unawaited(_loadPending()); // it may have expired or been handled elsewhere
     } finally {
       if (mounted) _setPending(() => _pendingBusy.remove(action.id));
     }
@@ -639,10 +633,17 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     ));
   }
 
-  void _clearSearch() {
-    _search.clear();
+  /// Search over the whole memory, on a screen of its own.
+  Future<void> _openSearch() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => MemorySearchScreen(
+        memories: _memories,
+        clock: widget.clock,
+        onOpen: (id) => unawaited(_openById(id)),
+      ),
+    ));
+    // Closed: the search is over (not while its screen is torn down)
     _memories.setQuery('');
-    FocusScope.of(context).unfocus();
   }
 
   Future<void> _reconnect() async {
@@ -665,7 +666,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   VoidCallback? _deviceAction(DeviceConnectionState state) {
     return switch (state) {
       DeviceConnectionState.unpaired => widget.onPair,
-      DeviceConnectionState.offline || DeviceConnectionState.error =>
+      DeviceConnectionState.offline ||
+      DeviceConnectionState.error =>
         widget.onReconnect == null ? null : () => unawaited(_reconnect()),
       _ => null,
     };
@@ -696,32 +698,22 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ScreenHeader(
-              overline:
-                  '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}'.toUpperCase(),
+              overline: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}'
+                  .toUpperCase(),
               title: greeting(now),
               compact: true,
-              actions: [if (widget.headerAction != null) widget.headerAction!],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: MemorySearchField(
-                controller: _search,
-                searching: memory.searching,
-                onChanged: _memories.setQuery,
-                onClear: _clearSearch,
-              ),
+              actions: [
+                HeaderIconButton(
+                  key: const Key('today-search'),
+                  icon: Icons.search_rounded,
+                  tooltip: 'Search your memory',
+                  onPressed: () => unawaited(_openSearch()),
+                ),
+                if (widget.headerAction != null) widget.headerAction!,
+              ],
             ),
             Expanded(
-              // Searching: what the whole memory holds, in place of the day
-              child: memory.isSearching
-                  ? MemorySearchView(
-                      state: memory,
-                      now: now,
-                      onOpen: (id) => unawaited(_openById(id)),
-                      onRetry: () async => _memories.setQuery(memory.query),
-                      bottom: EchoShellInsets.bottomOf(context),
-                    )
-                  : RefreshIndicator(
+              child: RefreshIndicator(
                 onRefresh: _refreshAll,
                 child: ListView(
                   key: const Key('today'),
@@ -756,15 +748,13 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         valueListenable: widget.firmwareUpdate!,
                         builder: (context, update, _) {
                           final release = update.release;
-                          if (update.phase != FirmwareUpdatePhase.available ||
-                              release == null) {
+                          if (update.phase != FirmwareUpdatePhase.available || release == null) {
                             return const SizedBox.shrink();
                           }
                           return TipCard(
                             key: ValueKey('firmware-tip-${release.version}'),
                             tipKey: 'firmware_${release.version}',
-                            text:
-                                'A new firmware for Echo (${release.version}) is ready. '
+                            text: 'A new firmware for Echo (${release.version}) is ready. '
                                 'Installing it takes about a minute.',
                             actionLabel: 'Open Echo',
                             onAction: widget.onOpenDevice,

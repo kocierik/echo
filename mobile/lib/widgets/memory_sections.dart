@@ -50,6 +50,7 @@ final class MemorySearchField extends StatelessWidget {
     required this.onChanged,
     required this.onClear,
     this.hint = 'Search conversations, people, tasks',
+    this.autofocus = false,
     super.key,
   });
 
@@ -57,6 +58,9 @@ final class MemorySearchField extends StatelessWidget {
   final String hint;
   final bool searching;
   final ValueChanged<String> onChanged;
+
+  /// The keyboard opens with it (the search screen).
+  final bool autofocus;
   final VoidCallback onClear;
 
   @override
@@ -66,6 +70,7 @@ final class MemorySearchField extends StatelessWidget {
       builder: (context, value, _) {
         return TextField(
           key: const Key('memories-search'),
+          autofocus: autofocus,
           controller: controller,
           onChanged: onChanged,
           textInputAction: TextInputAction.search,
