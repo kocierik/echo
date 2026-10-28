@@ -114,8 +114,7 @@ void main() {
 
     const labels = [
       'Profile',
-      'Erik',
-      'erik@x.io · Italiano',
+      'erik@x.io',
       'Echo',
       'Listening · battery 72% · firmware 0.5.1',
       'Plan',
@@ -196,15 +195,18 @@ void main() {
     var resets = 0;
     await pumpSettings(tester, onRequireOnboarding: () => resets++);
 
-    await tester.scrollUntilVisible(find.byKey(const Key('profile-logout')), 200);
-    await tester.tap(find.text('Log out'));
+    final logout = find.byKey(const Key('profile-logout'));
+    await tester.scrollUntilVisible(logout, 200);
+    await tester.ensureVisible(logout);
+    await tester.pumpAndSettle();
+    await tester.tap(logout);
     await tester.pumpAndSettle();
     expect(find.text('Log out of Echo?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
     expect(session.calls, isEmpty);
 
-    await tester.tap(find.text('Log out'));
+    await tester.tap(logout);
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
     await tester.pumpAndSettle();
