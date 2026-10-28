@@ -70,6 +70,16 @@ CREATE TABLE transcription_edits (
         FOREIGN KEY (transcription_id) REFERENCES transcriptions(id) ON DELETE CASCADE
 );
 
+-- A transcript line translated into the user's language, kept once (Migration 027)
+CREATE TABLE transcription_translations (
+    id UUID PRIMARY KEY,
+    transcription_id UUID NOT NULL REFERENCES transcriptions(id) ON DELETE CASCADE,
+    language VARCHAR(10) NOT NULL,
+    text TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    CONSTRAINT uq_transcription_translations_language UNIQUE (transcription_id, language)
+);
+
 CREATE INDEX ix_transcription_edits_transcription_id ON transcription_edits (transcription_id);
 CREATE INDEX ix_transcription_edits_user_id ON transcription_edits (user_id);
 
@@ -220,6 +230,7 @@ CREATE TABLE users (
     name VARCHAR(100),                   -- the app's greeting; null until given (021)
     instructions TEXT,                   -- the user's own instructions to Echo (022)
     plan VARCHAR(20) NOT NULL DEFAULT 'free',  -- free | plus | unlimited (025)
+    other_languages JSONB NOT NULL DEFAULT '[]',  -- other languages heard: ["en", "es"] (027)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

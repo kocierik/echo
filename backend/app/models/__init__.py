@@ -20,6 +20,7 @@ from app.models.saved import SavedItem, SavedList
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
+from app.models.transcription_translation import TranscriptionTranslation
 from app.models.user import User
 from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
@@ -49,6 +50,7 @@ __all__ = [
     "TimestampMixin",
     "Transcription",
     "TranscriptionEdit",
+    "TranscriptionTranslation",
     "UUIDPrimaryKey",
     "User",
     "VoiceProfile",

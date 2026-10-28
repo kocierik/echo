@@ -1,4 +1,5 @@
 from sqlalchemy import String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -15,6 +16,11 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     # The language the user speaks: the wearable's transcription and the app's dictation
     language: Mapped[str] = mapped_column(String(5), nullable=False, server_default="it")
+    # Other languages the user hears around them (services/language.py HEARD_LANGUAGES):
+    # with any, transcription recognises which one each segment is in
+    other_languages: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, server_default="[]", default=list
+    )
     # What the app calls the user ("Good afternoon, Erik"); none until they give one
     name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # The user's own instructions to Echo, added to every answer (services/personal.py)

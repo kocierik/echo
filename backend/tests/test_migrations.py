@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 27)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 28)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -449,6 +449,25 @@ def test_migration_026_adds_modes_and_routine_runs(monkeypatch):
     assert (fk["referred_table"], fk["options"].get("ondelete")) == ("routines", "CASCADE")
     indexes = {i["name"]: i["column_names"] for i in runs["indexes"]}
     assert indexes["ix_routine_runs_user_ran"] == ["user_id", "ran_at"]
+
+
+
+def test_migration_027_adds_other_languages_and_translations(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        if module.revision >= "027":
+            break
+        _run(module, state, monkeypatch)
+    migration_027 = next(m for m in _migrations() if m.revision == "027")
+
+    _run(migration_027, state, monkeypatch)
+
+    # Every account has the list, empty until the user adds a language
+    assert state.tables["users"]["columns"]["other_languages"] is False
+    translations = state.tables["transcription_translations"]
+    assert translations["columns"]["text"] is False
+    fk = translations["fks"][0]
+    assert (fk["referred_table"], fk["options"].get("ondelete")) == ("transcriptions", "CASCADE")
 
 
 def test_migration_003_is_defined_once():
