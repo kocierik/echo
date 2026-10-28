@@ -4,6 +4,9 @@ import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_message.dart';
 import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
+import 'package:echo_app/models/app_view_state.dart';
+import 'package:echo_app/models/device_status.dart';
+import 'package:echo_app/models/session_state.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/screens/chat_history_screen.dart';
@@ -69,6 +72,68 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('chat-working-request:1')), findsNothing);
+    });
+
+    testWidgets('a voice request that starts after an upload shows its bubble', (tester) async {
+      final uploads = StreamController<Object?>.broadcast();
+      addTearDown(uploads.close);
+      final api = _WorkingChatApi()..working = [];
+      final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(
+          controller: controller,
+          segmentUploadedStream: uploads.stream,
+          workingPollInterval: const Duration(seconds: 1),
+        ),
+      ));
+      await tester.pump();
+
+      uploads.add(null);
+      await tester.pump();
+      // The server marks it working only once it has heard the request
+      api.working = [
+        WorkingItem(key: 'request:2', kind: 'request', text: 'il meteo',
+            since: DateTime(2026, 10, 28, 9)),
+      ];
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+
+      expect(find.byKey(const Key('chat-working-request:2')), findsOneWidget);
+      api.working = [];
+      await tester.pump(const Duration(seconds: 61));
+      await tester.pump(const Duration(milliseconds: 400));
+    });
+
+    testWidgets('opening Ask checks what Echo is working on', (tester) async {
+      const base = AppViewState(
+        session: SessionState(SessionStatus.loggedIn),
+        device: DeviceStatus(connectionState: DeviceConnectionState.listening),
+      );
+      final view = ValueNotifier(base);
+      addTearDown(view.dispose);
+      final api = _WorkingChatApi()..working = [];
+      final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(controller: controller, appState: view),
+      ));
+      await tester.pump();
+      api.working = [
+        WorkingItem(key: 'request:3', kind: 'request', text: 'il meteo',
+            since: DateTime(2026, 10, 28, 9)),
+      ];
+
+      view.value = base.copyWith(selectedTab: AppController.askTab);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('chat-working-request:3')), findsOneWidget);
+      api.working = [];
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(milliseconds: 400));
     });
 
     testWidgets('no working bubble in another chat', (tester) async {

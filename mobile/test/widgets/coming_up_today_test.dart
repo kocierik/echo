@@ -4,10 +4,12 @@ import 'package:echo_app/widgets/coming_up_today.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Map<String, Object?> _event(String title, DateTime start, {bool allDay = false}) => {
+Map<String, Object?> _event(String title, DateTime start, {bool allDay = false, DateTime? end}) =>
+    {
       'id': title,
       'title': title,
       'start': start.toUtc().toIso8601String(),
+      if (end != null) 'end': end.toUtc().toIso8601String(),
       'all_day': allDay,
     };
 
@@ -29,11 +31,14 @@ void main() {
     expect(events[1].start, DateTime(2026, 10, 28, 12, 30));
   });
 
-  Future<void> pump(WidgetTester tester, List<TodayEvent> events, {ComingUp? recap}) =>
+  Future<void> pump(WidgetTester tester, List<TodayEvent> events,
+          {ComingUp? recap, DateTime? now}) =>
       tester.pumpWidget(MaterialApp(
         theme: AppTheme.light,
         home: Scaffold(
-          body: SingleChildScrollView(child: ComingUpTodayPanel(events: events, recap: recap)),
+          body: SingleChildScrollView(
+            child: ComingUpTodayPanel(events: events, recap: recap, now: now),
+          ),
         ),
       ));
 
@@ -72,5 +77,33 @@ void main() {
     await pump(tester, const []);
 
     expect(find.byKey(const Key('coming-up-today')), findsNothing);
+  });
+
+  test('an appointment under way stays; an all-day one spanning today is listed', () {
+    final events = TodayEvent.fromPhone([
+      _event('Planning', DateTime(2026, 10, 28, 10), end: DateTime(2026, 10, 28, 11)),
+      _event('Over', DateTime(2026, 10, 28, 9), end: DateTime(2026, 10, 28, 10)),
+      _event('Trip', DateTime(2026, 10, 27), allDay: true, end: DateTime(2026, 10, 30)),
+      _event('Last week', DateTime(2026, 10, 20), allDay: true, end: DateTime(2026, 10, 21)),
+    ], now);
+
+    expect(events.map((e) => e.title), ['Trip', 'Planning']);
+    expect(events.last.isUnderWay(now), isTrue);
+    expect(events.every((e) => e.isLeftOn(now)), isTrue);
+    expect(events.last.isLeftOn(DateTime(2026, 10, 28, 11, 5)), isFalse);
+    expect(events.first.isLeftOn(DateTime(2026, 10, 31, 9)), isFalse);
+  });
+
+  testWidgets('an appointment under way says Now', (tester) async {
+    await pump(tester, [
+      TodayEvent(
+        title: 'Planning',
+        start: DateTime(2026, 10, 28, 10),
+        end: DateTime(2026, 10, 28, 11),
+      ),
+    ], now: now);
+
+    expect(find.text('Now'), findsOneWidget);
+    expect(find.text('10:00'), findsNothing);
   });
 }

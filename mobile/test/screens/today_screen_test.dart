@@ -54,6 +54,8 @@ void main() {
     ValueListenable<int>? routineRunsChanged,
     TodayLayout? layout,
     ValueListenable<bool>? placesOn,
+    DateTime Function()? clock,
+    Future<void> Function()? onOpenPlaces,
   }) async {
     SharedPreferences.setMockInitialValues({
       if (layout != null) TodayLayoutStore.key: layout.toJson(),
@@ -77,7 +79,7 @@ void main() {
             workingPollInterval: const Duration(seconds: 1),
             openConversation: (context, id) async => calls.add('open $id'),
             segmentUploadedStream: uploads,
-            clock: () => now,
+            clock: clock ?? () => now,
             phoneEvents: () async => phoneEvents,
             memories: memories,
             openPerson: openPerson,
@@ -85,6 +87,7 @@ void main() {
             onOpenThread: (id) => calls.add('thread $id'),
             layoutStore: TodayLayoutStore(),
             placesOn: placesOn,
+            onOpenPlaces: onOpenPlaces,
           ),
         ),
       ),
@@ -907,6 +910,96 @@ void main() {
       on.value = false;
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('places-today')), findsNothing);
+    });
+
+    testWidgets('the next morning, yesterday is gone and today loads when the app comes back',
+        (tester) async {
+      var clock = DateTime(2026, 10, 14, 18);
+      String at(DateTime time) => time.toUtc().toIso8601String();
+      var phone = [
+        {'id': 'E1', 'title': 'Holiday', 'start': at(DateTime(2026, 10, 14)), 'all_day': true},
+        {'id': 'E2', 'title': 'Dinner', 'start': at(DateTime(2026, 10, 14, 20))},
+      ];
+      final api = _PlacesTodayApi([
+        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
+      ]);
+      final on = ValueNotifier(true);
+      addTearDown(on.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: HomeScreen(
+            api: api,
+            deviceStatus: listening,
+            onOpenTasks: () {},
+            clock: () => clock,
+            phoneEvents: () async => phone,
+            layoutStore: TodayLayoutStore(),
+            placesOn: on,
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Holiday'), findsOneWidget);
+      expect(find.text('Office'), findsOneWidget);
+
+      // The next morning: nothing of yesterday, even before anything reloads
+      clock = DateTime(2026, 10, 15, 8);
+      phone = [
+        {'id': 'E3', 'title': 'Dentist', 'start': at(DateTime(2026, 10, 15, 15))},
+      ];
+      api.visits
+        ..clear()
+        ..add(PlaceVisit(id: 'v2', arrivedAt: DateTime(2026, 10, 15, 7, 30), name: 'Gym'));
+      on.value = on.value; // no change: only a rebuild is due
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(
+          body: HomeScreen(
+            api: api,
+            deviceStatus: listening,
+            onOpenTasks: () {},
+            clock: () => clock,
+            phoneEvents: () async => phone,
+            layoutStore: TodayLayoutStore(),
+            placesOn: on,
+          ),
+        ),
+      ));
+      expect(find.text('Holiday'), findsNothing);
+      expect(find.text('Office'), findsNothing);
+
+      // Back in the app: today's agenda and stays
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+        AppLifecycleState.inactive,
+        AppLifecycleState.resumed,
+      ]) {
+        tester.binding.handleAppLifecycleStateChanged(state);
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('Dentist'), findsOneWidget);
+      expect(find.text('Gym'), findsOneWidget);
+    });
+
+    testWidgets("after See all, today's stays load again", (tester) async {
+      final api = _PlacesTodayApi([
+        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
+      ]);
+      await pumpToday(tester, api: api, placesOn: ValueNotifier(true), onOpenPlaces: () async {
+        api.visits.clear(); // deleted on Places visited
+      });
+      await tester.pumpAndSettle();
+      expect(find.text('Office'), findsOneWidget);
+
+      await tester.ensureVisible(find.byKey(const Key('places-see-all')));
+      await tester.tap(find.byKey(const Key('places-see-all')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Office'), findsNothing);
     });
 
     testWidgets('places off, no panel', (tester) async {

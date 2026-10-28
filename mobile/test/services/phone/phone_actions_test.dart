@@ -270,6 +270,7 @@ void main() {
           'id': 'e1@${start.millisecondsSinceEpoch}',
           'title': 'Call',
           'start': start.toUtc().toIso8601String(),
+          'end': DateTime(2026, 10, 15, 12).toUtc().toIso8601String(),
           'all_day': false,
           'notes': 'Budget',
           'attendees': [

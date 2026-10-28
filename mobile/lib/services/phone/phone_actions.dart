@@ -220,6 +220,7 @@ final class PhoneActionsService {
             'id': '${event.id}@${event.start.millisecondsSinceEpoch}',
             'title': event.title,
             'start': event.start.toUtc().toIso8601String(),
+            'end': event.end.toUtc().toIso8601String(),
             'all_day': event.allDay,
             'notes': event.notes,
             'attendees': [

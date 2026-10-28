@@ -131,8 +131,8 @@ final class HomeScreen extends StatefulWidget {
   /// Places visited is on (Profile): today's stays show.
   final ValueListenable<bool>? placesOn;
 
-  /// Places visited, every stay ("See all").
-  final VoidCallback? onOpenPlaces;
+  /// Places visited, every stay ("See all"); done once it is closed.
+  final Future<void> Function()? onOpenPlaces;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -186,6 +186,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   late final TodayLayoutStore _layoutStore = widget.layoutStore ?? TodayLayoutStore();
   TodayLayout _layout = TodayLayout.defaults;
 
+  late final AppLifecycleListener _lifecycle;
+
   /// The last line heard in the conversation going on.
   String? _lastLine;
 
@@ -213,6 +215,12 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     _subscribeToUploads();
     widget.routineRunsChanged?.addListener(_onRoutineRuns);
     widget.placesOn?.addListener(_onPlacesOn);
+    // Back in the app (often the next morning): what depends on the time of day
+    _lifecycle = AppLifecycleListener(onResume: () {
+      unawaited(_loadAgenda());
+      unawaited(_loadVisits());
+      unawaited(_loadRuns());
+    });
     unawaited(_loadLayout());
     unawaited(_prefillFromPhone());
     unawaited(_refreshAll());
@@ -267,6 +275,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   void dispose() {
     widget.routineRunsChanged?.removeListener(_onRoutineRuns);
     widget.placesOn?.removeListener(_onPlacesOn);
+    _lifecycle.dispose();
     _pendingView.dispose();
     _memories.removeListener(_onMemories);
     if (_ownsMemories) _memories.dispose();
@@ -779,8 +788,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         ],
       TodaySection.comingUp => [
           ComingUpTodayPanel(
-            events: [for (final event in _events) if (event.allDay || !event.start.isBefore(now)) event],
+            events: [for (final event in _events) if (event.isLeftOn(now)) event],
             recap: _comingUp,
+            now: now,
           ),
         ],
       TodaySection.yourDay => [
@@ -823,9 +833,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       TodaySection.places => [
           if (widget.placesOn?.value == true)
             PlacesTodayPanel(
-              visits: _visits,
+              // Filtered again: loaded yesterday, shown this morning
+              visits: visitsOn(_visits, now),
               onOpen: (visit) => unawaited(_openVisit(visit)),
-              onSeeAll: widget.onOpenPlaces ?? () {},
+              onSeeAll: () => unawaited(_openPlaces()),
             ),
         ],
       TodaySection.earlier => [
@@ -861,6 +872,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         },
       ),
     ));
+  }
+
+  /// Places visited; what was deleted there leaves Today too.
+  Future<void> _openPlaces() async {
+    final open = widget.onOpenPlaces;
+    if (open == null) return;
+    await open();
+    if (mounted) await _loadVisits();
   }
 
   /// A stay, in the phone's maps.

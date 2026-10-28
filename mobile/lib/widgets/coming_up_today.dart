@@ -8,20 +8,24 @@ import 'panel.dart';
 /// An appointment of today from the iPhone's calendar.
 @immutable
 final class TodayEvent {
-  const TodayEvent({required this.title, required this.start, this.allDay = false});
+  const TodayEvent({required this.title, required this.start, this.end, this.allDay = false});
 
-  /// The phone's events (`PhoneActionsService.upcomingEvents`) still to come on [now]'s
-  /// day: all-day ones first, then by time; the ones that started are left out.
+  /// The phone's events (`PhoneActionsService.upcomingEvents`) still on for [now]'s day:
+  /// all-day ones first, then by time ([isLeftOn]).
   static List<TodayEvent> fromPhone(List<Map<String, Object?>> events, DateTime now) {
-    final today = dayOf(now);
+    DateTime? time(Object? value) => DateTime.tryParse(value as String? ?? '')?.toLocal();
     final kept = <TodayEvent>[];
     for (final event in events) {
       final title = (event['title'] as String? ?? '').trim();
-      final start = DateTime.tryParse(event['start'] as String? ?? '')?.toLocal();
-      if (title.isEmpty || start == null || dayOf(start) != today) continue;
-      final allDay = event['all_day'] == true;
-      if (!allDay && start.isBefore(now)) continue;
-      kept.add(TodayEvent(title: title, start: start, allDay: allDay));
+      final start = time(event['start']);
+      if (title.isEmpty || start == null) continue;
+      final today = TodayEvent(
+        title: title,
+        start: start,
+        end: time(event['end']),
+        allDay: event['all_day'] == true,
+      );
+      if (today.isLeftOn(now)) kept.add(today);
     }
     kept.sort((a, b) {
       if (a.allDay != b.allDay) return a.allDay ? -1 : 1;
@@ -34,15 +38,36 @@ final class TodayEvent {
 
   /// Local time.
   final DateTime start;
+
+  /// Local time; null when the phone did not say.
+  final DateTime? end;
   final bool allDay;
+
+  /// Still to show on [now]'s day: an all-day event covering it, one going on, or one to
+  /// come; not one that is over or on another day.
+  bool isLeftOn(DateTime now) {
+    final today = dayOf(now);
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
+    if (!start.isBefore(tomorrow)) return false;
+    if (allDay) return (end ?? DateTime(start.year, start.month, start.day + 1)).isAfter(today);
+    final over = end;
+    return over != null ? over.isAfter(now) : !start.isBefore(now);
+  }
+
+  /// It started and has not ended: "Now" instead of its time.
+  bool isUnderWay(DateTime now) =>
+      !allDay && start.isBefore(now) && (end?.isAfter(now) ?? false);
 }
 
 /// "Coming up today": what is still to come on the calendar; under the event that starts
 /// within the hour, what was said last time. Nothing without events.
 final class ComingUpTodayPanel extends StatelessWidget {
-  const ComingUpTodayPanel({required this.events, this.recap, super.key});
+  const ComingUpTodayPanel({required this.events, this.recap, this.now, super.key});
 
   final List<TodayEvent> events;
+
+  /// To say "Now" for an appointment going on.
+  final DateTime? now;
 
   /// The event within the hour and its recap (`POST /api/notifications/coming-up`).
   final ComingUp? recap;
@@ -77,7 +102,11 @@ final class ComingUpTodayPanel extends StatelessWidget {
                     SizedBox(
                       width: 60,
                       child: Text(
-                        event.allDay ? 'All day' : formatTime(event.start),
+                        event.allDay
+                            ? 'All day'
+                            : now != null && event.isUnderWay(now!)
+                                ? 'Now'
+                                : formatTime(event.start),
                         style: textTheme.labelMedium?.copyWith(color: palette.accent),
                       ),
                     ),

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/app_view_state.dart';
 import '../models/chat_message.dart';
 import '../models/routine_run.dart';
 import '../models/today_insights.dart';
@@ -46,6 +47,7 @@ final class ChatScreen extends StatefulWidget {
     this.routinesApi,
     this.segmentUploadedStream,
     this.workingPollInterval = const Duration(seconds: 5),
+    this.appState,
     super.key,
   });
 
@@ -93,6 +95,9 @@ final class ChatScreen extends StatefulWidget {
   /// How often "Echo is working on…" is checked while something is working.
   final Duration workingPollInterval;
 
+  /// The app's tabs: opening Ask checks what Echo is working on.
+  final ValueListenable<AppViewState>? appState;
+
   /// Opens the conversations sources come from (defaults to the chat's api).
   final MemoryApi? memoryApi;
 
@@ -118,6 +123,14 @@ final class _ChatScreenState extends State<ChatScreen> {
   List<WorkingItem> _working = const [];
   Timer? _workingTimer;
   StreamSubscription<Object?>? _uploads;
+
+  /// Checks left after new speech, while the server has not heard a request yet.
+  int _watchChecks = 0;
+  bool _askShown = false;
+  late final AppLifecycleListener _lifecycle;
+
+  /// About a minute of checks after new speech: the request shows once Echo heard it.
+  static const _watchAfterSpeech = Duration(seconds: 60);
 
   RoutinesApi? get _routinesApi {
     final api = _api;
@@ -170,7 +183,14 @@ final class _ChatScreenState extends State<ChatScreen> {
     _ownsFilter = widget.routinesFilter == null;
     _filter = widget.routinesFilter ?? ValueNotifier(null);
     _filter.addListener(_onView);
-    _uploads = widget.segmentUploadedStream?.listen((_) => unawaited(_loadWorking()));
+    _uploads = widget.segmentUploadedStream?.listen((_) {
+      _watchChecks =
+          (_watchAfterSpeech.inMilliseconds / widget.workingPollInterval.inMilliseconds).ceil();
+      unawaited(_loadWorking());
+    });
+    _askShown = widget.appState?.value.selectedTab == AppController.askTab;
+    widget.appState?.addListener(_onAppState);
+    _lifecycle = AppLifecycleListener(onResume: () => unawaited(_loadWorking()));
     unawaited(_loadWorking());
     // A request made before this screen existed (cold start from a tap); else Ask
     // opens on the thread with Echo
@@ -242,7 +262,14 @@ final class _ChatScreenState extends State<ChatScreen> {
     unawaited(_loadWorking());
   }
 
-  /// What Echo is working on; checked again while anything is left.
+  void _onAppState() {
+    final shown = widget.appState?.value.selectedTab == AppController.askTab;
+    if (shown && !_askShown) unawaited(_loadWorking());
+    _askShown = shown;
+  }
+
+  /// What Echo is working on; checked again while anything is left, and for a while after
+  /// new speech.
   Future<void> _loadWorking() async {
     final api = _api;
     if (api is! VoiceWorkingApi) return;
@@ -260,7 +287,9 @@ final class _ChatScreenState extends State<ChatScreen> {
     if (finished) unawaited(_controller.refreshThread());
     // Two checks can overlap (a thread update, an upload): one timer, never orphaned
     _workingTimer?.cancel();
-    if (items.isNotEmpty) {
+    final watching = _watchChecks > 0;
+    if (watching) _watchChecks--;
+    if (items.isNotEmpty || watching) {
       _workingTimer = Timer(widget.workingPollInterval, () => unawaited(_loadWorking()));
     }
   }
@@ -408,6 +437,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     if (_ownsFilter) _filter.dispose();
     _workingTimer?.cancel();
     unawaited(_uploads?.cancel());
+    widget.appState?.removeListener(_onAppState);
+    _lifecycle.dispose();
     _composerFocus.dispose();
     _textController.dispose();
     _scrollController.dispose();

@@ -411,15 +411,19 @@ class MainShell extends StatelessWidget {
     ));
   }
 
-  /// Places visited, every stay (Today's "See all").
-  void _openPlaces(BuildContext context) {
+  /// Places visited, every stay (Today's "See all"); done once it is closed.
+  Future<void> _openPlaces(BuildContext context) async {
     final places = AppRuntime.maybeCoordinator?.placesVisited;
     if (places == null) return;
     final api = ApiService();
-    unawaited(Navigator.push(
-      context,
-      MaterialPageRoute<void>(builder: (_) => PlacesVisitedScreen(places: places, api: api)),
-    ).whenComplete(api.dispose));
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute<void>(builder: (_) => PlacesVisitedScreen(places: places, api: api)),
+      );
+    } finally {
+      api.dispose();
+    }
   }
 
   void _openTasks(BuildContext context) {
@@ -509,6 +513,7 @@ class MainShell extends StatelessWidget {
                       routinesFilter: appController.routinesFilter,
                       routineRunsChanged: appController.routineRunsChanged,
                       segmentUploadedStream: segmentUploadedStream,
+                      appState: appController,
                       askRequest: appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
