@@ -10,6 +10,9 @@ import 'notification_service.dart';
 
 export 'app_preferences.dart';
 
+/// What Ask shows: the chat, or what routines found.
+enum AskView { chat, routines }
+
 final class AppController extends ValueNotifier<AppViewState> {
   AppController({
     required DeviceStatus initialDevice,
@@ -57,6 +60,15 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// Counts the times the thread with Echo got new messages from elsewhere (a voice
   /// answer, a photo, a routine); Ask reloads it when it is showing it.
   final ValueNotifier<int> threadUpdates = ValueNotifier(0);
+
+  /// Ask's switch: Chat or Routines.
+  final ValueNotifier<AskView> askView = ValueNotifier(AskView.chat);
+
+  /// The routine Ask → Routines shows (null: all of them).
+  final ValueNotifier<String?> routinesFilter = ValueNotifier(null);
+
+  /// Counts the times new routine runs arrived; Today and Ask → Routines reload them.
+  final ValueNotifier<int> routineRunsChanged = ValueNotifier(0);
 
   static const personPayloadPrefix = 'person:';
 
@@ -140,6 +152,28 @@ final class AppController extends ValueNotifier<AppViewState> {
     threadUpdates.value++;
   }
 
+  /// Selects Ask on Routines: one routine's results, or all of them.
+  void requestOpenRoutines({String? routineId}) {
+    if (_disposed) return;
+    routinesFilter.value = routineId;
+    askView.value = AskView.routines;
+    unawaited(setSelectedTab(askTab));
+  }
+
+  /// Selects Ask on Chat and reloads the thread ("Ask about this" just added to it).
+  void requestOpenThread() {
+    if (_disposed) return;
+    askView.value = AskView.chat;
+    threadChanged();
+    unawaited(setSelectedTab(askTab));
+  }
+
+  /// New routine runs arrived (voice updates found some).
+  void routineRunsFound() {
+    if (_disposed) return;
+    routineRunsChanged.value++;
+  }
+
   /// Selects Today and opens its Tasks page.
   void requestOpenTasks() {
     if (_disposed) return;
@@ -155,8 +189,9 @@ final class AppController extends ValueNotifier<AppViewState> {
   }
 
   /// Routes a tapped notification: "voice:<sessionId>" opens that session in
-  /// Ask ("voice:" alone only selects Ask), "person:<id>" that person's page,
-  /// "tasks" the Tasks page, "today" Today; other payloads are ignored.
+  /// Ask ("voice:" alone only selects Ask), "routines:<runId>" Ask on Routines,
+  /// "person:<id>" that person's page, "tasks" the Tasks page, "today" Today; other
+  /// payloads are ignored.
   void handleNotificationPayload(String payload) {
     if (_disposed) return;
     if (payload == 'tasks') {
@@ -165,6 +200,10 @@ final class AppController extends ValueNotifier<AppViewState> {
     }
     if (payload == 'today') {
       unawaited(setSelectedTab(todayTab));
+      return;
+    }
+    if (payload.startsWith(NotificationService.routinesPayloadPrefix)) {
+      requestOpenRoutines();
       return;
     }
     if (payload.startsWith(personPayloadPrefix)) {
@@ -224,6 +263,9 @@ final class AppController extends ValueNotifier<AppViewState> {
     openTasksRequests.dispose();
     askDictation.dispose();
     threadUpdates.dispose();
+    askView.dispose();
+    routinesFilter.dispose();
+    routineRunsChanged.dispose();
     super.dispose();
   }
 }

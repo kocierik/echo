@@ -51,6 +51,45 @@ void main() {
     expect(changed, 1);
   });
 
+  test('new routine runs notify once each and tell Today, once per check', () async {
+    await setUpService({
+      VoiceUpdatesService.lastSeenKey: t0.toIso8601String(),
+    });
+    var changed = 0;
+    var messages = 0;
+    service = VoiceUpdatesService(api, NotificationService(port), prefs,
+        onNewMessages: () => messages++, onNewRuns: () => changed++);
+    api.response = VoiceUpdates(
+      messages: const [],
+      routineRuns: [
+        RoutineRunUpdate(
+          id: 'r1',
+          routineId: 'rt1',
+          status: 'reported',
+          text: 'Domani piove dalle 15',
+          ranAt: t0.add(const Duration(minutes: 1)),
+        ),
+        RoutineRunUpdate(
+          id: 'r2',
+          routineId: 'rt2',
+          status: 'failed',
+          text: 'Non riuscito',
+          ranAt: t0.add(const Duration(minutes: 2)),
+        ),
+      ],
+      now: t0.add(const Duration(minutes: 3)),
+    );
+
+    await service.check();
+    await service.check(); // the same runs again: nothing new
+
+    expect(port.shown.map((s) => s.body), ['Domani piove dalle 15', 'A routine could not run']);
+    expect(port.shown.map((s) => s.payload), ['routines:r1', 'routines:r2']);
+    expect(changed, 1);
+    expect(messages, 0);
+    expect(prefs.getStringList(VoiceUpdatesService.seenKeysKey), ['run:r1', 'run:r2']);
+  });
+
   test('first check only stores now and shows nothing', () async {
     await setUpService();
     api.response = VoiceUpdates(messages: [message('old', t0)], now: t0);

@@ -11,18 +11,24 @@ abstract interface class VoiceUpdatesApi {
   Future<VoiceUpdates> getVoiceUpdates(DateTime? since);
 }
 
-/// Checks for new answers in the thread with Echo and shows a local notification
-/// for each. Called on every segment upload and on app resume.
+/// Checks for new answers in the thread with Echo, and for routine runs that found
+/// something or could not run, and shows a local notification for each. Called on every
+/// segment upload and on app resume.
 final class VoiceUpdatesService {
   VoiceUpdatesService(
     this._api,
     this._notifications,
     this._preferences, {
     void Function()? onNewMessages,
-  }) : _onNewMessages = onNewMessages;
+    void Function()? onNewRuns,
+  })  : _onNewMessages = onNewMessages,
+        _onNewRuns = onNewRuns;
 
   /// Called once per check that found new answers: Ask reloads the thread.
   final void Function()? _onNewMessages;
+
+  /// Called once per check that found new routine runs: Today and Ask reload them.
+  final void Function()? _onNewRuns;
 
   static const lastSeenKey = 'voice_updates_last_seen';
   static const seenKeysKey = 'voice_updates_seen_keys';
@@ -69,6 +75,25 @@ final class VoiceUpdatesService {
           await _preferences.setStringList(seenKeysKey, seen);
         }
         if (found) _onNewMessages?.call();
+        var foundRuns = false;
+        for (final run in updates.routineRuns) {
+          final key = 'run:${run.id}';
+          if (seen.contains(key)) continue;
+          await _notifications.showRoutineRun(
+            run.status == 'failed'
+                ? 'A routine could not run'
+                : _preview(run.text ?? ''),
+            runId: run.id,
+            id: _nextId(),
+          );
+          seen.add(key);
+          foundRuns = true;
+          if (seen.length > maxSeenKeys) {
+            seen.removeRange(0, seen.length - maxSeenKeys);
+          }
+          await _preferences.setStringList(seenKeysKey, seen);
+        }
+        if (foundRuns) _onNewRuns?.call();
       }
       await _preferences.setString(
         lastSeenKey,

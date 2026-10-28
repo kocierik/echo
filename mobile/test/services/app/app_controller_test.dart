@@ -73,6 +73,58 @@ void main() {
     expect(AppController.selectedTabKey, isNot(AppController.legacySelectedTabKey));
   });
 
+  test('Ask starts on Chat, with no routine filter', () async {
+    controller = await createController();
+
+    expect(controller.askView.value, AskView.chat);
+    expect(controller.routinesFilter.value, isNull);
+  });
+
+  test('a routines payload opens Ask on Routines, all of them', () async {
+    controller = await createController();
+    controller.routinesFilter.value = 'rt1';
+
+    controller.handleNotificationPayload('routines:r1');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.value.selectedTab, AppController.askTab);
+    expect(controller.askView.value, AskView.routines);
+    expect(controller.routinesFilter.value, isNull);
+  });
+
+  test('requestOpenRoutines can open on one routine', () async {
+    controller = await createController();
+
+    controller.requestOpenRoutines(routineId: 'rt1');
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.value.selectedTab, AppController.askTab);
+    expect(controller.askView.value, AskView.routines);
+    expect(controller.routinesFilter.value, 'rt1');
+  });
+
+  test('requestOpenThread opens Ask on Chat and reloads the thread', () async {
+    controller = await createController();
+    controller.askView.value = AskView.routines;
+    final before = controller.threadUpdates.value;
+
+    controller.requestOpenThread();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(controller.value.selectedTab, AppController.askTab);
+    expect(controller.askView.value, AskView.chat);
+    expect(controller.threadUpdates.value, before + 1);
+  });
+
+  test('routine runs changes count up, for Today to reload', () async {
+    controller = await createController();
+    final before = controller.routineRunsChanged.value;
+
+    controller.routineRunsFound();
+
+    expect(controller.routineRunsChanged.value, before + 1);
+  });
+
   test('thread updates count up, for Ask to reload its thread', () async {
     controller = await createController();
     final before = controller.threadUpdates.value;

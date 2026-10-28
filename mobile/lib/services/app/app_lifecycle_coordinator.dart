@@ -241,6 +241,7 @@ final class AppLifecycleCoordinator {
       notificationService,
       preferences,
       onNewMessages: appController.threadChanged,
+      onNewRuns: appController.routineRunsFound,
     );
     final binding = await startBinding(
       initialStatus: deviceController.state,

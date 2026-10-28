@@ -34,6 +34,9 @@ final class NotificationService {
   static const int voiceAnswerIdCount = 50;
   static const String voicePayloadPrefix = 'voice:';
 
+  /// A routine's result: a tap opens Ask on Routines.
+  static const String routinesPayloadPrefix = 'routines:';
+
   /// Who is in front of you: a few slots in turn, so two people do not replace each other.
   static const int personBriefBaseId = 400;
   static const int personBriefIdCount = 10;
@@ -106,6 +109,19 @@ final class NotificationService {
         title: 'Echo',
         body: preview,
         payload: '$voicePayloadPrefix${sessionId ?? ''}',
+      );
+
+  /// What a routine found, or that it could not run; shares the voice answers' slots.
+  Future<void> showRoutineRun(
+    String preview, {
+    required String runId,
+    required int id,
+  }) =>
+      _port.show(
+        id: id,
+        title: 'Echo',
+        body: preview,
+        payload: '$routinesPayloadPrefix$runId',
       );
 
   /// Someone the user knows started talking (the server's `person_brief`): a tap opens
