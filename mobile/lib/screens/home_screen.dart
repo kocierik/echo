@@ -386,7 +386,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     } catch (_) {}
   }
 
-  /// The last line heard in the conversation going on, for the top card.
+  /// The last line heard in the conversation going on, for Your day's live row.
   Future<void> _loadLastLine(List<ConversationCard> today) async {
     final open = today.where((c) => c.isOpen).firstOrNull;
     if (open == null) {
@@ -682,14 +682,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final todayLoading = memory.loading && _cachedToday.isEmpty;
     // A failure shows only when there is nothing to show instead
     final todayError = memory.conversations.isEmpty && _cachedToday.isEmpty ? memory.error : null;
-    final moment = pickMoment(
-      pending: _pending,
-      comingUp: _comingUp != null && _comingUp!.start.isAfter(now) ? _comingUp : null,
-      open: today.where((c) => c.isOpen).firstOrNull,
-      lastLine: _lastLine,
-      today: today,
-      now: now,
-    );
+    final moment = pickMoment(pending: _pending);
     final peopleToday = peopleSeenOn(memory.people, now);
     final earlier = _earlierDays;
     final api = _api;
@@ -787,12 +780,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                     if (moment != null)
                       TodayTopCard(
                         moment: moment,
-                        now: now,
                         busyIds: _pendingBusy,
                         onConfirm: (a) => unawaited(_confirm(a)),
                         onCancel: (a) => unawaited(_cancel(a)),
                         onMore: () => unawaited(_openPending()),
-                        onOpenConversation: (c) => unawaited(_openConversation(c)),
                       ),
                     RoutinesTodayPanel(runs: _runs, onOpen: (run) => unawaited(_openRun(run))),
                     // Promises are among the to-dos; nothing open at all: no panel
@@ -825,6 +816,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         onOpen: (c) => unawaited(_openConversation(c)),
                         onSeeAll: () => unawaited(_openDay(today)),
                         loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
+                        now: now,
+                        lastLine: _lastLine,
                       ),
                       const SizedBox(height: 12),
                     ],

@@ -423,10 +423,18 @@ final class YourDayPanel extends StatelessWidget {
     required this.onSeeAll,
     this.maxVisible = 4,
     this.loadPhoto,
+    this.now,
+    this.lastLine,
     super.key,
   });
 
   final bool loading;
+
+  /// For how long the conversation going on has lasted.
+  final DateTime? now;
+
+  /// The last line heard in the conversation going on.
+  final String? lastLine;
 
   /// The image of a photo row (no thumbnail without it).
   final PhotoSourceLoader? loadPhoto;
@@ -506,7 +514,13 @@ final class YourDayPanel extends StatelessWidget {
                 ),
               ),
             for (final conversation in open)
-              _NowRow(recording: recording, onTap: () => onOpen(conversation)),
+              _NowRow(
+                conversation: conversation,
+                recording: recording,
+                now: now,
+                lastLine: lastLine,
+                onTap: () => onOpen(conversation),
+              ),
           ],
           Align(
             alignment: Alignment.centerLeft,
@@ -739,36 +753,79 @@ final class _PhotoBlock extends StatelessWidget {
 }
 
 /// "Now ——— Recording": the conversation still going.
+/// The conversation going on: for how long, who is there, its title and the last line
+/// heard (what Today's card on top used to show).
 final class _NowRow extends StatelessWidget {
-  const _NowRow({required this.recording, required this.onTap});
+  const _NowRow({
+    required this.conversation,
+    required this.recording,
+    required this.now,
+    required this.lastLine,
+    required this.onTap,
+  });
 
+  final ConversationCard conversation;
   final bool recording;
+  final DateTime? now;
+  final String? lastLine;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final style = Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: palette.liveText,
-          fontWeight: FontWeight.w600,
-        );
+    final textTheme = Theme.of(context).textTheme;
+    final style = textTheme.labelSmall?.copyWith(
+      color: palette.liveText,
+      fontWeight: FontWeight.w600,
+    );
     final label = recording ? 'Recording' : 'In progress';
+    final going = now == null ? null : now!.difference(conversation.startedAt);
+    final title = conversation.title;
+    final people = conversation.people;
     return Semantics(
       button: true,
       label: 'Conversation going on now, ${label.toLowerCase()}',
-      excludeSemantics: true,
       child: InkWell(
         key: const Key('day-now'),
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          height: 32,
-          child: Row(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 52, child: Text('Now', style: style)),
-              Expanded(child: Container(height: 2, color: palette.live)),
-              const SizedBox(width: 8),
-              Text(label, style: style),
+              Row(
+                children: [
+                  Text(
+                    going != null && going.inMinutes > 0
+                        ? 'Now · ${formatDuration(going)}'
+                        : 'Now',
+                    style: style,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Container(height: 2, color: palette.live)),
+                  const SizedBox(width: 8),
+                  Text(label, style: style),
+                ],
+              ),
+              if (title != null) ...[
+                const SizedBox(height: 4),
+                Text(title, style: textTheme.titleSmall),
+              ],
+              if (people.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text('with ${people.join(', ')}', style: textTheme.bodySmall),
+              ],
+              if (lastLine case final line?) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '"…$line…"',
+                  style: textTheme.bodyMedium?.copyWith(
+                    color: palette.text2,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
             ],
           ),
         ),

@@ -174,7 +174,6 @@ void main() {
       expect(find.byKey(const Key('today-top-card')), findsOneWidget);
       expect(find.text('Email Ada'), findsOneWidget);
       expect(find.text('Book the dinner'), findsNothing);
-      expect(find.byKey(const Key('so-far-today')), findsNothing);
 
       await tester.tap(find.text('+1 more'));
       await tester.pumpAndSettle();
@@ -184,33 +183,16 @@ void main() {
       expect(api.calls, contains('confirm late'));
     });
 
-    testWidgets('an event within the hour, with what was said last time', (tester) async {
-      final api = FakeTodayApi()
-        ..upcoming = ComingUp(
-            title: 'Review with Ada', start: DateTime(2026, 10, 14, 18, 30),
-            recap: 'Last time: the budget');
-      final events = [
-        {'id': 'E1', 'title': 'Review with Ada', 'start': '2026-10-14T16:30:00Z'},
-      ];
-      await pumpToday(tester, api: api, phoneEvents: events);
-      await tester.pumpAndSettle();
-
-      expect(api.comingUpEvents, [events]);
-      expect(find.text('COMING UP · 18:30'), findsOneWidget);
-      expect(find.text('Last time: the budget'), findsOneWidget);
-    });
-
-    testWidgets('no phone calendar: no event asked, the day so far instead', (tester) async {
+    testWidgets('nothing to confirm: no card on top, the day in Your day', (tester) async {
       final api = FakeTodayApi(conversations: [
         card('lunch', startedAt: DateTime(2026, 10, 14, 12, 30), duration: const Duration(hours: 1)),
       ]);
       await pumpToday(tester, api: api);
       await tester.pumpAndSettle();
 
-      expect(api.comingUpEvents, isEmpty);
-      expect(find.text('SO FAR TODAY'), findsOneWidget);
-      expect(find.text('Lunch with Ada.'), findsOneWidget);
-      expect(find.text('1 h of talk'), findsOneWidget);
+      expect(find.byKey(const Key('today-top-card')), findsNothing);
+      expect(find.text('SO FAR TODAY'), findsNothing);
+      expect(find.text('Lunch with Ada'), findsOneWidget);
     });
 
     testWidgets('the conversation going on, with the last line heard', (tester) async {
@@ -229,8 +211,18 @@ void main() {
       await pumpToday(tester, api: api);
       await tester.pumpAndSettle();
 
-      expect(find.text('NOW · 12 MIN'), findsOneWidget);
-      expect(find.text('"…so we move the demo to November…"'), findsOneWidget);
+      // In Your day's live row, not in a card on top
+      expect(find.byKey(const Key('today-top-card')), findsNothing);
+      final live = find.byKey(const Key('day-now'));
+      await tester.ensureVisible(live);
+      for (final text in [
+        'Now · 12 min',
+        'Call about Atlas',
+        'with Marco',
+        '"…so we move the demo to November…"',
+      ]) {
+        expect(find.descendant(of: live, matching: find.text(text)), findsOneWidget, reason: text);
+      }
     });
   });
 
