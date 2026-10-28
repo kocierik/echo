@@ -145,15 +145,10 @@ void main() {
   });
 
   group('top', () {
-    testWidgets('the day, and a greeting with the name when there is one', (tester) async {
-      await pumpToday(tester, api: FakeTodayApi()..name = 'Erik');
+    testWidgets('the day, and a greeting', (tester) async {
+      await pumpToday(tester);
       await tester.pumpAndSettle();
       expect(find.text('WEDNESDAY 14 OCTOBER'), findsOneWidget);
-      expect(find.text('Good evening, Erik'), findsOneWidget);
-
-      await tester.pumpWidget(const SizedBox());
-      await pumpToday(tester, api: FakeTodayApi());
-      await tester.pumpAndSettle();
       expect(find.text('Good evening'), findsOneWidget);
     });
 

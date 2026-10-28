@@ -9,6 +9,7 @@ final class ScreenHeader extends StatelessWidget {
     required this.title,
     this.overline,
     this.actions = const [],
+    this.compact = false,
     super.key,
   });
 
@@ -17,6 +18,9 @@ final class ScreenHeader extends StatelessWidget {
   /// "Thursday" above "15 October".
   final String? overline;
   final List<Widget> actions;
+
+  /// A smaller title, for a line rather than a name ("Good afternoon" on Today).
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +48,7 @@ final class ScreenHeader extends StatelessWidget {
                       title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: textTheme.displayLarge,
+                      style: compact ? textTheme.displaySmall : textTheme.displayLarge,
                     ),
                   ],
                 ),

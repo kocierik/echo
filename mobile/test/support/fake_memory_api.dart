@@ -177,17 +177,11 @@ class FakeTodayApi extends FakeMemoryApi
     return digests[day];
   }
 
-  /// What the account is called ("Good afternoon, Erik"); none by default.
-  String? name;
-
   @override
-  Future<AccountInfo> me() async => AccountInfo(email: 'erik@x.io', language: 'en', name: name);
+  Future<AccountInfo> me() async => const AccountInfo(email: 'erik@x.io', language: 'en');
 
   @override
   Future<AccountInfo> setLanguage(String language) => throw UnimplementedError();
-
-  @override
-  Future<AccountInfo> setName(String? name) => throw UnimplementedError();
 
   /// The event in the next hour the server finds among the phone's ones.
   ComingUp? upcoming;

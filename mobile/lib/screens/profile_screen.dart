@@ -29,6 +29,7 @@ import 'settings/connection_settings_screen.dart';
 import 'settings/devices_screen.dart';
 import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
+import 'settings/logout_row.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
 import 'settings/places_visited_screen.dart';
@@ -163,31 +164,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ));
   }
 
-  /// The name for the greeting: the account's, else the own voice's as a start.
-  Future<void> _editName() async {
-    var initial = _account?.name;
-    if (initial == null) {
-      try {
-        initial = (await _api.getVoiceProfiles()).own?.name;
-      } catch (_) {}
-    }
-    if (!mounted) return;
-    final name = await showDialog<String>(
-      context: context,
-      builder: (context) => _NameDialog(initial: initial ?? ''),
-    );
-    if (name == null || !mounted) return;
-    try {
-      final account = await _api.setName(name.trim().isEmpty ? null : name.trim());
-      if (mounted) setState(() => _account = account);
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text('Echo could not save your name.')));
-    }
-  }
-
   void _openMore() => _push(_MoreScreen(
         networkPolicy: _networkPolicy,
         preferences: _preferences,
@@ -232,11 +208,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
               ],
             ),
-            _AccountCard(
-              account: _account,
-              language: language,
-              onTap: () => unawaited(_editName()),
-            ),
+            _AccountCard(account: _account, language: language),
             ValueListenableBuilder<AppViewState>(
               valueListenable: _appController,
               builder: (context, state, _) =>
@@ -414,6 +386,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: _openMore,
               ),
             ]),
+            const SizedBox(height: 4),
+            SettingsGroup(children: [
+              LogoutRow(
+                key: const Key('profile-logout'),
+                sessionController: _sessionController,
+                onLoggedOut: widget.onRequireOnboarding ?? () {},
+              ),
+            ]),
           ],
         ),
       ),
@@ -421,62 +401,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/// The account: initial, name (or the way to add one), email and spoken language.
+/// The account: initial, email and spoken language.
 final class _AccountCard extends StatelessWidget {
-  const _AccountCard({required this.account, required this.language, required this.onTap});
+  const _AccountCard({required this.account, required this.language});
 
   final AccountInfo? account;
   final String? language;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final name = account?.name;
-    final details = [
-      if (account?.email case final email?) email,
-      if (language != null) language!,
-    ].join(' · ');
-    final radius = BorderRadius.circular(AppTheme.panelRadius);
+    final email = account?.email;
     return Padding(
+      key: const Key('profile-account'),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Material(
         color: palette.surface,
-        borderRadius: radius,
-        child: InkWell(
-          key: const Key('profile-account'),
-          borderRadius: radius,
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                PersonAvatar(
-                  initials: name == null || name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-                  size: 52,
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name ?? 'Add your name',
-                        style: textTheme.titleMedium?.copyWith(
-                          color: name == null ? palette.accent : null,
-                        ),
-                      ),
-                      if (details.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(details, style: textTheme.bodySmall),
-                      ],
+        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              PersonAvatar(
+                initials: email == null || email.isEmpty
+                    ? '?'
+                    : email.characters.first.toUpperCase(),
+                size: 52,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      email ?? 'Your account',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.titleMedium,
+                    ),
+                    if (language != null) ...[
+                      const SizedBox(height: 2),
+                      Text(language!, style: textTheme.bodySmall),
                     ],
-                  ),
+                  ],
                 ),
-                Icon(Icons.edit_outlined, size: 18, color: palette.text2),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -565,47 +536,6 @@ final class _EchoCard extends StatelessWidget {
   }
 }
 
-final class _NameDialog extends StatefulWidget {
-  const _NameDialog({required this.initial});
-
-  final String initial;
-
-  @override
-  State<_NameDialog> createState() => _NameDialogState();
-}
-
-final class _NameDialogState extends State<_NameDialog> {
-  late final _controller = TextEditingController(text: widget.initial);
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Your name'),
-      content: TextField(
-        key: const Key('profile-name-field'),
-        controller: _controller,
-        autofocus: true,
-        maxLength: 100,
-        textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(hintText: 'What Echo calls you'),
-        onSubmitted: (value) => Navigator.pop(context, value),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}
 
 /// Devices, server connection, diagnostics and About: rarely needed, one row down.
 final class _MoreScreen extends StatelessWidget {

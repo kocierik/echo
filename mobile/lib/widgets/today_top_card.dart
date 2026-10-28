@@ -85,16 +85,12 @@ TodayMoment? pickMoment({
   );
 }
 
-/// "Good afternoon, Erik"; without a name, "Good afternoon".
-String greeting(DateTime now, String? name) {
-  final part = now.hour >= 5 && now.hour < 12
-      ? 'Good morning'
-      : now.hour >= 12 && now.hour < 18
-          ? 'Good afternoon'
-          : 'Good evening';
-  final trimmed = name?.trim() ?? '';
-  return trimmed.isEmpty ? part : '$part, $trimmed';
-}
+/// "Good morning", "Good afternoon" or "Good evening".
+String greeting(DateTime now) => now.hour >= 5 && now.hour < 12
+    ? 'Good morning'
+    : now.hour >= 12 && now.hour < 18
+        ? 'Good afternoon'
+        : 'Good evening';
 
 /// "Stand-up with Marco, Lunch with Ada, The Atlas call.": the three longest
 /// conversations with a title, in the order of the day.

@@ -74,11 +74,11 @@ void main() {
     });
   });
 
-  test('the greeting has the name only when there is one', () {
-    expect(greeting(DateTime(2026, 10, 20, 9), 'Erik'), 'Good morning, Erik');
-    expect(greeting(DateTime(2026, 10, 20, 14), 'Erik'), 'Good afternoon, Erik');
-    expect(greeting(DateTime(2026, 10, 20, 19), null), 'Good evening');
-    expect(greeting(DateTime(2026, 10, 20, 2), '  '), 'Good evening');
+  test('the greeting follows the time of day', () {
+    expect(greeting(DateTime(2026, 10, 20, 9)), 'Good morning');
+    expect(greeting(DateTime(2026, 10, 20, 14)), 'Good afternoon');
+    expect(greeting(DateTime(2026, 10, 20, 19)), 'Good evening');
+    expect(greeting(DateTime(2026, 10, 20, 2)), 'Good evening');
   });
 
   test('so far today names the longest conversations in time order', () {

@@ -20,7 +20,6 @@ import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
 import '../widgets/today_top_card.dart';
 import '../utils/formatting.dart';
-import '../services/app/spoken_language.dart';
 import '../services/memory/memories_controller.dart';
 import '../widgets/memory_sections.dart';
 import '../widgets/saved_sections.dart';
@@ -141,8 +140,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   final _pendingView =
       ValueNotifier<(List<PendingAction>, Set<String>)>((const [], const {}));
 
-  /// What the account is called, for the greeting.
-  String? _name;
   ComingUp? _comingUp;
 
   /// The last line heard in the conversation going on.
@@ -276,7 +273,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       _loadPending(),
       _loadWorking(),
       _loadOwnVoice(),
-      _loadName(),
       _loadComingUp(),
       _loadSaved(),
       _loadPlan(),
@@ -328,15 +324,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       ),
     ));
     if (mounted) await _loadSaved();
-  }
-
-  Future<void> _loadName() async {
-    final api = _api;
-    if (api is! AccountApi) return;
-    try {
-      final name = (await (api as AccountApi).me()).name;
-      if (mounted) setState(() => _name = name);
-    } catch (_) {}
   }
 
   /// An event of the phone's calendar within the hour; nothing without a calendar.
@@ -672,7 +659,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
             ScreenHeader(
               overline:
                   '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}'.toUpperCase(),
-              title: greeting(now, _name),
+              title: greeting(now),
+              compact: true,
               actions: [if (widget.headerAction != null) widget.headerAction!],
             ),
             Padding(

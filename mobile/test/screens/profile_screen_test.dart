@@ -185,22 +185,32 @@ void main() {
     expect(find.byKey(const Key('places-switch')), findsOneWidget);
   });
 
-  testWidgets('the name is set from Profile, prefilled from the own voice',
-      (tester) async {
-    api.account = const AccountInfo(email: 'erik@x.io', language: 'it');
+  testWidgets('the account shows the email, with no name to add', (tester) async {
     await pumpSettings(tester);
-    expect(find.text('Add your name'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('profile-account')));
-    await tester.pumpAndSettle();
-    final field = tester.widget<TextField>(find.byKey(const Key('profile-name-field')));
-    expect(field.controller!.text, 'Erik R.');
+    expect(find.text('erik@x.io'), findsOneWidget);
+    expect(find.text('Add your name'), findsNothing);
+  });
 
-    await tester.enterText(find.byKey(const Key('profile-name-field')), 'Erik');
-    await tester.tap(find.text('Save'));
+  testWidgets('Log out is on Profile itself, asked to confirm', (tester) async {
+    var resets = 0;
+    await pumpSettings(tester, onRequireOnboarding: () => resets++);
+
+    await tester.scrollUntilVisible(find.byKey(const Key('profile-logout')), 200);
+    await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
-    expect(api.names, ['Erik']);
-    expect(find.text('Erik'), findsOneWidget);
+    expect(find.text('Log out of Echo?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(session.calls, isEmpty);
+
+    await tester.tap(find.text('Log out'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Log out'));
+    await tester.pumpAndSettle();
+
+    expect(session.controller.state.loggedOut, isTrue);
+    expect(resets, 1);
   });
 
   testWidgets('the Echo card opens the Echo screen; the rest sits one row down',
@@ -380,9 +390,7 @@ final class _FakeApiService extends ApiService {
       const VisitPage(visits: [], more: false);
 
   int validationCalls = 0;
-  AccountInfo account =
-      const AccountInfo(email: 'erik@x.io', language: 'it', name: 'Erik');
-  final names = <String?>[];
+  AccountInfo account = const AccountInfo(email: 'erik@x.io', language: 'it');
 
   @override
   Future<AccountInfo> me() async => account;
@@ -392,12 +400,6 @@ final class _FakeApiService extends ApiService {
 
   @override
   Future<PlanInfo> getPlan() async => plan ?? (throw Exception('no plan'));
-
-  @override
-  Future<AccountInfo> setName(String? name) async {
-    names.add(name);
-    return account = AccountInfo(email: account.email, language: account.language, name: name);
-  }
 
   @override
   Future<VoiceProfiles> getVoiceProfiles() async => const VoiceProfiles(

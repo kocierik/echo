@@ -37,9 +37,6 @@ final class AccountInfo {
 abstract interface class AccountApi {
   Future<AccountInfo> me();
   Future<AccountInfo> setLanguage(String language);
-
-  /// Null (or blank) removes the name.
-  Future<AccountInfo> setName(String? name);
 }
 
 /// The user's own instructions to Echo ("Call me Erik, keep answers short").
