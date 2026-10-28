@@ -376,13 +376,29 @@ CREATE TABLE routines (
     active BOOLEAN NOT NULL,
     next_run_at TIMESTAMPTZ NOT NULL,
     last_run_at TIMESTAMPTZ,
-    last_status VARCHAR(10),           -- ok | failed | skipped
+    mode VARCHAR(10) NOT NULL,         -- always | only_if | only_new (Migration 026)
+    last_status VARCHAR(10),           -- reported | nothing | failed | skipped
     last_answer TEXT,
     source VARCHAR(10) NOT NULL,       -- chat | voice
     created_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX ix_routines_user_id ON routines(user_id);
 CREATE INDEX ix_routines_due ON routines(active, next_run_at);
+
+-- One row per run of a routine (Migration 026), kept 90 days
+CREATE TABLE routine_runs (
+    id UUID PRIMARY KEY,
+    routine_id UUID NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    ran_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(10) NOT NULL,       -- reported | nothing | failed | skipped
+    text TEXT,                         -- the answer in full; NULL when nothing or skipped
+    sources JSONB NOT NULL,            -- [{title, url}]
+    items JSONB NOT NULL               -- only_new: [{key, title, url}] reported this run
+);
+CREATE INDEX ix_routine_runs_routine_id ON routine_runs(routine_id);
+CREATE INDEX ix_routine_runs_user_id ON routine_runs(user_id);
+CREATE INDEX ix_routine_runs_user_ran ON routine_runs(user_id, ran_at);
 
 -- ============================================================
 -- SAVED: things the user asks Echo to keep and find again (Migration 023)

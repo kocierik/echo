@@ -15,6 +15,7 @@ from app.models.photo import Photo
 from app.models.place_visit import PlaceVisit
 from app.models.query_feedback import QueryFeedback
 from app.models.routine import Routine
+from app.models.routine_run import RoutineRun
 from app.models.saved import SavedItem, SavedList
 from app.models.segment import Segment
 from app.models.transcription import Transcription
@@ -41,6 +42,7 @@ __all__ = [
     "PlaceVisit",
     "QueryFeedback",
     "Routine",
+    "RoutineRun",
     "SavedItem",
     "SavedList",
     "Segment",

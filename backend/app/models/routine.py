@@ -12,7 +12,8 @@ class Routine(UUIDPrimaryKey, Base):
     """Something Echo does on its own at a time the user asked for (services/routines.py).
 
     Created by asking Echo; run by workers/routines.py at `next_run_at` (UTC), the
-    schedule's wall time in `timezone`. The answer goes to the user's thread with Echo.
+    schedule's wall time in `timezone`. Each run is a RoutineRun; `mode` decides whether a
+    run reports every time, only when its condition holds, or only what is new.
     """
 
     __tablename__ = "routines"
@@ -27,7 +28,11 @@ class Routine(UUIDPrimaryKey, Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # "ok" | "failed" | "skipped" (missed by more than the catch-up window)
+    # "always" | "only_if" | "only_new" (services/routine_results.py)
+    mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="always", server_default="always"
+    )
+    # The latest run's status: "reported" | "nothing" | "failed" | "skipped" ("ok" before 026)
     last_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
     last_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Where it was asked for: "chat" | "voice"
