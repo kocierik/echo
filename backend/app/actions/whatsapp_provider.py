@@ -9,9 +9,12 @@ server without a bridge, the provider is returned as it is.
 
 import logging
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from app.actions.policy import toolkit_of
-from app.actions.provider import AccountNotConnectedError, ToolResult
+from app.actions.provider import AccountNotConnectedError, ActionProviderError, ToolResult
+from app.core.config import settings
 from app.services import whatsapp_bridge
 from app.services.whatsapp_bridge import BridgeError
 
@@ -20,6 +23,8 @@ logger = logging.getLogger(__name__)
 WHATSAPP_NAMES = {"whatsapp": "WhatsApp"}
 LINKED_KEY = "whatsapp:linked:{user_id}"
 LINKED_TTL_S = 60
+# A bridge that did not answer is not asked again for this long (no 3 s wait each time)
+UNREACHABLE_TTL_S = 30
 
 LIST_CHATS = "WHATSAPP_LIST_CHATS"
 READ_CHAT = "WHATSAPP_READ_CHAT"
@@ -76,6 +81,30 @@ TOOLS = [
 ]
 
 
+def _local(value: str | None) -> str | None:
+    """A bridge time (UTC) in the user's time zone, so "at 9" means their 9."""
+    if not value:
+        return value
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return value
+    return moment.astimezone(ZoneInfo(settings.user_timezone)).isoformat()
+
+
+def _since(value: str | None) -> str | None:
+    """The model's "since": without a zone it is the user's local time."""
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=ZoneInfo(settings.user_timezone))
+    return moment.isoformat()
+
+
 def _count(value, default: int, most: int) -> int:
     try:
         number = int(value)
@@ -101,6 +130,8 @@ class WhatsAppProvider:
         try:
             if tool == LIST_CHATS:
                 chats = await self._bridge.chats(owner, _count(arguments.get("limit"), 20, 50))
+                for chat in chats:
+                    chat["last_at"] = _local(chat.get("last_at"))
                 return ToolResult(ok=True, data={"chats": chats})
             if tool == READ_CHAT:
                 person = str(arguments.get("person") or "").strip() or None
@@ -111,7 +142,7 @@ class WhatsAppProvider:
                     owner,
                     chat=chat,
                     name=None if chat else person,
-                    since=str(arguments.get("since") or "").strip() or None,
+                    since=_since(str(arguments.get("since") or "").strip() or None),
                     limit=_count(arguments.get("limit"), 100, 200),
                 )
                 if not messages:
@@ -122,9 +153,11 @@ class WhatsAppProvider:
                 return ToolResult(ok=True, data={"messages": [
                     {
                         "from": "you" if m.get("from_me") else m.get("name"),
+                        # Whose chat, also for the user's own lines
+                        "chat_name": m.get("name"),
                         "chat": m.get("chat"),
                         "text": m.get("text"),
-                        "at": m.get("at"),
+                        "at": _local(m.get("at")),
                     }
                     for m in messages
                 ]})
@@ -147,20 +180,23 @@ class WithWhatsApp:
         return getattr(self._inner, name)
 
     async def connected_toolkits(self, user_id: str, **kwargs) -> list[str]:
-        apps = (
-            await self._inner.connected_toolkits(user_id, **kwargs)
-            if self._inner is not None
-            else []
-        )
+        apps: list[str] = []
+        if self._inner is not None:
+            try:
+                apps = await self._inner.connected_toolkits(user_id, **kwargs)
+            except ActionProviderError:
+                # The other apps are down: WhatsApp still answers
+                logger.warning("Action provider unreachable; WhatsApp only", exc_info=True)
         return [*apps, *(["whatsapp"] if "whatsapp" not in apps else [])]
 
     async def tools_for(self, user_id: str, toolkits: list[str]) -> list[dict]:
         others = [t for t in toolkits if t != "whatsapp"]
-        tools = (
-            await self._inner.tools_for(user_id, others)
-            if others and self._inner is not None
-            else []
-        )
+        tools: list[dict] = []
+        if others and self._inner is not None:
+            try:
+                tools = await self._inner.tools_for(user_id, others)
+            except ActionProviderError:
+                logger.warning("Action provider unreachable; WhatsApp only", exc_info=True)
         return [*tools, *(await self._whatsapp.tools_for(user_id, toolkits))]
 
     async def execute(self, user_id: str, tool: str, arguments: dict) -> ToolResult:
@@ -183,14 +219,15 @@ async def whatsapp_linked(redis_client, user_id: uuid.UUID) -> bool:
         cached = None
     if cached is not None:
         return (cached.decode() if isinstance(cached, bytes) else str(cached)) == "1"
+    ttl = LINKED_TTL_S
     try:
         linked = (await bridge.status(user_id)).get("state") == "linked"
     except BridgeError:
         logger.warning("WhatsApp bridge unreachable", exc_info=True)
-        return False
+        linked, ttl = False, UNREACHABLE_TTL_S
     try:
         if redis_client is not None:
-            await redis_client.set(key, "1" if linked else "0", ex=LINKED_TTL_S)
+            await redis_client.set(key, "1" if linked else "0", ex=ttl)
     except Exception:
         pass
     return linked

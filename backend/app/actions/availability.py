@@ -241,7 +241,7 @@ def unreachable_answer(request: str) -> str:
 
 def not_connected_answer(request: str, slug: str) -> str:
     """`slug` is a known slug or, for an app Echo cannot resolve, the name as given."""
-    if slug == "whatsapp":
+    if slug == "whatsapp" and settings.whatsapp_bridge_url:
         # Linked in Profile → WhatsApp, not among the apps
         return TEXTS[detect_language(request)]["whatsapp"]
     app = APP_NAMES.get(slug) or (slug if slug != slug.lower() else slug.title())

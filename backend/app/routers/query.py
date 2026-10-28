@@ -25,6 +25,7 @@ from app.actions.provider import ActionProviderError
 from app.actions.saved_tools import SavedContext
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.auth import get_current_user_id
+from app.core.config import settings
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
 from app.services.about_echo import about_echo_for
@@ -139,8 +140,6 @@ _TOOL_HINT = re.compile(
     r"remove|cancel|rinomin|rename|modific|cambi|change|"
     r"e?-?mail|posta|gmail|slack|telegram|messag|todoist|task|notion|nota\b|note\b|"
     r"inbox|ricordami|ricordarmi|ricordamel|remind|promemoria|"
-    # WhatsApp: what someone wrote
-    r"whatsapp|scritt|scrive|scriss|wrote|written|texted|"
     # Routines: something regular, or the routines themselves
     r"ogni\b|tutti i giorni|tutte le (mattine|sere)|every\b|each (day|morning|evening|week)|"
     r"daily|weekly|monthly|routine|incaric|smetti|stop\b|"
@@ -150,9 +149,19 @@ _TOOL_HINT = re.compile(
     re.IGNORECASE,
 )
 
+# What someone wrote or answered: WhatsApp, only on a server with its bridge
+_WHATSAPP_HINT = re.compile(
+    r"\b(whatsapp|chat|scritt|scrive|scriss|scriv|wrote|write|written|texted|"
+    r"rispost|rispond|answer|repl|mandat|sent me|messaggi)",
+    re.IGNORECASE,
+)
+
+
 def might_need_tools(question: str, history: list[dict]) -> bool:
     """Cheap pre-check before spending a provider call and the intent check."""
     if _TOOL_HINT.search(question):
+        return True
+    if settings.whatsapp_bridge_url and _WHATSAPP_HINT.search(question):
         return True
     last_assistant = next(
         (m for m in reversed(history) if m.get("role") == "assistant"), None

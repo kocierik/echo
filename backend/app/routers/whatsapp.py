@@ -4,7 +4,7 @@ and unlinking. The bridge does the work (services/whatsapp_bridge.py)."""
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.actions.whatsapp_provider import forget_linked
 from app.core.auth import get_current_user_id
@@ -25,6 +25,14 @@ class WhatsAppOut(BaseModel):
 class LinkIn(BaseModel):
     # With the country code ("+39 333 1234567"); the bridge keeps the digits
     phone: str = Field(min_length=8, max_length=30)
+
+    @field_validator("phone")
+    @classmethod
+    def _with_country_code(cls, value: str) -> str:
+        # "333 1234567" would be read as another country's number, maybe a stranger's
+        if not value.strip().startswith(("+", "00")):
+            raise ValueError("the number must start with its country code (+39…)")
+        return value
 
 
 class LinkOut(BaseModel):
@@ -64,6 +72,10 @@ async def link_whatsapp(
             raise HTTPException(status_code=409, detail="WhatsApp is already linked") from exc
         if exc.status == 400:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if exc.status == 504:
+            raise HTTPException(
+                status_code=504, detail="WhatsApp did not answer in time. Try again."
+            ) from exc
         raise HTTPException(status_code=502, detail="Could not reach WhatsApp") from exc
     await forget_linked(getattr(request.app.state, "redis", None), user_id)
     return LinkOut(code=code)

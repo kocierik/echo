@@ -29,6 +29,7 @@ class _Bridge:
         self.state = state
         self.asked: list[httpx.Request] = []
         self.down = False
+        self.link_status = 0
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.asked.append(request)
@@ -40,6 +41,8 @@ class _Bridge:
             phone = "+393330000000" if self.state == "linked" else None
             return httpx.Response(200, json={"state": self.state, "phone": phone})
         if path.endswith("/link"):
+            if self.link_status:
+                return httpx.Response(self.link_status, json={"error": "WhatsApp did not answer"})
             if self.state == "linked":
                 return httpx.Response(409, json={"error": "already linked"})
             return httpx.Response(200, json={"code": "ABCD1234"})
@@ -108,6 +111,28 @@ async def test_linking_gives_the_pairing_code(client, auth_headers, bridge):
 
     assert response.json() == {"code": "ABCD1234"}
     assert json.loads(bridge.asked[0].content) == {"phone": "+39 333 000 0000"}
+
+
+async def test_a_number_without_its_country_code_is_refused(client, auth_headers, bridge):
+    bridge.state = "unlinked"
+
+    response = await client.post(
+        "/api/whatsapp/link", headers=auth_headers, json={"phone": "333 000 0000"}
+    )
+
+    assert response.status_code == 422
+    assert bridge.asked == []
+
+
+async def test_whatsapp_not_answering_in_time_says_so(client, auth_headers, bridge):
+    bridge.state = "unlinked"
+    bridge.link_status = 504
+
+    response = await client.post(
+        "/api/whatsapp/link", headers=auth_headers, json={"phone": "+393330000000"}
+    )
+
+    assert response.status_code == 504
 
 
 async def test_linking_twice_is_a_conflict(client, auth_headers, bridge):
@@ -206,12 +231,76 @@ async def test_other_apps_still_go_to_their_provider(bridge):
     assert gmail.data == {"from": "composio"}
 
 
-def test_a_question_about_what_someone_wrote_may_need_an_app():
-    assert might_need_tools("cosa mi ha scritto Marco?", [])
-    assert might_need_tools("what did Ada write me on WhatsApp?", [])
+@pytest.mark.parametrize("question", [
+    "cosa mi ha scritto Marco?",
+    "What did Marco write me?",
+    "what did Ada write me on WhatsApp?",
+    "Marco mi ha risposto?",
+    "cosa mi ha mandato Giulia?",
+    "any chat from Ada?",
+    "did Ada answer?",
+])
+def test_ways_of_asking_about_messages_may_need_an_app(bridge, question):
+    assert might_need_tools(question, [])
 
 
-def test_whatsapp_not_linked_says_where_to_link_it():
+def test_without_a_bridge_those_words_go_to_memory_as_before(monkeypatch):
+    monkeypatch.setattr(settings, "whatsapp_bridge_url", "")
+
+    assert not might_need_tools("cosa mi ha scritto Marco?", [])
+    assert not might_need_tools("Marco mi ha risposto?", [])
+
+
+def test_without_a_bridge_whatsapp_is_not_said_to_be_in_profile(monkeypatch):
+    monkeypatch.setattr(settings, "whatsapp_bridge_url", "")
+
+    assert "Profile → WhatsApp" not in not_connected_answer("leggi WhatsApp", "whatsapp")
+
+
+async def test_a_bridge_that_is_down_is_not_asked_again_at_once(bridge):
+    bridge.down = True
+    redis = InMemoryRedis()
+
+    await with_whatsapp(NO_APPS, redis, TEST_USER_ID)
+    await with_whatsapp(NO_APPS, redis, TEST_USER_ID)
+
+    assert len(bridge.asked) == 1
+
+
+async def test_an_apps_outage_does_not_hide_whatsapp(bridge):
+    from app.actions.provider import ActionProviderError
+
+    class _Down:
+        async def connected_toolkits(self, user_id, **kwargs):
+            raise ActionProviderError("composio down")
+
+        async def tools_for(self, user_id, toolkits):
+            raise ActionProviderError("composio down")
+
+    provider = await with_whatsapp(_Down(), InMemoryRedis(), TEST_USER_ID)
+
+    assert await provider.connected_toolkits(str(TEST_USER_ID)) == ["whatsapp"]
+    tools = await provider.tools_for(str(TEST_USER_ID), ["gmail", "whatsapp"])
+    assert [t["function"]["name"] for t in tools] == [LIST_CHATS, READ_CHAT]
+
+
+async def test_messages_carry_the_chat_name_and_the_users_local_time(bridge, monkeypatch):
+    monkeypatch.setattr(settings, "user_timezone", "Europe/Rome")
+    provider = await with_whatsapp(NO_APPS, InMemoryRedis(), TEST_USER_ID)
+
+    result = await provider.execute(
+        str(TEST_USER_ID), READ_CHAT, {"person": "Marco", "since": "2026-10-28T09:00"}
+    )
+
+    first, mine = result.data["messages"]
+    assert (mine["from"], mine["chat_name"]) == ("you", "Marco")
+    # 08:00 UTC is 09:00 in Rome (CET)
+    assert first["at"].startswith("2026-10-28T09:00:00+01:00")
+    # A time without a zone is the user's
+    assert bridge.asked[-1].url.params["since"] == "2026-10-28T09:00:00+01:00"
+
+
+def test_whatsapp_not_linked_says_where_to_link_it(bridge):
     assert "Profile → WhatsApp" in not_connected_answer("cosa mi ha scritto Marco?", "whatsapp")
 
 

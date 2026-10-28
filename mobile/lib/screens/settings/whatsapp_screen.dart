@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/whatsapp.dart';
+import '../../services/api/api_exception.dart';
 import '../../services/api/whatsapp_api.dart';
 import '../../theme/app_theme.dart';
 import 'settings_components.dart';
@@ -12,6 +13,7 @@ String whatsAppText(WhatsAppStatus status) => switch (status.state) {
       'linked' => 'Linked: ${status.phone ?? ''}'.trim(),
       'linking' => 'Waiting for the code in WhatsApp…',
       'unreachable' => "Echo cannot reach WhatsApp right now.",
+      'blocked' => 'Refused by WhatsApp: the number may be blocked.',
       _ => 'Let Echo read your private chats.',
     };
 
@@ -55,23 +57,40 @@ final class _WhatsAppScreenState extends State<WhatsAppScreen> {
   }
 
   Future<void> _load() async {
+    _poll?.cancel();
     try {
       final status = await widget.api.getWhatsApp();
       if (!mounted) return;
       setState(() {
         _status = status;
         if (status.isLinked) _code = null;
+        if (_code != null && (status.state == 'unlinked' || status.state == 'blocked')) {
+          // The bridge gave the link up: the code was not typed in time or not accepted
+          _code = null;
+          if (status.state == 'unlinked') {
+            _error = 'The code expired or was not accepted. Ask for a new one.';
+          }
+        }
       });
-      _poll?.cancel();
-      if (_code != null) _poll = Timer(widget.pollInterval, () => unawaited(_load()));
     } catch (_) {
-      if (mounted) setState(() => _error = 'Could not load WhatsApp. Check your connection.');
+      if (mounted && _code == null) {
+        setState(() => _error = 'Could not load WhatsApp. Check your connection.');
+      }
+    }
+    // While a code is shown, keep checking, also after a failed check
+    if (mounted && _code != null) {
+      _poll = Timer(widget.pollInterval, () => unawaited(_load()));
     }
   }
 
   Future<void> _link() async {
     final phone = _phone.text.trim();
     if (phone.isEmpty || _busy) return;
+    if (!phone.startsWith('+') && !phone.startsWith('00')) {
+      // "333 1234567" would be another country's number, maybe a stranger's
+      setState(() => _error = 'Write the number with its country code, like +39 333 123 4567.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -81,6 +100,18 @@ final class _WhatsAppScreenState extends State<WhatsAppScreen> {
       if (!mounted) return;
       setState(() => _code = code);
       await _load();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      if (error.statusCode == 409) {
+        // Linked meanwhile (another phone, a retry)
+        await _load();
+        return;
+      }
+      setState(() => _error = switch (error.statusCode) {
+            504 => 'WhatsApp did not answer in time. Try again.',
+            422 => 'Write the number with its country code, like +39 333 123 4567.',
+            _ => 'Could not get a code. Check the number, with its country code, and try again.',
+          });
     } catch (_) {
       if (mounted) {
         setState(() => _error =
@@ -194,6 +225,15 @@ final class _WhatsAppScreenState extends State<WhatsAppScreen> {
             ),
           ),
         ] else if (status != null) ...[
+          if (status.state == 'blocked')
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+              child: Text(
+                'WhatsApp refused this device: the number may be blocked. You can try '
+                'linking again.',
+                style: textTheme.bodyMedium?.copyWith(color: palette.red),
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: TextField(
