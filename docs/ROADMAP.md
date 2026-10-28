@@ -46,7 +46,9 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Today a modo tuo (28/10, [design](superpowers/specs/2026-10-28-today-your-way-design.md)): le sezioni
       nell'ordine dell'utente, nascondibili ("Edit Today"); l'agenda di oggi; i luoghi visitati in Today; la ricerca
       da un'icona; in cima solo le azioni da confermare
-- [ ] Risposte a voce dal telefono (sintesi vocale, altoparlante o cuffie, anche ad app in background): il prossimo
+- [x] Risposte a voce dal telefono (28/10, [design](superpowers/specs/2026-10-28-spoken-answers-design.md)):
+      sintesi vocale del telefono, solo in cuffia o anche sull'altoparlante, anche ad app in background
+- [ ] Traduzione delle trascrizioni (#4): il prossimo
 - [x] Far scoprire le funzioni: pagina "What Echo can do" con esempi da toccare, suggerimenti una volta sola
       (registra la tua voce, nomina chi parla), riga "Hold 🎙 to talk · 📷" in Ask
 - [x] Live Activity (iOS 16.1+): schermata di blocco e Dynamic Island con stato (ascolta/muto/offline),
