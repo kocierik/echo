@@ -29,6 +29,11 @@ each person has their own memory; the Android app builds from the same code but 
 - **Other languages, translated.** Add the other languages spoken around you (Profile → Language):
   Echo recognises which one each segment is in, and a conversation's lines in another language
   are tagged and can be translated into yours, under the originals.
+- **Knows you, and your documents.** Profile → Memory: About you holds short facts about you, used
+  in every answer; Echo suggests new ones from what you say (used only once you keep them) and
+  remembers or forgets one when you ask ("Echo, ricordati che sono vegetariano"). Documents (PDF,
+  Word, text, Markdown) are searched when Echo answers, naming the document; only their text is
+  kept, never the file.
 - **Reads WhatsApp (optional, unofficial).** Link your number in Profile → WhatsApp and ask "cosa mi
   ha scritto Marco?", or make a routine of it. Private chats only, read-only, held in the bridge's
   memory for 7 days and never written to disk; the connection is not official and WhatsApp may
@@ -357,6 +362,12 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 ### Memory
 - `GET /api/conversations?limit=&offset=&date_from=&date_to=` — newest first, with `emoji`,
   `duration_s`, `is_open` (still capturing), up to three `people` and `task_count`.
+- `GET/POST /api/facts`, `PATCH/DELETE /api/facts/{id}`, `POST /api/facts/{id}/keep` — About you:
+  kept facts (in every answer, 60 at most) and suggestions (Keep, or DELETE to discard: not
+  suggested again).
+- `GET/POST /api/documents` (multipart `file`: PDF, DOCX, TXT, MD; 10 MB; 30 at most),
+  `GET/DELETE /api/documents/{id}` — the text of a file, indexed by the worker for the memory;
+  one whose text cannot be read is refused with the reason.
 - `GET /api/conversations/{id}` — Segments in order (`segment_id`, `text`, `speaker_label`,
   `status`, `language`, pending ones included) and the extracted entities with their `source_text`.
 - `POST /api/conversations/{id}/translate` → `{language, lines: {segment_id: text}}` — the lines

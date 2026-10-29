@@ -127,8 +127,10 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [ ] Istruzioni personali ("chiamami Erik, rispondi breve, il lavoro è su Slack") usate da chat, voce e briefing
 - [ ] Memoria a grafo: fatti tra persone e cose (soggetto → relazione → oggetto, con "vero da/a" e la frase
       da cui viene) in Postgres, niente database a grafo; nella ricerca si seguono i legami per 1-2 passi
-- [ ] Esperimento "Cosa so di te" (16/10: da vedere se funziona): un profilo di fatti stabili, visibile e
-      correggibile in Settings, usato in ogni risposta; niente deduzioni su salute, politica, religione, vita sessuale
+- [x] "Cosa so di te" (29/10, [design](superpowers/specs/2026-10-29-memory-and-documents-design.md)): Profile →
+      Memory → About you, fatti stabili usati in ogni risposta, suggeriti dalle conversazioni e tenuti solo con un
+      tocco; niente salute, politica, religione, vita sessuale, etnia, debiti. E i documenti (PDF, Word, testo)
+      cercati dalla memoria
 - [x] Incarichi ricorrenti (22/10): creati a voce o in Ask ("ogni mattina alle 7 dimmi il meteo a Milano"),
       eseguiti dal server all'ora (giornalieri, feriali, settimanali, mensili; max 10), in Profile → Routines;
       senza strumenti che chiedono Confirm
