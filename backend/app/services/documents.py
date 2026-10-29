@@ -16,6 +16,7 @@ import uuid
 import zipfile
 
 from docx import Document as WordDocument
+from docx.oxml.ns import qn
 from pypdf import PdfReader
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,7 @@ MAX_UNZIPPED = 50 * 1024 * 1024
 MAX_ZIP_ENTRIES = 2000
 # About 300,000 words: past this a document is too long to search well
 MAX_CHARS = 2_000_000
+_TOO_MUCH_TEXT = "Too much text in it: at most about 300,000 words"
 # More than this share of control characters: binary, not text
 MAX_CONTROL_SHARE = 0.05
 
@@ -104,13 +106,26 @@ def _pdf_text(data: bytes) -> tuple[str, int]:
                 raise DocumentError("This PDF is protected by a password")
         if len(reader.pages) > MAX_PAGES:
             raise DocumentError(f"Too many pages: at most {MAX_PAGES}")
-        pages = [page.extract_text() or "" for page in reader.pages]
+        pages = []
+        read = 0
+        for page in reader.pages:
+            pages.append(page.extract_text() or "")
+            read += len(pages[-1])
+            # Stopped as soon as it is too much, not after every page is read
+            if read > MAX_CHARS:
+                raise DocumentError(_TOO_MUCH_TEXT)
     except DocumentError:
         raise
     except Exception as exc:
         # Malformed files raise anything: a parse error, a decompression guard, a type error
         raise DocumentError("This PDF cannot be read") from exc
     return "\n\n".join(page.strip() for page in pages if page.strip()), len(pages)
+
+
+def _cell_text(tc) -> str:
+    return "\n".join(
+        "".join(t.text or "" for t in p.iter(qn("w:t"))) for p in tc.iter(qn("w:p"))
+    )
 
 
 def _docx_text(data: bytes) -> str:
@@ -121,9 +136,17 @@ def _docx_text(data: bytes) -> str:
                 raise DocumentError("This Word document is too large once opened")
         word = WordDocument(io.BytesIO(data))
         parts = [p.text for p in word.paragraphs]
+        read = sum(len(part) for part in parts)
         for table in word.tables:
-            for row in table.rows:
-                parts.append(" | ".join(cell.text for cell in row.cells))
+            # The cells as written: python-docx's row.cells repeats a merged cell in every
+            # row and column it spans, so one merged cell could multiply the text
+            for tr in table._tbl.tr_lst:
+                parts.append(" | ".join(
+                    _cell_text(tc) for tc in tr.tc_lst if tc.vMerge != "continue"
+                ))
+                read += len(parts[-1])
+                if read > MAX_CHARS:
+                    raise DocumentError(_TOO_MUCH_TEXT)
     except DocumentError:
         raise
     except Exception as exc:
@@ -166,7 +189,7 @@ def extract_text(kind: str, data: bytes) -> tuple[str, int | None]:
             else "No text found in it"
         )
     if len(text) > MAX_CHARS:
-        raise DocumentError("Too much text in it: at most about 300,000 words")
+        raise DocumentError(_TOO_MUCH_TEXT)
     return text, pages
 
 

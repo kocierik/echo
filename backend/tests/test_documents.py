@@ -284,3 +284,43 @@ async def test_someone_elses_document_is_404(client, auth_headers, db_session):
     assert (
         await client.delete(f"/api/documents/{other.id}", headers=auth_headers)
     ).status_code == 404
+
+
+def test_a_cell_merged_down_a_table_is_read_once():
+    # Security audit 29/10: each row repeated the merged cell, so a long table with one
+    # merged cell multiplied its text (and the work) by the rows
+    document = WordDocument()
+    table = document.add_table(rows=300, cols=2)
+    merged = table.cell(0, 0).merge(table.cell(299, 0))
+    merged.text = "SPANNING " * 50
+    for row in range(300):
+        table.cell(row, 1).text = f"riga {row}"
+    out = io.BytesIO()
+    document.save(out)
+
+    text, _ = documents.extract_text("docx", out.getvalue())
+
+    assert text.count("SPANNING") == 50
+    assert "riga 0" in text and "riga 299" in text
+
+
+def test_a_pdf_stops_being_read_once_it_has_too_much_text(monkeypatch):
+    from pypdf import PageObject
+
+    writer = PdfWriter()
+    for _ in range(5):
+        writer.add_blank_page(width=200, height=200)
+    out = io.BytesIO()
+    writer.write(out)
+    read = []
+
+    def page_text(self, *args, **kwargs):
+        read.append(1)
+        return "x" * 100
+
+    monkeypatch.setattr(PageObject, "extract_text", page_text)
+    monkeypatch.setattr(documents, "MAX_CHARS", 250)
+
+    with pytest.raises(documents.DocumentError, match="Too much text"):
+        documents.extract_text("pdf", out.getvalue())
+    assert len(read) == 3
