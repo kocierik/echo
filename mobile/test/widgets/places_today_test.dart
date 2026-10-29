@@ -101,7 +101,7 @@ void main() {
       _visit('v1', DateTime(2026, 10, 28, 8, 10), left: DateTime(2026, 10, 28, 8, 50),
           name: 'Home'),
       _visit('v2', DateTime(2026, 10, 28, 9), address: 'Via Roma 12, Milano'),
-    ]);
+    ], now: DateTime(2026, 10, 28, 21));
 
     expect(find.text("Where you've been"), findsOneWidget);
     expect(find.text('08:10–08:50'), findsOneWidget);

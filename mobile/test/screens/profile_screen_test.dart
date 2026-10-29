@@ -206,6 +206,16 @@ void main() {
     expect(find.byKey(const Key('spoken-answers-control')), findsOneWidget);
   });
 
+  testWidgets('Memory opens About you and Documents', (tester) async {
+    await pumpSettings(tester);
+
+    await tester.tap(find.byKey(const Key('profile-memory')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('memory-about-you')), findsOneWidget);
+    expect(find.byKey(const Key('memory-documents')), findsOneWidget);
+  });
+
   testWidgets('no WhatsApp row on a server without it', (tester) async {
     await pumpSettings(tester);
 

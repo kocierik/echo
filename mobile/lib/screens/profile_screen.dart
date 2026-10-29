@@ -32,6 +32,7 @@ import 'settings/devices_screen.dart';
 import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
 import 'settings/logout_row.dart';
+import 'settings/memory_screen.dart';
 import 'settings/notification_settings_screen.dart';
 import 'settings/phone_apps_screen.dart';
 import 'settings/places_visited_screen.dart';
@@ -334,6 +335,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                   if (account != null && mounted) setState(() => _account = account);
                 },
+              ),
+              SettingsRow(
+                key: const Key('profile-memory'),
+                icon: Icons.psychology_outlined,
+                title: 'Memory',
+                subtitle: 'What Echo knows about you, and your documents.',
+                onTap: () => _push(MemoryScreen(facts: _api, documents: _api)),
               ),
               SettingsRow(
                 icon: Icons.record_voice_over_outlined,

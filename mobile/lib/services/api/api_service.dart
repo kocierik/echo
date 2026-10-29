@@ -4,6 +4,7 @@ import 'auth_api.dart';
 import 'chat_api.dart';
 import 'device_api.dart';
 import 'memory_api.dart';
+import 'memory_items_api.dart';
 import 'notifications_api.dart';
 import 'photo_api.dart';
 import 'places_api.dart';
@@ -46,6 +47,7 @@ class ApiService extends ApiClient
         PlanEndpoints,
         WearableEndpoints,
         WhatsAppEndpoints,
+        MemoryItemsEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({

@@ -33,6 +33,7 @@ dependencies:
   # 4.x: 5.x needs a newer Swift than the Xcode in use (its Package.swift)
   geocoding: 4.0.0
   flutter_tts: 4.2.5
+  file_picker: 13.3.0
 
 dev_dependencies:
   flutter_test:
