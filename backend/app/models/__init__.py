@@ -5,6 +5,7 @@ from app.models.chat_session import ChatSession
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.digest import Digest
+from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
 from app.models.firmware_release import FirmwareRelease
@@ -21,9 +22,8 @@ from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.transcription_edit import TranscriptionEdit
 from app.models.transcription_translation import TranscriptionTranslation
-from app.models.user_fact import UserFact
-from app.models.document import Document, DocumentChunk
 from app.models.user import User
+from app.models.user_fact import UserFact
 from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
 

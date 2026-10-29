@@ -116,13 +116,14 @@ async def test_read_tool_result_is_summarized():
     # The assistant turn with the tool call precedes the tool message
     assistant = [m for m in llm.call_log[1] if m.role == "assistant"]
     assert assistant[-1].tool_calls[0].name == "GMAIL_FETCH_EMAILS"
-    # Tools offered: search_memory, Echo's own tools (routines, to-dos, Saved), the
+    # Tools offered: search_memory, Echo's own tools (routines, to-dos, Saved, About you), the
     # connected toolkit's tools
     names = [t["function"]["name"] for t in llm.tools_log[0]]
     assert names == [
         "search_memory", "ECHO_CREATE_ROUTINE", "ECHO_LIST_ROUTINES", "ECHO_DELETE_ROUTINE",
         "ECHO_CREATE_TASK", "ECHO_SAVE_ITEM", "ECHO_UPDATE_ITEM", "ECHO_FIND_ITEMS",
-        "ECHO_SUM_ITEMS", "ECHO_REMOVE_ITEM", "GMAIL_FETCH_EMAILS",
+        "ECHO_SUM_ITEMS", "ECHO_REMOVE_ITEM", "ECHO_REMEMBER_ABOUT_USER",
+        "ECHO_FORGET_ABOUT_USER", "GMAIL_FETCH_EMAILS",
     ]
 
 

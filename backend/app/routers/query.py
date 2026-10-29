@@ -145,6 +145,8 @@ _TOOL_HINT = re.compile(
     r"daily|weekly|monthly|routine|incaric|smetti|stop\b|"
     # Saved: keeping things to find again, and what was spent on them
     r"salv|ricordati|parcheggi|park|save\b|keep\b|tieni|speso|spent|spend|scontrin|"
+    # About you: a fact to remember or forget
+    r"dimentic|forget|remember|"
     r"receipt|togli)",
     re.IGNORECASE,
 )

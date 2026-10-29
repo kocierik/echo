@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
+from app.actions.fact_tools import FACT_TOOL_NAMES, FACT_TOOLS, run_fact_tool
 from app.actions.pending import create_pending_action
 from app.actions.phone_provider import PHONE_APP_NAMES
 from app.actions.policy import ToolTier, classify_call, classify_tool, toolkit_of
@@ -397,9 +398,11 @@ async def run_action_agent(
         ]
     offered = {_tool_name(schema) for schema in external_tools}
     own = (
-        ROUTINE_TOOL_NAMES | TODO_TOOL_NAMES | SAVED_TOOL_NAMES if routine_tools else frozenset()
+        ROUTINE_TOOL_NAMES | TODO_TOOL_NAMES | SAVED_TOOL_NAMES | FACT_TOOL_NAMES
+        if routine_tools
+        else frozenset()
     )
-    own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS] if routine_tools else []
+    own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS, *FACT_TOOLS] if routine_tools else []
     saved = saved or SavedContext()
     if saved.chat_session_id is None:
         saved.chat_session_id = session_id
@@ -518,6 +521,8 @@ async def _run_tool(
     if call.name in own:
         if call.name in TODO_TOOL_NAMES:
             result = await run_todo_tool(db, user_id, call.name, call.arguments)
+        elif call.name in FACT_TOOL_NAMES:
+            result = await run_fact_tool(db, user_id, call.name, call.arguments)
         elif call.name in SAVED_TOOL_NAMES:
             result = await run_saved_tool(
                 db, user_id, source, call.name, call.arguments, saved or SavedContext(), request

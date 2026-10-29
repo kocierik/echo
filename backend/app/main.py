@@ -29,6 +29,7 @@ from app.routers import (
     digest,
     entities,
     export,
+    facts,
     feedback,
     firmware,
     notifications,
@@ -134,6 +135,7 @@ app.include_router(saved.router, prefix=settings.api_prefix)
 app.include_router(places.router, prefix=settings.api_prefix)
 app.include_router(plan.router, prefix=settings.api_prefix)
 app.include_router(whatsapp.router, prefix=settings.api_prefix)
+app.include_router(facts.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):

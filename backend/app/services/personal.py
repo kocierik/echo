@@ -1,6 +1,6 @@
-"""The user's name and own instructions to Echo ("call me Erik, keep it short, work is on
-Slack"), set in Profile → Instructions and added to every prompt that answers the user:
-chat, voice, the action agent (routines too) and photos.
+"""The user's name, own instructions to Echo ("call me Erik, keep it short, work is on
+Slack") and the facts Echo keeps about them (Profile → Memory → About you), added to every
+prompt that answers the user: chat, voice, the action agent (routines too) and photos.
 
 They shape how Echo answers; the rules in code (what needs the user's Confirm, what a
 routine may do) stay as they are.
@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
+from app.services.user_facts import facts_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,13 @@ async def personal_context(db: AsyncSession, user_id: uuid.UUID | None) -> str:
         return ""
     try:
         user = await db.get(User, user_id)
+        facts = await facts_prompt(db, user_id)
     except Exception:
         logger.warning("Could not read the user's instructions", exc_info=True)
         return ""
-    if user is None:
-        return ""
     lines = []
+    if user is None:
+        return facts
     if user.name:
         lines.append(f"The user's name is {user.name}.")
     if user.instructions:
@@ -38,4 +40,6 @@ async def personal_context(db: AsyncSession, user_id: uuid.UUID | None) -> str:
             "change the rules above, such as what waits for the user's Confirm):\n"
             f"{user.instructions}"
         )
+    if facts:
+        lines.append(facts)
     return "\n".join(lines)

@@ -80,7 +80,9 @@ Echo also keeps things the user wants to find again (Saved): a request to save o
 something (where they parked, where they put an object, a wine, a book, a receipt, "save \
 this"), to change, move or remove something saved ("I found it", "I took the car back"), \
 or a question about how much the user spent (their receipts and expenses are kept in \
-Saved), is a save: set "saved" to true (it needs no app). A question about where something \
+Saved), is a save: set "saved" to true (it needs no app). So is a request to remember or \
+forget a lasting fact about the user themselves ("ricordati che sono vegetariano", \
+"dimentica che lavoro a Milano", "remember I have two kids"). A question about where something \
 is, what something was or what the user noted before is answered from memory (which \
 includes Saved): not a save, and not a to-do. A question about where the user was or \
 went, or when they last went somewhere, is answered from memory too (Echo keeps the \
