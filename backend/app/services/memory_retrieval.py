@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
+from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
 from app.services import places
 from app.services.people import in_person_conversations, names_person
@@ -150,8 +151,12 @@ async def retrieve_memory_context(
     places_context = (
         await places_visited(db, user_id, question, date_range) if include_places else ""
     )
+    documents_context = await document_passages(db, user_id, question_embedding)
 
-    if not (rows or entities_context or people_context or saved_context or places_context):
+    if not (
+        rows or entities_context or people_context or saved_context or places_context
+        or documents_context
+    ):
         return MemoryContext(context="", sources=[], date_range=date_range)
 
     context_parts = []
@@ -169,6 +174,12 @@ async def retrieve_memory_context(
         context_parts.append(
             "Places visited (from the user's phone: stays of 10 minutes or more, with "
             f"arrival and departure):\n{places_context}"
+        )
+
+    if documents_context:
+        context_parts.append(
+            "From the user's documents (files they added; name the document when you use "
+            f"it):\n{documents_context}"
         )
 
     if conversation_summaries:
@@ -196,6 +207,45 @@ async def retrieve_memory_context(
         context="\n\n---\n\n".join(context_parts),
         sources=sources,
         date_range=date_range,
+    )
+
+
+# A document passage joins an answer only this close to the question, so documents never
+# crowd out the conversations with something unrelated
+DOCUMENT_MIN_SIMILARITY = 0.3
+DOCUMENT_PASSAGES = 3
+
+
+async def document_passages(
+    db: AsyncSession, user_id: uuid.UUID, question_embedding: list[float]
+) -> str:
+    """The user's document passages closest to the question, each under its document's
+    name ("" when none is close enough, or they cannot be read)."""
+    similarity = (1 - DocumentChunk.embedding.cosine_distance(question_embedding)).label(
+        "similarity"
+    )
+    try:
+        async with db.begin_nested():
+            rows = (
+                await db.execute(
+                    select(DocumentChunk.text, Document.title, similarity)
+                    .join(Document, Document.id == DocumentChunk.document_id)
+                    .where(
+                        DocumentChunk.user_id == user_id,
+                        Document.status == "ready",
+                        DocumentChunk.embedding.isnot(None),
+                    )
+                    .order_by(DocumentChunk.embedding.cosine_distance(question_embedding))
+                    .limit(DOCUMENT_PASSAGES)
+                )
+            ).all()
+    except Exception:
+        logger.warning("Could not search the documents for a memory answer", exc_info=True)
+        return ""
+    return "\n\n".join(
+        f'From your document "{row.title}":\n{row.text}'
+        for row in rows
+        if float(row.similarity) >= DOCUMENT_MIN_SIMILARITY
     )
 
 
