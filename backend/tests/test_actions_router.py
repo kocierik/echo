@@ -10,6 +10,7 @@ from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
 from app.routers import actions as r
+from app.services.chat_history import context_key
 from tests.fakes.action_provider import FakeActionProvider
 
 USER = uuid.uuid4()
@@ -303,7 +304,7 @@ async def test_outcome_message_is_flagged_and_added_to_the_redis_context():
     a = await _pending(db, s)
     redis = _Redis()
     history = [{"role": "user", "content": f"q{i}"} for i in range(20)]
-    redis.store[f"session:{s.id}"] = json.dumps(history).encode()
+    redis.store[context_key(USER, s.id)] = json.dumps(history).encode()
 
     await r.confirm_action(
         a.id, user_id=USER, db=db, redis_client=redis,
@@ -311,11 +312,11 @@ async def test_outcome_message_is_flagged_and_added_to_the_redis_context():
     )
 
     assert s.messages[-1]["outcome"] is True
-    stored = json.loads(redis.store[f"session:{s.id}"])
+    stored = json.loads(redis.store[context_key(USER, s.id)])
     assert len(stored) == 20  # trimmed like query.py
     assert stored[-1] == {"role": "assistant", "content": "Done.", "actions": True}
     assert stored[0] == {"role": "user", "content": "q1"}
-    assert redis.ttl[f"session:{s.id}"] == 30 * 60
+    assert redis.ttl[context_key(USER, s.id)] == 30 * 60
 
 
 async def test_outcome_without_redis_context_or_for_voice_sessions_is_not_cached():
@@ -330,9 +331,9 @@ async def test_outcome_without_redis_context_or_for_voice_sessions_is_not_cached
     db = FakeDb()
     voice = _session([{"role": "user", "content": "send an email"}], kind="voice")
     a = await _pending(db, voice)
-    redis.store[f"session:{voice.id}"] = b"[]"
+    redis.store[context_key(USER, voice.id)] = b"[]"
     await r.cancel_action(a.id, user_id=USER, db=db, redis_client=redis)
-    assert redis.store[f"session:{voice.id}"] == b"[]"
+    assert redis.store[context_key(USER, voice.id)] == b"[]"
 
 
 async def test_voice_updates_skip_confirm_outcome_messages():

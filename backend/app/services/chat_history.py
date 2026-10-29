@@ -22,25 +22,31 @@ SESSION_TTL_SECONDS = 30 * 60
 MAX_HISTORY_MESSAGES = 20
 
 
+def context_key(user_id: uuid.UUID, session_id: str | uuid.UUID) -> str:
+    """The Redis key of a session's follow-up context: under its user, so a session id
+    alone never reads another user's turns."""
+    return f"session:{user_id}:{session_id}"
+
+
 async def get_session_history(
-    redis_client: aioredis.Redis, session_id: str
+    redis_client: aioredis.Redis, user_id: uuid.UUID, session_id: str
 ) -> list[dict]:
     """Retrieve conversation history from Redis."""
-    raw = await redis_client.get(f"session:{session_id}")
+    raw = await redis_client.get(context_key(user_id, session_id))
     if raw is None:
         return []
     return json.loads(raw)
 
 
 async def save_session_history(
-    redis_client: aioredis.Redis, session_id: str, history: list[dict]
+    redis_client: aioredis.Redis, user_id: uuid.UUID, session_id: str, history: list[dict]
 ):
     """Save conversation history to Redis with TTL refresh."""
     # Trim to max history
     if len(history) > MAX_HISTORY_MESSAGES:
         history = history[-MAX_HISTORY_MESSAGES:]
     await redis_client.set(
-        f"session:{session_id}",
+        context_key(user_id, session_id),
         json.dumps(history),
         ex=SESSION_TTL_SECONDS,
     )
@@ -76,7 +82,7 @@ async def load_thread_history(
     persisted = await load_persisted_history(db, user_id, session_uuid)
     if persisted:
         return persisted
-    return await get_session_history(redis_client, str(session_uuid))
+    return await get_session_history(redis_client, user_id, str(session_uuid))
 
 
 async def record_turn(
@@ -100,7 +106,7 @@ async def record_turn(
         {"role": "assistant", "content": answer, **(assistant_extra or {})},
     ]
     history.extend(turn)
-    await save_session_history(redis_client, session_id, history)
+    await save_session_history(redis_client, user_id, session_id, history)
     now = datetime.now(timezone.utc).isoformat()
     stored = [
         {**turn[0], "timestamp": now, "source": "chat"},

@@ -29,7 +29,7 @@ from app.models.chat_session import ChatSession
 from app.models.pending_action import PendingAction
 from app.models.photo import Photo
 from app.models.routine_run import RoutineRun
-from app.services.chat_history import save_session_history
+from app.services.chat_history import context_key, save_session_history
 from app.services.language import detect_language
 
 logger = logging.getLogger(__name__)
@@ -141,17 +141,19 @@ async def disconnect_toolkit(
     return Response(status_code=204)
 
 
-async def _append_to_context(redis_client, session_id: uuid.UUID, text: str) -> None:
+async def _append_to_context(
+    redis_client, user_id: uuid.UUID, session_id: uuid.UUID, text: str
+) -> None:
     """Add the outcome to the session's Redis context (if still alive) for the next turn."""
     if redis_client is None:
         return
     try:
-        raw = await redis_client.get(f"session:{session_id}")
+        raw = await redis_client.get(context_key(user_id, session_id))
         if raw is None:
             return
         history = json.loads(raw)
         history.append({"role": "assistant", "content": text, "actions": True})
-        await save_session_history(redis_client, str(session_id), history)
+        await save_session_history(redis_client, user_id, str(session_id), history)
     except Exception:
         logger.warning("Could not add the action outcome to the chat context", exc_info=True)
 
@@ -205,7 +207,7 @@ async def _record_outcome(
         )
         session.messages = messages
         if session.kind == "chat":
-            await _append_to_context(redis_client, session.id, text)
+            await _append_to_context(redis_client, session.user_id, session.id, text)
     return text
 
 

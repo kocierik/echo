@@ -38,6 +38,9 @@ class _FakeRedis:
     async def set(self, key, value, ex=None):
         self.store[key] = value
 
+    async def get(self, key):
+        return self.store.get(key)
+
 
 def _turn(question, answer):
     return [
@@ -112,7 +115,7 @@ async def test_record_turn_updates_redis_context_and_appends_only_new_turn(monke
     assert question["content"] == "nuova" and question["source"] == "chat"
     assert answer["content"] == "ok" and answer["notify"] is False
     assert question["timestamp"] and answer["timestamp"]
-    assert "session:sid" in redis.store
+    assert query_module.context_key(USER_ID, "sid") in redis.store
 
 
 @pytest.mark.asyncio
@@ -136,3 +139,23 @@ async def test_missing_persisted_session_gives_empty_history():
     history = await query_module.load_persisted_history(_FakeDb(None), USER_ID, uuid.uuid4())
 
     assert history == []
+
+
+async def test_another_user_never_reads_a_sessions_redis_context(monkeypatch):
+    # Security audit 29/10: the follow-up context was found by the session id alone
+    async def fake_persist(*_args, **_kwargs):
+        pass
+
+    monkeypatch.setattr(query_module, "persist_chat_session", fake_persist)
+    redis = _FakeRedis()
+    session = uuid.uuid4()
+    await query_module.record_turn(
+        redis, _FakeDb(), USER_ID, str(session), [], "il mio IBAN?", "IT00 (dummy)"
+    )
+    other = uuid.UUID("a0000000-0000-0000-0000-000000000002")
+
+    theirs = await query_module.load_thread_history(redis, _FakeDb(), other, session)
+    mine = await query_module.load_thread_history(redis, _FakeDb(), USER_ID, session)
+
+    assert theirs == []
+    assert mine == _turn("il mio IBAN?", "IT00 (dummy)")
