@@ -184,6 +184,8 @@ async def get_current_api_key(
     api_key_record.last_used_at = datetime.now(timezone.utc)
     # The model calls of this request are counted for the key's user (services/usage.py)
     usage_owner.set(api_key_record.user_id)
+    # Rate limits are per account, not per key (core/rate_limit.py)
+    request.state.rate_limit_owner = str(api_key_record.user_id)
 
     return api_key_record
 

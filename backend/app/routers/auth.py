@@ -151,11 +151,26 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
         for key in limits:
             await release_attempt(redis, key)
 
-    return await _sign_in_phone(db, user, body)
+    return await _sign_in_phone(db, user, body, request)
 
 
-async def _sign_in_phone(db: AsyncSession, user: User, body: LoginRequest) -> LoginResponse:
+# Phones signed in to one account at once: the next sign-in signs out the oldest, so
+# signing in again and again cannot pile up keys (each with its own rate budget)
+MAX_PHONES = 10
+
+
+async def _sign_in_phone(
+    db: AsyncSession, user: User, body: LoginRequest, request: Request
+) -> LoginResponse:
     """A new key for this phone, shown once."""
+    phones = (await db.scalars(
+        select(ApiKey)
+        .where(ApiKey.user_id == user.id, ApiKey.platform.is_not(None), ApiKey.scope == "full")
+        .order_by(ApiKey.created_at.desc())
+    )).all()
+    for oldest in phones[MAX_PHONES - 1:]:
+        await db.delete(oldest)
+        await _forget(request, oldest)
     key = secrets.token_urlsafe(32)
     record = ApiKey(
         user_id=user.id,
@@ -226,7 +241,7 @@ async def register(
         user.language = spoken if spoken in SUPPORTED_LANGUAGES else "en"
     else:
         user.language = settings.stt_language
-    return await _sign_in_phone(db, user, body)
+    return await _sign_in_phone(db, user, body, request)
 
 
 @router.get("/me", response_model=Me)

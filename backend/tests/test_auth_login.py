@@ -6,6 +6,7 @@ from sqlalchemy import select
 
 from app.core import auth
 from app.models.api_key import ApiKey
+from app.routers.auth import MAX_PHONES
 from app.services.passwords import create_user
 from tests.conftest import TEST_USER_ID
 
@@ -206,3 +207,20 @@ async def test_a_blank_device_name_is_rejected(client, db_session):
     response = await client.post("/api/auth/login", json=_login(name="   "))
 
     assert response.status_code == 422
+
+
+async def test_signing_in_past_the_phone_limit_signs_out_the_oldest_phone(client, db_session):
+    await _owner(db_session)
+
+    keys = []
+    for i in range(MAX_PHONES + 1):
+        response = await client.post("/api/auth/login", json=_login(name=f"phone {i}"))
+        keys.append(response.json()["api_key"])
+
+    phones = (await db_session.scalars(
+        select(ApiKey).where(ApiKey.user_id == TEST_USER_ID, ApiKey.platform.is_not(None))
+    )).all()
+    assert len(phones) == MAX_PHONES
+    oldest = await client.get("/api/conversations", headers={"X-API-Key": keys[0]})
+    newest = await client.get("/api/conversations", headers={"X-API-Key": keys[-1]})
+    assert (oldest.status_code, newest.status_code) == (401, 200)

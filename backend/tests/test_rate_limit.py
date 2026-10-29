@@ -23,7 +23,9 @@ from tests.fakes.redis import InMemoryRedis
 
 KEY_A = "key-a-very-secret"
 KEY_B = "key-b-very-secret"
+KEY_A_PHONE_2 = "key-a-second-phone-secret"
 USER = uuid.UUID("c0000000-0000-0000-0000-000000000003")
+OTHER_USER = uuid.UUID("c0000000-0000-0000-0000-000000000004")
 
 
 def _request(headers=None, client=("203.0.113.7", 1234)) -> Request:
@@ -42,9 +44,10 @@ class _Result:
 class _Session:
     async def execute(self, stmt):
         params = stmt.compile().params.values()
-        known = {hash_api_key(KEY_A), hash_api_key(KEY_B)}
-        hit = next((p for p in params if p in known), None)
-        return _Result(SimpleNamespace(user_id=USER, last_used_at=None) if hit else None)
+        owners = {hash_api_key(KEY_A): USER, hash_api_key(KEY_A_PHONE_2): USER,
+                  hash_api_key(KEY_B): OTHER_USER}
+        hit = next((owners[p] for p in params if p in owners), None)
+        return _Result(SimpleNamespace(user_id=hit, last_used_at=None) if hit else None)
 
     async def commit(self):
         pass
@@ -140,11 +143,18 @@ def test_the_21st_query_with_the_same_key_is_429(client):
     assert _ask(client, KEY_A).status_code == 429
 
 
-def test_two_keys_from_the_same_ip_have_separate_budgets(client):
+def test_two_accounts_from_the_same_ip_have_separate_budgets(client):
     for _ in range(20):
         assert _ask(client, KEY_A).status_code == 200
     assert _ask(client, KEY_A).status_code == 429
     assert _ask(client, KEY_B).status_code == 200
+
+
+def test_the_keys_of_one_account_share_its_budget(client):
+    # A new key per sign-in must not buy a new budget
+    for _ in range(20):
+        assert _ask(client, KEY_A).status_code == 200
+    assert _ask(client, KEY_A_PHONE_2).status_code == 429
 
 
 def test_requests_without_a_key_share_the_ip_budget(client):
