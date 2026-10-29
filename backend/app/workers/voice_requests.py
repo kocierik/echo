@@ -257,6 +257,11 @@ async def _process(
     if segment is None or segment.transcription is None:
         logger.warning(f"[Voice] Segment {segment_id} not found or not transcribed")
         return True
+    # Only the wearer may address Echo: a request said by someone else (the voice
+    # fingerprint or the energy rule tagged it) is never acted on as the wearer
+    if getattr(segment, "speaker", None) == "other":
+        logger.info(f"[Voice] Segment {segment_id}: said by someone else, ignored")
+        return True
 
     command = await collect_command(db, segment, _utcnow())
     if command is None:

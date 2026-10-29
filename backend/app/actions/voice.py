@@ -121,6 +121,9 @@ async def is_assistant_request(llm: LLMService, text: str) -> bool:
 def _follows(wake: Segment, segment: Segment, window_end: datetime) -> bool:
     if segment.id == wake.id or segment.user_id != wake.user_id:
         return False
+    # Another person's words never extend the wearer's command
+    if getattr(segment, "speaker", None) == "other":
+        return False
     if not wake.recorded_at < segment.recorded_at < window_end:
         return False
     # Segments not yet grouped into a conversation (analysis still running) belong too
