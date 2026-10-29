@@ -111,6 +111,14 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   illeggibile (PDF scansionato, password, file binario, zip enorme) finisce "failed" con il motivo. Le risposte di
   memoria usano i 3 passaggi più vicini (similarità ≥ 0,35), nominando il documento; le app collegate via MCP non
   vedono i documenti. Fatti e documenti sono nell'export.
+- **Assistenti** (29/10, Profile → Assistants; idee da Khoj agents, Letta e le prompt app di Omi): Echo dedicato a
+  una parte della vita, da modello (Lavoro, Dieta, Sonno; dieta e sonno dicono di non essere un medico) o da zero:
+  nome, emoji, istruzioni (2.000 caratteri), note (3.000) che l'assistente aggiorna da solo con uno strumento
+  (aggiunge o toglie una riga; piene, si buttano le più vecchie), documenti scelti (nessuno: tutti); 10 al massimo.
+  In Ask una nuova chat parte con un assistente (chip Echo e uno per assistente); la sua chat passa sempre
+  dall'agente con le sue istruzioni e note dopo quelle dell'utente, ricorda l'assistente anche riaperta, e la
+  cronologia mostra emoji e nome. Gli incarichi creati nella sua chat girano come lui. Cancellarlo lascia chat e
+  incarichi a Echo.
 - **WhatsApp in lettura** (29/10, Profile → WhatsApp): un servizio Node (`whatsapp/`, Baileys 7) collega il numero
   dell'utente come dispositivo con un codice di abbinamento; mai online, non invia e non segna come letto. Tiene
   le chat private (entrambi i lati, niente gruppi) solo in RAM, 7 giorni e 20.000 messaggi al massimo; le chiavi

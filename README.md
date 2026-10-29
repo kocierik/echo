@@ -34,6 +34,10 @@ each person has their own memory; the Android app builds from the same code but 
   remembers or forgets one when you ask ("Echo, ricordati che sono vegetariano"). Documents (PDF,
   Word, text, Markdown) are searched when Echo answers, naming the document; only their text is
   kept, never the file.
+- **Assistants.** Profile → Assistants: Echo focused on one part of your life, started from work,
+  diet or sleep or from scratch, with its own instructions, notes it keeps itself ("a colazione
+  yogurt e frutta") and, if you choose, only some of your documents. Start a chat with one in Ask;
+  routines made in its chat run as it. Diet and sleep are coaches, never medical advice.
 - **Reads WhatsApp (optional, unofficial).** Link your number in Profile → WhatsApp and ask "cosa mi
   ha scritto Marco?", or make a routine of it. Private chats only, read-only, held in the bridge's
   memory for 7 days and never written to disk; the connection is not official and WhatsApp may
@@ -339,7 +343,8 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   "session_id": "optional-uuid-for-follow-up",
   "date_from": "2026-07-20T00:00:00Z",
   "date_to": "2026-07-20T23:59:59Z",
-  "client_request_id": "optional-uuid-per-message"
+  "client_request_id": "optional-uuid-per-message",
+  "assistant_id": "optional: the question that starts a chat with an assistant"
 }
 ```
 
@@ -356,8 +361,18 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   and photos land there, typed questions unless a new chat is started, and a routine's result
   only when the user asks about it.
 - `GET /api/chat-sessions` (the thread first), `GET /api/chat-sessions/{id}`,
-  `DELETE /api/chat-sessions/{id}` — complete chat history.
+  `DELETE /api/chat-sessions/{id}` — complete chat history; a chat with an assistant carries
+  `assistant_id`, `assistant_name` and `assistant_emoji`.
 - `POST /api/query/feedback` — rate an answer (re-ranks future sources).
+
+### Assistants
+- `GET /api/assistants/templates` — work, diet and sleep, in the account's language.
+- `GET/POST /api/assistants`, `PATCH/DELETE /api/assistants/{id}` — name (40), emoji,
+  instructions (2,000), notes (3,000), `document_ids` (none: all documents); 10 at most. POST
+  takes `{"template": "diet"}` or the fields. A question with `assistant_id` (and every later one
+  in its chat) goes to the agent with the assistant's instructions and notes, a tool to update
+  the notes, memory search limited to its documents; routines made there run with it. Deleting
+  one leaves its chats and routines with plain Echo.
 
 ### Memory
 - `GET /api/conversations?limit=&offset=&date_from=&date_to=` — newest first, with `emoji`,

@@ -131,6 +131,10 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       Memory → About you, fatti stabili usati in ogni risposta, suggeriti dalle conversazioni e tenuti solo con un
       tocco; niente salute, politica, religione, vita sessuale, etnia, debiti. E i documenti (PDF, Word, testo)
       cercati dalla memoria
+- [x] Assistenti (29/10, [design](superpowers/specs/2026-10-29-assistants-design.md)): Lavoro, Dieta, Sonno o
+      creati da zero, con istruzioni, note proprie aggiornate da loro e documenti scelti; chat in Ask e incarichi.
+      Poi: parlare a un assistente a voce dal dispositivo ("Echo, chiedi al coach…"); i dati di Apple Health /
+      Health Connect per dieta e sonno (progetto e consenso a parte)
 - [x] Incarichi ricorrenti (22/10): creati a voce o in Ask ("ogni mattina alle 7 dimmi il meteo a Milano"),
       eseguiti dal server all'ora (giornalieri, feriali, settimanali, mensili; max 10), in Profile → Routines;
       senza strumenti che chiedono Confirm
