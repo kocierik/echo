@@ -24,6 +24,19 @@ wearable writes it next to the running firmware and switches only if it is intac
 - **Checks**: the app checks the download against the server's SHA-256; the wearable hashes what
   it writes and compares it with the SHA-256 in `OTA_BEGIN`; `esp_ota_end` validates the image.
   Anything else leaves the running firmware untouched.
+- **Signed (protocol 6, firmware 0.8.0, 29/10)**: the SHA-256 alone came from whoever sent the
+  image, so the server or the paired phone could install any firmware on a device with a
+  microphone and a camera. `OTA_BEGIN` now also carries the release key's ECDSA P-256 signature
+  of the SHA-256 (raw r||s, 64 bytes); the wearable checks it with micro-ecc against the public
+  key built into it (`src/ota_public_key.h`) before writing anything, and refuses with
+  `OTA_ERROR_BAD_SIGNATURE` (10). The private key is made once by
+  `scripts/firmware-signing-key.sh` and never committed (`firmware/signing/`); the release script
+  signs with `openssl dgst -sha256 -sign`, the server stores the signature
+  (`firmware_releases.signature`, migration 030) and the app passes it on. A wearable on
+  protocol 4–5 still gets the unsigned frame, once, to move to 0.8.0. Kept off the server, the
+  key also stops whoever controls the server; on the server, it still stops the database, the
+  API and the network in between. Not covered: an older signed image (no anti-rollback), and
+  Secure Boot, which would also check at every boot but cannot be undone once burnt.
 - **Rollback**: the bootloader runs a new firmware on trial (`verifyRollbackLater`). It is kept
   once the app talks to it (connected, bonded, time set). If it crashes, fails to start, or the
   app does not reach it within 5 minutes, the previous firmware comes back. "The app can reach

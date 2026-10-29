@@ -142,8 +142,9 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   Stream<OtaStatus> get otaStatusStream => _otaStatusController.stream;
 
   @override
-  Future<void> beginFirmwareUpdate(int size, List<int> sha256) =>
-      _writeControl(DeviceProtocol.otaBegin(size, sha256));
+  Future<void> beginFirmwareUpdate(
+          int size, List<int> sha256, List<int>? signature) =>
+      _writeControl(DeviceProtocol.otaBegin(size, sha256, signature: signature));
 
   @override
   Future<void> writeFirmwareChunk(int offset, List<int> bytes) async {

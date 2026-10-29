@@ -11,6 +11,7 @@
 #include "ble_transfer_state.h"
 #include "config.h"
 #include "ota_flash_esp.h"
+#include "ota_public_key.h"
 #include "ota_receiver.h"
 #include "photo_slot.h"
 #include "psram_buffer.h"
@@ -383,7 +384,8 @@ private:
         // A finished image is already set to boot: never write over it before the restart
         if (_ota.state() == OtaReceiver::State::DONE) error = EchoBleProtocol::OTA_ERROR_BUSY;
         if (error == EchoBleProtocol::OTA_ERROR_NONE) {
-            error = _ota.begin(frame.otaSize, frame.otaSha256);
+            // The signature check takes a moment on this task, once per update
+            error = _ota.begin(frame.otaSize, frame.otaSha256, frame.otaSignature);
         }
         _otaLastActivityMs = millis();
         noteOta(error == EchoBleProtocol::OTA_ERROR_NONE ? EchoBleProtocol::OTA_STATE_RECEIVING
@@ -797,7 +799,7 @@ private:
     // Guards the receiver and the notice: the host task writes, the Arduino loop reads
     SemaphoreHandle_t _otaMutex = nullptr;
     EspOtaFlash _otaFlash;
-    OtaReceiver _ota{_otaFlash};
+    OtaReceiver _ota{_otaFlash, OTA_PUBLIC_KEY};
     OtaNotice _otaNotice = {};
     uint32_t _otaLastActivityMs = 0;
     uint32_t _otaRestartAtMs = 0;

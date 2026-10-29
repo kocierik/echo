@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "ble_protocol.h"
+#include "ota_signature.h"
 #include "sha256.h"
 
 /** Where a new image is written: the inactive app partition on the device, a fake in tests. */
@@ -20,21 +21,28 @@ public:
 };
 
 /**
- * A firmware image arriving over BLE: written in order, hashed on the way, and made
- * bootable only when complete and identical to the SHA-256 the app announced.
+ * A firmware image arriving over BLE: accepted only when the SHA-256 the app announces is
+ * signed with the release key, written in order, hashed on the way, and made bootable only
+ * when complete and identical to that SHA-256. Neither the server nor the phone holds the
+ * key, so neither can install a firmware of its own.
  * The running firmware is never touched: a failed transfer leaves the device as it was.
  */
 class OtaReceiver {
 public:
     enum class State : uint8_t { IDLE, RECEIVING, DONE, FAILED };
 
-    explicit OtaReceiver(OtaFlash& flash) : _flash(flash) {}
+    /** `publicKey`: the release key's public half, x||y (ota_public_key.h). */
+    OtaReceiver(OtaFlash& flash, const uint8_t* publicKey)
+        : _flash(flash), _publicKey(publicKey) {}
 
     /** OTA_ERROR_NONE when the image can be sent from offset 0; a new begin restarts. */
-    uint8_t begin(uint32_t size, const uint8_t* sha256) {
+    uint8_t begin(uint32_t size, const uint8_t* sha256, const uint8_t* signature) {
         abort();
         if (size == 0 || size > _flash.capacity()) {
             return fail(EchoBleProtocol::OTA_ERROR_TOO_LARGE);
+        }
+        if (!otaSignatureValid(_publicKey, sha256, signature)) {
+            return fail(EchoBleProtocol::OTA_ERROR_BAD_SIGNATURE);
         }
         if (!_flash.begin(size)) return fail(EchoBleProtocol::OTA_ERROR_FLASH);
         _size = size;
@@ -100,6 +108,7 @@ private:
     }
 
     OtaFlash& _flash;
+    const uint8_t* _publicKey;
     State _state = State::IDLE;
     uint8_t _error = EchoBleProtocol::OTA_ERROR_NONE;
     uint32_t _size = 0;

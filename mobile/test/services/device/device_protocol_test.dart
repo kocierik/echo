@@ -166,12 +166,27 @@ void main() {
       expect(info.firmwareMinor, 5);
     });
 
+    test('accepts a wearable that checks signed updates (protocol 6)', () {
+      final info = DeviceProtocol.parseInfo(
+        Uint8List.fromList([0x21, 0x06, 0x00, 0x08, 0x00]),
+      );
+      expect(info.protocolVersion, DeviceProtocol.signedOtaVersion);
+      expect(DeviceProtocol.parseStatus(_v5Status(flags: 0)..[1] = 6).muted, isFalse);
+    });
+
     test('encodes the firmware update frames', () {
       final sha = List<int>.generate(32, (i) => i);
       final begin = DeviceProtocol.otaBegin(0x00091000, sha);
       expect(begin.sublist(0, 5), orderedEquals([0x19, 0x00, 0x10, 0x09, 0x00]));
       expect(begin.sublist(5), orderedEquals(sha));
       expect(() => DeviceProtocol.otaBegin(10, [1, 2]), throwsArgumentError);
+      // Protocol 6: the release key's signature after the SHA-256
+      final signature = List<int>.generate(64, (i) => 100 + i);
+      final signed = DeviceProtocol.otaBegin(0x00091000, sha, signature: signature);
+      expect(signed.length, 101);
+      expect(signed.sublist(0, 37), orderedEquals(begin));
+      expect(signed.sublist(37), orderedEquals(signature));
+      expect(() => DeviceProtocol.otaBegin(10, sha, signature: [1]), throwsArgumentError);
       expect(DeviceProtocol.otaAbort(), orderedEquals([0x1A]));
       expect(
         DeviceProtocol.otaChunk(0x10, [0xAA, 0xBB]),
@@ -193,6 +208,7 @@ void main() {
       expect(DeviceProtocol.parseOtaStatus([0x23, 0x09, 0, 0, 0, 0, 0]), isNull);
       expect(DeviceProtocol.parseOtaStatus([0x22, 0x01]), isNull);
       expect(DeviceProtocol.otaErrorMessage(6), contains('damaged'));
+      expect(DeviceProtocol.otaErrorMessage(10), contains('not signed'));
     });
   });
 }

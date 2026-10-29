@@ -23,6 +23,29 @@ class InvalidFirmwareError(ValueError):
     """The image or the version cannot be published; the message says why."""
 
 
+def raw_signature(der: bytes) -> bytes:
+    """The release key's signature as `openssl dgst -sign` gives it (DER), as the raw r||s
+    the wearable checks (firmware/src/ota_signature.h): 32 bytes each."""
+    invalid = InvalidFirmwareError("Not an ECDSA P-256 signature")
+
+    def integer(at: int) -> tuple[bytes, int]:
+        if at + 2 > len(der) or der[at] != 0x02:
+            raise invalid
+        end = at + 2 + der[at + 1]
+        value = der[at + 2:end].lstrip(bytes(1))
+        if end > len(der) or len(value) > 32:
+            raise invalid
+        return value.rjust(32, bytes(1)), end
+
+    if len(der) < 8 or der[0] != 0x30 or der[1] != len(der) - 2:
+        raise invalid
+    r, at = integer(2)
+    s, at = integer(at)
+    if at != len(der):
+        raise invalid
+    return r + s
+
+
 def parse_version(version: str) -> tuple[int, int, int] | None:
     """(major, minor, patch), each a byte as the wearable reports it; None otherwise."""
     match = VERSION_PATTERN.match(version)
@@ -42,15 +65,18 @@ def is_esp32_s3_image(data: bytes) -> bool:
 
 
 async def publish_release(
-    db: AsyncSession, version: str, notes: str | None, data: bytes
+    db: AsyncSession, version: str, notes: str | None, data: bytes, signature_der: bytes
 ) -> tuple[FirmwareRelease, bool]:
-    """The release, and whether it is new. The same image again is fine; another is not."""
+    """The release, and whether it is new. The same image again is fine; another is not.
+    `signature_der`: the release key's signature of the image (scripts/firmware-release.sh);
+    the wearable refuses an image without it."""
     if parse_version(version) is None:
         raise InvalidFirmwareError("Version must be major.minor.patch, each 0-255")
     if len(data) > MAX_IMAGE_BYTES:
         raise InvalidFirmwareError("Image larger than the wearable's app slot")
     if not is_esp32_s3_image(data):
         raise InvalidFirmwareError("Not an ESP32-S3 firmware image")
+    signature = raw_signature(signature_der).hex()
 
     sha256 = hashlib.sha256(data).hexdigest()
     existing = (
@@ -65,7 +91,8 @@ async def publish_release(
         return existing, False
 
     release = FirmwareRelease(
-        version=version, size_bytes=len(data), sha256=sha256, notes=notes or None, image=data
+        version=version, size_bytes=len(data), sha256=sha256, signature=signature,
+        notes=notes or None, image=data,
     )
     db.add(release)
     await db.commit()

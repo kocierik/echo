@@ -13,6 +13,7 @@ final class FirmwareRelease {
     required this.version,
     required this.sizeBytes,
     required this.sha256,
+    this.signature,
     this.notes,
   });
 
@@ -21,6 +22,7 @@ final class FirmwareRelease {
         version: json['version'] as String,
         sizeBytes: json['size_bytes'] as int,
         sha256: json['sha256'] as String,
+        signature: json['signature'] as String?,
         notes: json['notes'] as String?,
       );
 
@@ -29,6 +31,10 @@ final class FirmwareRelease {
 
   /// Hex, as the server computed it.
   final String sha256;
+
+  /// The release key's signature of [sha256] (hex r||s): a wearable on protocol 6 installs
+  /// nothing else. Null for releases published before.
+  final String? signature;
   final String? notes;
 }
 
@@ -48,7 +54,8 @@ abstract interface class FirmwareLink {
 
   /// DEVICE_INFO, sent by the wearable each time the app connects.
   Stream<DeviceInfo> get deviceInfoStream;
-  Future<void> beginFirmwareUpdate(int size, List<int> sha256);
+  /// [signature]: the release key's, for a wearable on protocol 6; null before.
+  Future<void> beginFirmwareUpdate(int size, List<int> sha256, List<int>? signature);
   Future<void> writeFirmwareChunk(int offset, List<int> bytes);
   Future<void> abortFirmwareUpdate();
 }
@@ -244,7 +251,7 @@ final class FirmwareUpdateController
 
       _set(FirmwareUpdatePhase.sending, release);
       await _link.beginFirmwareUpdate(
-          image.length, sha256.convert(image).bytes);
+          image.length, sha256.convert(image).bytes, _signatureFor(release));
       final ready = await _waitForStatus(() => latest, (_) => true);
       if (ready.state != OtaState.receiving) _throwStatus(ready);
 
@@ -334,6 +341,21 @@ final class FirmwareUpdateController
       }
       await Future<void>.delayed(pollInterval);
     }
+  }
+
+  /// What OTA_BEGIN carries: nothing for a wearable from before signed updates, which
+  /// would not understand it; the signature for one that checks it.
+  List<int>? _signatureFor(FirmwareRelease release) {
+    if ((_device().protocolVersion ?? 0) < DeviceProtocol.signedOtaVersion) return null;
+    final hex = release.signature;
+    if (hex == null || hex.length != 128) {
+      throw const _UpdateFailure(
+          'This firmware is not signed by Echo, so Echo would refuse it.');
+    }
+    return [
+      for (var i = 0; i < hex.length; i += 2)
+        int.parse(hex.substring(i, i + 2), radix: 16),
+    ];
   }
 
   Future<Uint8List> _download(FirmwareRelease release) async {

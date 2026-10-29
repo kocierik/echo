@@ -161,7 +161,8 @@ final class _NoLink implements FirmwareLink {
   @override
   Stream<DeviceInfo> get deviceInfoStream => const Stream.empty();
   @override
-  Future<void> beginFirmwareUpdate(int size, List<int> sha256) async {}
+  Future<void> beginFirmwareUpdate(
+      int size, List<int> sha256, List<int>? signature) async {}
   @override
   Future<void> writeFirmwareChunk(int offset, List<int> bytes) async {}
   @override

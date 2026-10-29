@@ -3,7 +3,7 @@
 // The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
-#define FIRMWARE_VERSION_MINOR 7
+#define FIRMWARE_VERSION_MINOR 8
 #define FIRMWARE_VERSION_PATCH 0
 
 // ============================================================

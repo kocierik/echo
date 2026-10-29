@@ -10,6 +10,18 @@ from app.services.firmware import (
     is_esp32_s3_image,
     parse_version,
     publish_release,
+    raw_signature,
+)
+
+# `openssl dgst -sha256 -sign` over "echo firmware" (DER), and the same as raw r||s: what the
+# wearable checks (firmware/test/test_ota). Its s has a leading zero byte in DER
+OPENSSL_DER = bytes.fromhex(
+    "3045022034575f6dfcd8775b61b0a722b9a85f2289e795c2bbcb14cbfe396d80f68430f9022100d97051d4"
+    "885477b8fc44470be5b9d63d682cc55f1beefdec567398e9597bf0ca"
+)
+OPENSSL_RAW = (
+    "34575f6dfcd8775b61b0a722b9a85f2289e795c2bbcb14cbfe396d80f68430f9"
+    "d97051d4885477b8fc44470be5b9d63d682cc55f1beefdec567398e9597bf0ca"
 )
 
 
@@ -20,9 +32,9 @@ def esp32_s3_image(size: int = 4096, seed: int = 1) -> bytes:
     return bytes(header) + bytes((seed + i) % 256 for i in range(size - 24))
 
 
-async def publish(db_session, version, data, notes=None):
+async def publish(db_session, version, data, notes=None, signature=OPENSSL_DER):
     """As `make firmware-release` does, inside the server (not over HTTP)."""
-    return await publish_release(db_session, version, notes, data)
+    return await publish_release(db_session, version, notes, data, signature)
 
 
 def test_versions_are_three_bytes_as_the_wearable_reports_them():
@@ -56,6 +68,9 @@ async def test_publish_then_the_app_finds_and_downloads_it(client, auth_headers,
     assert latest["version"] == "0.5.0"
     assert latest["size_bytes"] == len(data)
     assert latest["notes"] == "Firmware updates"
+
+    # The release key's signature, for the wearable to check
+    assert latest["signature"] == OPENSSL_RAW
 
     image = await client.get("/api/firmware/0.5.0/image", headers=auth_headers)
     assert image.status_code == 200
@@ -94,6 +109,20 @@ async def test_bad_images_are_refused(db_session):
         await publish(db_session, "0.5.0", b"\x00" * 4096)
     with pytest.raises(InvalidFirmwareError, match="app slot"):
         await publish(db_session, "0.5.0", esp32_s3_image(MAX_IMAGE_BYTES + 1))
+
+
+def test_an_openssl_signature_becomes_the_raw_one_the_wearable_checks():
+    assert raw_signature(OPENSSL_DER).hex() == OPENSSL_RAW
+    with pytest.raises(InvalidFirmwareError, match="signature"):
+        raw_signature(b"not a signature")
+    with pytest.raises(InvalidFirmwareError, match="signature"):
+        raw_signature(OPENSSL_DER[:-1])
+
+
+@pytest.mark.asyncio
+async def test_an_unsigned_image_is_refused(db_session):
+    with pytest.raises(InvalidFirmwareError, match="signature"):
+        await publish(db_session, "0.8.0", esp32_s3_image(), signature=b"")
 
 
 @pytest.mark.asyncio

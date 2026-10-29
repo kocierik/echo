@@ -68,12 +68,13 @@ final class OtaStatus {
 
 abstract final class DeviceProtocol {
   /// 2: audio; 3: audio and photos; 4: firmware updates over BLE; 5: the microSD in the
-  /// status. All are accepted, so an app update never cuts off a wearable that still runs
-  /// a previous firmware.
-  static const Set<int> supportedVersions = {2, 3, 4, 5};
+  /// status; 6: firmware updates signed with the release key. All are accepted, so an app
+  /// update never cuts off a wearable that still runs a previous firmware.
+  static const Set<int> supportedVersions = {2, 3, 4, 5, 6};
   static const int photoVersion = 3;
   static const int otaVersion = 4;
   static const int microSdVersion = 5;
+  static const int signedOtaVersion = 6;
   static const int _frameSetMuted = 0x15;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
@@ -176,13 +177,18 @@ abstract final class DeviceProtocol {
     };
   }
 
-  /// OTA_BEGIN: the image size and its SHA-256, checked by the wearable at the end.
-  static Uint8List otaBegin(int size, List<int> sha256) {
+  /// OTA_BEGIN: the image size and its SHA-256, checked by the wearable at the end, and
+  /// from protocol 6 the release key's signature of that SHA-256 (raw r||s), checked first.
+  static Uint8List otaBegin(int size, List<int> sha256, {List<int>? signature}) {
     if (sha256.length != 32) throw ArgumentError('SHA-256 must be 32 bytes');
-    final frame = Uint8List(37);
+    if (signature != null && signature.length != 64) {
+      throw ArgumentError('The signature must be 64 bytes');
+    }
+    final frame = Uint8List(37 + (signature?.length ?? 0));
     frame[0] = _frameOtaBegin;
     ByteData.sublistView(frame).setUint32(1, size, Endian.little);
     frame.setRange(5, 37, sha256);
+    if (signature != null) frame.setRange(37, 101, signature);
     return frame;
   }
 
@@ -220,6 +226,7 @@ abstract final class DeviceProtocol {
         5 || 9 => 'The transfer was interrupted. Try again.',
         6 => 'The firmware arrived damaged. Try again.',
         7 => 'This is not a firmware Echo can run.',
+        10 => 'This firmware is not signed by Echo, so Echo refused it.',
         _ => 'The update did not go through. Try again.',
       };
 

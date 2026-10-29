@@ -150,9 +150,12 @@ containers run,
 make firmware-release NOTES="what changed"
 ```
 
-builds the firmware and publishes it inside the api container (`app/cli/firmware.py`). There is
-no upload endpoint: with registration open, any account could otherwise push a firmware to every
-wearable. The app shows "Update Echo" in
+builds the firmware, signs it with the release key and publishes it inside the api container
+(`app/cli/firmware.py`). There is no upload endpoint: with registration open, any account could
+otherwise push a firmware to every wearable. The release key is made once with
+`scripts/firmware-signing-key.sh`: its private half (`firmware/signing/ota_private.pem`, or
+`OTA_SIGNING_KEY=path`) is never committed and must be backed up, since from firmware 0.8.0 the
+wearable installs only images signed with it (losing it means the cable). The app shows "Update Echo" in
 Settings → Device details; the wearable keeps the new firmware only once the app reconnects to it, and
 goes back to the previous one otherwise. The first firmware with updates (0.5.0) is flashed with
 the cable.

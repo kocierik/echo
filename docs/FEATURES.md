@@ -14,7 +14,8 @@
   o mostra "📷 Photo taken" (app in background).
 - Fotocamera su richiesta: una foto alla volta, mai tenuta sul dispositivo.
 - Si aggiorna senza cavo: il firmware pubblicato sul server arriva via Bluetooth, controllato, e se la nuova
-  versione non si collega torna da solo alla precedente. Firmware attuale 0.7.0.
+  versione non si collega torna da solo alla precedente. Dal 0.8.0 accetta solo firmware firmati con la tua
+  chiave di rilascio: né il server né il telefono possono installarne uno loro. Firmware attuale 0.8.0.
 
 ## Ricordare
 

@@ -71,7 +71,7 @@ void test_segment_start_exact_bytes() {
     const SegmentStart frame = {
         0x78563412U, PROTOCOL_VERSION, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
     const uint8_t expected[] = {
-        0x01, 0x12, 0x34, 0x56, 0x78, 0x05, 0x11, 0x22, 0x33, 0x44,
+        0x01, 0x12, 0x34, 0x56, 0x78, 0x06, 0x11, 0x22, 0x33, 0x44,
         0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xAA, 0xBB, 0xCC, 0xDD};
     uint8_t encoded[SEGMENT_START_SIZE] = {};
 
@@ -90,7 +90,7 @@ void test_device_status_v2_exact_bytes_and_round_trips() {
         true, true, 255, 3, 12000, 7, bytes, sizeof(bytes)));
     // No card: its fields are zero
     const uint8_t expected[] = {
-        0x20, 0x05, 0x03, 0xFF, 0x03, 0x00,
+        0x20, 0x06, 0x03, 0xFF, 0x03, 0x00,
         0xE0, 0x2E, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, bytes, sizeof(expected));
@@ -130,7 +130,7 @@ void test_device_status_says_whether_a_card_is_in_use_its_room_and_its_speech() 
 
 void test_device_info_exact_bytes_and_round_trips() {
     const DeviceInfo info = {PROTOCOL_VERSION, 1, 2, 3};
-    const uint8_t expected[] = {0x21, 0x05, 0x01, 0x02, 0x03};
+    const uint8_t expected[] = {0x21, 0x06, 0x01, 0x02, 0x03};
     uint8_t bytes[DEVICE_INFO_SIZE] = {};
 
     TEST_ASSERT_EQUAL_UINT32(
@@ -304,7 +304,7 @@ void test_time_anchor_uses_wrap_safe_millis_delta() {
 
 void test_status_frames_still_decode_with_the_valid_status() {
     const uint8_t validStatus[] = {
-        0x20, 0x05, 0x04, 0x64, 0x01, 0x00,
+        0x20, 0x06, 0x04, 0x64, 0x01, 0x00,
         0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     DeviceStatus status = {};
@@ -358,13 +358,19 @@ void test_take_photo_and_photo_failed_frames() {
 
 void test_ota_frames() {
     uint8_t begin[OTA_BEGIN_SIZE] = {FRAME_OTA_BEGIN, 0x00, 0x10, 0x09, 0x00};
-    for (size_t index = 0; index < SHA256_SIZE; ++index) begin[5 + index] = static_cast<uint8_t>(index);
+    for (size_t index = 0; index < SHA256_SIZE + OTA_SIGNATURE_SIZE; ++index) {
+        begin[5 + index] = static_cast<uint8_t>(index);
+    }
     ControlFrame frame = {};
+    TEST_ASSERT_EQUAL_UINT32(1 + 4 + 32 + 64, OTA_BEGIN_SIZE);  // v6: the signature too
     TEST_ASSERT_TRUE(decodeControlFrame(begin, sizeof(begin), frame));
     TEST_ASSERT_EQUAL_HEX8(FRAME_OTA_BEGIN, frame.type);
     TEST_ASSERT_EQUAL_UINT32(0x00091000U, frame.otaSize);
     TEST_ASSERT_EQUAL_UINT8_ARRAY(begin + 5, frame.otaSha256, SHA256_SIZE);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(begin + 37, frame.otaSignature, OTA_SIGNATURE_SIZE);
     TEST_ASSERT_FALSE(decodeControlFrame(begin, sizeof(begin) - 1, frame));
+    // The v4 frame, without a signature, is refused
+    TEST_ASSERT_FALSE(decodeControlFrame(begin, 1 + 4 + SHA256_SIZE, frame));
     TEST_ASSERT_TRUE(MAX_CONTROL_FRAME_SIZE >= OTA_BEGIN_SIZE);
 
     const uint8_t abort[] = {FRAME_OTA_ABORT};

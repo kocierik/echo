@@ -4,7 +4,7 @@
 (app/cli/firmware.py): there is no upload endpoint, since any account can call the API. The
 app asks for the latest version (GET /firmware/latest), compares it with the one the wearable
 reports and, when the user asks, downloads the image and sends it to the wearable, which
-checks it against the SHA-256 before restarting into it.
+checks the release key's signature and the SHA-256 before restarting into it.
 """
 
 from datetime import datetime
@@ -27,6 +27,8 @@ class FirmwareOut(BaseModel):
     version: str
     size_bytes: int
     sha256: str
+    # The release key's signature, sent to the wearable with the SHA-256 (hex r||s)
+    signature: str | None
     notes: str | None
     created_at: datetime
 

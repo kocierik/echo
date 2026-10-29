@@ -20,8 +20,9 @@ constexpr uint8_t FRAME_SET_MUTED = 0x15;
 constexpr uint8_t FRAME_FORGET_BOND = 0x16;
 constexpr uint8_t FRAME_FORGET_BOND_OK = 0x17;
 constexpr uint8_t FRAME_TAKE_PHOTO = 0x18;   // v3, app -> wearable
-// v4, app -> wearable: [type, image size u32, image SHA-256 x32]; the image follows on
-// the OTA characteristic as [offset u32, bytes], in order
+// v6, app -> wearable: [type, image size u32, image SHA-256 x32, signature x64]; the image
+// follows on the OTA characteristic as [offset u32, bytes], in order. The signature is the
+// release key's ECDSA P-256 over the SHA-256, raw r||s (ota_signature.h); v4 had none
 constexpr uint8_t FRAME_OTA_BEGIN = 0x19;
 constexpr uint8_t FRAME_OTA_ABORT = 0x1A;    // v4, app -> wearable
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
@@ -32,7 +33,8 @@ constexpr uint8_t FRAME_OTA_STATUS = 0x23;
 // 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
 // 4: firmware updates over BLE (OTA_*), DEVICE_INFO sent after READY
 // 5: the microSD in DEVICE_STATUS (in use, size, free space, speech waiting on it)
-constexpr uint8_t PROTOCOL_VERSION = 5;
+// 6: OTA_BEGIN carries the release key's signature; an unsigned image is refused
+constexpr uint8_t PROTOCOL_VERSION = 6;
 
 constexpr uint8_t PHOTO_FAILED_MUTED = 1;
 constexpr uint8_t PHOTO_FAILED_CAPTURE = 2;
@@ -52,8 +54,11 @@ constexpr uint8_t OTA_ERROR_HASH_MISMATCH = 6;
 constexpr uint8_t OTA_ERROR_INVALID_IMAGE = 7;  // not an image this chip can boot
 constexpr uint8_t OTA_ERROR_NOT_STARTED = 8;
 constexpr uint8_t OTA_ERROR_TIMEOUT = 9;
+constexpr uint8_t OTA_ERROR_BAD_SIGNATURE = 10;  // v6: not signed with the release key
 
 constexpr size_t SHA256_SIZE = 32;
+constexpr size_t OTA_SIGNATURE_SIZE = 64;
+constexpr size_t OTA_PUBLIC_KEY_SIZE = 64;
 
 // Photo transfers use ids with the high bit set, apart from audio segment ids
 constexpr uint32_t PHOTO_SEGMENT_ID_FLAG = 0x80000000U;
@@ -72,7 +77,7 @@ constexpr size_t TAKE_PHOTO_SIZE = 1;
 constexpr size_t PHOTO_FAILED_SIZE = 2;
 constexpr size_t DEVICE_STATUS_SIZE = 26;
 constexpr size_t DEVICE_INFO_SIZE = 5;
-constexpr size_t OTA_BEGIN_SIZE = 1 + 4 + SHA256_SIZE;
+constexpr size_t OTA_BEGIN_SIZE = 1 + 4 + SHA256_SIZE + OTA_SIGNATURE_SIZE;
 constexpr size_t OTA_ABORT_SIZE = 1;
 constexpr size_t OTA_STATUS_SIZE = 7;
 constexpr size_t OTA_DATA_HEADER_SIZE = 4;
@@ -233,6 +238,7 @@ struct ControlFrame {
     bool muted;
     uint32_t otaSize;
     uint8_t otaSha256[SHA256_SIZE];
+    uint8_t otaSignature[OTA_SIGNATURE_SIZE];
 };
 
 inline size_t encodeSegmentStart(const SegmentStart& frame, uint8_t* output, size_t capacity,
@@ -428,6 +434,7 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
             if (length != OTA_BEGIN_SIZE) return false;
             frame.otaSize = readU32(input + 1);
             memcpy(frame.otaSha256, input + 5, SHA256_SIZE);
+            memcpy(frame.otaSignature, input + 5 + SHA256_SIZE, OTA_SIGNATURE_SIZE);
             return true;
         case FRAME_OTA_ABORT:
             return length == OTA_ABORT_SIZE;

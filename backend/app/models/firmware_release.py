@@ -17,6 +17,9 @@ class FirmwareRelease(UUIDPrimaryKey, TimestampMixin, Base):
     version: Mapped[str] = mapped_column(String(20), nullable=False, unique=True)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The release key's ECDSA P-256 signature of the image, raw r||s in hex; none before
+    # firmware 0.8.0, whose wearables refuse an image without it
+    signature: Mapped[str | None] = mapped_column(String(128), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Loaded only when downloaded
     image: Mapped[bytes] = deferred(mapped_column(LargeBinary, nullable=False))

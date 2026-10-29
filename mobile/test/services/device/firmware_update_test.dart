@@ -17,10 +17,17 @@ void main() {
   late FirmwareUpdateController controller;
   final image = Uint8List.fromList(List<int>.generate(1050, (i) => (i * 7) % 256));
 
-  FirmwareRelease release(String version, [Uint8List? bytes]) => FirmwareRelease(
+  // The release key's signature, as the server gives it (hex r||s)
+  final signature = List<int>.generate(64, (i) => 255 - i);
+  final signatureHex =
+      signature.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+  FirmwareRelease release(String version, [Uint8List? bytes, String? signed]) =>
+      FirmwareRelease(
         version: version,
         sizeBytes: (bytes ?? image).length,
         sha256: sha256.convert(bytes ?? image).toString(),
+        signature: signed,
         notes: 'Firmware updates',
       );
 
@@ -113,8 +120,32 @@ void main() {
     ]);
     expect(link.beganSize, image.length);
     expect(link.beganSha, sha256.convert(image).bytes);
+    // A wearable from before signed updates gets the frame it knows
+    expect(link.beganSignature, isNull);
     expect(link.offsets, List<int>.generate(11, (i) => i * 100));
     expect(link.written, image);
+  });
+
+  test('a wearable that checks signatures gets the signature of the release key', () async {
+    device = device.copyWith(protocolVersion: 6);
+    api.release = release('0.6.0', null, signatureHex);
+    await controller.check();
+
+    await controller.install();
+
+    expect(controller.value.phase, FirmwareUpdatePhase.done);
+    expect(link.beganSignature, signature);
+  });
+
+  test('an unsigned release never reaches a wearable that checks signatures', () async {
+    device = device.copyWith(protocolVersion: 6);
+    await controller.check();
+
+    await controller.install();
+
+    expect(controller.value.phase, FirmwareUpdatePhase.failed);
+    expect(controller.value.message, contains('not signed'));
+    expect(link.beganSize, isNull);
   });
 
   test('waits for the wearable to send what it holds, then gives up', () async {
@@ -281,6 +312,7 @@ final class _FakeLink implements FirmwareLink {
 
   int? beganSize;
   List<int>? beganSha;
+  List<int>? beganSignature;
   final offsets = <int>[];
   final written = <int>[];
   int aborts = 0;
@@ -298,9 +330,11 @@ final class _FakeLink implements FirmwareLink {
   Stream<DeviceInfo> get deviceInfoStream => _infos.stream;
 
   @override
-  Future<void> beginFirmwareUpdate(int size, List<int> sha256) async {
+  Future<void> beginFirmwareUpdate(
+      int size, List<int> sha256, List<int>? signature) async {
     beganSize = size;
     beganSha = sha256;
+    beganSignature = signature;
     scheduleMicrotask(() => _statuses.add(beginStatus));
   }
 
