@@ -109,15 +109,13 @@ async def delete_fact(
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Deletes a kept fact, or discards a suggestion (kept as discarded, so Echo does not
-    suggest it again)."""
+    """Deletes a kept fact, or discards a suggestion: out of every answer and every list,
+    and never suggested again."""
     try:
         fact = await user_facts.owned(db, user_id, fact_id)
     except FactError as exc:
         raise _refused(exc) from exc
-    if fact.status == "suggested":
-        fact.status = "discarded"
-    else:
-        await db.delete(fact)
+    # Kept as discarded either way: Echo does not suggest it again
+    fact.status = "discarded"
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

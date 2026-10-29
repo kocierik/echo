@@ -53,6 +53,10 @@ def upgrade() -> None:
         sa.Column("pages", sa.Integer, nullable=True),
         sa.Column("word_count", sa.Integer, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        # The uploaded file until the worker has read it, then NULL: never kept
+        sa.Column("raw", sa.LargeBinary, nullable=True),
+        # When a worker took it: one that died is taken again later
+        sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("ix_documents_user_id", "documents", ["user_id"])
     op.create_table(

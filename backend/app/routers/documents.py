@@ -6,8 +6,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
@@ -53,7 +54,8 @@ def _out(document: Document) -> dict:
 
 
 async def _owned(db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID) -> Document:
-    document = await db.get(Document, document_id)
+    # Never the whole text (up to 2 MB) nor the file just to check who owns it
+    document = await db.get(Document, document_id, options=[defer(Document.text)])
     if document is None or document.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found")
     return document
@@ -63,8 +65,12 @@ async def _owned(db: AsyncSession, user_id: uuid.UUID, document_id: uuid.UUID) -
 async def list_documents(
     user_id: uuid.UUID = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)
 ):
+    # The list is polled while a document is read: never the texts
     rows = await db.scalars(
-        select(Document).where(Document.user_id == user_id).order_by(Document.created_at.desc())
+        select(Document)
+        .options(defer(Document.text))
+        .where(Document.user_id == user_id)
+        .order_by(Document.created_at.desc())
     )
     return DocumentsOut(documents=[DocumentOut(**_out(d)) for d in rows])
 
@@ -92,7 +98,10 @@ async def read_document(
     db: AsyncSession = Depends(get_db),
 ):
     document = await _owned(db, user_id, document_id)
-    return DocumentDetail(**_out(document), preview=document.text[:PREVIEW_CHARS])
+    preview = await db.scalar(
+        select(func.left(Document.text, PREVIEW_CHARS)).where(Document.id == document_id)
+    )
+    return DocumentDetail(**_out(document), preview=preview or "")
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

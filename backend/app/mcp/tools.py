@@ -79,6 +79,8 @@ async def search_memory(
             embedding_service=get_embedding_service(),
             # Saved things come without where they are: places stay with Echo
             include_places=False,
+            # The user's documents stay with Echo too
+            include_documents=False,
         )
     return {
         "quoted": memory.context or None,

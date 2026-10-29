@@ -55,6 +55,7 @@ async def retrieve_memory_context(
     date_range: DateRange | None = None,
     embedding_service=None,
     include_places: bool = True,
+    include_documents: bool = True,
 ) -> MemoryContext:
     """Embed the question, search chunks/entities/summaries/Saved and assemble the context.
 
@@ -151,7 +152,9 @@ async def retrieve_memory_context(
     places_context = (
         await places_visited(db, user_id, question, date_range) if include_places else ""
     )
-    documents_context = await document_passages(db, user_id, question_embedding)
+    documents_context = (
+        await document_passages(db, user_id, question_embedding) if include_documents else ""
+    )
 
     if not (
         rows or entities_context or people_context or saved_context or places_context
@@ -212,7 +215,7 @@ async def retrieve_memory_context(
 
 # A document passage joins an answer only this close to the question, so documents never
 # crowd out the conversations with something unrelated
-DOCUMENT_MIN_SIMILARITY = 0.3
+DOCUMENT_MIN_SIMILARITY = 0.35
 DOCUMENT_PASSAGES = 3
 
 

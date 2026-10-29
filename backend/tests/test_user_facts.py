@@ -105,7 +105,10 @@ async def test_without_facts_the_prompt_is_as_before(db_session):
 
 
 async def test_the_agent_remembers_and_forgets_when_asked(db_session):
-    remembered = await run_fact_tool(db_session, TEST_USER_ID, REMEMBER, {"fact": "È vegetariano"})
+    remembered = await run_fact_tool(
+        db_session, TEST_USER_ID, REMEMBER, {"fact": "È vegetariano"},
+        request="Echo, ricordati che sono vegetariano",
+    )
     await db_session.commit()
     assert remembered.ok
 
@@ -117,9 +120,8 @@ async def test_the_agent_remembers_and_forgets_when_asked(db_session):
     forgotten = await run_fact_tool(db_session, TEST_USER_ID, FORGET, {"fact": "vegetariano"})
     await db_session.commit()
     assert forgotten.ok
-    assert (
-        await db_session.scalars(select(UserFact).where(UserFact.user_id == TEST_USER_ID))
-    ).all() == []
+    # Out of every answer; kept as discarded so it is not suggested again
+    assert fact.status == "discarded"
 
 
 async def test_forgetting_something_never_said_says_so(db_session):

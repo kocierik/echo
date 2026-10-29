@@ -522,7 +522,7 @@ async def _run_tool(
         if call.name in TODO_TOOL_NAMES:
             result = await run_todo_tool(db, user_id, call.name, call.arguments)
         elif call.name in FACT_TOOL_NAMES:
-            result = await run_fact_tool(db, user_id, call.name, call.arguments)
+            result = await run_fact_tool(db, user_id, call.name, call.arguments, request)
         elif call.name in SAVED_TOOL_NAMES:
             result = await run_saved_tool(
                 db, user_id, source, call.name, call.arguments, saved or SavedContext(), request

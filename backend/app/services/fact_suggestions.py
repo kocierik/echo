@@ -9,6 +9,7 @@ or discarded, at most 3 per conversation and 20 waiting (the oldest make room).
 
 import logging
 import re
+import unicodedata
 import uuid
 
 from sqlalchemy import select
@@ -38,16 +39,45 @@ PROMPT = (
     f'At most {PER_CONVERSATION}. Reply with JSON only: {{"facts": ["..."]}}.'
 )
 
-# Checked again on the answer: a suggestion about these never reaches the user
+# Checked again on the answer, on whole words (Italian and English): a suggestion about
+# these never reaches the user. The prompt is the main guard; this catches what slips by.
 _SENSITIVE = re.compile(
-    r"\b(salut|malat|diabet|cancr|tumor|diagnos|terapi|farmac|medicin|psicolog|depress|"
-    r"incint|gravid|religio|chiesa|fede\b|preg|moschea|politic|partit|vot|elezion|"
-    r"gay|lesbic|omosess|bisess|sessual|etni|razz|debit|prestit|mutuo non|fallit|"
-    r"health|ill\b|illness|disease|diabetes|cancer|diagnos|therap|medicat|depress|"
-    r"pregnan|religio|church|faith|pray|mosque|politic|party|vote|elect|sexual|bisexual|"
-    r"ethnic|race|debt|loan|bankrupt)",
+    r"\b("
+    # Health
+    r"malat\w*|diabet\w*|cancro|cancer|tumou?r\w*|diagnos\w*|terapia|terapie|therapy|"
+    r"therapies|farmaci|farmaco|medication\w*|psichiatr\w*|psicolog\w*|psychiatr\w*|"
+    r"depress\w*|ansia|ansios\w*|anxiety|adhd|autis\w*|celiac\w*|allerg\w*|"
+    r"sieropositiv\w*|hiv|incint\w*|gravidanz\w*|pregnan\w*|disabil\w*|handicap|"
+    r"chemio\w*|illness|ill|disease\w*|"
+    # Religion
+    r"religio\w*|cattolic\w*|catholic\w*|cristian\w*|christian\w*|musulman\w*|muslim\w*|"
+    r"islam\w*|ebre[oaie]|ebraic\w*|jewish|jew|buddist\w*|buddhist\w*|ateo|atea|atei|"
+    r"atheist\w*|messa|chiesa|church|moschea|mosque|sinagoga|synagogue|prega|prego|"
+    r"pregare|preghiera|pray\w*|faith|"
+    # Politics
+    r"politic\w*|partito|vota|voto|votare|vote|votes|voted|voting|elezion\w*|election\w*|"
+    r"destra|sinistra|comunist\w*|fascist\w*|leghist\w*|democrat\w*|republican\w*|"
+    r"conservative|liberal|left-wing|right-wing|"
+    # Sex life and orientation
+    r"gay|lesbic\w*|lesbian\w*|omosessual\w*|bisessual\w*|sessual\w*|homosexual\w*|"
+    r"bisexual\w*|sexual\w*|sex|transgender\w*|trans|queer|orientamento|orientation|"
+    # Ethnicity
+    r"etni\w*|razza|razziale|ethnic\w*|race|"
+    # Money troubles
+    r"debit\w*|prestit\w*|fallit\w*|disoccupat\w*|pignorament\w*|sfratt\w*|debt\w*|"
+    r"loan\w*|bankrupt\w*|unemploy\w*|evict\w*"
+    r")\b"
+    r"|\bcan'?t pay\b|\bcannot pay\b|\bnon riesce a pagare\b",
     re.IGNORECASE,
 )
+
+
+def is_sensitive(text: str) -> bool:
+    """Whether a suggested fact touches health, religion, politics, sex life or
+    orientation, ethnicity or money troubles."""
+    plain = unicodedata.normalize("NFD", text)
+    plain = "".join(c for c in plain if not unicodedata.combining(c)).replace("’", "'")
+    return _SENSITIVE.search(plain) is not None
 
 
 async def _own_words(db: AsyncSession, conversation: Conversation) -> str:
@@ -70,11 +100,19 @@ async def suggest_facts(db: AsyncSession, llm, conversation: Conversation) -> li
     user_id = conversation.user_id
     known = list(await db.scalars(select(UserFact).where(UserFact.user_id == user_id)))
     listed = "\n".join(f"- {f.text}" for f in known if f.status != "discarded") or "- (none)"
+    # Turned down or deleted by the user: not again, not even in other words
+    refused = "\n".join(f"- {f.text}" for f in known if f.status == "discarded")
+    never = (
+        f"\n\nNever suggest these again, nor the same in other words:\n{refused}"
+        if refused
+        else ""
+    )
     try:
         answer = await llm.complete_json([
             LLMMessage(role="system", content=PROMPT),
             LLMMessage(
-                role="user", content=f"Already known:\n{listed}\n\nThe user's words:\n{own}"
+                role="user",
+                content=f"Already known:\n{listed}{never}\n\nThe user's words:\n{own}",
             ),
         ])
     except Exception:
@@ -89,7 +127,7 @@ async def suggest_facts(db: AsyncSession, llm, conversation: Conversation) -> li
     for raw in found:
         if len(added) >= PER_CONVERSATION:
             break
-        if not isinstance(raw, str) or _SENSITIVE.search(raw):
+        if not isinstance(raw, str) or is_sensitive(raw):
             continue
         try:
             text = user_facts.clean(raw)

@@ -495,7 +495,9 @@ CREATE TABLE documents (
     text TEXT NOT NULL,
     pages INTEGER,
     word_count INTEGER NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    raw BYTEA,                         -- the file until read, then NULL
+    claimed_at TIMESTAMPTZ             -- a worker took it
 );
 CREATE INDEX ix_documents_user_id ON documents(user_id);
 CREATE TABLE document_chunks (
