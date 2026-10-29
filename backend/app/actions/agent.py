@@ -426,7 +426,7 @@ async def run_action_agent(
     personal = await personal_context(db, user_id)
     if assistant is not None:
         # After the user's own instructions and facts: who answers in this chat
-        personal = f"{personal}\n{assistant_prompt(assistant)}".strip()
+        personal = f"{personal}\n{assistant_prompt(assistant, notes_tool=routine_tools)}".strip()
     saved_lists = await saved_lists_prompt(db, user_id) if routine_tools else None
     prompt = _system_prompt(
         phone_apps, search is not None, routine_tools, personal, saved_lists,

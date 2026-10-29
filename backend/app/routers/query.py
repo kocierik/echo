@@ -166,11 +166,15 @@ _WHATSAPP_HINT = re.compile(
 )
 
 
+def _mentions_tools(text: str) -> bool:
+    if _TOOL_HINT.search(text):
+        return True
+    return bool(settings.whatsapp_bridge_url and _WHATSAPP_HINT.search(text))
+
+
 def might_need_tools(question: str, history: list[dict]) -> bool:
     """Cheap pre-check before spending a provider call and the intent check."""
-    if _TOOL_HINT.search(question):
-        return True
-    if settings.whatsapp_bridge_url and _WHATSAPP_HINT.search(question):
+    if _mentions_tools(question):
         return True
     last_assistant = next(
         (m for m in reversed(history) if m.get("role") == "assistant"), None
@@ -442,12 +446,18 @@ async def _answer_query(
             # An assistant's chat always goes to the agent: its notes, its documents, all
             # the connected apps
             provider, use_agent = provider or NO_APPS, True
-            try:
-                apps = await provider.connected_toolkits(str(user_id))
-            except ActionProviderError:
-                # Its notes and the memory need no app: it answers without them
-                logger.warning("Action provider unreachable", exc_info=True)
-                apps = []
+            # The apps' tools only when this question or the one before it speaks of them
+            # ("manda una mail…", "e anche a Marco"): a meal or a night's sleep needs none
+            last_question = next(
+                (m.get("content") for m in reversed(history) if m.get("role") == "user"), ""
+            )
+            apps = []
+            if _mentions_tools(body.question) or _mentions_tools(str(last_question or "")):
+                try:
+                    apps = await provider.connected_toolkits(str(user_id))
+                except ActionProviderError:
+                    # Its notes and the memory need no app: it answers without them
+                    logger.warning("Action provider unreachable", exc_info=True)
         elif provider is not None:
             reachable: list[str] | None = None
             try:

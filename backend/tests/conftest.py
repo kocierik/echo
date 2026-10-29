@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.core.config import settings
 from app.core.database import get_db, get_session_factory
+from app.core.rate_limit import limiter
 from app.main import app
 from app.models import Base
 from tests.fakes.redis import InMemoryRedis
@@ -133,6 +134,8 @@ async def client():
     ASGITransport does not run the lifespan, so the app gets an in-memory Redis: the
     tests never push onto the real queues the worker reads.
     """
+    # Each test with a full budget: a limit is never hit by the tests run in the same minute
+    limiter.reset()
     had_redis = hasattr(app.state, "redis")
     original_redis = getattr(app.state, "redis", None)
     app.state.redis = InMemoryRedis()

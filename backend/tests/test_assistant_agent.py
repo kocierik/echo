@@ -216,3 +216,17 @@ def test_every_assistant_is_told_it_is_not_a_doctor():
     prompt = assistants.assistant_prompt(made).lower()
 
     assert "not a doctor" in prompt
+
+
+async def test_its_routine_runs_are_not_told_of_a_notes_tool(db_session):
+    assistant = await _assistant(db_session)
+    llm = RecordingLLM([_text("Ok.")])
+
+    await run_action_agent(
+        db_session, TEST_USER_ID, "chiedimi cosa ho mangiato", [], session_id=None,
+        source="routine", provider=NO_APPS, llm=llm, routine_tools=False,
+        allow_confirm=False, assistant=assistant,
+    )
+
+    system = llm.call_log[0][0].content
+    assert NOTES_TOOL not in system and "Vegetariano." in system

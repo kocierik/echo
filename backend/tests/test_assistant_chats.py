@@ -156,10 +156,10 @@ async def test_its_chat_still_answers_when_the_apps_are_unreachable(
 
     response = await client.post(
         "/api/query", headers=auth_headers,
-        json={"question": "a colazione yogurt e frutta", "assistant_id": str(assistant.id)},
+        json={"question": "segna in calendario la visita", "assistant_id": str(assistant.id)},
     )
 
-    # Its notes need no app: the agent runs, without app tools
+    # The apps cannot be reached: the agent still runs, without app tools
     assert response.status_code == 200
     assert calls[0]["connected_toolkits"] == []
 
@@ -212,3 +212,53 @@ async def test_deleting_a_document_takes_it_from_its_assistants(
     # None left: it searches all of them, as the editor says
     async with session_factory() as db:
         assert (await db.get(Assistant, assistant.id)).document_ids == []
+
+
+def _connected(monkeypatch, *apps):
+    monkeypatch.setattr(
+        query_router, "get_action_provider", lambda: FakeActionProvider(connected=set(apps))
+    )
+
+
+async def test_its_chat_offers_the_apps_only_when_asked_for(
+    client, auth_headers, db_session, monkeypatch
+):
+    assistant = await _assistant(db_session)
+    calls = _agent(monkeypatch)
+    _connected(monkeypatch, "gmail")
+
+    answered = (await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "a pranzo pasta e insalata", "assistant_id": str(assistant.id)},
+    )).json()
+    await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "manda una email al nutrizionista", "session_id": answered["session_id"]},
+    )
+    await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "e anche a Marco", "session_id": answered["session_id"]},
+    )
+    await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "a cena minestrone", "session_id": answered["session_id"]},
+    )
+
+    # A meal needs no app; an email does, and so does its follow-up
+    assert [c["connected_toolkits"] for c in calls] == [[], ["gmail"], ["gmail"], []]
+
+
+async def test_routines_say_which_assistant_runs_them(client, auth_headers, db_session):
+    assistant = await _assistant(db_session)
+    for assistant_id in (assistant.id, None):
+        db_session.add(Routine(
+            id=uuid.uuid4(), user_id=TEST_USER_ID, instruction="chiedimi cosa ho mangiato",
+            schedule={"kind": "daily", "time": "21:00"}, timezone="Europe/Rome", active=True,
+            next_run_at=NOW, source="chat", mode="always", assistant_id=assistant_id,
+        ))
+    await db_session.commit()
+
+    routines = (await client.get("/api/routines", headers=auth_headers)).json()
+
+    shown = {(r["assistant_id"], r["assistant_name"], r["assistant_emoji"]) for r in routines}
+    assert shown == {(str(assistant.id), "Dieta", "🥗"), (None, None, None)}

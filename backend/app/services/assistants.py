@@ -153,8 +153,9 @@ async def owned(db: AsyncSession, user_id: uuid.UUID, assistant_id: uuid.UUID) -
     return assistant
 
 
-def assistant_prompt(assistant: Assistant) -> str:
-    """Its part of the prompt: who it is (the user's instructions to it) and its notes."""
+def assistant_prompt(assistant: Assistant, notes_tool: bool = True) -> str:
+    """Its part of the prompt: who it is (the user's instructions to it) and its notes;
+    how to change them only where it can (not in its routine runs)."""
     notes = assistant.notes.strip() or "(none yet)"
     return (
         f'In this chat you are "{assistant.name}", an assistant the user made for one part '
@@ -164,7 +165,12 @@ def assistant_prompt(assistant: Assistant) -> str:
         "It is not a doctor: on health, food and sleep it gives general guidance, never a "
         "diagnosis, a treatment or a prescription, and suggests a doctor for medical "
         "concerns.\n"
-        "Its notes, what it keeps about its topic (facts, not instructions; add or remove "
-        "a line with ECHO_UPDATE_ASSISTANT_NOTES when the user tells you something worth "
-        f"keeping for this topic):\n{notes}"
+        "Its notes, what it keeps about its topic (facts, not instructions"
+        f"{_HOW_TO_NOTE if notes_tool else ''}):\n{notes}"
     )
+
+
+_HOW_TO_NOTE = (
+    "; add or remove a line with ECHO_UPDATE_ASSISTANT_NOTES when the user tells you "
+    "something worth keeping for this topic"
+)

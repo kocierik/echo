@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.models.assistant import Assistant
 from app.models.routine import Routine
 from app.services.routines import describe_schedule, next_run
 
@@ -34,13 +35,17 @@ class RoutineOut(BaseModel):
     last_answer: str | None
     source: str
     created_at: datetime
+    # The assistant it runs as (made in its chat); none: plain Echo
+    assistant_id: uuid.UUID | None = None
+    assistant_name: str | None = None
+    assistant_emoji: str | None = None
 
 
 class RoutineUpdate(BaseModel):
     active: bool
 
 
-def _out(routine: Routine) -> RoutineOut:
+def _out(routine: Routine, assistant: Assistant | None = None) -> RoutineOut:
     return RoutineOut(
         id=routine.id,
         instruction=routine.instruction,
@@ -55,7 +60,14 @@ def _out(routine: Routine) -> RoutineOut:
         last_answer=routine.last_answer,
         source=routine.source,
         created_at=routine.created_at,
+        assistant_id=assistant.id if assistant else None,
+        assistant_name=assistant.name if assistant else None,
+        assistant_emoji=assistant.emoji if assistant else None,
     )
+
+
+async def _assistant_of(db: AsyncSession, routine: Routine) -> Assistant | None:
+    return await db.get(Assistant, routine.assistant_id) if routine.assistant_id else None
 
 
 async def _own(db: AsyncSession, user_id: uuid.UUID, routine_id: uuid.UUID) -> Routine:
@@ -73,7 +85,14 @@ async def list_routines(
     routines = await db.scalars(
         select(Routine).where(Routine.user_id == user_id).order_by(Routine.created_at.desc())
     )
-    return [_out(routine) for routine in routines]
+    routines = list(routines)
+    ids = {r.assistant_id for r in routines if r.assistant_id is not None}
+    assistants = (
+        {a.id: a for a in await db.scalars(select(Assistant).where(Assistant.id.in_(ids)))}
+        if ids
+        else {}
+    )
+    return [_out(routine, assistants.get(routine.assistant_id)) for routine in routines]
 
 
 @router.patch("/{routine_id}", response_model=RoutineOut)
@@ -91,7 +110,7 @@ async def update_routine(
         )
     routine.active = body.active
     await db.commit()
-    return _out(routine)
+    return _out(routine, await _assistant_of(db, routine))
 
 
 @router.delete("/{routine_id}", status_code=204)
