@@ -142,6 +142,30 @@ async def test_without_the_phone_it_is_saved_without_the_place(db_session, monke
     assert "not saved" in _tool_result(llm) and "Echo app" in _tool_result(llm)
 
 
+async def test_parking_said_long_before_it_arrived_keeps_no_place(db_session):
+    # Said while the wearable was away from the phone: where the phone is now is not
+    # where the car was parked
+    redis = WaitingRedis()
+    llm = _ScriptedLLM([
+        _call("ECHO_SAVE_ITEM", list="La macchina", title="Macchina", with_place=True,
+              latest_only=True, keep_days=7),
+        _text("Non ho salvato il posto: chiedimelo di nuovo quando sei lì."),
+    ])
+
+    await _run(
+        db_session, "ricordati dove ho parcheggiato", llm,
+        SavedContext(
+            redis_client=redis, embedding_service=MockEmbeddingService(),
+            said_at=datetime.now(timezone.utc) - timedelta(minutes=20),
+        ),
+    )
+
+    [car] = await _items(db_session)
+    assert car.place is None
+    assert await take_device_commands(redis, TEST_USER_ID, 0) == []
+    assert "20 minutes ago" in _tool_result(llm)
+
+
 async def _photo(db, session_id, minutes_ago: int, description: str) -> Photo:
     photo = Photo(
         id=uuid.uuid4(), user_id=TEST_USER_ID, status="done", source="app",

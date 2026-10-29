@@ -213,8 +213,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
   - [x] **"Dove ho parcheggiato"**: Saved con il posto del telefono; un nuovo parcheggio sostituisce il vecchio,
         "Dov'è la macchina?" risponde con indirizzo e mappa, foto facoltativa (piano e colonna)
-  - [ ] Parcheggio, poi: capire da solo che sei ripartito; verificare su iPhone la posizione con l'app in
-        background (permesso "Sempre")
+  - Parcheggio: si salva solo quando lo chiedi, con la posizione di quel momento; mai capito da solo (29/10).
+    Una richiesta a voce arrivata dopo più di 3 minuti (dispositivo lontano dal telefono) non prende la posizione
+  - [ ] Parcheggio, poi: verificare su iPhone la posizione con l'app in background (permesso "Sempre")
   - [x] "Dove ho messo il passaporto / le chiavi": Saved con la foto appena scattata e il posto
   - [x] Scontrini → spese (importo, valuta, negozio, data): "quanto ho speso questa settimana?" con la somma
   - [x] Liste "salva questo": vini, libri, prodotti, posti ("cos'era quel vino del ristorante di sabato?")

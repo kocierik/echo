@@ -233,6 +233,8 @@ async def _answer(
             segment_id=segment.id if segment is not None else None,
             conversation_id=segment.conversation_id if segment is not None else None,
             embedding_service=get_embedding_service(),
+            # A place only for a request said just now
+            said_at=segment.recorded_at if segment is not None else None,
         ),
     )
     extra: dict = {"actions": True}

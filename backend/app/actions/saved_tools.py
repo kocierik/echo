@@ -32,6 +32,9 @@ REMOVE = "ECHO_REMOVE_ITEM"
 
 # "This photo" is the thread's last one, taken this recently
 PHOTO_WINDOW = timedelta(minutes=10)
+# A place is read only for a request said this recently: one that reached Echo later (the
+# wearable was away from the phone) would get where the phone is now, not where it was said
+PLACE_FRESH = timedelta(minutes=3)
 MAX_FOUND = 10
 MAX_PHOTO_TEXT = 600
 
@@ -46,6 +49,12 @@ _PLACE_NOT_SAVED = {
     "denied": "not saved: Echo may not use the phone's location (the phone's Settings)",
     "unavailable": "not saved: the phone could not tell where it is",
 }
+
+_PLACE_TOO_LATE = (
+    "not saved: the user said this {minutes} minutes ago and it reached Echo only now (the "
+    "wearable was away from the phone), so where the phone is now may not be the place; "
+    "tell them to ask again when they are there"
+)
 
 _THING_PROPERTIES = {
     "details": {
@@ -176,6 +185,8 @@ class SavedContext:
     photo_text: str | None = None
     # None: the configured one
     embedding_service: object | None = None
+    # When a voice request was said (its segment); None: now (typed in Ask)
+    said_at: datetime | None = None
 
     def embedder(self):
         if self.embedding_service is None:
@@ -251,6 +262,11 @@ async def _with_place(
     db: AsyncSession, user_id: uuid.UUID, item: SavedItem, context: SavedContext, data: dict
 ) -> None:
     """Ask the phone where it is and keep it on the thing; say so when it could not."""
+    if context.said_at is not None:
+        late = datetime.now(timezone.utc) - context.said_at
+        if late > PLACE_FRESH:
+            data["place"] = _PLACE_TOO_LATE.format(minutes=int(late.total_seconds() // 60))
+            return
     answer = await ask_phone_location(
         context.redis_client, user_id, item_id=str(item.id), wait_s=LOCATION_WAIT_S
     )
