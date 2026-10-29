@@ -14,6 +14,7 @@ import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.actions.agent import NO_APPS, run_action_agent
@@ -28,6 +29,8 @@ from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
+from app.models.assistant import Assistant
+from app.models.chat_session import ChatSession
 from app.services import assistants as assistants_service
 from app.services.about_echo import about_echo_for
 from app.services.assistants import AssistantError
@@ -407,6 +410,17 @@ async def _answer_query(
             assistant = await assistants_service.owned(db, user_id, uuid.UUID(body.assistant_id))
         except (ValueError, AssistantError):
             raise HTTPException(status_code=404, detail="Assistant not found")
+    elif body.session_id:
+        # A reopened chat continues with its assistant (none once it was deleted)
+        stored = (
+            await db.execute(
+                select(ChatSession.assistant_id).where(
+                    ChatSession.id == session_uuid, ChatSession.user_id == user_id
+                )
+            )
+        ).scalar_one_or_none()
+        if stored is not None:
+            assistant = await db.get(Assistant, stored)
     assistant_id = assistant.id if assistant is not None else None
 
     # --- Tool requests (Gmail, Calendar, Slack, ...) go to the action agent ---

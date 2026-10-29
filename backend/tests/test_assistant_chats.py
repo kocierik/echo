@@ -116,3 +116,23 @@ async def test_its_routine_runs_as_it():
 
     system = llm.call_log[0][0].content
     assert '"Dieta"' in system and "Vegetariano." in system
+
+
+async def test_a_reopened_chat_continues_with_its_assistant(
+    client, auth_headers, db_session, monkeypatch
+):
+    assistant = await _assistant(db_session)
+    calls = _agent(monkeypatch)
+    answered = (await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "cosa mangio stasera?", "assistant_id": str(assistant.id)},
+    )).json()
+
+    # Only the session: the chat says which assistant it is with
+    response = await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "e domani?", "session_id": answered["session_id"]},
+    )
+
+    assert response.status_code == 200
+    assert calls[1]["assistant"].id == assistant.id
