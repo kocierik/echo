@@ -105,6 +105,9 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   /// Uploads a photo from the wearable (set by the app's photo service).
   Future<bool> Function(Uint8List jpeg, DateTime capturedAt)? photoUploader;
 
+  /// A photo started arriving (its segment id): it was just taken.
+  void Function(int segmentId)? onPhotoStarted;
+
   /// The wearable could not take a photo (PHOTO_FAILED reason).
   Future<void> Function(String reason)? onPhotoFailed;
 
@@ -464,6 +467,7 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
     for (final event in events) {
       switch (event) {
         case BleSegmentStarted():
+          if (event.isPhoto) onPhotoStarted?.call(event.segmentId);
           _publishMessage(
             event.isPhoto
                 ? 'Receiving photo ${event.segmentId}'

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/device_command.dart';
 import '../../models/photo.dart';
@@ -18,6 +19,23 @@ abstract interface class PhotoDevice {
   bool get muted;
 
   Future<void> sendTakePhoto();
+}
+
+/// A short buzz of the phone when a wearable photo starts arriving, just after the shot:
+/// the user feels it was taken. Once per photo, even when its transfer restarts. Only
+/// while the app is in the foreground: iOS does not let a background app vibrate.
+final class ShutterFeedback {
+  ShutterFeedback({Future<void> Function()? buzz})
+      : _buzz = buzz ?? HapticFeedback.mediumImpact;
+
+  final Future<void> Function() _buzz;
+  int? _last;
+
+  void photoStarted(int segmentId) {
+    if (segmentId == _last) return;
+    _last = segmentId;
+    unawaited(_buzz());
+  }
 }
 
 /// Takes a photo from the app (the camera button in Ask).

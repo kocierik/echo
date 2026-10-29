@@ -8,6 +8,18 @@ import 'package:echo_app/services/device/photo_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('the phone buzzes once when a wearable photo starts arriving', () {
+    var buzzes = 0;
+    final shutter = ShutterFeedback(buzz: () async => buzzes++);
+
+    shutter.photoStarted(7);
+    // Its transfer restarted (a dropped connection): the same photo
+    shutter.photoStarted(7);
+    shutter.photoStarted(8);
+
+    expect(buzzes, 2);
+  });
+
   late _FakePhotoApi api;
   late _FakeDevice device;
   late PhotoService service;
