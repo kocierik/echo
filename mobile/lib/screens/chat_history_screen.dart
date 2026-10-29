@@ -197,13 +197,23 @@ final class _ChatHistoryScreenState extends State<ChatHistoryScreen> {
                               key: ValueKey('pinned-session-${session.id}'),
                               size: 20,
                             )
-                          : null,
+                          : session.assistant != null
+                              ? Text(
+                                  session.assistant!.emoji,
+                                  key: ValueKey('session-assistant-${session.id}'),
+                                  style: const TextStyle(fontSize: 20),
+                                )
+                              : null,
                       title: Text(
                         session.title ?? 'Untitled chat',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: Text('${session.messageCount} messages'),
+                      subtitle: Text(
+                        session.assistant == null
+                            ? '${session.messageCount} messages'
+                            : '${session.assistant!.name} · ${session.messageCount} messages',
+                      ),
                       onTap: busy ? null : () => _select(session),
                       trailing: SizedBox.square(
                         dimension: 44,

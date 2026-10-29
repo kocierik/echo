@@ -386,6 +386,7 @@ final class _FakeChatApi implements ChatApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   }) {
     streamPieces.forEach(onToken ?? (_) {});

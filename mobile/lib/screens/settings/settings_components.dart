@@ -110,10 +110,14 @@ class SettingsRow extends StatelessWidget {
     this.onTap,
     this.trailing,
     this.destructive = false,
+    this.leading,
     super.key,
   });
 
   final IconData icon;
+
+  /// In place of [icon] (an assistant's emoji).
+  final Widget? leading;
   final String title;
   final String? subtitle;
   final String? value;
@@ -134,7 +138,8 @@ class SettingsRow extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
           child: Row(
             children: [
-              Icon(icon, size: 22, color: destructive ? palette.red : palette.accent),
+              leading ??
+                  Icon(icon, size: 22, color: destructive ? palette.red : palette.accent),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

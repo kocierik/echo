@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/assistant.dart';
 import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../utils/formatting.dart';
@@ -33,6 +34,7 @@ final class ChatState {
     this.streamingText,
     this.isThread = false,
     this.photoContext,
+    this.assistant,
   })  : busyActionIds = Set<String>.unmodifiable(busyActionIds),
         messages = List<ChatMessage>.unmodifiable(messages);
 
@@ -66,6 +68,9 @@ final class ChatState {
   /// After "Ask more" under a photo: the next question is about that photo.
   final String? photoContext;
 
+  /// The assistant this chat is with; null: plain Echo.
+  final ChatAssistant? assistant;
+
   bool get canRetry => messages.any(
         (message) => message.isUser && message.failed,
       );
@@ -83,6 +88,7 @@ final class ChatState {
     Object? streamingText = _unset,
     bool? isThread,
     Object? photoContext = _unset,
+    Object? assistant = _unset,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
@@ -102,6 +108,9 @@ final class ChatState {
       photoContext: identical(photoContext, _unset)
           ? this.photoContext
           : photoContext as String?,
+      assistant: identical(assistant, _unset)
+          ? this.assistant
+          : assistant as ChatAssistant?,
     );
   }
 }
@@ -265,6 +274,8 @@ final class ChatController extends ChangeNotifier {
           question,
           sessionId: _state.sessionId,
           clientRequestId: _state.messages[userIndex].clientRequestId,
+          // Named once, by the question that starts the chat; the server keeps it
+          assistantId: _state.sessionId == null ? _state.assistant?.id : null,
           onToken: (piece) {
             if (!_isCurrent(generation)) return;
             _emit(_state.copyWith(streamingText: (_state.streamingText ?? '') + piece));
@@ -289,11 +300,24 @@ final class ChatController extends ChangeNotifier {
       error.code == 'conflict' &&
       error.message == stillWorkingDetail;
 
-  void newChat() {
+  /// A new chat, with Echo or with [assistant].
+  void newChat({ChatAssistant? assistant}) {
     _generation++;
     _voiceGeneration++;
     if (_state.listening) unawaited(_voiceInput.cancel());
-    _emit(ChatState.initial());
+    _emit(ChatState.initial().copyWith(assistant: assistant));
+  }
+
+  /// Who a new chat is with (null: Echo), until its first question.
+  void chooseAssistant(ChatAssistant? assistant) {
+    if (_disposed ||
+        _state.sessionId != null ||
+        _state.isThread ||
+        _state.messages.isNotEmpty ||
+        _state.loadingSession) {
+      return;
+    }
+    _emit(_state.copyWith(assistant: assistant));
   }
 
   /// Whether Ask has a thread with Echo to open (the server's; not in older fakes).
@@ -349,6 +373,7 @@ final class ChatController extends ChangeNotifier {
         loadingSession: false,
         error: null,
         isThread: detail.kind == 'voice',
+        assistant: detail.assistant,
       ));
     } catch (error) {
       if (!_isCurrent(generation)) return;

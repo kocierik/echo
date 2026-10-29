@@ -1,4 +1,5 @@
 import 'action_models.dart';
+import 'assistant.dart';
 import 'saved.dart';
 
 final class ChatSessionSummary {
@@ -9,6 +10,7 @@ final class ChatSessionSummary {
     required this.createdAt,
     required this.updatedAt,
     this.kind = 'chat',
+    this.assistant,
   });
 
   final String id;
@@ -18,6 +20,9 @@ final class ChatSessionSummary {
   final DateTime updatedAt;
   final String kind;
 
+  /// The assistant the chat is with; null: plain Echo.
+  final ChatAssistant? assistant;
+
   factory ChatSessionSummary.fromJson(Map<String, dynamic> json) {
     return ChatSessionSummary(
       id: _requiredString(json, 'id'),
@@ -26,6 +31,7 @@ final class ChatSessionSummary {
       createdAt: _requiredDateTime(json, 'created_at'),
       updatedAt: _requiredDateTime(json, 'updated_at'),
       kind: json['kind'] == 'voice' ? 'voice' : 'chat',
+      assistant: ChatAssistant.fromSession(json),
     );
   }
 }
@@ -111,6 +117,7 @@ final class ChatSessionDetail {
     required this.createdAt,
     required this.updatedAt,
     this.kind = 'chat',
+    this.assistant,
   }) : messages = List.unmodifiable(messages);
 
   final String id;
@@ -121,6 +128,9 @@ final class ChatSessionDetail {
   final List<ChatSessionMessage> messages;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// The assistant the chat is with; null: plain Echo.
+  final ChatAssistant? assistant;
 
   factory ChatSessionDetail.fromJson(Map<String, dynamic> json) {
     final rawMessages = json['messages'];
@@ -140,6 +150,7 @@ final class ChatSessionDetail {
       createdAt: _requiredDateTime(json, 'created_at'),
       updatedAt: _requiredDateTime(json, 'updated_at'),
       kind: json['kind'] == 'voice' ? 'voice' : 'chat',
+      assistant: ChatAssistant.fromSession(json),
     );
   }
 }

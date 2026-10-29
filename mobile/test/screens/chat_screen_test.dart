@@ -604,6 +604,7 @@ final class _FakeChatApi implements ChatApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   }) =>
       throw UnimplementedError();
@@ -990,6 +991,7 @@ final class _FakeChatApi implements ChatApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
   }) {
     throw UnimplementedError();
   }

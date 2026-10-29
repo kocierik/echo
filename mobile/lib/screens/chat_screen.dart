@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/app_view_state.dart';
+import '../models/assistant.dart';
 import '../models/chat_message.dart';
 import '../models/routine_run.dart';
 import '../models/today_insights.dart';
@@ -113,6 +114,9 @@ final class ChatScreen extends StatefulWidget {
 final class _ChatScreenState extends State<ChatScreen> {
   List<String> _suggestions = defaultChatSuggestions;
 
+  /// The user's assistants, offered when a new chat starts (Profile → Assistants).
+  List<ChatAssistant> _assistants = const [];
+
   late final ChatController _controller;
   late final ChatApi _api;
   late final bool _ownsController;
@@ -210,6 +214,23 @@ final class _ChatScreenState extends State<ChatScreen> {
       }
     });
     unawaited(_loadSuggestions());
+    unawaited(_loadAssistants());
+  }
+
+  /// None on a server without assistants, or on any failure: Ask is as before.
+  Future<void> _loadAssistants() async {
+    final api = _api;
+    if (api is! AssistantsApi) return;
+    try {
+      final assistants = await (api as AssistantsApi).listAssistants();
+      if (mounted) setState(() => _assistants = [for (final a in assistants) a.forChat]);
+    } catch (_) {}
+  }
+
+  /// "New chat": with Echo, or an assistant chosen before the first question.
+  void _newChat() {
+    _controller.newChat();
+    unawaited(_loadAssistants());
   }
 
   @override
@@ -491,7 +512,7 @@ final class _ChatScreenState extends State<ChatScreen> {
                       key: const Key('chat-new'),
                       icon: Icons.add_rounded,
                       tooltip: 'New chat',
-                      onPressed: _controller.newChat,
+                      onPressed: _newChat,
                     ),
                   ],
                   if (widget.headerAction != null) widget.headerAction!,
@@ -514,6 +535,8 @@ final class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ),
+              if (!routines && state.assistant != null && state.messages.isNotEmpty)
+                _AssistantBar(state.assistant!),
               if (routines)
                 Expanded(
                   child: RoutineRunsView(
@@ -571,16 +594,43 @@ final class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (state.messages.isEmpty) {
+      final assistant = state.assistant;
+      // A new chat (not the thread): it may start with an assistant
+      final choosing = !state.isThread && state.sessionId == null && _assistants.isNotEmpty;
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         children: [
+          if (choosing) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  key: const Key('ask-assistant-echo'),
+                  label: const Text('Echo'),
+                  selected: assistant == null,
+                  onSelected: (_) => _controller.chooseAssistant(null),
+                ),
+                for (final choice in _assistants)
+                  ChoiceChip(
+                    key: Key('ask-assistant-${choice.id}'),
+                    label: Text(choice.label),
+                    selected: assistant?.id == choice.id,
+                    onSelected: (_) => _controller.chooseAssistant(choice),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+          ],
           Text(
-            'Ask what your memory knows',
+            assistant == null ? 'Ask what your memory knows' : assistant.label,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
           Text(
-            'Start with a recent decision, conversation, or task.',
+            assistant == null
+                ? 'Start with a recent decision, conversation, or task.'
+                : 'It answers with its instructions, its notes and its documents.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: palette.text2,
                 ),
@@ -604,7 +654,9 @@ final class _ChatScreenState extends State<ChatScreen> {
             ),
           ],
           const SizedBox(height: 22),
-          ..._suggestions.map((suggestion) => Padding(
+          // Suggestions are about the user's memory, not an assistant's topic
+          if (assistant == null)
+            ..._suggestions.map((suggestion) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: OutlinedButton(
                   onPressed: state.sending
@@ -722,6 +774,29 @@ List<({int? message, DateTime? day})> _threadRows(List<ChatMessage> messages) {
     rows.add((message: index, day: null));
   }
   return rows;
+}
+
+/// Under the header of a chat with an assistant: who answers here.
+final class _AssistantBar extends StatelessWidget {
+  const _AssistantBar(this.assistant);
+
+  final ChatAssistant assistant;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Padding(
+      key: const Key('chat-assistant'),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'With ${assistant.label}',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(color: palette.text2),
+        ),
+      ),
+    );
+  }
 }
 
 /// Above the composer after "Ask more": the question goes about the photo.

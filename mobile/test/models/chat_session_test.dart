@@ -2,6 +2,37 @@ import 'package:echo_app/models/chat_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('a chat with an assistant says which one', () {
+    final base = {
+      'id': 's1',
+      'title': 'Cena',
+      'message_count': 2,
+      'kind': 'chat',
+      'created_at': '2026-10-01T09:30:00Z',
+      'updated_at': '2026-10-01T09:31:00Z',
+    };
+    final summary = ChatSessionSummary.fromJson({
+      ...base,
+      'assistant_id': 'a1',
+      'assistant_name': 'Dieta',
+      'assistant_emoji': '🥗',
+    });
+    final detail = ChatSessionDetail.fromJson({
+      ...base,
+      'messages': const [],
+      'assistant_id': 'a1',
+      'assistant_name': 'Dieta',
+      'assistant_emoji': '🥗',
+    });
+
+    expect((summary.assistant?.id, summary.assistant?.name, summary.assistant?.emoji),
+        ('a1', 'Dieta', '🥗'));
+    expect(detail.assistant?.name, 'Dieta');
+    // Plain Echo, and servers from before assistants
+    expect(ChatSessionSummary.fromJson({...base, 'assistant_id': null}).assistant, isNull);
+    expect(ChatSessionSummary.fromJson(base).assistant, isNull);
+  });
+
   test('an answer keeps what it saved', () {
     final message = ChatSessionMessage.fromJson({
       'role': 'assistant',

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
+import 'package:echo_app/models/assistant.dart';
 import 'package:echo_app/models/chat_session.dart';
 import 'package:echo_app/models/photo.dart';
 import 'package:echo_app/services/api/api_exception.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   _languageTests();
+  _assistantTests();
 
   late _FakeChatApi api;
   late _FakeVoiceInput voice;
@@ -754,6 +756,7 @@ final class _FakeChatApi implements ChatApi {
   final queries = <String>[];
   final querySessionIds = <String?>[];
   final queryRequestIds = <String?>[];
+  final queryAssistantIds = <String?>[];
   final deletes = <String>[];
   final details = <String, ChatSessionDetail>{};
 
@@ -769,12 +772,14 @@ final class _FakeChatApi implements ChatApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   }) {
     streamPieces.forEach(onToken ?? (_) {});
     queries.add(question);
     querySessionIds.add(sessionId);
     queryRequestIds.add(clientRequestId);
+    queryAssistantIds.add(assistantId);
     return queryHandler?.call(question, sessionId) ??
         Future.value(_response(answer: 'Answer'));
   }
@@ -884,4 +889,60 @@ final class _FakePhotoTaker implements PhotoTaker {
   @override
   Future<PhotoInfo> waitForAnswer(String photoId) async =>
       PhotoInfo(id: photoId, status: 'done', answer: 'È un ficus.');
+}
+
+void _assistantTests() {
+  const diet = ChatAssistant(id: 'a1', name: 'Dieta', emoji: '🥗');
+
+  test('a new chat with an assistant asks it, and the chat keeps it', () async {
+    final api = _FakeChatApi()
+      ..queryHandler = (_, __) async =>
+          QueryResponse(answer: 'Minestrone.', sessionId: 's1', sources: []);
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+
+    controller.newChat(assistant: diet);
+    await controller.send('cosa mangio stasera?');
+    await controller.send('e domani?');
+
+    // The first question names it; the chat it started then carries it
+    expect(api.queryAssistantIds, ['a1', null]);
+    expect(api.querySessionIds, [null, 's1']);
+    expect(controller.state.assistant?.name, 'Dieta');
+  });
+
+  test('choosing an assistant only before the first question', () async {
+    final controller = ChatController(api: _FakeChatApi(), voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+
+    controller.newChat();
+    controller.chooseAssistant(diet);
+    expect(controller.state.assistant, diet);
+    controller.chooseAssistant(null);
+    expect(controller.state.assistant, isNull);
+
+    await controller.send('ciao');
+    controller.chooseAssistant(diet);
+    expect(controller.state.assistant, isNull);
+  });
+
+  test('a chat opened from history shows its assistant', () async {
+    final api = _FakeChatApi();
+    api.details['s1'] = ChatSessionDetail(
+      id: 's1',
+      title: 'Cena',
+      messages: const [],
+      createdAt: DateTime.parse('2026-10-01T09:30:00Z'),
+      updatedAt: DateTime.parse('2026-10-01T09:31:00Z'),
+      assistant: diet,
+    );
+    final controller = ChatController(api: api, voiceInput: _FakeVoiceInput());
+    addTearDown(controller.dispose);
+
+    await controller.loadSession('s1');
+
+    expect(controller.state.assistant, diet);
+    controller.newChat();
+    expect(controller.state.assistant, isNull);
+  });
 }

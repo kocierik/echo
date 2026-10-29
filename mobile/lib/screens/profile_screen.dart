@@ -26,6 +26,7 @@ import 'echo_device_screen.dart';
 import 'integrations_screen.dart';
 import 'settings/about_settings_screen.dart';
 import 'settings/appearance_settings_screen.dart';
+import 'settings/assistants_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/devices_screen.dart';
@@ -342,6 +343,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 title: 'Memory',
                 subtitle: 'What Echo knows about you, and your documents.',
                 onTap: () => _push(MemoryScreen(facts: _api, documents: _api)),
+              ),
+              SettingsRow(
+                key: const Key('profile-assistants'),
+                icon: Icons.smart_toy_outlined,
+                title: 'Assistants',
+                subtitle: 'Echo for work, diet, sleep, or what you choose.',
+                onTap: () => _push(AssistantsScreen(api: _api, documents: _api)),
               ),
               SettingsRow(
                 icon: Icons.record_voice_over_outlined,

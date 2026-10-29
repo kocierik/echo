@@ -251,6 +251,7 @@ final class _ThreadApi implements ChatApi, ThreadApi, PhotoFollowUpApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   }) async {
     querySessionIds.add(sessionId);

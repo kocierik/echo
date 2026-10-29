@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
+import 'package:echo_app/models/assistant.dart';
 import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/plan.dart';
@@ -75,7 +76,7 @@ void main() {
     SpokenAnswersStore? spokenAnswers,
   }) async {
     // Tall enough for every row: the list builds only what is on screen
-    tester.view.physicalSize = const Size(400, 1400);
+    tester.view.physicalSize = const Size(400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -214,6 +215,16 @@ void main() {
 
     expect(find.byKey(const Key('memory-about-you')), findsOneWidget);
     expect(find.byKey(const Key('memory-documents')), findsOneWidget);
+  });
+
+  testWidgets('Assistants opens the list', (tester) async {
+    await pumpSettings(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('profile-assistants')));
+    await tester.tap(find.byKey(const Key('profile-assistants')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('assistants-new')), findsOneWidget);
   });
 
   testWidgets('no WhatsApp row on a server without it', (tester) async {
@@ -452,6 +463,9 @@ final class _FakeApiService extends ApiService {
 
   @override
   Future<WhatsAppStatus> getWhatsApp() async => whatsapp;
+
+  @override
+  Future<List<Assistant>> listAssistants() async => const [];
 
   @override
   Future<PlanInfo> getPlan() async => plan ?? (throw Exception('no plan'));

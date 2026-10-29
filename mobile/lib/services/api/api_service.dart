@@ -1,5 +1,6 @@
 import 'actions_api.dart';
 import 'api_client.dart';
+import 'assistants_api.dart';
 import 'auth_api.dart';
 import 'chat_api.dart';
 import 'device_api.dart';
@@ -17,11 +18,13 @@ import 'whatsapp_api.dart';
 
 export 'actions_api.dart';
 export 'api_client.dart' show ApiClient, JsonShape;
+export 'assistants_api.dart';
 export 'auth_api.dart';
 export 'api_credentials.dart';
 export 'chat_api.dart';
 export 'device_api.dart';
 export 'memory_api.dart';
+export 'memory_items_api.dart';
 export 'notifications_api.dart';
 export 'photo_api.dart';
 export 'places_api.dart';
@@ -48,6 +51,7 @@ class ApiService extends ApiClient
         WearableEndpoints,
         WhatsAppEndpoints,
         MemoryItemsEndpoints,
+        AssistantsEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({

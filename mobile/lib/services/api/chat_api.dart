@@ -49,11 +49,13 @@ class QueryResponse {
 
 abstract interface class ChatApi {
   /// Asks Echo. With [onToken], a memory answer is passed on piece by piece while it
-  /// is written; the returned response always holds the whole answer.
+  /// is written; the returned response always holds the whole answer. [assistantId]
+  /// starts a new chat with that assistant; the chat then keeps it.
   Future<QueryResponse> query(
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   });
   Future<List<ChatSessionSummary>> getSessions();
@@ -87,10 +89,12 @@ mixin ChatEndpoints on ApiClient implements ChatApi, ThreadApi {
     String question, {
     String? sessionId,
     String? clientRequestId,
+    String? assistantId,
     void Function(String piece)? onToken,
   }) async {
     final body = <String, dynamic>{'question': question, 'top_k': 5};
     if (sessionId != null) body['session_id'] = sessionId;
+    if (assistantId != null) body['assistant_id'] = assistantId;
     if (clientRequestId != null) body['client_request_id'] = clientRequestId;
     if (onToken != null) {
       return _queryStream(
