@@ -602,24 +602,29 @@ final class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         children: [
           if (choosing) ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ChoiceChip(
-                  key: const Key('ask-assistant-echo'),
-                  label: const Text('Echo'),
-                  selected: assistant == null,
-                  onSelected: (_) => _controller.chooseAssistant(null),
-                ),
-                for (final choice in _assistants)
+            // One row, scrolling sideways: up to ten assistants never push the page down
+            SingleChildScrollView(
+              key: const Key('ask-assistants'),
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              child: Row(
+                spacing: 8,
+                children: [
                   ChoiceChip(
-                    key: Key('ask-assistant-${choice.id}'),
-                    label: Text(choice.label),
-                    selected: assistant?.id == choice.id,
-                    onSelected: (_) => _controller.chooseAssistant(choice),
+                    key: const Key('ask-assistant-echo'),
+                    label: const Text('Echo'),
+                    selected: assistant == null,
+                    onSelected: (_) => _controller.chooseAssistant(null),
                   ),
-              ],
+                  for (final choice in _assistants)
+                    ChoiceChip(
+                      key: Key('ask-assistant-${choice.id}'),
+                      label: Text(choice.label),
+                      selected: assistant?.id == choice.id,
+                      onSelected: (_) => _controller.chooseAssistant(choice),
+                    ),
+                ],
+              ),
             ),
             const SizedBox(height: 18),
           ],

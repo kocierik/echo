@@ -243,7 +243,12 @@ final class _AssistantEditorScreenState extends State<AssistantEditorScreen> {
           const SizedBox(height: 20),
           Text('DOCUMENTS', style: textTheme.labelMedium?.copyWith(color: palette.text2)),
           const SizedBox(height: 4),
-          Text('None chosen: it searches all of your documents.', style: hint),
+          Text(
+            _chosen.isEmpty
+                ? 'None chosen: it searches all of your documents.'
+                : 'It searches only the ones chosen.',
+            style: hint,
+          ),
           if (documents == null)
             const Padding(
               padding: EdgeInsets.all(12),

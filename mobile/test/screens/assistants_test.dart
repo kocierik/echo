@@ -245,6 +245,18 @@ void main() {
       expect(draft.documentIds, ['d1']);
     });
 
+    testWidgets('the documents line says which ones it searches', (tester) async {
+      final api = _Api(assistants: [_diet]);
+      await _pumpAssistants(tester, api);
+      await _tap(tester, find.byKey(const Key('assistant-a1')));
+      expect(find.text('None chosen: it searches all of your documents.'), findsOneWidget);
+
+      await _tap(tester, find.byKey(const Key('assistant-document-d1')));
+
+      expect(find.text('None chosen: it searches all of your documents.'), findsNothing);
+      expect(find.text('It searches only the ones chosen.'), findsOneWidget);
+    });
+
     testWidgets('deleting one asks first', (tester) async {
       final api = _Api(assistants: [_diet]);
       await _pumpAssistants(tester, api);
@@ -278,7 +290,18 @@ void main() {
 
   group('Ask', () {
     testWidgets('a new chat can start with an assistant', (tester) async {
-      final api = _Api(assistants: [_diet]);
+      final api = _Api(assistants: [
+        _diet,
+        const Assistant(id: 'a2', name: 'Lavoro', emoji: '💼', instructions: 'x', notes: '',
+            documentIds: []),
+        const Assistant(id: 'a3', name: 'Sonno', emoji: '😴', instructions: 'x', notes: '',
+            documentIds: []),
+      ]);
+      // A phone's width: three assistants do not fit on one line
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final controller = ChatController(api: api, voiceInput: _Voice());
       addTearDown(controller.dispose);
       await tester.pumpWidget(MaterialApp(
@@ -288,6 +311,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('ask-assistant-echo')), findsOneWidget);
+      // One row, scrolling sideways when they do not fit
+      expect(
+        tester.getTopLeft(find.byKey(const Key('ask-assistant-a3'))).dy,
+        tester.getTopLeft(find.byKey(const Key('ask-assistant-echo'))).dy,
+      );
       await _tap(tester, find.byKey(const Key('ask-assistant-a1')));
       await tester.enterText(find.byType(TextField), 'cosa mangio stasera?');
       await tester.pump();
