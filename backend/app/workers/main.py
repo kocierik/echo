@@ -23,6 +23,7 @@ from app.core.logging import setup_logging
 from app.workers.analysis import process_analysis
 from app.workers.deferred import run_deferred_loop
 from app.workers.digest import run_digest_loop
+from app.workers.documents import run_documents_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
 from app.workers.photos import process_photos
 from app.workers.places import run_places_cleanup_loop
@@ -69,6 +70,7 @@ async def main():
         asyncio.create_task(run_retention_loop(shutdown_event), name="retention_worker"),
         asyncio.create_task(run_summary_loop(shutdown_event), name="summary_worker"),
         asyncio.create_task(run_digest_loop(shutdown_event), name="digest_worker"),
+        asyncio.create_task(run_documents_loop(shutdown_event), name="documents_worker"),
         asyncio.create_task(run_saved_expiry_loop(shutdown_event), name="saved_worker"),
         asyncio.create_task(run_places_cleanup_loop(shutdown_event), name="places_worker"),
         asyncio.create_task(

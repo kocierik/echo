@@ -23,6 +23,8 @@ dependencies = [
     # MCP server for connected apps; 2.x needs Starlette 1.x, which FastAPI 0.115 does not take
     "mcp==1.30.0",
     "sse-starlette==3.0.3",  # the newest that keeps Starlette 0.38
+    "pypdf==6.21.4",  # documents: the text of a PDF
+    "python-docx==1.2.0",  # documents: the text of a Word file
 ]
 
 [project.optional-dependencies]

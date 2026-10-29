@@ -70,24 +70,28 @@ async def test_only_the_users_own_words_are_read_and_facts_wait_for_the_user(db_
 
 async def test_at_most_three_and_nothing_known_or_sensitive(db_session):
     conversation = await _conversation(db_session)
-    db_session.add(UserFact(
-        user_id=TEST_USER_ID, text="È vegetariano", status="kept", source="you"
-    ))
+    db_session.add(
+        UserFact(user_id=TEST_USER_ID, text="È vegetariano", status="kept", source="you")
+    )
     await db_session.commit()
-    llm = _LLM([
-        "è vegetariano",
-        "Soffre di diabete",
-        "Vota per il partito verde",
-        "Lavora come sviluppatore a Milano",
-        "Ha una figlia, Sara",
-        "Gioca a padel",
-        "Vive a Milano",
-    ])
+    llm = _LLM(
+        [
+            "è vegetariano",
+            "Soffre di diabete",
+            "Vota per il partito verde",
+            "Lavora come sviluppatore a Milano",
+            "Ha una figlia, Sara",
+            "Gioca a padel",
+            "Vive a Milano",
+        ]
+    )
 
     added = await suggest_facts(db_session, llm, conversation)
 
     assert [f.text for f in added] == [
-        "Lavora come sviluppatore a Milano", "Ha una figlia, Sara", "Gioca a padel",
+        "Lavora come sviluppatore a Milano",
+        "Ha una figlia, Sara",
+        "Gioca a padel",
     ]
     # What is already known is told to the model too
     assert "È vegetariano" in llm.asked[0]
@@ -109,10 +113,15 @@ async def test_a_discarded_suggestion_is_not_suggested_again(client, auth_header
 async def test_old_suggestions_make_room_past_twenty(db_session):
     conversation = await _conversation(db_session)
     for i in range(20):
-        db_session.add(UserFact(
-            user_id=TEST_USER_ID, text=f"Vecchio {i}", status="suggested", source="conversation",
-            created_at=STARTED - timedelta(days=30 - i),
-        ))
+        db_session.add(
+            UserFact(
+                user_id=TEST_USER_ID,
+                text=f"Vecchio {i}",
+                status="suggested",
+                source="conversation",
+                created_at=STARTED - timedelta(days=30 - i),
+            )
+        )
     await db_session.commit()
 
     await suggest_facts(db_session, _LLM(["Gioca a padel"]), conversation)
