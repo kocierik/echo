@@ -114,6 +114,12 @@ void main() {
       expect(find.byKey(const Key('fact-keep-s1')), findsNothing);
     });
 
+    testWidgets('a suggestion says it was heard in a conversation', (tester) async {
+      await _pump(tester, AboutYouScreen(api: _Memory()));
+
+      expect(find.text('Heard in a conversation'), findsOneWidget);
+    });
+
     testWidgets('a suggestion discarded is gone', (tester) async {
       final api = _Memory();
       await _pump(tester, AboutYouScreen(api: api));
@@ -175,6 +181,20 @@ void main() {
       expect(find.textContaining('2 pages'), findsOneWidget);
     });
 
+    testWidgets('a file over 10 MB is never sent', (tester) async {
+      final api = _Memory();
+      await _pump(tester, DocumentsScreen(
+        api: api,
+        pick: () async => throw const DocumentTooLarge(),
+      ));
+
+      await tester.tap(find.byKey(const Key('documents-add')));
+      await tester.pumpAndSettle();
+
+      expect(api.uploaded, isEmpty);
+      expect(find.textContaining('At most 10 MB'), findsOneWidget);
+    });
+
     testWidgets('a refused file says why', (tester) async {
       final api = _Memory()..refuseUpload = 'No text found in it';
       await _pump(tester, DocumentsScreen(
@@ -191,14 +211,15 @@ void main() {
     testWidgets('a document shows its beginning and can be deleted', (tester) async {
       final api = _Memory()
         ..documents = [
-          const UserDocument(id: 'd0', title: 'Contratto.pdf', kind: 'pdf', sizeBytes: 3,
-              status: 'ready', wordCount: 10, pages: 2),
+          const UserDocument(id: 'd0', title: 'Contratto.pdf', kind: 'pdf',
+              sizeBytes: 2500000, status: 'ready', wordCount: 10, pages: 2),
         ];
       await _pump(tester, DocumentsScreen(api: api, pick: () async => null));
 
       await tester.tap(find.text('Contratto.pdf'));
       await tester.pumpAndSettle();
       expect(find.text('Il canone è di 900 euro al mese.'), findsOneWidget);
+      expect(find.textContaining('2.4 MB'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('document-delete')));
       await tester.pumpAndSettle();

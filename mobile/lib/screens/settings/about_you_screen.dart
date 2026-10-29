@@ -92,7 +92,20 @@ final class _AboutYouScreenState extends State<AboutYouScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
                 child: Row(
                   children: [
-                    Expanded(child: Text(fact.text, style: textTheme.bodyMedium)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(fact.text, style: textTheme.bodyMedium),
+                          Text(
+                            fact.source == 'conversation'
+                                ? 'Heard in a conversation'
+                                : 'From a request to Echo',
+                            style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                          ),
+                        ],
+                      ),
+                    ),
                     TextButton(
                       key: Key('fact-keep-${fact.id}'),
                       onPressed: () => unawaited(

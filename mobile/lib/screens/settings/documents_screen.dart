@@ -12,16 +12,32 @@ import 'settings_components.dart';
 /// A file the user picked: its name and contents.
 typedef PickedDocument = ({String name, List<int> bytes});
 
-/// The phone's file picker, for PDF, Word, text and Markdown; null when cancelled.
+/// The server's limit for a document.
+const maxDocumentBytes = 10 * 1024 * 1024;
+
+/// A picked file over [maxDocumentBytes]: not read, not sent.
+final class DocumentTooLarge implements Exception {
+  const DocumentTooLarge();
+}
+
+/// The phone's file picker, for PDF, Word, text and Markdown; null when cancelled. A file
+/// over 10 MB is refused before it is read (it would be sent only to be refused).
 Future<PickedDocument?> pickDocument() async {
   final files = await FilePicker.pickFiles(
     type: FileType.custom,
-    allowedExtensions: const ['pdf', 'docx', 'txt', 'md'],
+    allowedExtensions: const ['pdf', 'docx', 'txt', 'md', 'markdown'],
   );
   if (files.isEmpty) return null;
   final file = files.first;
-  return (name: file.name, bytes: await file.xFile.readAsBytes());
+  final size = await file.length();
+  if (size != null && size > maxDocumentBytes) throw const DocumentTooLarge();
+  return (name: file.name, bytes: await file.readAsBytes());
 }
+
+/// "820 KB", "2.4 MB".
+String documentSizeText(int bytes) => bytes < 1024 * 1024
+    ? '${(bytes / 1024).ceil()} KB'
+    : '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 
 /// "Ready · 12 pages", "Reading it…", "Failed: …".
 String documentStateText(UserDocument document) => switch (document.status) {
@@ -81,7 +97,9 @@ final class _DocumentsScreenState extends State<DocumentsScreen> {
         setState(() => _error = userMessage(error, 'Could not load your documents.'));
       }
     }
-    // Keep checking while one is being read, also after a failed check
+    // Keep checking while one is being read, also after a failed check; one timer only,
+    // whichever load ends last
+    _poll?.cancel();
     if (mounted && (_documents ?? const []).any((d) => d.isProcessing)) {
       _poll = Timer(widget.pollInterval, () => unawaited(_load()));
     }
@@ -92,8 +110,11 @@ final class _DocumentsScreenState extends State<DocumentsScreen> {
     final PickedDocument? picked;
     try {
       picked = await widget.pick();
+    } on DocumentTooLarge {
+      if (mounted) setState(() => _error = 'At most 10 MB per document.');
+      return;
     } catch (_) {
-      setState(() => _error = 'Could not open the file.');
+      if (mounted) setState(() => _error = 'Could not open the file.');
       return;
     }
     if (picked == null || !mounted) return;
@@ -241,7 +262,7 @@ final class _DocumentSheetState extends State<_DocumentSheet> {
           Text(document.title, style: textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
-            documentStateText(document),
+            '${documentStateText(document)} · ${documentSizeText(document.sizeBytes)}',
             style: textTheme.bodySmall?.copyWith(color: palette.text2),
           ),
           if (_preview != null) ...[
