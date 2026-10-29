@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Index, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,6 +31,12 @@ class Routine(UUIDPrimaryKey, Base):
     # "always" | "only_if" | "only_new" (services/routine_results.py)
     mode: Mapped[str] = mapped_column(
         String(10), nullable=False, default="always", server_default="always"
+    )
+    # The assistant it belongs to (Profile → Assistants); none: plain Echo
+    assistant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assistants.id", name="fk_routines_assistant", ondelete="SET NULL"),
+        nullable=True,
     )
     # The latest run's status: "reported" | "nothing" | "failed" | "skipped" ("ok" before 026)
     last_status: Mapped[str | None] = mapped_column(String(10), nullable=True)

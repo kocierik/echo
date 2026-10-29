@@ -510,3 +510,21 @@ CREATE TABLE document_chunks (
 );
 CREATE INDEX ix_document_chunks_user_id ON document_chunks(user_id);
 CREATE INDEX ix_document_chunks_document_id ON document_chunks(document_id);
+
+-- Assistants: Echo for one part of the user's life (Migration 029)
+CREATE TABLE assistants (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    name VARCHAR(40) NOT NULL,
+    emoji VARCHAR(16) NOT NULL,
+    instructions TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',     -- what it keeps about its topic
+    document_ids JSONB NOT NULL DEFAULT '[]',  -- its documents; empty: all
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_assistants_user_id ON assistants(user_id);
+ALTER TABLE chat_sessions ADD COLUMN assistant_id UUID
+    REFERENCES assistants(id) ON DELETE SET NULL;  -- 029
+ALTER TABLE routines ADD COLUMN assistant_id UUID
+    REFERENCES assistants(id) ON DELETE SET NULL;  -- 029

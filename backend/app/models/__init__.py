@@ -24,6 +24,7 @@ from app.models.transcription_edit import TranscriptionEdit
 from app.models.transcription_translation import TranscriptionTranslation
 from app.models.user import User
 from app.models.user_fact import UserFact
+from app.models.assistant import Assistant
 from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
 
@@ -54,6 +55,7 @@ __all__ = [
     "TranscriptionEdit",
     "TranscriptionTranslation",
     "UserFact",
+    "Assistant",
     "Document",
     "DocumentChunk",
     "UUIDPrimaryKey",
