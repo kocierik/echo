@@ -23,6 +23,7 @@ from app.models.conversation import Conversation
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import generate_conversation_summary
+from app.services.fact_suggestions import suggest_facts
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
@@ -97,6 +98,14 @@ async def summarize_closed_conversations(
             conversation.summary = result.summary
             conversation.emoji = result.emoji
             summarized += 1
+            # What the user said about themselves: suggestions for About you. A failure
+            # here never costs the summary
+            try:
+                async with db.begin_nested():
+                    await suggest_facts(db, llm, conversation)
+            except Exception:
+                logger.warning("[Summaries] No fact suggestions for %s", conversation.id,
+                               exc_info=True)
 
         await db.commit()
 

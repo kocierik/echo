@@ -16,7 +16,7 @@ class UserFact(UUIDPrimaryKey, Base):
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     text: Mapped[str] = mapped_column(String(200), nullable=False)
-    # "kept" | "suggested"
+    # "kept" | "suggested" | "discarded" (a suggestion the user turned down: not again)
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     # "you" | "echo" | "conversation"
     source: Mapped[str] = mapped_column(String(15), nullable=False)
