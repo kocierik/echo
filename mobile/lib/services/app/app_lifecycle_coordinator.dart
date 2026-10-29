@@ -183,8 +183,13 @@ final class AppLifecycleCoordinator {
     );
     bleService.photoUploader = photoService.uploadFromDevice;
     bleService.onPhotoFailed = photoService.onDeviceFailure;
-    // A short buzz as soon as a photo arrives: it was taken
-    bleService.onPhotoStarted = ShutterFeedback().photoStarted;
+    // As soon as a photo arrives, the user is told it was taken: a buzz, or a notification
+    // with the app in the background
+    bleService.onPhotoStarted = ShutterFeedback(
+      notify: notificationService.showPhotoTaken,
+      inForeground: () =>
+          WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed,
+    ).photoStarted;
     // Reminders and Calendar on this iPhone, when the user turned them on
     final phoneActions = PhoneActionsService(
       calendar: EventKitPhoneCalendar(),

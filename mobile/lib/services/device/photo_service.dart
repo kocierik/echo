@@ -21,20 +21,28 @@ abstract interface class PhotoDevice {
   Future<void> sendTakePhoto();
 }
 
-/// A short buzz of the phone when a wearable photo starts arriving, just after the shot:
-/// the user feels it was taken. Once per photo, even when its transfer restarts. Only
-/// while the app is in the foreground: iOS does not let a background app vibrate.
+/// When a wearable photo starts arriving, just after the shot, the user is told it was
+/// taken: a short buzz of the phone with the app open, a notification with the app in the
+/// background (iOS does not let a background app vibrate). Once per photo, even when its
+/// transfer restarts.
 final class ShutterFeedback {
-  ShutterFeedback({Future<void> Function()? buzz})
-      : _buzz = buzz ?? HapticFeedback.mediumImpact;
+  ShutterFeedback({
+    required Future<void> Function() notify,
+    required bool Function() inForeground,
+    Future<void> Function()? buzz,
+  })  : _notify = notify,
+        _inForeground = inForeground,
+        _buzz = buzz ?? HapticFeedback.mediumImpact;
 
+  final Future<void> Function() _notify;
+  final bool Function() _inForeground;
   final Future<void> Function() _buzz;
   int? _last;
 
   void photoStarted(int segmentId) {
     if (segmentId == _last) return;
     _last = segmentId;
-    unawaited(_buzz());
+    unawaited(_inForeground() ? _buzz() : _notify());
   }
 }
 

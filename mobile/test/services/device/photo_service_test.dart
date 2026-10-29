@@ -10,14 +10,34 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('the phone buzzes once when a wearable photo starts arriving', () {
     var buzzes = 0;
-    final shutter = ShutterFeedback(buzz: () async => buzzes++);
+    var notices = 0;
+    final shutter = ShutterFeedback(
+      buzz: () async => buzzes++,
+      notify: () async => notices++,
+      inForeground: () => true,
+    );
 
     shutter.photoStarted(7);
     // Its transfer restarted (a dropped connection): the same photo
     shutter.photoStarted(7);
     shutter.photoStarted(8);
 
-    expect(buzzes, 2);
+    expect((buzzes, notices), (2, 0));
+  });
+
+  test('with the app in the background a notification says the photo was taken', () {
+    var buzzes = 0;
+    var notices = 0;
+    final shutter = ShutterFeedback(
+      buzz: () async => buzzes++,
+      notify: () async => notices++,
+      inForeground: () => false,
+    );
+
+    shutter.photoStarted(7);
+    shutter.photoStarted(7);
+
+    expect((buzzes, notices), (0, 1));
   });
 
   late _FakePhotoApi api;

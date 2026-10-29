@@ -118,6 +118,17 @@ void main() {
     ]);
   });
 
+  test('a photo taken with the app in the background says so and opens Ask', () async {
+    final port = _FakeNotificationPort();
+    final service = NotificationService(port);
+
+    await service.showPhotoTaken();
+
+    expect(port.shown.map((c) => (c.id, c.title, c.payload)), [
+      (104, '📷 Photo taken', 'voice:'),
+    ]);
+  });
+
   test('normal transcript completion produces no notification', () async {
     final port = _FakeNotificationPort();
     final service = NotificationService(port);

@@ -30,6 +30,7 @@ final class NotificationService {
   static const int lossId = 101;
   static const int uploadFailureId = 102;
   static const int savePlaceId = 103;
+  static const int photoTakenId = 104;
   static const int voiceAnswerBaseId = 200;
   static const int voiceAnswerIdCount = 50;
   static const String voicePayloadPrefix = 'voice:';
@@ -97,6 +98,15 @@ final class NotificationService {
         id: savePlaceId,
         title: 'Open Echo to save the place',
         body: 'Echo saved it without the place: open the app now to add where you are.',
+      );
+
+  /// The wearable took a photo while Echo was in the background: a tap opens Ask, where
+  /// its answer arrives.
+  Future<void> showPhotoTaken() => _port.show(
+        id: photoTakenId,
+        title: '📷 Photo taken',
+        body: 'Echo is looking at it: the answer will be in Ask.',
+        payload: voicePayloadPrefix,
       );
 
   Future<void> showVoiceAnswer(
