@@ -1,5 +1,6 @@
 from app.models.action_log import ActionLog
 from app.models.api_key import ApiKey
+from app.models.assistant import Assistant
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 from app.models.chat_session import ChatSession
 from app.models.chunk import Chunk
@@ -24,7 +25,6 @@ from app.models.transcription_edit import TranscriptionEdit
 from app.models.transcription_translation import TranscriptionTranslation
 from app.models.user import User
 from app.models.user_fact import UserFact
-from app.models.assistant import Assistant
 from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
 

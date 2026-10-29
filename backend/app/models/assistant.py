@@ -29,7 +29,9 @@ class Assistant(UUIDPrimaryKey, Base):
     document_ids: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default="[]", default=list
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=_now)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now, onupdate=_now
     )

@@ -121,9 +121,11 @@ def _described(routine: Routine) -> dict:
 
 
 async def run_routine_tool(
-    db: AsyncSession, user_id: uuid.UUID, source: str, name: str, arguments: dict
+    db: AsyncSession, user_id: uuid.UUID, source: str, name: str, arguments: dict,
+    assistant_id: uuid.UUID | None = None,
 ) -> ToolResult:
-    """Run one routine tool; the caller logs it and commits."""
+    """Run one routine tool; the caller logs it and commits. A routine made in an
+    assistant's chat belongs to it (`assistant_id`) and runs with it."""
     if name == CREATE:
         instruction = str(arguments.get("instruction") or "").strip()
         if not instruction:
@@ -163,6 +165,7 @@ async def run_routine_tool(
             next_run_at=next_run(schedule, tz, datetime.now(timezone.utc)),
             source=source if source in ("chat", "voice") else "chat",
             mode=mode,
+            assistant_id=assistant_id,
         )
         db.add(routine)
         await db.flush()

@@ -13,6 +13,11 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.actions.assistant_tools import (
+    ASSISTANT_TOOL_NAMES,
+    ASSISTANT_TOOLS,
+    run_assistant_tool,
+)
 from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
 from app.actions.fact_tools import FACT_TOOL_NAMES, FACT_TOOLS, run_fact_tool
@@ -38,7 +43,9 @@ from app.actions.todo_tools import TODO_TOOL_NAMES, TODO_TOOLS, run_todo_tool
 from app.actions.whatsapp_provider import WHATSAPP_NAMES
 from app.core.config import settings
 from app.core.timezone import user_zone
+from app.models.assistant import Assistant
 from app.models.pending_action import PendingAction
+from app.services.assistants import assistant_prompt
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
 from app.services.memory_retrieval import retrieve_memory_context
@@ -372,6 +379,7 @@ async def run_action_agent(
     allow_confirm: bool = True,
     saved: SavedContext | None = None,
     language: str | None = None,
+    assistant: Assistant | None = None,
 ) -> AgentOutcome:
     """Run the tool-calling loop for one request. The caller commits the session.
 
@@ -403,6 +411,10 @@ async def run_action_agent(
         else frozenset()
     )
     own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS, *FACT_TOOLS] if routine_tools else []
+    if assistant is not None:
+        # In an assistant's chat (or its routine): its notes tool
+        own = own | ASSISTANT_TOOL_NAMES
+        own_tools = [*own_tools, *ASSISTANT_TOOLS]
     saved = saved or SavedContext()
     if saved.chat_session_id is None:
         saved.chat_session_id = session_id
@@ -411,6 +423,9 @@ async def run_action_agent(
 
     search = await search_tool_for(llm, user_id)
     personal = await personal_context(db, user_id)
+    if assistant is not None:
+        # After the user's own instructions and facts: who answers in this chat
+        personal = f"{personal}\n{assistant_prompt(assistant)}".strip()
     saved_lists = await saved_lists_prompt(db, user_id) if routine_tools else None
     prompt = _system_prompt(
         phone_apps, search is not None, routine_tools, personal, saved_lists,
@@ -481,7 +496,7 @@ async def run_action_agent(
         for call in response.tool_calls:
             content = await _run_tool(
                 db, user_id, source, provider, call, offered, executed, failures, succeeded,
-                own, saved, request, kept,
+                own, saved, request, kept, assistant,
             )
             messages.append(LLMMessage(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
@@ -508,6 +523,7 @@ async def _run_tool(
     saved: SavedContext | None = None,
     request: str = "",
     kept: list[dict] | None = None,
+    assistant: Assistant | None = None,
 ) -> str:
     """Run one READ/CREATE call (search_memory, one of Echo's own tools in `own`) and
     return the tool message content. Things saved or removed update `kept`."""
@@ -515,7 +531,11 @@ async def _run_tool(
         query = str(call.arguments.get("query") or "").strip()
         if not query:
             return serialize_tool_result({"error": "query is required"})
-        memory = await retrieve_memory_context(db, user_id, query)
+        # In an assistant's chat: only its documents, when it has some
+        memory = await retrieve_memory_context(
+            db, user_id, query,
+            document_ids=(assistant.document_ids or None) if assistant is not None else None,
+        )
         return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
 
     if call.name in own:
@@ -523,6 +543,8 @@ async def _run_tool(
             result = await run_todo_tool(db, user_id, call.name, call.arguments)
         elif call.name in FACT_TOOL_NAMES:
             result = await run_fact_tool(db, user_id, call.name, call.arguments, request)
+        elif call.name in ASSISTANT_TOOL_NAMES and assistant is not None:
+            result = await run_assistant_tool(db, assistant, call.name, call.arguments)
         elif call.name in SAVED_TOOL_NAMES:
             result = await run_saved_tool(
                 db, user_id, source, call.name, call.arguments, saved or SavedContext(), request
@@ -530,7 +552,10 @@ async def _run_tool(
             if result.ok and kept is not None:
                 _keep(kept, result.data)
         else:
-            result = await run_routine_tool(db, user_id, source, call.name, call.arguments)
+            result = await run_routine_tool(
+                db, user_id, source, call.name, call.arguments,
+                assistant_id=assistant.id if assistant is not None else None,
+            )
         executed.append(call.name)
         await log_action(db, user_id, source, call.name, call.arguments, result)
         if result.ok:

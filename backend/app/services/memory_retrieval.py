@@ -56,6 +56,7 @@ async def retrieve_memory_context(
     embedding_service=None,
     include_places: bool = True,
     include_documents: bool = True,
+    document_ids: list[str] | None = None,
 ) -> MemoryContext:
     """Embed the question, search chunks/entities/summaries/Saved and assemble the context.
 
@@ -153,7 +154,9 @@ async def retrieve_memory_context(
         await places_visited(db, user_id, question, date_range) if include_places else ""
     )
     documents_context = (
-        await document_passages(db, user_id, question_embedding) if include_documents else ""
+        await document_passages(db, user_id, question_embedding, document_ids)
+        if include_documents
+        else ""
     )
 
     if not (
@@ -220,7 +223,10 @@ DOCUMENT_PASSAGES = 3
 
 
 async def document_passages(
-    db: AsyncSession, user_id: uuid.UUID, question_embedding: list[float]
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    question_embedding: list[float],
+    document_ids: list[str] | None = None,
 ) -> str:
     """The user's document passages closest to the question, each under its document's
     name ("" when none is close enough, or they cannot be read)."""
@@ -237,6 +243,12 @@ async def document_passages(
                         DocumentChunk.user_id == user_id,
                         Document.status == "ready",
                         DocumentChunk.embedding.isnot(None),
+                        # An assistant's documents only, when it has some
+                        *(
+                            [Document.id.in_([uuid.UUID(i) for i in document_ids])]
+                            if document_ids
+                            else []
+                        ),
                     )
                     .order_by(DocumentChunk.embedding.cosine_distance(question_embedding))
                     .limit(DOCUMENT_PASSAGES)
