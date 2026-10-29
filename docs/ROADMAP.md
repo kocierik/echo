@@ -1,6 +1,6 @@
 # Echo — Roadmap
 
-> Aggiornata al 16/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> Aggiornata al 29/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
 > Il piano nasce dal confronto con i concorrenti (Omi, Bee, Plaud, Limitless, occhiali con fotocamera) del
 > 15/10/2026: prima non perdere niente, poi sfruttare ciò che solo Echo ha (fotocamera, voci, server tuo),
 > poi far arrivare Echo da te e rendere l'app immediata.
@@ -10,7 +10,8 @@
 Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 
 ### Fase 0 — Prerequisiti (utente)
-- [ ] `make deploy` (installa `argon2-cffi`, applica le migrazioni) e riavvio dell'API
+- [ ] `make deploy` (installa `argon2-cffi`, applica le migrazioni, fino alla `029` degli assistenti) e riavvio
+      dell'API; per WhatsApp `COMPOSE_PROFILES=whatsapp`, indirizzo e token del bridge nel `.env`
 - [ ] Il proprio account: `make create-user EMAIL=…` (si aggancia ai dati già registrati), poi accedere dall'app
       (Settings → Devices mostra i telefoni collegati)
 - [ ] Revocare la chiave di esempio pubblica (`make revoke-example-key`) e togliere `ECHO_API_KEY` da
@@ -124,7 +125,8 @@ MCP — le memorie di Echo dentro Claude, ChatGPT e altri assistenti:
 Un agente per utente — Echo che lavora per te anche quando non glielo chiedi. Un solo motore (l'agente delle
 azioni di oggi, in Python) e per ogni utente un profilo nel database; idee prese da eve (Vercel), pi e valet
 senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
-- [ ] Istruzioni personali ("chiamami Erik, rispondi breve, il lavoro è su Slack") usate da chat, voce e briefing
+- [x] Istruzioni personali ("chiamami Erik, rispondi breve, il lavoro è su Slack"): Profile → Instructions
+      (1.000 caratteri), in ogni risposta in chat e a voce
 - [ ] Memoria a grafo: fatti tra persone e cose (soggetto → relazione → oggetto, con "vero da/a" e la frase
       da cui viene) in Postgres, niente database a grafo; nella ricerca si seguono i legami per 1-2 passi
 - [x] "Cosa so di te" (29/10, [design](superpowers/specs/2026-10-29-memory-and-documents-design.md)): Profile →
@@ -151,7 +153,8 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       reali di ogni passo; con molti strumenti (client MCP) scegliere i pertinenti con gli embedding che già
       abbiamo; poi valutare un modello di decisione dedicato come Jev (TypeSafe AI) con `make eval-llm` sui casi
       in italiano. Le conferme restano regole nel codice, mai una probabilità di un modello
-- [ ] **Da rivedere (16/10): la chat come un agente, stile Omi.** Oggi ogni domanda va alla memoria (ricerca
+- [ ] **Da rivedere (16/10): la chat come un agente, stile Omi.** (29/10: la chat di un assistente passa già
+      sempre dall'agente, con la memoria come strumento.) Oggi ogni domanda a Echo va alla memoria (ricerca
       fissa + una risposta) e solo le frasi che nominano un'app passano dal controllo dell'intento; il Task 10
       del piano usage-keys-and-mcp tappa il buco con le istruzioni del modello. Omi invece classifica ogni
       domanda (`requires_context`, modello piccolo): senza contesto → risposta diretta; con contesto → un agente
@@ -196,42 +199,55 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
 - Scartate per ora: "conti in sospeso" (li coprono i task), "un anno fa oggi"
 - [ ] Cosa aspetto dagli altri: le promesse fatte a te ("Marco mi manda il preventivo venerdì"), con un
       promemoria se non arriva; "Non parli con Luca da 2 mesi" nella pagina della persona
-- [ ] **Saved** (deciso il 16/10, generico il 21/10): le cose da ritrovare, non da fare (quelle restano task,
-      Promemoria, Todoist). UN solo tipo di elemento, generico: nome, foto, posto del telefono (solo se chiesto),
-      data, campi liberi (un importo…) e il suo momento (conversazione, persone); raccolte create dall'agente da
-      quello che dici ("salvami questo", "segnati dove ho messo…", "aggiungi alla lista dei vini"), nessuna
-      funzione dedicata per un caso; strumenti per l'agente (salva, trova, somma, togli); una pagina in Memories.
-      Parcheggio, passaporto, liste, scontrini sono solo esempi dello stesso meccanismo (il parcheggio il primo
-      da provare). Mockup approvati il 16/10 (tela, riga "Saved")
-- [ ] Posti: "Echo, salvami questo posto" → Saved, gruppo Places. La posizione si legge SOLO quando l'utente
-      chiede di salvare qualcosa (il parcheggio, un posto, una cosa con il suo posto), mai in automatico su
-      conversazioni e foto, e niente storico dei posti visitati (deciso il 16/10). Indirizzo dal telefono (gratis); nome del locale da Apple Maps su
-      iPhone, su Android dalla foto o con Google Places (a pagamento)
+- [x] **Saved** (deciso il 16/10, generico il 21/10): le cose da ritrovare, non da fare (quelle restano task,
+      Promemoria, Todoist). Un solo tipo di elemento: nome, dettagli, campi (un importo…), foto, posto del telefono
+      (solo se chiesto) e il suo momento; liste create dall'agente da quello che dici ("salvami questo", "segnati
+      dove ho messo…", "aggiungi alla lista dei vini"); strumenti salva, aggiorna, trova, somma, togli; una lista
+      può tenere solo l'ultimo elemento (il parcheggio) o tenerli pochi giorni. In Today → Saved e nei chip delle
+      risposte in Ask; nella memoria per le domande
+- [x] Posti: "Echo, salvami questo posto" → Saved. La posizione del telefono si legge solo quando chiedi di
+      salvare qualcosa, mai in automatico; indirizzo dal telefono e link alla mappa. Il 16/10 si era deciso
+      niente storico dei posti visitati: poi aggiunto come scelta (Profile → Places visited, spento di default,
+      90 giorni; i posti in Today e nella conversazione)
+- [ ] Posti, poi: il nome del locale (Apple Maps su iPhone; su Android dalla foto o con Google Places, a pagamento)
 - [ ] Fotocamera, da valorizzare (il vantaggio che gli altri dispositivi non hanno):
-  - [ ] **"Dove ho parcheggiato"** (la preferita): "Echo, ricordati dove ho parcheggiato" salva la posizione del
-        telefono, solo sul telefono (come Promemoria/Calendario, un comando che l'app esegue); "Dov'è la
-        macchina?" risponde con indirizzo e un link alla mappa. Resta finché non salvi un nuovo parcheggio, al
-        massimo una settimana, con "Found it" per toglierla (deciso il 16/10; capire da solo che riparti, più avanti). La foto è facoltativa (piano e colonna in un parcheggio coperto). Da verificare: su iPhone
-        la posizione con l'app in background può richiedere il permesso "Sempre"
-  - [ ] "Dove ho messo il passaporto / le chiavi": "Echo, il passaporto è qui" → "Dov'è il passaporto?" risponde
-        con la foto e il posto (la descrizione è già nella memoria: manca il comando e la risposta con la foto)
-  - [ ] Scontrini → spese strutturate (negozio, importo, data, categoria): "quanto ho speso questa settimana?"
-  - [ ] Liste "salva questo": vini, libri, prodotti, posti ("cos'era quel vino del ristorante di sabato?")
+  - [x] **"Dove ho parcheggiato"**: Saved con il posto del telefono; un nuovo parcheggio sostituisce il vecchio,
+        "Dov'è la macchina?" risponde con indirizzo e mappa, foto facoltativa (piano e colonna)
+  - [ ] Parcheggio, poi: capire da solo che sei ripartito; verificare su iPhone la posizione con l'app in
+        background (permesso "Sempre")
+  - [x] "Dove ho messo il passaporto / le chiavi": Saved con la foto appena scattata e il posto
+  - [x] Scontrini → spese (importo, valuta, negozio, data): "quanto ho speso questa settimana?" con la somma
+  - [x] Liste "salva questo": vini, libri, prodotti, posti ("cos'era quel vino del ristorante di sabato?")
   - [ ] Documenti con scadenza: bollette, lettere, biglietti di treno/aereo → task o evento con la data giusta,
         senza tenere IBAN e codici nella memoria
-  - [ ] Azioni dalla foto: locandina → evento in calendario, QR code → link, rete Wi-Fi
+  - [ ] Azioni dalla foto: QR code → link, rete Wi-Fi (locandina → evento in calendario già fatto)
   - [x] (16/10) Foto dal telefono quando il dispositivo non può (non collegato, senza fotocamera, in muto): il pulsante
         della fotocamera in Ask apre la fotocamera del telefono (richiesta del 16/10; piano usage-keys-and-mcp, Task 9)
-  - [ ] Traduzione al volo (menu, cartelli) tra gli esempi di "What Echo can do"
+  - [x] Traduzione al volo (menu, cartelli): "Translate" sotto la risposta a una foto
+  - [ ] La traduzione al volo tra gli esempi di "What Echo can do"
   - [ ] Doppia pressione del pulsante = "salva e basta" (nessuna risposta), singola = chiedi
-  - [ ] Le foto in "Your day" e nel riepilogo della settimana
-  - Già fatto: risposta sulla foto, descrizione nella memoria, foto agganciata alla conversazione in corso
-    (lavagne e slide in riunione), task ed eventi dalle foto, biglietti da visita → People
+  - [x] Le foto in "Your day"
+  - [ ] Le foto nel riepilogo della settimana
+  - Già fatto: risposta sulla foto ("Ask more", "Remind me"), descrizione nella memoria, foto agganciata alla
+    conversazione in corso (lavagne e slide in riunione), task ed eventi dalle foto, biglietti da visita → People
   - Esclusi: riconoscimento dei volti (dati biometrici) e scatti automatici continui (batteria, consenso di chi
     è intorno)
 - [ ] Resoconto della riunione da inviare: decisioni e cose da fare, "Invia ai partecipanti" con Confirm
 - [ ] App web: cercare e leggere le memorie dal computer
 - [ ] "Echo Wrapped" settimanale: con chi hai parlato di più, quanto, gli argomenti ricorrenti
+
+### Da valutare (dal file `next-step`, 29/10)
+- [ ] Home Assistant: vedere se Composio lo integra (luci, termostato, scene a voce e negli incarichi)
+- [ ] "Hey Echo" con openWakeWord: sul dispositivo (firmware, batteria) o sul telefono; vedi anche la wake word
+      in "Più avanti"
+- [ ] Il telefono come strumenti (MCP o simile sulle API del telefono): capire se è fattibile oltre a Promemoria,
+      Calendario e posizione, che già passano dall'app
+- [ ] Smartwatch: consigliato niente app per l'orologio; i dati di salute (Apple Health / Health Connect) più
+      avanti come fonte per gli assistenti Dieta e Sonno
+
+### Debito tecnico
+- [ ] `uv lock` fallisce: `mcp` 1.30 chiede una versione di `fastapi` diversa dalla 0.115 fissata; da risolvere
+      prima di aggiornare le dipendenze
 
 ## Già fatto
 
@@ -246,6 +262,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
   memoria, nessuna foto conservata sul dispositivo (ADR 0007).
 - **Azioni:** Gmail, Calendar, Slack, Telegram, Todoist, Notion via Composio, conferma per ciò che tocca altri,
   registro; richieste vocali "Echo, …".
+- **Cose da ritrovare:** Saved (posti, parcheggio, liste, scontrini e somme), luoghi visitati a scelta.
+- **Echo per te:** istruzioni personali, About you e documenti, assistenti, incarichi ricorrenti, ricerca web,
+  WhatsApp in lettura, risposte a voce, traduzione delle trascrizioni.
 - **App:** Today / Ask / Memories (Tasks da Today), chat in streaming con fonti, batteria del dispositivo,
   aggiornamento del firmware via Bluetooth, account con accesso e registrazione, tema chiaro/scuro.
 - **Modelli:** `gpt-6-luna` per ogni ruolo (analisi, chat, agente, instradamento, visione), Deepgram Nova-3,
