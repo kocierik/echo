@@ -1,6 +1,6 @@
 # Echo — Roadmap
 
-> Aggiornata al 29/10/2026. Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> Aggiornata al 29/10/2026. Tutto ciò che Echo fa già, in breve: [FEATURES.md](FEATURES.md). Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
 > Il piano nasce dal confronto con i concorrenti (Omi, Bee, Plaud, Limitless, occhiali con fotocamera) del
 > 15/10/2026: prima non perdere niente, poi sfruttare ciò che solo Echo ha (fotocamera, voci, server tuo),
 > poi far arrivare Echo da te e rendere l'app immediata.
@@ -189,8 +189,8 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       trascrizione del dispositivo e dalla dettatura; testo da leggere in Settings → Voices anche in italiano
 
 ### Fase 8 — Nuove funzioni (idee del 16/10)
-- [ ] Echo riconosce chi hai davanti: quando una voce nota parla, sul telefono "Marco: l'ultima volta ti ha
-      detto che aspettava l'esito dell'esame" (dopo circa un minuto: la voce si riconosce sul server)
+- [x] Echo riconosce chi hai davanti (24/10): quando una voce nominata parla, subito una notifica con le promesse
+      nei due sensi e l'ultima conversazione; al massimo una volta ogni 4 ore per persona
 - [-] ~~Ricordare le persone per te: compleanni ed eventi del calendario~~ (23/10: no, bastano i promemoria
       e il briefing prima degli incontri)
 - [ ] Domande che nessun'altra app sa fare, mostrate in "What Echo can do" ("Quando ho visto Marco l'ultima
@@ -224,10 +224,8 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
   - [x] (16/10) Foto dal telefono quando il dispositivo non può (non collegato, senza fotocamera, in muto): il pulsante
         della fotocamera in Ask apre la fotocamera del telefono (richiesta del 16/10; piano usage-keys-and-mcp, Task 9)
   - [x] Traduzione al volo (menu, cartelli): "Translate" sotto la risposta a una foto
-  - [ ] La traduzione al volo tra gli esempi di "What Echo can do"
   - [ ] Doppia pressione del pulsante = "salva e basta" (nessuna risposta), singola = chiedi
   - [x] Le foto in "Your day"
-  - [ ] Le foto nel riepilogo della settimana
   - Già fatto: risposta sulla foto ("Ask more", "Remind me"), descrizione nella memoria, foto agganciata alla
     conversazione in corso (lavagne e slide in riunione), task ed eventi dalle foto, biglietti da visita → People
   - Esclusi: riconoscimento dei volti (dati biometrici) e scatti automatici continui (batteria, consenso di chi
