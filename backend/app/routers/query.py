@@ -442,6 +442,12 @@ async def _answer_query(
             # An assistant's chat always goes to the agent: its notes, its documents, all
             # the connected apps
             provider, use_agent = provider or NO_APPS, True
+            try:
+                apps = await provider.connected_toolkits(str(user_id))
+            except ActionProviderError:
+                # Its notes and the memory need no app: it answers without them
+                logger.warning("Action provider unreachable", exc_info=True)
+                apps = []
         elif provider is not None:
             reachable: list[str] | None = None
             try:

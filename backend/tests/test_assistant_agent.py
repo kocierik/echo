@@ -191,3 +191,28 @@ async def test_retrieval_limited_to_some_documents_quotes_no_other(db_session):
 
     assert "Piano.pdf" in memory.context
     assert "Altro.pdf" not in memory.context
+
+
+async def test_its_routine_runs_never_change_its_notes(db_session):
+    # Nobody is there in a routine: what it reads (an email) never becomes a note
+    assistant = await _assistant(db_session)
+    llm = RecordingLLM([_text("Ok.")])
+
+    await run_action_agent(
+        db_session, TEST_USER_ID, "riassumimi le email", [], session_id=None,
+        source="routine", provider=NO_APPS, llm=llm, routine_tools=False,
+        allow_confirm=False, assistant=assistant,
+    )
+
+    assert NOTES_TOOL not in [t["function"]["name"] for t in llm.tools_log[0]]
+    assert "Vegetariano." in llm.call_log[0][0].content
+
+
+def test_every_assistant_is_told_it_is_not_a_doctor():
+    # Even one whose instructions no longer say so
+    made = Assistant(name="Salute", emoji="🩺", instructions="Fammi un piano da 1200 kcal.")
+    made.notes = ""
+
+    prompt = assistants.assistant_prompt(made).lower()
+
+    assert "not a doctor" in prompt

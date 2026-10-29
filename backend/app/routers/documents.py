@@ -6,12 +6,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import Text, func, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.models.assistant import Assistant
 from app.models.document import Document
 from app.services import documents
 from app.services.documents import DocumentError
@@ -112,5 +113,11 @@ async def delete_document(
 ):
     """The document and its passages: the memory no longer finds it."""
     await db.delete(await _owned(db, user_id, document_id))
+    # Its assistants no longer have it (none left: they search all documents)
+    await db.execute(
+        update(Assistant)
+        .where(Assistant.user_id == user_id)
+        .values(document_ids=Assistant.document_ids.op("-")(literal(str(document_id), Text)))
+    )
     await db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

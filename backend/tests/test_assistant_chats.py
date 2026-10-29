@@ -3,12 +3,16 @@ the chat remembers it, history shows it; deleting it leaves plain Echo."""
 
 import uuid
 
+from app.actions.provider import ActionProviderError
 from app.models.assistant import Assistant
 from app.models.chat_session import ChatSession
+from app.models.document import Document
 from app.models.routine import Routine
+from app.models.routine_run import RoutineRun
 from app.routers import query as query_router
 from tests.conftest import TEST_USER_ID
 from tests.conftest import test_session as session_factory
+from tests.fakes.action_provider import FakeActionProvider
 from tests.test_routines_worker import _LLM, NOW, _run
 
 
@@ -136,3 +140,75 @@ async def test_a_reopened_chat_continues_with_its_assistant(
 
     assert response.status_code == 200
     assert calls[1]["assistant"].id == assistant.id
+
+
+async def test_its_chat_still_answers_when_the_apps_are_unreachable(
+    client, auth_headers, db_session, monkeypatch
+):
+    assistant = await _assistant(db_session)
+    calls = _agent(monkeypatch)
+
+    class Down(FakeActionProvider):
+        async def connected_toolkits(self, user_id):
+            raise ActionProviderError("Composio request timed out")
+
+    monkeypatch.setattr(query_router, "get_action_provider", lambda: Down())
+
+    response = await client.post(
+        "/api/query", headers=auth_headers,
+        json={"question": "a colazione yogurt e frutta", "assistant_id": str(assistant.id)},
+    )
+
+    # Its notes need no app: the agent runs, without app tools
+    assert response.status_code == 200
+    assert calls[0]["connected_toolkits"] == []
+
+
+async def test_asking_about_its_routine_run_opens_its_chat(client, auth_headers, db_session):
+    assistant = await _assistant(db_session)
+    routine = Routine(
+        id=uuid.uuid4(), user_id=TEST_USER_ID, instruction="chiedimi cosa ho mangiato",
+        schedule={"kind": "daily", "time": "21:00"}, timezone="Europe/Rome", active=True,
+        next_run_at=NOW, source="chat", mode="always", assistant_id=assistant.id,
+    )
+    db_session.add(routine)
+    await db_session.flush()
+    runs = [
+        RoutineRun(
+            id=uuid.uuid4(), routine_id=routine.id, user_id=TEST_USER_ID, ran_at=NOW,
+            status="reported", text=text, sources=[],
+        )
+        for text in ("Cosa hai mangiato oggi?", "E stasera?")
+    ]
+    db_session.add_all(runs)
+    await db_session.commit()
+
+    first = (await client.post(f"/api/routine-runs/{runs[0].id}/ask", headers=auth_headers)).json()
+    second = (await client.post(f"/api/routine-runs/{runs[1].id}/ask", headers=auth_headers)).json()
+
+    # Its own chat, not the thread with Echo: the reply reaches the assistant and its notes
+    assert first["session_id"] == second["session_id"]
+    async with session_factory() as db:
+        chat = await db.get(ChatSession, uuid.UUID(first["session_id"]))
+    assert chat.kind == "chat" and chat.assistant_id == assistant.id
+    assert [m["content"] for m in chat.messages] == ["Cosa hai mangiato oggi?", "E stasera?"]
+
+
+async def test_deleting_a_document_takes_it_from_its_assistants(
+    client, auth_headers, db_session
+):
+    document = Document(
+        id=uuid.uuid4(), user_id=TEST_USER_ID, title="Piano.pdf", kind="pdf", size_bytes=1,
+        status="ready", text="x", word_count=1,
+    )
+    db_session.add(document)
+    await db_session.commit()
+    assistant = await _assistant(db_session)
+    assistant.document_ids = [str(document.id)]
+    await db_session.commit()
+
+    await client.delete(f"/api/documents/{document.id}", headers=auth_headers)
+
+    # None left: it searches all of them, as the editor says
+    async with session_factory() as db:
+        assert (await db.get(Assistant, assistant.id)).document_ids == []

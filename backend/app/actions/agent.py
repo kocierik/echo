@@ -411,8 +411,9 @@ async def run_action_agent(
         else frozenset()
     )
     own_tools = [*ROUTINE_TOOLS, *TODO_TOOLS, *SAVED_TOOLS, *FACT_TOOLS] if routine_tools else []
-    if assistant is not None:
-        # In an assistant's chat (or its routine): its notes tool
+    if assistant is not None and routine_tools:
+        # In an assistant's chat: its notes tool. Never in its routine runs, where nobody
+        # is there and what is read (an email) must not become a note
         own = own | ASSISTANT_TOOL_NAMES
         own_tools = [*own_tools, *ASSISTANT_TOOLS]
     saved = saved or SavedContext()

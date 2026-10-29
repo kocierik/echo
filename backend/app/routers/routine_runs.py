@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actions.voice import get_or_create_voice_session
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.models.chat_session import ChatSession
 from app.models.routine import Routine
 from app.models.routine_run import RoutineRun
 from app.services.routines import describe_schedule
@@ -102,14 +103,34 @@ async def ask_about_run(
     db: AsyncSession = Depends(get_db),
 ):
     """Add the run to the thread with Echo as Echo's message, once, so the next question
-    has it in its history ("e domani?"). Not notified: the user asked for it."""
+    has it in its history ("e domani?"); a routine of an assistant's goes to that
+    assistant's latest chat instead. Not notified: the user asked for it."""
     run = await db.get(RoutineRun, run_id)
     if run is None or run.user_id != user_id:
         raise HTTPException(status_code=404, detail="Routine result not found")
     if not run.text:
         raise HTTPException(status_code=409, detail="This run has nothing to ask about")
     routine = await db.get(Routine, run.routine_id)
-    thread = await get_or_create_voice_session(db, user_id)
+    if routine is not None and routine.assistant_id is not None:
+        # Its assistant's latest chat (or a new one): the reply reaches it and its notes
+        thread = await db.scalar(
+            select(ChatSession)
+            .where(
+                ChatSession.user_id == user_id,
+                ChatSession.assistant_id == routine.assistant_id,
+                ChatSession.kind == "chat",
+            )
+            .order_by(ChatSession.updated_at.desc())
+            .limit(1)
+        )
+        if thread is None:
+            thread = ChatSession(
+                id=uuid.uuid4(), user_id=user_id, title=routine.instruction[:80],
+                messages=[], assistant_id=routine.assistant_id,
+            )
+            db.add(thread)
+    else:
+        thread = await get_or_create_voice_session(db, user_id)
     messages = thread.messages or []
     if not any(m.get("routine_run_id") == str(run.id) for m in messages):
         now = datetime.now(timezone.utc)
