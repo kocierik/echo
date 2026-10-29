@@ -470,3 +470,41 @@ CREATE TABLE place_visits (
 );
 CREATE UNIQUE INDEX ix_place_visits_user_key ON place_visits(user_id, key);
 CREATE INDEX ix_place_visits_user_arrived ON place_visits(user_id, arrived_at);
+
+-- What Echo knows about the user: kept facts go into every answer (Migration 028)
+CREATE TABLE user_facts (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    text VARCHAR(200) NOT NULL,
+    status VARCHAR(10) NOT NULL,       -- kept | suggested
+    source VARCHAR(15) NOT NULL,       -- you | echo | conversation
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_user_facts_user_status ON user_facts(user_id, status);
+
+-- The text of an uploaded file, never the file (Migration 028)
+CREATE TABLE documents (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    kind VARCHAR(10) NOT NULL,         -- pdf | docx | txt | md
+    size_bytes INTEGER NOT NULL,
+    status VARCHAR(12) NOT NULL,       -- processing | ready | failed
+    error TEXT,
+    text TEXT NOT NULL,
+    pages INTEGER,
+    word_count INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX ix_documents_user_id ON documents(user_id);
+CREATE TABLE document_chunks (
+    id UUID PRIMARY KEY,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    embedding vector(1536)
+);
+CREATE INDEX ix_document_chunks_user_id ON document_chunks(user_id);
+CREATE INDEX ix_document_chunks_document_id ON document_chunks(document_id);

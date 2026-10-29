@@ -195,7 +195,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 28)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 29)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -468,6 +468,27 @@ def test_migration_027_adds_other_languages_and_translations(monkeypatch):
     assert translations["columns"]["text"] is False
     fk = translations["fks"][0]
     assert (fk["referred_table"], fk["options"].get("ondelete")) == ("transcriptions", "CASCADE")
+
+
+
+def test_migration_028_adds_facts_and_documents(monkeypatch):
+    state = _State()
+    for module in _migrations():
+        if module.revision >= "028":
+            break
+        _run(module, state, monkeypatch)
+    migration_028 = next(m for m in _migrations() if m.revision == "028")
+
+    _run(migration_028, state, monkeypatch)
+
+    facts = state.tables["user_facts"]["columns"]
+    assert facts["text"] is False and facts["conversation_id"] is True
+    documents = state.tables["documents"]["columns"]
+    assert documents["status"] is False and documents["error"] is True
+    chunk_fk = state.tables["document_chunks"]["fks"][0]
+    assert (chunk_fk["referred_table"], chunk_fk["options"].get("ondelete")) == (
+        "documents", "CASCADE",
+    )
 
 
 def test_migration_003_is_defined_once():
