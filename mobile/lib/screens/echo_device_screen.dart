@@ -8,6 +8,7 @@ import '../services/onboarding/onboarding_controller.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/firmware_update.dart';
 import '../widgets/device_instrument.dart';
+import '../widgets/device_readings.dart' show microSdLabel;
 import '../widgets/firmware_update_section.dart';
 import 'settings/settings_components.dart';
 
@@ -221,6 +222,13 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
               title: 'Dropped segments',
               value: status.droppedSegments.toString(),
             ),
+            if (status.microSd != null)
+              SettingsRow(
+                key: const Key('device-microsd'),
+                icon: Icons.sd_card_outlined,
+                title: 'microSD',
+                subtitle: microSdLabel(status.microSd!),
+              ),
             if (reconnectAvailable) ...[
               const SettingsSection('CONNECTION'),
               Padding(

@@ -11,6 +11,35 @@ enum DeviceConnectionState {
   error,
 }
 
+/// The wearable's microSD (protocol 5): speech that does not fit in its memory waits
+/// there, encrypted.
+final class MicroSd {
+  const MicroSd({
+    required this.inUse,
+    required this.totalMb,
+    required this.freeMb,
+    required this.pendingKb,
+  });
+
+  final bool inUse;
+  final int totalMb;
+  final int freeMb;
+
+  /// Speech on the card still to reach the phone.
+  final int pendingKb;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MicroSd &&
+      inUse == other.inUse &&
+      totalMb == other.totalMb &&
+      freeMb == other.freeMb &&
+      pendingKb == other.pendingKb;
+
+  @override
+  int get hashCode => Object.hash(inUse, totalMb, freeMb, pendingKb);
+}
+
 final class DeviceStatus {
   const DeviceStatus({
     required this.connectionState,
@@ -21,6 +50,7 @@ final class DeviceStatus {
     this.bufferBytes = 0,
     this.droppedSegments = 0,
     this.overflowed = false,
+    this.microSd,
     this.error,
   });
 
@@ -34,6 +64,9 @@ final class DeviceStatus {
   final int bufferBytes;
   final int droppedSegments;
   final bool overflowed;
+
+  /// Null: the firmware cannot say (before protocol 5).
+  final MicroSd? microSd;
   final String? error;
 
   DeviceStatus copyWith({
@@ -45,6 +78,7 @@ final class DeviceStatus {
     int? bufferBytes,
     int? droppedSegments,
     bool? overflowed,
+    Object? microSd = _unset,
     Object? error = _unset,
   }) {
     return DeviceStatus(
@@ -62,6 +96,7 @@ final class DeviceStatus {
       bufferBytes: bufferBytes ?? this.bufferBytes,
       droppedSegments: droppedSegments ?? this.droppedSegments,
       overflowed: overflowed ?? this.overflowed,
+      microSd: identical(microSd, _unset) ? this.microSd : microSd as MicroSd?,
       error: identical(error, _unset) ? this.error : error as String?,
     );
   }
@@ -78,6 +113,7 @@ final class DeviceStatus {
             bufferBytes == other.bufferBytes &&
             droppedSegments == other.droppedSegments &&
             overflowed == other.overflowed &&
+            microSd == other.microSd &&
             error == other.error;
   }
 
@@ -91,6 +127,7 @@ final class DeviceStatus {
         bufferBytes,
         droppedSegments,
         overflowed,
+        microSd,
         error,
       );
 

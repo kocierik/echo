@@ -1,11 +1,14 @@
 import 'dart:typed_data';
 
+import 'device_protocol.dart';
+
 const int _frameSegmentStart = 0x01;
 const int _frameSegmentMetadata = 0x02;
 const int _frameSegmentData = 0x03;
 // Protocol 3: a photo transfer, otherwise like an audio segment
 const int _framePhotoStart = 0x04;
-const Set<int> _protocolVersions = {2, 3, 4};
+// The versions the app speaks, one list for every frame
+const Set<int> _protocolVersions = DeviceProtocol.supportedVersions;
 const int _segmentStartSize = 20;
 const int _segmentMetadataSize = 19;
 const int _segmentDataHeaderSize = 7;

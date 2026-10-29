@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -42,6 +43,49 @@ public:
         for (auto& f : files) used += f.second.size();
         return used >= capacity ? 0 : capacity - used;
     }
+    uint64_t totalBytes() override { return capacity; }
+
+    /** Whether any file under `folder` holds `needle` as is. */
+    bool holds(const std::string& folder, const std::vector<uint8_t>& needle) const {
+        for (auto& f : files) {
+            if (f.first.rfind(folder, 0) != 0) continue;
+            if (std::search(f.second.begin(), f.second.end(), needle.begin(), needle.end()) !=
+                f.second.end()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    size_t filesUnder(const std::string& folder) const {
+        size_t n = 0;
+        for (auto& f : files) {
+            if (f.first.rfind(folder, 0) == 0 && f.first.find(".log") != std::string::npos) ++n;
+        }
+        return n;
+    }
+};
+
+/** A stand-in for AES-CTR: a keystream from the key and the IV, the same both ways. */
+class TestCipher : public RecordCipher {
+public:
+    explicit TestCipher(uint8_t key) : _key(key) {}
+    void newIv(uint8_t* iv) override {
+        memset(iv, 0, IV_SIZE);
+        iv[0] = ++_ivs;
+    }
+    void start(const uint8_t* iv) override { _state = static_cast<uint8_t>(iv[0] * 13 + _key); }
+    void apply(uint8_t* data, size_t length) override {
+        for (size_t i = 0; i < length; ++i) {
+            data[i] ^= _state;
+            _state = static_cast<uint8_t>(_state * 31 + 7);
+        }
+    }
+
+private:
+    uint8_t _key;
+    uint8_t _ivs = 0;
+    uint8_t _state = 0;
 };
 
 static std::vector<uint8_t> payload(uint8_t seed, size_t length) {
@@ -199,6 +243,99 @@ void test_pending_bytes_and_a_failing_card() {
     TEST_ASSERT_EQUAL_UINT32(1, peekId(log));
 }
 
+static uint8_t big[8192];
+
+void test_an_encrypted_log_keeps_no_audio_in_clear() {
+    MemoryStorage card;
+    TestCipher cipher(0x5A);
+    SegmentLog log(card, 1u << 20, "/echo/s", &cipher);
+    TEST_ASSERT_TRUE(log.begin());
+    // Longer than one chunk of encryption
+    auto data = payload(3, 3000);
+    TEST_ASSERT_TRUE(log.append(headerFor(1, data), data.data()));
+
+    TEST_ASSERT_FALSE(card.holds("/echo/s", std::vector<uint8_t>(data.begin(), data.begin() + 64)));
+    BufferedSegment header{};
+    TEST_ASSERT_TRUE(log.peek(header, big, sizeof(big)));
+    TEST_ASSERT_EQUAL_UINT32(1, header.segmentId);
+    TEST_ASSERT_EQUAL_MEMORY(data.data(), big, data.size());
+}
+
+void test_each_record_has_its_own_iv() {
+    MemoryStorage card;
+    TestCipher cipher(0x5A);
+    SegmentLog log(card, 1u << 20, "/echo/s", &cipher);
+    TEST_ASSERT_TRUE(log.begin());
+    auto data = payload(9, 200);
+    TEST_ASSERT_TRUE(log.append(headerFor(1, data), data.data()));
+    TEST_ASSERT_TRUE(log.append(headerFor(2, data), data.data()));
+
+    // The same audio twice is two different ciphertexts
+    const auto& file = card.files["/echo/s/00000000.log"];
+    const size_t record = SegmentLog::HEADER_SIZE + RecordCipher::IV_SIZE + data.size();
+    TEST_ASSERT_EQUAL_UINT32(2 * record, file.size());
+    TEST_ASSERT_FALSE(std::equal(file.begin() + SegmentLog::HEADER_SIZE + RecordCipher::IV_SIZE,
+                                 file.begin() + record,
+                                 file.begin() + record + SegmentLog::HEADER_SIZE +
+                                     RecordCipher::IV_SIZE));
+    TEST_ASSERT_EQUAL_UINT32(1, peekId(log));
+    log.dequeue();
+    TEST_ASSERT_EQUAL_UINT32(2, peekId(log));
+}
+
+void test_another_key_cannot_read_it() {
+    MemoryStorage card;
+    {
+        TestCipher mine(0x5A);
+        SegmentLog log(card, 1u << 20, "/echo/s", &mine);
+        TEST_ASSERT_TRUE(log.begin());
+        append(log, 1, 300);
+    }
+    TestCipher other(0x11);
+    SegmentLog log(card, 1u << 20, "/echo/s", &other);
+    TEST_ASSERT_TRUE(log.begin());
+
+    // Never sent as noise: skipped and counted as lost
+    TEST_ASSERT_EQUAL_UINT32(0, peekId(log));
+    TEST_ASSERT_EQUAL_UINT32(1, log.droppedSegmentCount());
+}
+
+void test_records_left_in_clear_move_into_the_encrypted_log() {
+    MemoryStorage card;
+    SegmentLog plain(card, 1024);  // 0.6.0's folder, /echo/q
+    TEST_ASSERT_TRUE(plain.begin());
+    append(plain, 1, 400);
+    append(plain, 2, 400);
+    append(plain, 3, 400);
+    TestCipher cipher(0x5A);
+    SegmentLog sealed(card, 1u << 20, "/echo/s", &cipher);
+    TEST_ASSERT_TRUE(sealed.begin());
+
+    TEST_ASSERT_EQUAL_UINT32(3, SegmentLog::moveAll(plain, sealed, big, sizeof(big)));
+
+    TEST_ASSERT_EQUAL_UINT32(0, card.filesUnder("/echo/q/"));
+    TEST_ASSERT_FALSE(card.holds("/echo/s", payload(1, 64)));
+    TEST_ASSERT_EQUAL_UINT32(1, peekId(sealed));
+    sealed.dequeue();
+    TEST_ASSERT_EQUAL_UINT32(2, peekId(sealed));
+}
+
+void test_the_log_knows_the_cards_size_and_room() {
+    MemoryStorage card;
+    card.capacity = 10000;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TEST_ASSERT_EQUAL_UINT64(10000, log.totalBytes());
+    TEST_ASSERT_EQUAL_UINT64(10000, log.freeBytes());
+
+    append(log, 1, 1000);
+    TEST_ASSERT_EQUAL_UINT64(10000 - SegmentLog::HEADER_SIZE - 1000, log.freeBytes());
+
+    TEST_ASSERT_EQUAL_UINT32(1, peekId(log));
+    log.dequeue();  // its file is deleted
+    TEST_ASSERT_EQUAL_UINT64(10000 - 8, log.freeBytes());  // the read position's file stays
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_segments_come_back_oldest_first_with_their_data);
@@ -208,5 +345,10 @@ int main(int, char**) {
     RUN_TEST(test_corrupted_data_is_skipped);
     RUN_TEST(test_a_full_card_drops_the_oldest_file);
     RUN_TEST(test_pending_bytes_and_a_failing_card);
+    RUN_TEST(test_an_encrypted_log_keeps_no_audio_in_clear);
+    RUN_TEST(test_each_record_has_its_own_iv);
+    RUN_TEST(test_another_key_cannot_read_it);
+    RUN_TEST(test_records_left_in_clear_move_into_the_encrypted_log);
+    RUN_TEST(test_the_log_knows_the_cards_size_and_room);
     return UNITY_END();
 }

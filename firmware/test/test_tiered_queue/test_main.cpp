@@ -78,6 +78,7 @@ public:
         return true;
     }
     uint64_t freeBytes() override { return 1ull << 30; }
+    uint64_t totalBytes() override { return 1ull << 31; }
 };
 
 static std::vector<uint8_t> payload(uint32_t id) {
@@ -146,6 +147,26 @@ void test_with_a_card_the_oldest_moves_there_and_nothing_is_lost() {
     TEST_ASSERT_EQUAL_UINT32(0, queue.droppedSegmentCount());
 }
 
+void test_the_card_status_says_its_size_room_and_the_speech_on_it() {
+    FakeHot hot(300);
+    TieredQueue<FakeHot> queue(hot);
+    TEST_ASSERT_FALSE(queue.cardStatus().inUse);
+
+    MemoryStorage card;  // 2 GB, 1 GB free
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    queue.attachCard(&log, staging, sizeof(staging), [](uint32_t) {});
+    for (uint32_t id = 1; id <= 13; ++id) TEST_ASSERT_TRUE(storeSegment(queue, id));
+
+    const CardStatus status = queue.cardStatus();
+    TEST_ASSERT_TRUE(status.inUse);
+    TEST_ASSERT_EQUAL_UINT32(2048, status.totalMb);
+    TEST_ASSERT_EQUAL_UINT32(1024, status.freeMb);
+    // Ten segments on the card, rounded up to a whole KB
+    TEST_ASSERT_EQUAL_UINT32((10 * (100 + BufferedSegmentCodec::HEADER_SIZE) + 1023) / 1024,
+                             status.pendingKb);
+}
+
 void test_a_failing_card_falls_back_to_dropping() {
     FakeHot hot(300);
     MemoryStorage card;
@@ -190,6 +211,7 @@ int main(int, char**) {
     RUN_TEST(test_without_a_card_a_full_queue_refuses_as_today);
     RUN_TEST(test_with_a_card_the_oldest_moves_there_and_nothing_is_lost);
     RUN_TEST(test_a_failing_card_falls_back_to_dropping);
+    RUN_TEST(test_the_card_status_says_its_size_room_and_the_speech_on_it);
     RUN_TEST(test_a_segment_peeked_again_is_the_same_one);
     return UNITY_END();
 }

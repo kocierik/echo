@@ -61,10 +61,15 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Pulsante fisico** (D1/GPIO2): pressione breve = foto, lunga = muto/riattiva.
 - **Aggiornamento via Bluetooth** (protocollo 4, [ADR 0009](adr/0009-firmware-updates-over-ble.md)): l'app scarica
   la versione dal server, la invia a pezzi verificando lo SHA-256; il dispositivo torna alla versione precedente se
-  la nuova non si collega all'app entro 5 minuti. Firmware attuale 0.6.0.
+  la nuova non si collega all'app entro 5 minuti. Firmware attuale 0.7.0.
 - **microSD** (24/10, 0.6.0): quando la PSRAM è piena i segmenti più vecchi passano su file da 4 MB nella scheda
   (SPI, CS GPIO21: il LED non si usa più), con la posizione di lettura salvata e i record tagliati o con CRC
-  sbagliato saltati; il telefono riceve prima quelli della scheda. Senza scheda come prima. Non cifrati.
+  sbagliato saltati; il telefono riceve prima quelli della scheda. Senza scheda come prima. Dal 0.7.0 (protocollo
+  5) l'audio sulla scheda è cifrato (AES-256-CTR con un IV per record, chiave di 32 byte fatta sul dispositivo
+  all'avvio con la radio accesa e tenuta nella NVS; senza chiave la scheda non si usa), i record in chiaro del
+  0.6.0 vengono cifrati all'avvio, e DEVICE_STATUS (26 byte) dice se la scheda è in uso, dimensione, spazio
+  libero e parlato in attesa: la riga "microSD" in Profile → Echo. Chi ha l'intero dispositivo può leggere la
+  chiave dalla flash (cifratura della flash non attiva).
 
 ### App mobile
 - **Primo avvio** ([design](superpowers/specs/2026-10-16-first-run-and-sign-in-design.md)): schermata di avvio nei
@@ -366,7 +371,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 2. **Il tuo account:** `make create-user EMAIL=…` (si aggancia ai dati che hai), poi nell'app esci e rientra per
    avere una chiave tua; **`make revoke-example-key`** per la chiave pubblica `my-secret-key`; togli `ECHO_API_KEY`
    da `mobile/dart_defines.json`.
-3. **Firmware 0.6.0 via cavo**, reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
+3. **Firmware 0.7.0 via cavo**, reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
 4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero).
 5. **Decidere sulla registrazione aperta**: lasciarla (lo hai scelto) o chiuderla con `REGISTRATION_OPEN=false`.
 6. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.

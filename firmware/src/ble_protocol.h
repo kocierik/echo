@@ -31,7 +31,8 @@ constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reas
 constexpr uint8_t FRAME_OTA_STATUS = 0x23;
 // 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
 // 4: firmware updates over BLE (OTA_*), DEVICE_INFO sent after READY
-constexpr uint8_t PROTOCOL_VERSION = 4;
+// 5: the microSD in DEVICE_STATUS (in use, size, free space, speech waiting on it)
+constexpr uint8_t PROTOCOL_VERSION = 5;
 
 constexpr uint8_t PHOTO_FAILED_MUTED = 1;
 constexpr uint8_t PHOTO_FAILED_CAPTURE = 2;
@@ -69,7 +70,7 @@ constexpr size_t FORGET_BOND_SIZE = 1;
 constexpr size_t FORGET_BOND_OK_SIZE = 1;
 constexpr size_t TAKE_PHOTO_SIZE = 1;
 constexpr size_t PHOTO_FAILED_SIZE = 2;
-constexpr size_t DEVICE_STATUS_SIZE = 14;
+constexpr size_t DEVICE_STATUS_SIZE = 26;
 constexpr size_t DEVICE_INFO_SIZE = 5;
 constexpr size_t OTA_BEGIN_SIZE = 1 + 4 + SHA256_SIZE;
 constexpr size_t OTA_ABORT_SIZE = 1;
@@ -180,6 +181,11 @@ struct DeviceStatus {
     uint32_t bufferBytes;
     uint32_t droppedSegments;
     bool cameraAvailable;  // v3; left out of an initializer it is false
+    // v5: the microSD, when one is in use (sizes in MB, its speech in KB)
+    bool cardInUse;
+    uint32_t cardTotalMb;
+    uint32_t cardFreeMb;
+    uint32_t cardPendingKb;
 };
 
 struct DeviceInfo {
@@ -294,11 +300,15 @@ inline size_t encodeDeviceStatusV2(const DeviceStatus& status,
     output[1] = PROTOCOL_VERSION;
     output[2] = static_cast<uint8_t>((status.muted ? 0x01 : 0x00) |
                                      (status.overflowed ? 0x02 : 0x00) |
-                                     (status.cameraAvailable ? 0x04 : 0x00));
+                                     (status.cameraAvailable ? 0x04 : 0x00) |
+                                     (status.cardInUse ? 0x08 : 0x00));
     output[3] = status.batteryPercent;
     writeU16(output + 4, status.bufferCount);
     writeU32(output + 6, status.bufferBytes);
     writeU32(output + 10, status.droppedSegments);
+    writeU32(output + 14, status.cardTotalMb);
+    writeU32(output + 18, status.cardFreeMb);
+    writeU32(output + 22, status.cardPendingKb);
     return DEVICE_STATUS_SIZE;
 }
 
@@ -306,15 +316,20 @@ inline size_t encodeDeviceStatusV2(bool muted, bool overflowed, uint8_t batteryP
                                    uint16_t bufferCount, uint32_t bufferBytes,
                                    uint32_t droppedSegments,
                                    uint8_t* output, size_t capacity) {
-    const DeviceStatus status = {
-        muted, overflowed, batteryPercent, bufferCount, bufferBytes, droppedSegments};
+    DeviceStatus status = {};
+    status.muted = muted;
+    status.overflowed = overflowed;
+    status.batteryPercent = batteryPercent;
+    status.bufferCount = bufferCount;
+    status.bufferBytes = bufferBytes;
+    status.droppedSegments = droppedSegments;
     return encodeDeviceStatusV2(status, output, capacity);
 }
 
 inline bool decodeDeviceStatusV2(const uint8_t* input, size_t length, DeviceStatus& status) {
     if (input == nullptr || length != DEVICE_STATUS_SIZE ||
         input[0] != FRAME_DEVICE_STATUS || input[1] != PROTOCOL_VERSION ||
-        (input[2] & 0xF8) != 0 || !isValidBatteryPercent(input[3])) return false;
+        (input[2] & 0xF0) != 0 || !isValidBatteryPercent(input[3])) return false;
     status.muted = (input[2] & 0x01) != 0;
     status.overflowed = (input[2] & 0x02) != 0;
     status.cameraAvailable = (input[2] & 0x04) != 0;
@@ -322,6 +337,10 @@ inline bool decodeDeviceStatusV2(const uint8_t* input, size_t length, DeviceStat
     status.bufferCount = readU16(input + 4);
     status.bufferBytes = readU32(input + 6);
     status.droppedSegments = readU32(input + 10);
+    status.cardInUse = (input[2] & 0x08) != 0;
+    status.cardTotalMb = readU32(input + 14);
+    status.cardFreeMb = readU32(input + 18);
+    status.cardPendingKb = readU32(input + 22);
     return true;
 }
 

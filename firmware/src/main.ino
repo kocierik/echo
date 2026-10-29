@@ -23,6 +23,7 @@
 #include "adpcm_encoder.h"
 #include "ble_transport.h"
 #include "psram_buffer.h"
+#include "sd_cipher.h"
 #include "sd_storage.h"
 #include "segment_log.h"
 #include "indicators.h"
@@ -45,7 +46,10 @@ PSRAMBuffer psram;
 // The segments for the phone: PSRAM, and the microSD when one is mounted
 SegmentQueue buffer(psram);
 SdStorage sdCard;
-SegmentLog sdLog(sdCard, SD_LOG_FILE_BYTES);
+// The card's speech, encrypted with this device's key; 0.6.0's, in clear, moves into it
+AesCtrCipher sdCipher;
+SegmentLog sdLog(sdCard, SD_LOG_FILE_BYTES, SD_SEALED_FOLDER, &sdCipher);
+SegmentLog sdLegacyLog(sdCard, SD_LOG_FILE_BYTES);
 Indicators indicators;
 DevicePreferences devicePreferences;
 PhotoSlot photoSlot;
@@ -191,12 +195,6 @@ void setup() {
     // Initialize PSRAM buffer
     if (!psram.begin()) fatal("[FATAL] PSRAM buffer init failed");
 
-    if (sdStaging != nullptr && sdLog.begin()) {
-        buffer.attachCard(&sdLog, sdStaging, SEGMENT_MAX_SIZE, moveToCard);
-        Serial.printf("[SD] speech overflow on the card (%llu KB waiting)\n",
-                      static_cast<unsigned long long>(sdLog.pendingBytes() / 1024));
-    }
-
     // Camera (optional): no camera, no photos
     const bool cameraAvailable = camera.begin(photoSlot);
     Serial.printf("[Camera] %s\n", cameraAvailable ? "ready" : "not available");
@@ -207,6 +205,22 @@ void setup() {
     bleTransport.setTakePhotoCallback(handleTakePhoto, nullptr);
 
     if (!bleTransport.begin()) fatal("[FATAL] BLE transport init failed");
+
+    // The card, once the radio is on (the key, made the first time, needs true random
+    // numbers). Without its key nothing goes on the card: speech is never written in clear
+    if (sdStaging != nullptr && sdCipher.begin() && sdLog.begin()) {
+        if (sdLegacyLog.begin()) {
+            const uint32_t sealed =
+                SegmentLog::moveAll(sdLegacyLog, sdLog, sdStaging, SEGMENT_MAX_SIZE);
+            if (sealed > 0) Serial.printf("[SD] %lu segments from 0.6.0 encrypted\n",
+                                          static_cast<unsigned long>(sealed));
+        }
+        buffer.attachCard(&sdLog, sdStaging, SEGMENT_MAX_SIZE, moveToCard);
+        Serial.printf("[SD] speech overflow on the card, encrypted (%llu KB waiting)\n",
+                      static_cast<unsigned long long>(sdLog.pendingBytes() / 1024));
+    } else if (sdStaging != nullptr) {
+        Serial.println("[SD] card not used: its key could not be loaded");
+    }
 
     // Initialize audio capture
     if (!audio.begin()) fatal("[FATAL] Audio capture init failed");

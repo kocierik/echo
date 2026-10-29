@@ -99,6 +99,46 @@ void main() {
     expect(find.text('7'), findsOneWidget);
   });
 
+  testWidgets('the microSD: its room and the speech waiting on it, or no card',
+      (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        protocolVersion: 5,
+        microSd: MicroSd(inUse: true, totalMb: 30436, freeMb: 29802, pendingKb: 5760),
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.byKey(const Key('device-microsd')), findsOneWidget);
+    expect(find.text('29.1 GB free of 29.7 GB · 12 min of speech on it'), findsOneWidget);
+  });
+
+  testWidgets('without a card it says so; older firmware shows no microSD row',
+      (tester) async {
+    final none = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        protocolVersion: 5,
+        microSd: MicroSd(inUse: false, totalMb: 0, freeMb: 0, pendingKb: 0),
+      ),
+    );
+    addTearDown(none.dispose);
+    await none.pump(tester);
+    expect(find.textContaining('No card'), findsOneWidget);
+
+    final older = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        protocolVersion: 4,
+      ),
+    );
+    addTearDown(older.dispose);
+    await older.pump(tester);
+    expect(find.byKey(const Key('device-microsd')), findsNothing);
+  });
+
   testWidgets('offline reconnect delegates to DeviceController', (tester) async {
     final fixture = await _Fixture.create(
       initialStatus: const DeviceStatus(

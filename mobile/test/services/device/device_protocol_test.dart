@@ -95,6 +95,27 @@ void main() {
       );
     });
 
+    test('protocol 5 says whether a microSD is in use, its room and its speech', () {
+      final status = DeviceProtocol.parseStatus(_v5Status(flags: 0x08));
+
+      expect(status.microSd, isNotNull);
+      expect(status.microSd!.inUse, isTrue);
+      expect(status.microSd!.totalMb, 30436);
+      expect(status.microSd!.freeMb, 29802);
+      expect(status.microSd!.pendingKb, 5120);
+      expect(DeviceProtocol.parseStatus(_v5Status(flags: 0x00)).microSd!.inUse, isFalse);
+      // Older firmware cannot say
+      expect(DeviceProtocol.parseStatus(_validStatus()).microSd, isNull);
+      expect(
+        () => DeviceProtocol.parseStatus(_v5Status(flags: 0x10)),
+        throwsA(isA<DeviceProtocolException>()),
+      );
+      expect(
+        () => DeviceProtocol.parseStatus(Uint8List.fromList(_validStatus()..[1] = 0x05)),
+        throwsA(isA<DeviceProtocolException>()),
+      );
+    });
+
     test('encodes TAKE_PHOTO and decodes PHOTO_FAILED reasons', () {
       expect(DeviceProtocol.takePhoto(), orderedEquals([0x18]));
       expect(DeviceProtocol.parsePhotoFailed([0x22, 1]), 'muted');
@@ -175,6 +196,12 @@ void main() {
     });
   });
 }
+
+Uint8List _v5Status({required int flags}) => Uint8List.fromList([
+  0x20, 0x05, flags, 0x64, 0x01, 0x00,
+  0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+  0xE4, 0x76, 0x00, 0x00, 0x6A, 0x74, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00,
+]);
 
 Uint8List _validStatus() => Uint8List.fromList([
   0x20, 0x02, 0x00, 0x64, 0x01, 0x00,

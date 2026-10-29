@@ -3,7 +3,7 @@
 // The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
-#define FIRMWARE_VERSION_MINOR 6
+#define FIRMWARE_VERSION_MINOR 7
 #define FIRMWARE_VERSION_PATCH 0
 
 // ============================================================
@@ -138,6 +138,8 @@
 #define SD_SPI_HZ 20000000
 // Speech waiting on the card: log files of this size (sd_storage.h, segment_log.h)
 #define SD_LOG_FILE_BYTES (4UL * 1024 * 1024)
+// The card's speech, encrypted (0.6.0 kept it in clear in /echo/q)
+#define SD_SEALED_FOLDER "/echo/s"
 // The button, between D1 (GPIO2) and GND (internal pull-up): a short press takes a photo,
 // a long press mutes or resumes listening
 #define BUTTON_PIN 2

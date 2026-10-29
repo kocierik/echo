@@ -71,7 +71,7 @@ void test_segment_start_exact_bytes() {
     const SegmentStart frame = {
         0x78563412U, PROTOCOL_VERSION, 0x44332211U, 0x88776655U, 0xAA99U, 0xDDCCBBAAU};
     const uint8_t expected[] = {
-        0x01, 0x12, 0x34, 0x56, 0x78, 0x04, 0x11, 0x22, 0x33, 0x44,
+        0x01, 0x12, 0x34, 0x56, 0x78, 0x05, 0x11, 0x22, 0x33, 0x44,
         0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xAA, 0xBB, 0xCC, 0xDD};
     uint8_t encoded[SEGMENT_START_SIZE] = {};
 
@@ -86,11 +86,13 @@ void test_segment_start_exact_bytes() {
 
 void test_device_status_v2_exact_bytes_and_round_trips() {
     uint8_t bytes[DEVICE_STATUS_SIZE] = {};
-    TEST_ASSERT_EQUAL_UINT32(14, encodeDeviceStatusV2(
+    TEST_ASSERT_EQUAL_UINT32(26, encodeDeviceStatusV2(
         true, true, 255, 3, 12000, 7, bytes, sizeof(bytes)));
+    // No card: its fields are zero
     const uint8_t expected[] = {
-        0x20, 0x04, 0x03, 0xFF, 0x03, 0x00,
-        0xE0, 0x2E, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00};
+        0x20, 0x05, 0x03, 0xFF, 0x03, 0x00,
+        0xE0, 0x2E, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, bytes, sizeof(expected));
 
     DeviceStatus decoded = {};
@@ -103,9 +105,32 @@ void test_device_status_v2_exact_bytes_and_round_trips() {
     TEST_ASSERT_EQUAL_UINT32(7, decoded.droppedSegments);
 }
 
+void test_device_status_says_whether_a_card_is_in_use_its_room_and_its_speech() {
+    DeviceStatus status = {};
+    status.batteryPercent = 80;
+    status.cardInUse = true;
+    status.cardTotalMb = 30436;
+    status.cardFreeMb = 29802;
+    status.cardPendingKb = 5120;
+    uint8_t bytes[DEVICE_STATUS_SIZE] = {};
+
+    TEST_ASSERT_EQUAL_UINT32(26, encodeDeviceStatusV2(status, bytes, sizeof(bytes)));
+    TEST_ASSERT_EQUAL_HEX8(0x08, bytes[2]);
+    const uint8_t card[] = {0xE4, 0x76, 0x00, 0x00, 0x6A, 0x74, 0x00, 0x00,
+                            0x00, 0x14, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(card, bytes + 14, sizeof(card));
+
+    DeviceStatus decoded = {};
+    TEST_ASSERT_TRUE(decodeDeviceStatusV2(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_TRUE(decoded.cardInUse);
+    TEST_ASSERT_EQUAL_UINT32(30436, decoded.cardTotalMb);
+    TEST_ASSERT_EQUAL_UINT32(29802, decoded.cardFreeMb);
+    TEST_ASSERT_EQUAL_UINT32(5120, decoded.cardPendingKb);
+}
+
 void test_device_info_exact_bytes_and_round_trips() {
     const DeviceInfo info = {PROTOCOL_VERSION, 1, 2, 3};
-    const uint8_t expected[] = {0x21, 0x04, 0x01, 0x02, 0x03};
+    const uint8_t expected[] = {0x21, 0x05, 0x01, 0x02, 0x03};
     uint8_t bytes[DEVICE_INFO_SIZE] = {};
 
     TEST_ASSERT_EQUAL_UINT32(
@@ -122,8 +147,9 @@ void test_device_info_exact_bytes_and_round_trips() {
 
 void test_status_and_info_reject_malformed_frames() {
     const uint8_t validStatus[] = {
-        0x20, 0x04, 0x00, 0x64, 0x01, 0x00,
-        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00};
+        0x20, 0x05, 0x00, 0x64, 0x01, 0x00,
+        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     uint8_t malformedStatus[DEVICE_STATUS_SIZE] = {};
     DeviceStatus status = {};
 
@@ -134,7 +160,7 @@ void test_status_and_info_reject_malformed_frames() {
     malformedStatus[1] = 1;
     TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
     std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
-    malformedStatus[2] = 0x08;
+    malformedStatus[2] = 0x10;
     TEST_ASSERT_FALSE(decodeDeviceStatusV2(malformedStatus, sizeof(malformedStatus), status));
     std::memcpy(malformedStatus, validStatus, sizeof(validStatus));
     malformedStatus[3] = 101;
@@ -278,8 +304,9 @@ void test_time_anchor_uses_wrap_safe_millis_delta() {
 
 void test_status_frames_still_decode_with_the_valid_status() {
     const uint8_t validStatus[] = {
-        0x20, 0x04, 0x04, 0x64, 0x01, 0x00,
-        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00};
+        0x20, 0x05, 0x04, 0x64, 0x01, 0x00,
+        0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
     DeviceStatus status = {};
     TEST_ASSERT_TRUE(decodeDeviceStatusV2(validStatus, sizeof(validStatus), status));
     TEST_ASSERT_TRUE(status.cameraAvailable);
@@ -373,6 +400,7 @@ int main(int, char**) {
     RUN_TEST(test_little_endian_round_trips);
     RUN_TEST(test_segment_start_exact_bytes);
     RUN_TEST(test_device_status_v2_exact_bytes_and_round_trips);
+    RUN_TEST(test_device_status_says_whether_a_card_is_in_use_its_room_and_its_speech);
     RUN_TEST(test_device_info_exact_bytes_and_round_trips);
     RUN_TEST(test_status_and_info_reject_malformed_frames);
     RUN_TEST(test_status_and_info_encoders_reject_invalid_values_and_short_buffers);

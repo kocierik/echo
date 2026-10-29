@@ -116,6 +116,24 @@ void main() {
       expect(refused, [isA<BleRestartRequired>()]);
     });
 
+    test('takes segments and photos from protocol 5 (the microSD firmware)', () {
+      final audio = Uint8List.fromList([1, 2]);
+      for (final type in [0x01, 0x04]) {
+        expect(
+          BlePacketAssembler().add(_start(
+            segmentId: segmentId,
+            totalLength: 2,
+            durationMs: 100,
+            totalChunks: 1,
+            crc: bleCrc32(audio),
+            version: 5,
+            type: type,
+          )),
+          [isA<BleSegmentStarted>()],
+        );
+      }
+    });
+
     test('emits cumulative acknowledgements at 32 chunks and the final chunk', () {
       final audio = Uint8List.fromList(List<int>.generate(33, (index) => index));
       final assembler = BlePacketAssembler();

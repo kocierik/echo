@@ -28,6 +28,7 @@ public:
         }
         if (!SD.exists("/echo")) SD.mkdir("/echo");
         if (!SD.exists("/echo/q")) SD.mkdir("/echo/q");
+        if (!SD.exists(SD_SEALED_FOLDER)) SD.mkdir(SD_SEALED_FOLDER);
         _mounted = true;
         Serial.printf("[SD] card %llu MB, %llu MB free\n",
                       static_cast<unsigned long long>(SD.totalBytes() / (1024 * 1024)),
@@ -74,6 +75,8 @@ public:
         file.close();
         return written == length;
     }
+
+    uint64_t totalBytes() override { return SD.totalBytes(); }
 
     uint64_t freeBytes() override {
         const uint64_t total = SD.totalBytes();

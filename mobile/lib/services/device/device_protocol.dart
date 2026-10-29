@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import '../../models/device_status.dart';
+
 final class DeviceTelemetry {
   const DeviceTelemetry({
     required this.muted,
@@ -9,6 +11,7 @@ final class DeviceTelemetry {
     required this.bufferBytes,
     required this.droppedSegments,
     this.cameraAvailable = false,
+    this.microSd,
   });
 
   final bool muted;
@@ -20,6 +23,9 @@ final class DeviceTelemetry {
 
   /// Protocol 3: a camera is connected and photos can be taken.
   final bool cameraAvailable;
+
+  /// Protocol 5: the microSD; null before.
+  final MicroSd? microSd;
 }
 
 final class DeviceInfo {
@@ -61,11 +67,13 @@ final class OtaStatus {
 }
 
 abstract final class DeviceProtocol {
-  /// 2: audio; 3: audio and photos; 4: firmware updates over BLE. All are accepted, so an
-  /// app update never cuts off a wearable that still runs a previous firmware.
-  static const Set<int> supportedVersions = {2, 3, 4};
+  /// 2: audio; 3: audio and photos; 4: firmware updates over BLE; 5: the microSD in the
+  /// status. All are accepted, so an app update never cuts off a wearable that still runs
+  /// a previous firmware.
+  static const Set<int> supportedVersions = {2, 3, 4, 5};
   static const int photoVersion = 3;
   static const int otaVersion = 4;
+  static const int microSdVersion = 5;
   static const int _frameSetMuted = 0x15;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
@@ -80,10 +88,11 @@ abstract final class DeviceProtocol {
   static const int _frameDeviceStatus = 0x20;
   static const int _frameDeviceInfo = 0x21;
   static const int _deviceStatusSize = 14;
+  static const int _deviceStatusSizeV5 = 26;
   static const int _deviceInfoSize = 5;
 
   static DeviceTelemetry parseStatus(Uint8List bytes) {
-    if (bytes.length != _deviceStatusSize) {
+    if (bytes.length < 2) {
       throw const DeviceProtocolException('invalid device status length');
     }
     if (bytes[0] != _frameDeviceStatus) {
@@ -93,8 +102,12 @@ abstract final class DeviceProtocol {
     if (!supportedVersions.contains(version)) {
       throw const DeviceProtocolException('unsupported device status version');
     }
+    final withCard = version >= microSdVersion;
+    if (bytes.length != (withCard ? _deviceStatusSizeV5 : _deviceStatusSize)) {
+      throw const DeviceProtocolException('invalid device status length');
+    }
     final flags = bytes[2];
-    final reserved = version >= photoVersion ? 0xf8 : 0xfc;
+    final reserved = withCard ? 0xf0 : (version >= photoVersion ? 0xf8 : 0xfc);
     if ((flags & reserved) != 0) {
       throw const DeviceProtocolException('reserved device status flags are set');
     }
@@ -112,6 +125,14 @@ abstract final class DeviceProtocol {
       bufferBytes: data.getUint32(6, Endian.little),
       droppedSegments: data.getUint32(10, Endian.little),
       cameraAvailable: (flags & 0x04) != 0,
+      microSd: withCard
+          ? MicroSd(
+              inUse: (flags & 0x08) != 0,
+              totalMb: data.getUint32(14, Endian.little),
+              freeMb: data.getUint32(18, Endian.little),
+              pendingKb: data.getUint32(22, Endian.little),
+            )
+          : null,
     );
   }
 

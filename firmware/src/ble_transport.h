@@ -490,6 +490,7 @@ private:
     bool notifyBufferStatus(const SegmentQueue& buffer, uint32_t deadlineUs) {
         if (_controlCharacteristic == nullptr) return false;
         uint8_t frame[EchoBleProtocol::DEVICE_STATUS_SIZE] = {};
+        const CardStatus card = buffer.cardStatus();
         const EchoBleProtocol::DeviceStatus status = {
             _muted,
             _overflowSinceLastStatus,
@@ -498,6 +499,10 @@ private:
             static_cast<uint32_t>(buffer.bytesUsed()),
             buffer.droppedSegmentCount(),
             _cameraAvailable,
+            card.inUse,
+            card.totalMb,
+            card.freeMb,
+            card.pendingKb,
         };
         EchoBleProtocol::encodeDeviceStatusV2(status, frame, sizeof(frame));
         if (!beforeBurstDeadline(deadlineUs)) return false;

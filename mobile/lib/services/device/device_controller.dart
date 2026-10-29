@@ -371,6 +371,7 @@ final class DeviceController {
       bufferBytes: telemetry.bufferBytes,
       droppedSegments: telemetry.droppedSegments,
       overflowed: telemetry.overflowed,
+      microSd: telemetry.microSd,
     ));
   }
 

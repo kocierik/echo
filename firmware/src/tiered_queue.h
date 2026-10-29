@@ -16,6 +16,14 @@
  * when the card fails, `store` refuses as PSRAM alone does and the caller drops the
  * oldest, as before.
  */
+/** The microSD as the phone sees it (DEVICE_STATUS). */
+struct CardStatus {
+    bool inUse;
+    uint32_t totalMb;
+    uint32_t freeMb;
+    uint32_t pendingKb;
+};
+
 template <typename Hot>
 class TieredQueue {
 public:
@@ -102,11 +110,28 @@ public:
         return total > UINT32_MAX ? UINT32_MAX : static_cast<size_t>(total);
     }
 
+    /** Whether the card is in use, its size and room, and the speech waiting on it; from
+     *  what the log keeps, never a read of the card. */
+    CardStatus cardStatus() const {
+        if (_card == nullptr) return CardStatus{false, 0, 0, 0};
+        const uint64_t mb = 1024ULL * 1024;
+        return CardStatus{
+            true,
+            capped(_card->totalBytes() / mb),
+            capped(_card->freeBytes() / mb),
+            capped((_card->pendingBytes() + 1023) / 1024),
+        };
+    }
+
     uint32_t droppedSegmentCount() const {
         return _hot.droppedSegmentCount() + (_card != nullptr ? _card->droppedSegmentCount() : 0);
     }
 
 private:
+    static uint32_t capped(uint64_t value) {
+        return value > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(value);
+    }
+
     // A typical segment (~8 s of ADPCM speech), for the count of those on the card
     static constexpr uint64_t ESTIMATED_SEGMENT_BYTES = 64 * 1024;
 
