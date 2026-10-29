@@ -29,6 +29,7 @@ from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
+from app.models.assistant import Assistant
 from app.models.routine import Routine
 from app.services.device_commands import push_device_command
 from app.services.language import detect_language
@@ -78,6 +79,8 @@ class _Due:
     instruction: str
     # "always" | "only_if" | "only_new"
     mode: str
+    # Made in an assistant's chat: it runs as that assistant
+    assistant_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -107,7 +110,10 @@ async def _claim(session_factory, now: datetime) -> list[_Due]:
                 await record_run(db, routine, status="skipped", ran_at=missed_at)
                 logger.info(f"[Routines] {routine.id} skipped: missed by more than {CATCH_UP}")
                 continue
-            due.append(_Due(routine.id, routine.user_id, routine.instruction, routine.mode))
+            due.append(_Due(
+                routine.id, routine.user_id, routine.instruction, routine.mode,
+                routine.assistant_id,
+            ))
         await db.commit()
     return due
 
@@ -132,10 +138,11 @@ async def _ask(db, llm, provider, routine: _Due) -> _Result:
     seen = await seen_items(db, routine.id) if only_new else []
     known = await seen_keys(db, routine.id) if only_new else set()
     language = detect_language(routine.instruction)
+    assistant = await db.get(Assistant, routine.assistant_id) if routine.assistant_id else None
     outcome = await run_action_agent(
         db, routine.user_id, framed_request(routine.instruction, routine.mode, seen), [],
         session_id=None, source="routine", provider=provider, llm=llm,
-        routine_tools=False, allow_confirm=False, language=language,
+        routine_tools=False, allow_confirm=False, language=language, assistant=assistant,
     )
     sources = outcome.web_sources or []
     if _could_not_answer(outcome.answer, language):

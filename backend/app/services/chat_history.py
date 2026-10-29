@@ -88,6 +88,7 @@ async def record_turn(
     question: str,
     answer: str,
     assistant_extra: dict | None = None,
+    assistant_id: uuid.UUID | None = None,
 ):
     """Append one question/answer turn to the Redis context and the Postgres session.
 
@@ -105,11 +106,15 @@ async def record_turn(
         {**turn[0], "timestamp": now, "source": "chat"},
         {**turn[1], "timestamp": now, "notify": False},
     ]
-    await persist_chat_session(db, user_id, session_id, stored)
+    await persist_chat_session(db, user_id, session_id, stored, assistant_id=assistant_id)
 
 
 async def persist_chat_session(
-    db: AsyncSession, user_id: uuid.UUID, session_id: str, new_messages: list[dict]
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    session_id: str,
+    new_messages: list[dict],
+    assistant_id: uuid.UUID | None = None,
 ):
     """Append new messages to the chat session in Postgres (complete history).
 
@@ -139,6 +144,8 @@ async def persist_chat_session(
             user_id=user_id,
             title=title,
             messages=list(new_messages),
+            # A chat started with an assistant stays its chat
+            assistant_id=assistant_id,
         )
         db.add(chat_session)
     elif chat_session.user_id != user_id:

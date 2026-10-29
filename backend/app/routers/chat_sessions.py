@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actions.voice import get_or_create_voice_session
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.models.assistant import Assistant
 from app.models.chat_session import ChatSession
 
 router = APIRouter(prefix="/chat-sessions", tags=["chat-sessions"])
@@ -44,6 +45,10 @@ class ChatSessionSummary(BaseModel):
     kind: str
     created_at: datetime
     updated_at: datetime
+    # The assistant the chat is with; none: plain Echo
+    assistant_id: uuid.UUID | None = None
+    assistant_name: str | None = None
+    assistant_emoji: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -55,6 +60,9 @@ class ChatSessionDetail(BaseModel):
     messages: list[ChatMessage]
     created_at: datetime
     updated_at: datetime
+    assistant_id: uuid.UUID | None = None
+    assistant_name: str | None = None
+    assistant_emoji: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -84,6 +92,7 @@ async def list_chat_sessions(
     )
     result = await db.execute(query)
     sessions = order_sessions(list(result.scalars().all()))
+    assistants = await _assistants_of(db, sessions)
 
     items = [
         ChatSessionSummary(
@@ -93,6 +102,7 @@ async def list_chat_sessions(
             kind=s.kind,
             created_at=s.created_at,
             updated_at=s.updated_at,
+            **_assistant_fields(assistants.get(s.assistant_id)),
         )
         for s in sessions
     ]
@@ -100,7 +110,25 @@ async def list_chat_sessions(
     return ChatSessionListResponse(items=items, count=len(items))
 
 
-def _detail(session: ChatSession) -> ChatSessionDetail:
+def _assistant_fields(assistant: Assistant | None) -> dict:
+    if assistant is None:
+        return {}
+    return {
+        "assistant_id": assistant.id,
+        "assistant_name": assistant.name,
+        "assistant_emoji": assistant.emoji,
+    }
+
+
+async def _assistants_of(db: AsyncSession, sessions: list[ChatSession]) -> dict:
+    ids = {s.assistant_id for s in sessions if s.assistant_id is not None}
+    if not ids:
+        return {}
+    rows = await db.scalars(select(Assistant).where(Assistant.id.in_(ids)))
+    return {a.id: a for a in rows}
+
+
+def _detail(session: ChatSession, assistant: Assistant | None = None) -> ChatSessionDetail:
     return ChatSessionDetail(
         id=session.id,
         title=session.title,
@@ -108,6 +136,7 @@ def _detail(session: ChatSession) -> ChatSessionDetail:
         messages=[ChatMessage(**m) for m in session.messages],
         created_at=session.created_at,
         updated_at=session.updated_at,
+        **_assistant_fields(assistant),
     )
 
 
@@ -144,7 +173,10 @@ async def get_chat_session(
     if session is None:
         raise HTTPException(status_code=404, detail="Chat session not found")
 
-    return _detail(session)
+    assistant = (
+        await db.get(Assistant, session.assistant_id) if session.assistant_id else None
+    )
+    return _detail(session, assistant)
 
 
 @router.delete("/{session_id}", status_code=204)

@@ -28,7 +28,9 @@ from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
+from app.services import assistants as assistants_service
 from app.services.about_echo import about_echo_for
+from app.services.assistants import AssistantError
 from app.services.chat_history import load_thread_history, record_turn
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import clear_language, detect_language
@@ -88,6 +90,8 @@ class QueryRequest(BaseModel):
     date_from: datetime | None = None
     date_to: datetime | None = None
     session_id: str | None = None
+    # A chat with an assistant (Profile → Assistants): it always answers through the agent
+    assistant_id: str | None = None
     # Same id for a retry of the same user message: the answer is not computed twice.
     client_request_id: str | None = Field(default=None, max_length=100)
 
@@ -397,11 +401,20 @@ async def _answer_query(
         else []
     )
 
+    assistant = None
+    if body.assistant_id:
+        try:
+            assistant = await assistants_service.owned(db, user_id, uuid.UUID(body.assistant_id))
+        except (ValueError, AssistantError):
+            raise HTTPException(status_code=404, detail="Assistant not found")
+    assistant_id = assistant.id if assistant is not None else None
+
     # --- Tool requests (Gmail, Calendar, Slack, ...) go to the action agent ---
     llm_service = get_llm_query_service()
-    if might_need_tools(body.question, history):
+    if assistant is not None or might_need_tools(body.question, history):
         provider = None
         connected: list[str] = []
+        apps: list[str] | None = None
         use_agent = False
         try:
             provider = get_action_provider()
@@ -411,7 +424,11 @@ async def _answer_query(
         provider = await with_phone_apps(provider, redis_client, user_id)
         # The user's WhatsApp, while it is linked
         provider = await with_whatsapp(provider, redis_client, user_id)
-        if provider is not None:
+        if assistant is not None:
+            # An assistant's chat always goes to the agent: its notes, its documents, all
+            # the connected apps
+            provider, use_agent = provider or NO_APPS, True
+        elif provider is not None:
             reachable: list[str] | None = None
             try:
                 connected = await provider.connected_toolkits(str(user_id))
@@ -430,11 +447,13 @@ async def _answer_query(
                     answer=route.notice, sources=[], session_id=session_id, date_filter=None
                 )
             use_agent = route.kind == "agent"
+            apps = route.apps or connected
         else:
             # No app to act in: only a routine (Echo's own tools) goes to the agent
             route = await route_request(get_llm_intent_service(), body.question, history, [])
             if route.kind == "agent":
                 provider, use_agent = NO_APPS, True
+                apps = route.apps
         if use_agent:
             progress.agent_started = True
             outcome = await run_action_agent(
@@ -446,13 +465,14 @@ async def _answer_query(
                 source="chat",
                 provider=provider,
                 llm=llm_service,
-                connected_toolkits=route.apps or connected,
+                connected_toolkits=apps,
                 # The phone for a place, this chat for its last photo
                 saved=SavedContext(
                     redis_client=redis_client,
                     chat_session_id=session_uuid,
                     embedding_service=get_embedding_service(),
                 ),
+                assistant=assistant,
             )
             pending = outcome.pending_action
             extra: dict = {"actions": True}
@@ -475,7 +495,7 @@ async def _answer_query(
                 extra["saved"] = outcome.saved
             await record_turn(
                 redis_client, db, user_id, session_id, history, body.question,
-                outcome.answer, extra,
+                outcome.answer, extra, assistant_id=assistant_id,
             )
             return QueryResponse(
                 answer=outcome.answer,

@@ -95,7 +95,7 @@ async def test_session_of_another_user_is_not_touched():
 async def test_record_turn_updates_redis_context_and_appends_only_new_turn(monkeypatch):
     persisted = []
 
-    async def fake_persist(_db, _user_id, _session_id, new_messages):
+    async def fake_persist(_db, _user_id, _session_id, new_messages, **_kwargs):
         persisted.append(new_messages)
 
     monkeypatch.setattr(query_module, "persist_chat_session", fake_persist)
