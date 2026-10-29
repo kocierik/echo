@@ -22,6 +22,7 @@ from app.mcp.server import mcp_endpoint
 from app.routers import (
     actions,
     admin,
+    assistants,
     auth,
     chat_sessions,
     conversations,
@@ -138,6 +139,7 @@ app.include_router(plan.router, prefix=settings.api_prefix)
 app.include_router(whatsapp.router, prefix=settings.api_prefix)
 app.include_router(facts.router, prefix=settings.api_prefix)
 app.include_router(documents.router, prefix=settings.api_prefix)
+app.include_router(assistants.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):
