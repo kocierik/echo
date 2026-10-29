@@ -462,7 +462,9 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   — its image, which the app sends to the wearable.
 
 ### Operations
-- `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis failures.
+- `GET /api/admin/dead-letter`, `POST /api/admin/dead-letter/retry` — STT, analysis and reanalysis
+  failures of every user: the operator's only, with `X-Admin-Token` (`ADMIN_TOKEN`; without it set,
+  404).
 - `GET /health` (no auth), `GET /api/stats` (the caller's counts),
   `GET /metrics` (Prometheus; `Authorization: Bearer $METRICS_TOKEN` or an API key).
 

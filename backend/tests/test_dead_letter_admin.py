@@ -72,7 +72,7 @@ async def test_list_includes_reanalysis_entries():
     queue = [MALFORMED_REANALYSIS_ENTRY, REANALYSIS_ENTRY, STT_ENTRY, b"garbage"]
     redis = _FakeRedis({admin.DEAD_LETTER_QUEUE: queue})
 
-    response = await admin.list_dead_letter(_request(redis), _user_id=USER_ID)
+    response = await admin.list_dead_letter(_request(redis))
 
     assert response.count == 3
     assert {item.step for item in response.items} == {"stt", "reanalysis"}
@@ -85,7 +85,7 @@ async def test_retry_requeues_each_step_and_keeps_unretryable_entries():
     queue = [MALFORMED_REANALYSIS_ENTRY, REANALYSIS_ENTRY, STT_ENTRY, "garbage"]
     redis = _FakeRedis({admin.DEAD_LETTER_QUEUE: queue})
 
-    response = await admin.retry_dead_letter(_request(redis), _user_id=USER_ID)
+    response = await admin.retry_dead_letter(_request(redis))
 
     assert response.requeued == 2
     assert response.kept == 2
@@ -102,7 +102,7 @@ async def test_retry_requeues_each_step_and_keeps_unretryable_entries():
 async def test_retry_on_empty_queue_does_nothing():
     redis = _FakeRedis()
 
-    response = await admin.retry_dead_letter(_request(redis), _user_id=USER_ID)
+    response = await admin.retry_dead_letter(_request(redis))
 
     assert response.requeued == 0
     assert response.kept == 0

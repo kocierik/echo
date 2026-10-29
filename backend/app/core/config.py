@@ -97,12 +97,17 @@ class Settings(BaseSettings):
     # Bearer token Prometheus uses for /metrics (without it, /metrics needs an API key)
     metrics_token: str = ""
 
+    # The server operator's token (X-Admin-Token) for /api/admin: the failed jobs of every
+    # user. Empty: those endpoints do not exist
+    admin_token: str = ""
+
     # Anyone with the app can create an account (POST /api/auth/register); false closes
     # it, and accounts are then made only with `make create-user`
     registration_open: bool = True
 
-    # CORS — comma-separated allowed origins (use "*" to allow all)
-    cors_origins: str = "*"
+    # CORS: comma-separated browser origins allowed to call the API. Empty by default: the
+    # app and the connected apps are not browsers ("*" allows any site)
+    cors_origins: str = ""
 
     # Circuit breaker — protects against cascading failures from OpenAI outages
     circuit_breaker_failure_threshold: int = 5  # failures before opening circuit

@@ -1,5 +1,6 @@
 import asyncio
 import hmac
+import logging
 import uuid
 from contextlib import asynccontextmanager
 
@@ -68,6 +69,8 @@ async def lifespan(app: FastAPI):
     preload.cancel()
     await app.state.redis.aclose()
 
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Echo - Second Brain API",
@@ -158,7 +161,9 @@ async def health(request: Request):
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception as e:
-        status["postgres"] = f"error: {str(e)[:100]}"
+        # Public: what is down, never why (hosts, users)
+        logger.warning("Health: PostgreSQL unavailable: %s", e)
+        status["postgres"] = "error"
         status["status"] = "degraded"
 
     # Check Redis + queue lengths
@@ -183,7 +188,8 @@ async def health(request: Request):
             status["warning"] = "Queue backlog detected — worker may be slow or down"
 
     except Exception as e:
-        status["redis"] = f"error: {str(e)[:100]}"
+        logger.warning("Health: Redis unavailable: %s", e)
+        status["redis"] = "error"
         status["status"] = "degraded"
 
     # Circuit breaker status

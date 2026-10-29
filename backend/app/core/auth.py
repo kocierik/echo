@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -8,6 +9,7 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.services.usage import usage_owner
@@ -24,6 +26,10 @@ AUTH_FAILURE_WINDOW_SECONDS = 15 * 60
 # A key deleted (signed out, revoked) is remembered this long: the phone that still
 # holds it may fire a burst of requests, and those must not lock out its address
 REVOKED_KEY_SECONDS = 24 * 3600
+
+
+# The README's example key, known to everyone: never accepted, even if a server still has it
+EXAMPLE_KEY_HASH = hashlib.sha256(b"my-secret-key").hexdigest()
 
 
 def hash_api_key(key: str) -> str:
@@ -155,8 +161,10 @@ async def get_current_api_key(
         await _check_not_blocked(redis, failure_key)
 
     key_hash = hash_api_key(api_key)
-    result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
-    api_key_record = result.scalar_one_or_none()
+    api_key_record = None
+    if key_hash != EXAMPLE_KEY_HASH:
+        result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
+        api_key_record = result.scalar_one_or_none()
 
     if api_key_record is None:
         if redis is not None and not await _was_revoked(redis, key_hash):
@@ -178,6 +186,17 @@ async def get_current_api_key(
     usage_owner.set(api_key_record.user_id)
 
     return api_key_record
+
+
+async def require_operator(request: Request) -> None:
+    """The server's operator (`X-Admin-Token`, ADMIN_TOKEN): what concerns every user,
+    such as the failed jobs. Without ADMIN_TOKEN set, these endpoints do not exist."""
+    expected = settings.admin_token
+    if not expected:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+    given = request.headers.get("X-Admin-Token", "")
+    if not hmac.compare_digest(given.encode(), expected.encode()):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Operator only")
 
 
 async def authenticate_connected_app(request: Request, db: AsyncSession) -> ApiKey:

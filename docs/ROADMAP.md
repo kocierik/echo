@@ -249,8 +249,9 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       avanti come fonte per gli assistenti Dieta e Sonno
 
 ### Debito tecnico
-- [ ] `uv lock` fallisce: `mcp` 1.30 chiede una versione di `fastapi` diversa dalla 0.115 fissata; da risolvere
-      prima di aggiornare le dipendenze
+- [x] `uv lock` fallisce (29/10: risolto aggiornando FastAPI 0.162 / Starlette 1.10 nella revisione di sicurezza)
+- [ ] `pytest` 8.3 ha un avviso (file temporanei, solo test): passare a 9.x con `pytest-asyncio` 1.x, che toglie
+      la fixture `event_loop` usata da `tests/conftest.py`
 
 ## Già fatto
 

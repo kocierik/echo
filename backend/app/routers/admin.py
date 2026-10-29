@@ -1,15 +1,14 @@
-"""Admin endpoints for monitoring and managing the dead letter queue."""
+"""The operator's endpoints (ADMIN_TOKEN): the dead letter queue, every user's failed jobs."""
 
 import json
-import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from app.core.auth import get_current_user_id
+from app.core.auth import require_operator
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_operator)])
 
 DEAD_LETTER_QUEUE = "queue:dead-letter"
 
@@ -61,10 +60,7 @@ def _retry_target(raw: bytes | str) -> tuple[str, str] | None:
 
 
 @router.get("/dead-letter", response_model=DeadLetterResponse)
-async def list_dead_letter(
-    request: Request,
-    _user_id: uuid.UUID = Depends(get_current_user_id),
-):
+async def list_dead_letter(request: Request):
     """List all items in the dead letter queue."""
     redis_client = request.app.state.redis
     raw_items = await redis_client.lrange(DEAD_LETTER_QUEUE, 0, -1)
@@ -78,10 +74,7 @@ async def list_dead_letter(
 
 
 @router.post("/dead-letter/retry", response_model=RetryResponse)
-async def retry_dead_letter(
-    request: Request,
-    _user_id: uuid.UUID = Depends(get_current_user_id),
-):
+async def retry_dead_letter(request: Request):
     """Re-queue dead letter items to their processing queue.
 
     Entries that cannot be retried (malformed or missing their target ID) are
