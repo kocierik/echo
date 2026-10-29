@@ -216,3 +216,40 @@ async def test_connected_apps_never_see_the_documents(client, auth_headers, db_s
 
 def test_documents_need_the_same_closeness_as_saved_things():
     assert DOCUMENT_MIN_SIMILARITY >= 0.35
+
+
+async def test_the_export_has_the_facts_and_the_documents(client, auth_headers, db_session):
+    db_session.add(
+        UserFact(user_id=TEST_USER_ID, text="Lavora a Milano", status="kept", source="you")
+    )
+    db_session.add(
+        Document(
+            user_id=TEST_USER_ID,
+            title="Contratto.docx",
+            kind="docx",
+            size_bytes=1,
+            status="ready",
+            text="Il canone è di 900 euro.",
+            word_count=5,
+        )
+    )
+    await db_session.commit()
+
+    body = (await client.get("/api/export", headers=auth_headers)).json()
+
+    assert [f["text"] for f in body["about_you"]] == ["Lavora a Milano"]
+    assert body["documents"][0]["title"] == "Contratto.docx"
+    assert body["documents"][0]["text"] == "Il canone è di 900 euro."
+
+
+async def test_deleting_a_conversation_takes_its_suggestions_with_it(
+    client, auth_headers, db_session
+):
+    conversation = await _conversation(db_session)
+    [suggested] = await suggest_facts(db_session, _LLM(["Gioca a padel"]), conversation)
+    await db_session.commit()
+
+    response = await client.delete(f"/api/conversations/{conversation.id}", headers=auth_headers)
+
+    assert response.status_code == 204
+    assert (await client.get("/api/facts", headers=auth_headers)).json()["suggestions"] == []

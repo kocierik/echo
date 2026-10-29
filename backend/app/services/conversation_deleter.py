@@ -6,11 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation
 from app.models.segment import Segment
+from app.models.user_fact import UserFact
 from app.services.entity_mentions import release_conversation
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,12 @@ async def delete_conversation(
     try:
         # People and tasks also mentioned in other conversations are kept
         await release_conversation(db, conversation.id)
+        # What Echo noticed in it and the user has not kept goes with it
+        await db.execute(
+            delete(UserFact).where(
+                UserFact.conversation_id == conversation.id, UserFact.status != "kept"
+            )
+        )
         await db.delete(conversation)
         await db.commit()
     except Exception:

@@ -19,10 +19,12 @@ from app.core.database import get_db
 from app.models.chat_session import ChatSession
 from app.models.conversation import Conversation
 from app.models.digest import Digest
+from app.models.document import Document
 from app.models.entity import Entity
 from app.models.photo import Photo
 from app.models.segment import Segment
 from app.models.transcription import Transcription
+from app.models.user_fact import UserFact
 from app.models.voice_profile import VoiceProfile
 from app.models.weekly_digest import WeeklyDigest
 
@@ -106,6 +108,18 @@ async def export_user_data(db: AsyncSession, user_id: uuid.UUID) -> dict:
     voices = (
         await db.execute(select(VoiceProfile).where(VoiceProfile.user_id == user_id))
     ).scalars().all()
+    facts = (
+        await db.execute(
+            select(UserFact)
+            .where(UserFact.user_id == user_id, UserFact.status != "discarded")
+            .order_by(UserFact.created_at)
+        )
+    ).scalars().all()
+    documents = (
+        await db.execute(
+            select(Document).where(Document.user_id == user_id).order_by(Document.created_at)
+        )
+    ).scalars().all()
 
     return {
         "format": "echo-export",
@@ -161,6 +175,21 @@ async def export_user_data(db: AsyncSession, user_id: uuid.UUID) -> dict:
         "voices": [
             {"name": v.name, "is_self": v.is_self, "sample_count": v.sample_count}
             for v in voices
+        ],
+        # Profile → Memory: the facts (kept and waiting) and the documents' text
+        "about_you": [
+            {"text": f.text, "status": f.status, "created_at": _iso(f.created_at)}
+            for f in facts
+        ],
+        "documents": [
+            {
+                "title": d.title,
+                "kind": d.kind,
+                "status": d.status,
+                "created_at": _iso(d.created_at),
+                "text": d.text,
+            }
+            for d in documents
         ],
     }
 
