@@ -75,14 +75,16 @@ _ASKED = re.compile(
 
 
 async def run_fact_tool(
-    db: AsyncSession, user_id: uuid.UUID, name: str, arguments: dict, request: str = ""
+    db: AsyncSession, user_id: uuid.UUID, name: str, arguments: dict, request: str = "",
+    untrusted: bool = False,
 ) -> ToolResult:
     """Run an About you tool; the caller logs it and commits. `request` is the user's own
-    message."""
+    message; `untrusted`: the agent has also read words the user did not write, so the
+    fact may come from them and is only suggested."""
     text = str(arguments.get("fact") or "").strip()
     if name == REMEMBER:
         try:
-            if _ASKED.search(request):
+            if _ASKED.search(request) and not untrusted:
                 fact = await user_facts.add_kept(db, user_id, text, "echo")
                 return ToolResult(ok=True, data={"remembered": fact.text})
             await user_facts.add_suggested(db, user_id, text, "echo")
