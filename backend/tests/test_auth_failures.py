@@ -42,6 +42,7 @@ def _request(redis, host="10.0.0.1", headers=None):
         app=app,
         client=types.SimpleNamespace(host=host),
         headers=headers or {},
+        state=types.SimpleNamespace(),
     )
 
 

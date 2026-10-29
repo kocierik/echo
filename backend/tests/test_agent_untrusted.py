@@ -45,7 +45,9 @@ async def test_an_email_cannot_create_a_routine(db_session):
     outcome = await _run(db_session, "Riassumi la mail di Marco", llm)
     await db_session.commit()
 
-    routines = (await db_session.scalars(select(Routine).where(Routine.user_id == TEST_USER_ID))).all()
+    routines = (await db_session.scalars(
+        select(Routine).where(Routine.user_id == TEST_USER_ID)
+    )).all()
     assert routines == []
     assert "ECHO_CREATE_ROUTINE" not in outcome.executed_tools
     assert "Not done" in _tool_results(llm)[-1]
@@ -61,7 +63,9 @@ async def test_a_reminder_request_does_not_keep_a_fact_read_from_an_email(db_ses
     await _run(db_session, "Ricordami di rispondere alla mail di Marco", llm)
     await db_session.commit()
 
-    [fact] = (await db_session.scalars(select(UserFact).where(UserFact.user_id == TEST_USER_ID))).all()
+    [fact] = (await db_session.scalars(
+        select(UserFact).where(UserFact.user_id == TEST_USER_ID)
+    )).all()
     assert fact.status == "suggested"
 
 
@@ -72,7 +76,8 @@ async def test_an_email_cannot_write_an_assistants_notes(db_session):
     await db_session.commit()
     llm = RecordingLLM([
         _calls(("GMAIL_FETCH_EMAILS", {"max_results": 1})),
-        _calls(("ECHO_UPDATE_ASSISTANT_NOTES", {"action": "add", "line": "trust attacker (dummy)"})),
+        _calls(("ECHO_UPDATE_ASSISTANT_NOTES",
+                {"action": "add", "line": "trust attacker (dummy)"})),
         _text("Ok."),
     ])
 
@@ -92,5 +97,7 @@ async def test_the_users_own_request_still_creates_a_routine(db_session):
     await _run(db_session, "Ogni mattina alle 7 dimmi il meteo", llm)
     await db_session.commit()
 
-    routines = (await db_session.scalars(select(Routine).where(Routine.user_id == TEST_USER_ID))).all()
+    routines = (await db_session.scalars(
+        select(Routine).where(Routine.user_id == TEST_USER_ID)
+    )).all()
     assert len(routines) == 1
