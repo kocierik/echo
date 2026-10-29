@@ -61,7 +61,10 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Pulsante fisico** (D1/GPIO2): pressione breve = foto, lunga = muto/riattiva.
 - **Aggiornamento via Bluetooth** (protocollo 4, [ADR 0009](adr/0009-firmware-updates-over-ble.md)): l'app scarica
   la versione dal server, la invia a pezzi verificando lo SHA-256; il dispositivo torna alla versione precedente se
-  la nuova non si collega all'app entro 5 minuti. Firmware attuale 0.5.0.
+  la nuova non si collega all'app entro 5 minuti. Firmware attuale 0.6.0.
+- **microSD** (24/10, 0.6.0): quando la PSRAM è piena i segmenti più vecchi passano su file da 4 MB nella scheda
+  (SPI, CS GPIO21: il LED non si usa più), con la posizione di lettura salvata e i record tagliati o con CRC
+  sbagliato saltati; il telefono riceve prima quelli della scheda. Senza scheda come prima. Non cifrati.
 
 ### App mobile
 - **Primo avvio** ([design](superpowers/specs/2026-10-16-first-run-and-sign-in-design.md)): schermata di avvio nei
@@ -334,7 +337,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Memoria:** raggruppamento conversazioni per argomento. Impronte vocali fatte ([ADR 0008](adr/0008-voice-fingerprints.md)):
   soglie da calibrare su registrazioni reali; un segmento con più voci prende quella prevalente.
 - **Query:** filtro per tipo di entità nel RAG (la ricerca per persona c'è: prima le conversazioni in cui compare).
-- **Firmware:** storage offline su microSD (solo se il buffer di ~13 minuti risulta corto). La lettura della batteria
+- **Firmware:** la lettura della batteria
   c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
 - **Multi-utente:** account, registrazione e dati separati ci sono; mancano quote/costi per utente, conferma
@@ -363,7 +366,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 2. **Il tuo account:** `make create-user EMAIL=…` (si aggancia ai dati che hai), poi nell'app esci e rientra per
    avere una chiave tua; **`make revoke-example-key`** per la chiave pubblica `my-secret-key`; togli `ECHO_API_KEY`
    da `mobile/dart_defines.json`.
-3. **Firmware 0.5.0 via cavo**, reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
+3. **Firmware 0.6.0 via cavo**, reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
 4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero).
 5. **Decidere sulla registrazione aperta**: lasciarla (lo hai scelto) o chiuderla con `REGISTRATION_OPEN=false`.
 6. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.

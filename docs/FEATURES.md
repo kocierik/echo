@@ -6,12 +6,13 @@
 ## Il dispositivo
 
 - Ascolta da solo quando qualcuno parla (niente wake word) e tiene fino a ~13 minuti di parlato in memoria
-  quando il telefono non c'è; Today mostra quanti minuti aspettano di essere inviati.
+  quando il telefono non c'è; con una microSD il resto va sulla scheda (circa 36 ore per GB) invece di andare
+  perso. Today mostra quanti minuti aspettano di essere inviati. Con la scheda il LED resta spento.
 - Invia l'audio al telefono via Bluetooth cifrato, con conferma: niente si cancella prima che il server l'abbia.
 - Pulsante: pressione breve = foto, lunga = muto/riattiva.
 - Fotocamera su richiesta: una foto alla volta, mai tenuta sul dispositivo.
 - Si aggiorna senza cavo: il firmware pubblicato sul server arriva via Bluetooth, controllato, e se la nuova
-  versione non si collega torna da solo alla precedente. Firmware attuale 0.5.0.
+  versione non si collega torna da solo alla precedente. Firmware attuale 0.6.0.
 
 ## Ricordare
 

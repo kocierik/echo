@@ -16,7 +16,7 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       (Settings → Devices mostra i telefoni collegati)
 - [ ] Revocare la chiave di esempio pubblica (`make revoke-example-key`) e togliere `ECHO_API_KEY` da
       `mobile/dart_defines.json` (non è più usata)
-- [ ] Caricare il firmware 0.5.0 via cavo (l'ultima volta: i successivi arrivano via Bluetooth), reinstallare
+- [ ] Caricare il firmware 0.6.0 via cavo (l'ultima volta: i successivi arrivano via Bluetooth), reinstallare
       l'app, registrare la propria voce (Settings → Voices), provare Promemoria e Calendario
 - [ ] Una giornata d'uso vero: i dati servono per misure e tarature della Fase 1
 
@@ -83,7 +83,9 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 ### Fase 6 — Piattaforma
 - [x] Aggiornamento del firmware senza cavo: `make firmware-release` → server → app → Bluetooth, con
       controllo SHA-256 e ritorno automatico alla versione precedente ([ADR 0009](adr/0009-firmware-updates-over-ble.md))
-- [ ] microSD (solo se il buffer attuale risulta corto nell'uso reale)
+- [x] microSD (24/10, firmware 0.6.0): quando la PSRAM è piena il parlato va sulla scheda invece di essere perso
+      (file da 4 MB, circa 36 ore di parlato per GB), il telefono riceve prima i più vecchi; senza scheda come
+      prima. Con la scheda il LED resta spento (stesso pin)
 - [x] Promemoria e Calendario dell'iPhone (senza Composio): Echo crea e legge promemoria ed eventi,
       e i promemoria prima delle riunioni usano anche il calendario dell'iPhone
       ([ADR 0010](adr/0010-iphone-reminders-and-calendar.md))
