@@ -366,8 +366,9 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   kept facts (in every answer, 60 at most) and suggestions (Keep, or DELETE to discard: not
   suggested again).
 - `GET/POST /api/documents` (multipart `file`: PDF, DOCX, TXT, MD; 10 MB; 30 at most),
-  `GET/DELETE /api/documents/{id}` — the text of a file, indexed by the worker for the memory;
-  one whose text cannot be read is refused with the reason.
+  `GET/DELETE /api/documents/{id}` — the worker reads the file (then drops it), keeps its text and
+  indexes it for the memory; one whose text cannot be read ends `failed` with the reason. Connected
+  apps (MCP) never see the documents.
 - `GET /api/conversations/{id}` — Segments in order (`segment_id`, `text`, `speaker_label`,
   `status`, `language`, pending ones included) and the extracted entities with their `source_text`.
 - `POST /api/conversations/{id}/translate` → `{language, lines: {segment_id: text}}` — the lines

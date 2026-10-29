@@ -105,9 +105,12 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 - **Memoria** (29/10, Profile → Memory): **About you**, frasi su di te (60 al massimo) in ogni risposta; Echo ne
   propone fino a 3 per conversazione dalle tue parole (righe [You], dopo il riassunto), mai su salute, politica,
   religione, sessualità, etnia, debiti, e le usa solo se le tieni; "ricordati che…"/"dimentica che…" le aggiungono
-  o tolgono a voce. **Documents**: PDF, Word, testo, Markdown (10 MB, 30 al massimo); si tiene solo il testo,
-  diviso in blocchi e indicizzato dal worker; le risposte di memoria usano i 3 passaggi più vicini (similarità ≥
-  0,3), nominando il documento. Un file senza testo (PDF scansionato) è rifiutato con il motivo.
+  o tolgono a voce (tenuti solo se il tuo messaggio lo chiede; altrimenti restano suggerimenti). **Documents**:
+  PDF, Word, testo, Markdown (10 MB, 30 al massimo); il worker legge il file in un thread, con limiti (pagine,
+  dimensione aperta, lunghezza del testo), lo butta appena letto e tiene solo il testo, diviso e indicizzato; uno
+  illeggibile (PDF scansionato, password, file binario, zip enorme) finisce "failed" con il motivo. Le risposte di
+  memoria usano i 3 passaggi più vicini (similarità ≥ 0,35), nominando il documento; le app collegate via MCP non
+  vedono i documenti. Fatti e documenti sono nell'export.
 - **WhatsApp in lettura** (29/10, Profile → WhatsApp): un servizio Node (`whatsapp/`, Baileys 7) collega il numero
   dell'utente come dispositivo con un codice di abbinamento; mai online, non invia e non segna come letto. Tiene
   le chat private (entrambi i lati, niente gruppi) solo in RAM, 7 giorni e 20.000 messaggi al massimo; le chiavi
