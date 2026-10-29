@@ -49,4 +49,4 @@ async def test_a_key_without_account_is_free(client, auth_headers):
 
 
 async def test_needs_a_key(client):
-    assert (await client.get("/api/plan")).status_code == 403  # as every REST route
+    assert (await client.get("/api/plan")).status_code == 401  # as every REST route

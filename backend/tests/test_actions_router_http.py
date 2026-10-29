@@ -81,7 +81,8 @@ def _auth():
 
 def test_missing_api_key_is_rejected(http):
     res = http.client.get("/api/actions/voice-updates")
-    assert res.status_code == 403
+    # No key at all: 401 (FastAPI 0.162; 403 before)
+    assert res.status_code == 401
 
 
 def test_invalid_api_key_is_401(http):
@@ -105,7 +106,7 @@ def test_auth_is_checked_before_the_provider(http, monkeypatch):
         raise ActionProviderError("Composio is not configured")
 
     monkeypatch.setattr(r, "get_action_provider", unconfigured)
-    assert http.client.get("/api/actions/toolkits").status_code == 403
+    assert http.client.get("/api/actions/toolkits").status_code == 401
 
 
 def test_overridden_user_reaches_the_provider(http, monkeypatch):
