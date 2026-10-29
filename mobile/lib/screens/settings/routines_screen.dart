@@ -294,6 +294,14 @@ final class _RoutineTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(routine.instruction, style: textTheme.bodyLarge),
+                if (routine.assistant != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Runs as ${routine.assistant!.label}',
+                    key: Key('routine-assistant-${routine.id}'),
+                    style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                  ),
+                ],
                 const SizedBox(height: 2),
                 Text(routine.scheduleText,
                     style: textTheme.labelMedium?.copyWith(color: palette.accent)),

@@ -14,8 +14,10 @@ Routine _routine({
   String? lastStatus,
   String? lastAnswer,
   String mode = 'always',
+  Map<String, dynamic> extra = const {},
 }) =>
     Routine.fromJson({
+      ...extra,
       'id': id,
       'mode': mode,
       'instruction': 'dimmi che tempo fa a Milano',
@@ -100,6 +102,21 @@ void main() {
     expect(find.textContaining('Oggi a Milano sole'), findsOneWidget);
     expect(find.text('Could not run'), findsOneWidget);
     expect(find.textContaining('arrive as a notification'), findsOneWidget);
+  });
+
+  testWidgets('a routine made with an assistant says it runs as it', (tester) async {
+    await _show(tester, _FakeRoutinesApi([
+      _routine(extra: const {
+        'assistant_id': 'a1',
+        'assistant_name': 'Dieta',
+        'assistant_emoji': '🥗',
+      }),
+      _routine(id: 'r2'),
+    ]));
+
+    expect(find.byKey(const Key('routine-assistant-r1')), findsOneWidget);
+    expect(find.text('Runs as 🥗 Dieta'), findsOneWidget);
+    expect(find.byKey(const Key('routine-assistant-r2')), findsNothing);
   });
 
   testWidgets('each routine says when it speaks', (tester) async {

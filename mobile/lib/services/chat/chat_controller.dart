@@ -19,6 +19,9 @@ typedef ChatClock = DateTime Function();
 const stillWorkingDetail = 'Still working on it';
 const stillWorkingMessage = 'Echo is still working on your last request.';
 
+/// After "… no longer exists." when a new chat's assistant was deleted elsewhere.
+const assistantGoneHint = 'Ask Echo, or choose another assistant.';
+
 @immutable
 final class ChatState {
   ChatState({
@@ -245,6 +248,24 @@ final class ChatController extends ChangeNotifier {
       ));
     } catch (error) {
       if (!_isCurrent(generation)) return;
+      final gone = _state.assistant;
+      if (gone != null &&
+          _state.sessionId == null &&
+          error is ApiException &&
+          error.code == 'not_found') {
+        // Its assistant was deleted elsewhere: the question goes back to the composer,
+        // for Echo or another assistant; never sent to someone the user did not choose
+        _emit(_state.copyWith(
+          messages: [..._state.messages]..removeAt(userIndex),
+          title: null,
+          composerText: question,
+          assistant: null,
+          sending: false,
+          streamingText: null,
+          error: '${gone.name} no longer exists. $assistantGoneHint',
+        ));
+        return;
+      }
       final messages = [..._state.messages];
       if (userIndex < messages.length) {
         messages[userIndex] = messages[userIndex].copyWith(failed: true);

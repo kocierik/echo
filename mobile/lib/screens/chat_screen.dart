@@ -389,6 +389,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     }
     if (state.messages.isEmpty && _messageCount > 0) {
       unawaited(_loadSuggestions()); // a new chat: suggest from what happened since
+      unawaited(_loadAssistants()); // and the assistants as they are now
     }
     if (state.messages.length != _messageCount || state.sending) {
       _messageCount = state.messages.length;
@@ -648,7 +649,10 @@ final class _ChatScreenState extends State<ChatScreen> {
             // The thread could not load: try it again
             _ErrorNotice(
               message: state.error!,
-              onRetry: _controller.hasThread && !state.isThread
+              // Not for a deleted assistant: the question waits in the composer
+              onRetry: _controller.hasThread &&
+                      !state.isThread &&
+                      !state.error!.endsWith(assistantGoneHint)
                   ? () => unawaited(_controller.openThread())
                   : null,
             ),

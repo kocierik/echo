@@ -44,6 +44,9 @@ final class _Api implements AssistantsApi, DocumentsApi, ChatApi {
   List<ChatSessionSummary> sessions = [];
   ApiException? refuseCreate;
 
+  /// The assistant asked was deleted elsewhere: the server says it is not found.
+  bool assistantGone = false;
+
   @override
   Future<List<Assistant>> listAssistants() async => assistants;
 
@@ -118,6 +121,14 @@ final class _Api implements AssistantsApi, DocumentsApi, ChatApi {
     void Function(String piece)? onToken,
   }) async {
     assistantIds.add(assistantId);
+    if (assistantGone && assistantId != null) {
+      throw const ApiException(
+        statusCode: 404,
+        code: 'not_found',
+        message: 'Assistant not found',
+        retryable: false,
+      );
+    }
     return QueryResponse(answer: 'Minestrone.', sessionId: 's1', sources: []);
   }
 
@@ -287,6 +298,34 @@ void main() {
       // The chat says who it is with; no choosing once it started
       expect(find.byKey(const Key('chat-assistant')), findsOneWidget);
       expect(find.byKey(const Key('ask-assistant-echo')), findsNothing);
+    });
+
+    testWidgets('an assistant deleted elsewhere: the question waits, the chips refresh',
+        (tester) async {
+      final api = _Api(assistants: [_diet]);
+      final controller = ChatController(api: api, voiceInput: _Voice());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(controller: controller),
+      ));
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.byKey(const Key('ask-assistant-a1')));
+      api
+        ..assistants = []
+        ..assistantGone = true;
+      await tester.enterText(find.byType(TextField), 'cosa mangio stasera?');
+      await tester.pump();
+      await tester.tap(find.byTooltip('Send question'));
+      await tester.pumpAndSettle();
+
+      // Not lost, not sent to Echo instead: back in the composer, with Echo chosen
+      expect(controller.state.messages, isEmpty);
+      expect(controller.state.composerText, 'cosa mangio stasera?');
+      expect(controller.state.assistant, isNull);
+      expect(find.textContaining('no longer exists'), findsOneWidget);
+      expect(find.byKey(const Key('ask-assistant-a1')), findsNothing);
     });
 
     testWidgets('without assistants nothing changes', (tester) async {

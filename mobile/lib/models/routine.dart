@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'assistant.dart';
+
 /// Something Echo does on its own at a time the user asked for (`GET /api/routines`).
 /// Created by asking Echo; here it is seen, paused, resumed or deleted.
 @immutable
@@ -14,6 +16,7 @@ final class Routine {
     this.lastRunAt,
     this.lastStatus,
     this.lastAnswer,
+    this.assistant,
   });
 
   factory Routine.fromJson(Map<String, dynamic> json) {
@@ -30,6 +33,7 @@ final class Routine {
       // Runs before modes said "ok" for what is now "reported"
       lastStatus: json['last_status'] == 'ok' ? 'reported' : json['last_status'] as String?,
       lastAnswer: json['last_answer'] as String?,
+      assistant: ChatAssistant.fromSession(json),
     );
   }
 
@@ -53,6 +57,9 @@ final class Routine {
   final String? lastStatus;
   final String? lastAnswer;
 
+  /// The assistant it runs as (made in its chat); null: Echo.
+  final ChatAssistant? assistant;
+
   Routine copyWith({bool? active, DateTime? nextRunAt}) => Routine(
         id: id,
         instruction: instruction,
@@ -63,6 +70,7 @@ final class Routine {
         lastRunAt: lastRunAt,
         lastStatus: lastStatus,
         lastAnswer: lastAnswer,
+        assistant: assistant,
       );
 }
 
