@@ -34,9 +34,9 @@ fi
 log "Building containers..."
 docker compose build --quiet 2>/dev/null || docker compose build
 
-# --- 3. Start services ---
-log "Starting services..."
-docker compose up -d
+# --- 3. Start the database and cache (api and worker start once, in step 7) ---
+log "Starting PostgreSQL and Redis..."
+docker compose up -d postgres redis
 
 # --- 4. Wait for PostgreSQL ---
 echo -n "  Waiting for PostgreSQL..."
@@ -61,31 +61,34 @@ done
 log "Running database migrations..."
 
 # Never stamp over a failed migration: that would silently skip schema changes.
-if docker compose exec -T api python -m alembic upgrade head; then
+if docker compose run --rm --no-deps -T api python -m alembic upgrade head; then
     log "Migrations complete"
 else
     error "Migration failed — fix it and run the deploy again (nothing was stamped)"
     exit 1
 fi
 
-# --- 6. Check the API keys (never seed a well-known one) ---
-# The README's example key is public: a server reachable from the internet (Cloudflare
-# Tunnel) must not accept it, so the deploy only warns and never creates it.
+# --- 6. Check the accounts and the API keys (never seed a well-known one) ---
+# The app signs in with an account and gets its own key, so what a new server needs is an
+# account. The README's example key is public: a server reachable from the internet
+# (Cloudflare Tunnel) must not accept it, so the deploy only warns and never creates it.
 KEY_STATE=$(docker compose exec -T postgres psql -U echo -d echo -tAc "
-    SELECT count(*) || ' ' || count(*) FILTER (
-        WHERE key_hash = encode(sha256('my-secret-key'::bytea), 'hex'))
-    FROM api_keys;" 2>/dev/null | tr -d '\r')
-read -r KEY_COUNT DEFAULT_KEY_COUNT <<< "${KEY_STATE:-0 0}"
-if [ "${KEY_COUNT:-0}" = "0" ]; then
-    warn "No API key yet: run 'make create-key' and put the printed key in the app"
-elif [ "${DEFAULT_KEY_COUNT:-0}" != "0" ]; then
+    SELECT (SELECT count(*) FROM users) || ' ' || count(*)
+    FROM api_keys WHERE key_hash = encode(sha256('my-secret-key'::bytea), 'hex');" \
+    2>/dev/null | tr -d '\r')
+read -r USER_COUNT DEFAULT_KEY_COUNT <<< "${KEY_STATE:-0 0}"
+if [ "${USER_COUNT:-0}" = "0" ]; then
+    warn "No account yet: run 'make create-user EMAIL=you@example.com', then sign in from the app"
+fi
+if [ "${DEFAULT_KEY_COUNT:-0}" != "0" ]; then
     warn "The example API key 'my-secret-key' is active and publicly known:"
     warn "run 'make create-key', update the app, then 'make revoke-example-key'"
 fi
 
-# --- 7. Restart services to pick up any code changes ---
-log "Restarting API and Worker..."
-docker compose restart api worker
+# --- 7. Start the services; api and worker are recreated to pick up any code changes ---
+log "Starting API and Worker..."
+docker compose up -d --force-recreate api worker
+docker compose up -d
 
 # --- 8. Wait for API to be healthy ---
 echo -n "  Waiting for API..."
@@ -110,7 +113,6 @@ echo ""
 echo "  API:     http://localhost:8000"
 echo "  Health:  http://localhost:8000/health"
 echo "  Logs:    docker compose logs -f api worker"
-echo "  Key:     my-secret-key"
 echo ""
 
 # Show current migration version
