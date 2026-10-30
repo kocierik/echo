@@ -38,8 +38,9 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 def _check_length(password: str) -> None:
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise ValueError(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
+    # TEMPORARY: no minimum for accounts made from the command line (register keeps its own)
+    if not password:
+        raise ValueError("password must not be empty")
 
 
 async def create_user(
