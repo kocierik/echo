@@ -1,7 +1,7 @@
 # Echo — Development Commands
 .PHONY: help up down build logs logs-api logs-worker test test-all lint fmt deploy db-reset db-migrate \
 	db-new-migration shell worker create-key create-user set-password set-plan revoke-example-key \
-	eval-llm eval-stt-collect eval-stt
+	eval-llm eval-stt-collect eval-stt usage runs coverage-new
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -43,8 +43,31 @@ test-all: ## Run all tests in the api container on the echo_test database
 	docker compose exec -T $(TEST_ENV) api python -m alembic upgrade head
 	docker compose exec -T $(TEST_ENV) api python -m pytest tests/ -q -p no:cacheprovider
 
+# The new code of each unit, held to 80% line coverage: each unit adds its files here
+NEW_CODE = app/core/runs.py,app/core/request_budget.py,app/core/redaction.py,$\
+	app/models/agent_run.py,app/cli/runs.py
+# Coverage data stays in the container, never in the working tree
+COVERAGE_ENV = -e COVERAGE_FILE=/tmp/.coverage-echo
+
+coverage-new: ## Line coverage of the new code (NEW_CODE), at least 80%; runs the whole suite
+	docker compose exec -T postgres psql -U echo -d postgres -tAc \
+		"SELECT 1 FROM pg_database WHERE datname = 'echo_test'" | grep -q 1 || \
+		docker compose exec -T postgres psql -U echo -d postgres -c "CREATE DATABASE echo_test"
+	docker compose exec -T $(TEST_ENV) api python -m alembic upgrade head
+	docker compose exec -T $(TEST_ENV) $(COVERAGE_ENV) api python -m pytest tests/ -q \
+		-p no:cacheprovider --cov=app --cov-report=; tests=$$?; \
+	docker compose exec -T $(COVERAGE_ENV) api python -m coverage report -m \
+		--include="$(NEW_CODE)" --fail-under=80 && exit $$tests
+
 usage: ## What a day of Echo costs, per user and kind of work: make usage [DAYS=7]
 	docker compose exec -T api python -m app.cli.usage --days "$(or $(DAYS),7)"
+
+# USER is also the shell's login name: only a USER=... given to make selects a user
+runs: ## Tracked runs: make runs CID=<correlation id>, or make runs USER=<email or id> [LAST=10]
+	docker compose exec -T api python -m app.cli.runs \
+		$(if $(CID),--cid "$(CID)") \
+		$(if $(filter command line,$(origin USER)),--user "$(USER)") \
+		--last "$(or $(LAST),10)"
 
 eval-llm: ## Evaluate an LLM (real API calls): make eval-llm MODEL=gpt-6-luna EFFORT=none SUITE=all
 	docker compose exec -T api python -m evals.llm --model "$(MODEL)" --suite "$(or $(SUITE),all)" \

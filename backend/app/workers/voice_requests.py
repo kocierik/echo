@@ -40,6 +40,7 @@ from app.actions.voice import (
 )
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
+from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.services.about_echo import about_echo_for
 from app.services.embedding_openai import get_embedding_service
@@ -406,6 +407,7 @@ async def handle_voice_item(redis_client, raw) -> bool:
     if segment_id is None:
         logger.warning(f"[Voice] Dropping invalid queue item {raw!r}")
         return True
+    await restore_correlation_for(redis_client, "segment", segment_id)
 
     claim = _Claim()
     async with async_session() as session:

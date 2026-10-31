@@ -141,6 +141,18 @@ class Settings(BaseSettings):
     # Local hour (in user_timezone) when the daily digest of the previous day is written
     digest_local_hour: int = 4
 
+    # Run tracking (core/runs.py): each coordinator request and routine run, with its
+    # steps, in agent_runs / agent_steps for `make runs`. Off: nothing is written
+    run_tracking_enabled: bool = False
+    # A run still `running` after this many seconds was cut off (a restart, a crash):
+    # closed as `interrupted`. The longest real request plus 60 s
+    run_interrupted_after_seconds: int = 180
+    # Tracking rows older than this are deleted by the retention loop
+    run_retention_days: int = 30
+    # How long the correlation ID of an uploaded segment or photo is kept in Redis
+    # (corr:{kind}:{id}) for the workers that pick it up: 7 days
+    correlation_key_ttl_seconds: int = 604800
+
     model_config = SettingsConfigDict(
         env_file=(_REPO_ROOT / ".env", ".env"),
         env_file_encoding="utf-8",

@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core.database import async_session
+from app.core.request_budget import charge_tokens
+from app.core.runs import current_agent_var, record_step
 from app.models.llm_usage import LlmUsage
 
 logger = logging.getLogger(__name__)
@@ -46,9 +48,36 @@ async def record_usage(
     input_units: int = 0,
     output_units: int = 0,
     cached_units: int = 0,
+    duration_ms: int | None = None,
+    attempt: int | None = None,
     session_factory=None,
 ) -> None:
-    """Adds one call and its units to today's row (UTC) for the owner, kind and model."""
+    """Adds one call and its units to today's row (UTC) for the owner, kind and model.
+
+    A language-model call (`llm_*` kinds; not embeddings, transcription, voice or web
+    search) is first charged to the request's cap and recorded as a step of the current
+    run (core/request_budget.py, core/runs.py), each guarded on its own: a failed usage
+    write below never skips them. `duration_ms` and `attempt` describe that step.
+    """
+    if kind.startswith("llm_"):
+        try:
+            charge_tokens(input_units + output_units)
+        except Exception:
+            logger.warning("Could not charge the request cap (%s)", kind, exc_info=True)
+        try:
+            await record_step(
+                "llm_call",
+                agent_id=current_agent_var.get(),
+                model=model,
+                tokens_in=input_units,
+                tokens_out=output_units,
+                tokens_cached=cached_units,
+                duration_ms=duration_ms or 0,
+                attempt=attempt or 1,
+            )
+        except Exception:  # record_step never raises; a guard all the same
+            logger.warning("Could not record the model call step (%s)", kind, exc_info=True)
+
     owner = usage_owner.get()
     if owner is None and kind not in _warned_unowned:
         _warned_unowned.add(kind)

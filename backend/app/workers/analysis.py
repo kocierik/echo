@@ -12,6 +12,7 @@ import uuid
 import redis.asyncio as redis
 
 from app.core.database import async_session
+from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.services.analysis_pipeline import AnalysisPipeline
 from app.services.embedding_openai import get_embedding_service
@@ -37,6 +38,7 @@ async def process_analysis(redis_client: redis.Redis, shutdown_event: asyncio.Ev
 
         _, segment_id_bytes = result
         segment_id = uuid.UUID(segment_id_bytes.decode())
+        await restore_correlation_for(redis_client, "segment", segment_id)
         logger.info(f"Processing analysis for segment {segment_id}")
 
         async with async_session() as db:

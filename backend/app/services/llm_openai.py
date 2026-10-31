@@ -1,6 +1,7 @@
 import base64
 import functools
 import json
+import time
 from collections.abc import AsyncIterator
 
 from openai import AsyncOpenAI
@@ -35,6 +36,11 @@ def _responses_units(usage) -> tuple[int, int, int]:
         getattr(usage, "output_tokens", 0) or 0,
         cached,
     )
+
+
+def _elapsed_ms(started: float) -> int:
+    """Milliseconds since `started` (time.monotonic()): the call's duration for its step."""
+    return int((time.monotonic() - started) * 1000)
 
 
 def _with_units(response: LLMResponse, units: tuple[int, int, int]) -> LLMResponse:
@@ -101,10 +107,11 @@ class OpenAILLMService(LLMService):
         # What the calls are recorded as (services/usage.py)
         self.kind = kind
 
-    async def _record(self, units: tuple[int, int, int]) -> None:
+    async def _record(self, units: tuple[int, int, int], started: float) -> None:
         await record_usage(
             self.kind, self.model,
             input_units=units[0], output_units=units[1], cached_units=units[2],
+            duration_ms=_elapsed_ms(started),
         )
 
     def _sampling(self, temperature: float) -> dict:
@@ -117,6 +124,7 @@ class OpenAILLMService(LLMService):
         self, messages: list[LLMMessage], temperature: float = 0.3, hosted_tools=None
     ) -> LLMResponse:
         # Chat completions run no hosted tools (`can_search` is False): ignored
+        started = time.monotonic()
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
@@ -124,7 +132,7 @@ class OpenAILLMService(LLMService):
         )
         choice = response.choices[0]
         units = _chat_units(response.usage)
-        await self._record(units)
+        await self._record(units, started)
         return _with_units(LLMResponse(
             content=choice.message.content or "",
             model=response.model,
@@ -138,6 +146,7 @@ class OpenAILLMService(LLMService):
         hosted_tools=None,
         on_citations=None,
     ) -> AsyncIterator[str]:
+        started = time.monotonic()
         chunks = await self.client.chat.completions.create(
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
@@ -153,18 +162,19 @@ class OpenAILLMService(LLMService):
             if chunk.choices and (piece := chunk.choices[0].delta.content):
                 yield piece
         if units is not None:
-            await self._record(units)
+            await self._record(units, started)
 
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1
     ) -> dict:
+        started = time.monotonic()
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
             response_format={"type": "json_object"},
             **self._sampling(temperature),
         )
-        await self._record(_chat_units(response.usage))
+        await self._record(_chat_units(response.usage), started)
         content = response.choices[0].message.content or "{}"
         return json.loads(content)
 
@@ -175,6 +185,7 @@ class OpenAILLMService(LLMService):
         temperature: float = 0.2,
         hosted_tools=None,
     ) -> LLMResponse:
+        started = time.monotonic()
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[_to_openai_message(m) for m in messages],
@@ -184,7 +195,7 @@ class OpenAILLMService(LLMService):
         )
         message = response.choices[0].message
         units = _chat_units(response.usage)
-        await self._record(units)
+        await self._record(units, started)
         return _with_units(LLMResponse(
             content=message.content or "",
             model=response.model,
@@ -266,10 +277,11 @@ class OpenAIResponsesLLMService(LLMService):
         # What the calls are recorded as (services/usage.py)
         self.kind = kind
 
-    async def _record(self, units: tuple[int, int, int]) -> None:
+    async def _record(self, units: tuple[int, int, int], started: float) -> None:
         await record_usage(
             self.kind, self.model,
             input_units=units[0], output_units=units[1], cached_units=units[2],
+            duration_ms=_elapsed_ms(started),
         )
 
     def _options(self, temperature: float) -> dict:
@@ -287,6 +299,7 @@ class OpenAIResponsesLLMService(LLMService):
         self, messages: list[LLMMessage], temperature: float = 0.3, hosted_tools=None
     ) -> LLMResponse:
         tools = {"tools": list(hosted_tools)} if hosted_tools else {}
+        started = time.monotonic()
         response = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
@@ -294,7 +307,7 @@ class OpenAIResponsesLLMService(LLMService):
             **self._options(temperature),
         )
         units = _responses_units(response.usage)
-        await self._record(units)
+        await self._record(units, started)
         citations = await self._record_searches(getattr(response, "output", None))
         return _with_units(LLMResponse(
             content=response.output_text or "",
@@ -313,6 +326,7 @@ class OpenAIResponsesLLMService(LLMService):
         """The answer in pieces; with a search, the stream pauses while it runs, and
         `on_citations` gets the cited pages once the answer is complete."""
         tools = {"tools": list(hosted_tools)} if hosted_tools else {}
+        started = time.monotonic()
         events = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
@@ -325,7 +339,7 @@ class OpenAIResponsesLLMService(LLMService):
                 yield event.delta
             elif event.type == "response.completed":
                 response = getattr(event, "response", None)
-                await self._record(_responses_units(getattr(response, "usage", None)))
+                await self._record(_responses_units(getattr(response, "usage", None)), started)
                 citations = await self._record_searches(getattr(response, "output", None))
                 if on_citations is not None and citations:
                     on_citations(citations)
@@ -333,13 +347,14 @@ class OpenAIResponsesLLMService(LLMService):
     async def complete_json(
         self, messages: list[LLMMessage], temperature: float = 0.1
     ) -> dict:
+        started = time.monotonic()
         response = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
             text={"format": {"type": "json_object"}},
             **self._options(temperature),
         )
-        await self._record(_responses_units(response.usage))
+        await self._record(_responses_units(response.usage), started)
         return json.loads(response.output_text or "{}")
 
     async def complete_with_tools(
@@ -349,6 +364,7 @@ class OpenAIResponsesLLMService(LLMService):
         temperature: float = 0.2,
         hosted_tools=None,
     ) -> LLMResponse:
+        started = time.monotonic()
         response = await self.client.responses.create(
             model=self.model,
             input=_to_response_items(messages),
@@ -357,7 +373,7 @@ class OpenAIResponsesLLMService(LLMService):
             **self._options(temperature),
         )
         units = _responses_units(response.usage)
-        await self._record(units)
+        await self._record(units, started)
         citations = await self._record_searches(response.output)
         return _with_units(LLMResponse(
             content=response.output_text or "",

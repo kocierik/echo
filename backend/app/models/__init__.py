@@ -1,4 +1,5 @@
 from app.models.action_log import ActionLog
+from app.models.agent_run import AgentRun, AgentStep
 from app.models.api_key import ApiKey
 from app.models.assistant import Assistant
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
@@ -30,6 +31,8 @@ from app.models.weekly_digest import WeeklyDigest
 
 __all__ = [
     "ActionLog",
+    "AgentRun",
+    "AgentStep",
     "ApiKey",
     "Base",
     "ChatSession",

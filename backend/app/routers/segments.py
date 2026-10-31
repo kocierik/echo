@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.logging import remember_correlation
 from app.core.rate_limit import limiter
 from app.models.segment import Segment
 from app.schemas.transcription import (
@@ -235,6 +236,8 @@ async def ingest_segment(
 
     # Queue for STT processing via Redis (shared pool)
     redis_client = request.app.state.redis
+    # The workers log under this request's correlation ID (core/logging.py)
+    await remember_correlation(redis_client, "segment", segment_id)
     await redis_client.lpush("queue:stt", str(segment_id))
 
     return SegmentResponse(

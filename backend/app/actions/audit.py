@@ -5,32 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.policy import ToolTier, classify_call, is_people_key, toolkit_of
 from app.actions.provider import ToolResult
+from app.core.redaction import _SUMMARY_MAX, _VALUE_MAX, _is_redacted, summarize_arguments
 from app.models.action_log import ActionLog
 
-# Keys whose name contains one of these hold message bodies: never written to the audit log.
-_REDACTED_KEY_PARTS = ("body", "text", "content", "message", "markdown", "html")
-_VALUE_MAX = 80
-_SUMMARY_MAX = 300
-
-
-def _is_redacted(key: str) -> bool:
-    lowered = key.lower()
-    if lowered.endswith(("_id", "_ids")):  # message_id, thread_id: identifiers, not bodies
-        return False
-    return any(part in lowered for part in _REDACTED_KEY_PARTS)
-
-
-def summarize_arguments(arguments: dict) -> str:
-    """Compact, body-free description of tool arguments for the audit log."""
-    parts = []
-    for key, value in arguments.items():
-        text = str(value)
-        if _is_redacted(str(key)):
-            shown = f"({len(text)} chars)"
-        else:
-            shown = text[:_VALUE_MAX]
-        parts.append(f"{key}={shown}")
-    return ", ".join(parts)[:_SUMMARY_MAX]
+# summarize_arguments and _is_redacted live in core/redaction.py, where run tracking
+# uses them too: core never imports actions, so the move keeps that direction.
 
 
 # --- Confirmation card text -------------------------------------------------------------

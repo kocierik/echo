@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.actions.agent import NO_APPS, run_action_agent
 from app.actions.saved_tools import SavedContext
 from app.core.database import async_session
+from app.core.logging import new_correlation_id, restore_correlation_for
 from app.models.photo import Photo
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_openai import (
@@ -75,13 +76,19 @@ async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
         )
 
 
-async def handle_photo(raw, session_factory=async_session) -> None:
-    """Analyse one queued photo. Never raises (except cancellation)."""
+async def handle_photo(raw, session_factory=async_session, redis_client=None) -> None:
+    """Analyse one queued photo. Never raises (except cancellation).
+
+    With `redis_client`, the work logs under the upload's correlation ID."""
     try:
         photo_id = uuid.UUID(raw.decode() if isinstance(raw, bytes) else str(raw))
     except (UnicodeDecodeError, ValueError):
         logger.warning(f"[Photos] Dropping invalid queue item {raw!r}")
         return
+    if redis_client is not None:
+        await restore_correlation_for(redis_client, "photo", photo_id)
+    else:
+        new_correlation_id()
     try:
         await retry_with_backoff(
             _analyse_once,
@@ -136,4 +143,4 @@ async def process_photos(
             await asyncio.sleep(POP_TIMEOUT_S)
             continue
         if result is not None:
-            await handle_photo(result[1], session_factory)
+            await handle_photo(result[1], session_factory, redis_client)

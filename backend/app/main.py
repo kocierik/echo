@@ -18,6 +18,7 @@ from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
 from app.core.metrics import metrics
 from app.core.rate_limit import limiter
+from app.core.runs import startup_close_interrupted
 from app.mcp import tools as _mcp_tools  # noqa: F401  (registers the tools)
 from app.mcp.server import mcp_endpoint
 from app.routers import (
@@ -64,6 +65,8 @@ async def lifespan(app: FastAPI):
         max_connections=20,
     )
     preload = asyncio.create_task(preload_sdk())
+    # Tracked runs a previous api process left `running` (core/runs.py); never raises
+    await startup_close_interrupted()
     yield
     # Shutdown: close the pool
     preload.cancel()

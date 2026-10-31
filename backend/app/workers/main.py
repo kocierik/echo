@@ -5,7 +5,9 @@
 - voice requests (voice_requests.py) and photos (photos.py);
 - retention, summaries, digests, the expiry of saved things and of places visited
   (90 days) on their schedules;
-- deferred speech (deferred.py), queued again when the plan's budget allows it.
+- deferred speech (deferred.py), queued again when the plan's budget allows it;
+- tracked runs left `running` by a stopped process, closed as `interrupted` every minute
+  (core/runs.py).
 
 Items that fail after their retries go to the dead letter queue (dead_letter.py). On
 SIGTERM/SIGINT the loops finish the item in hand (up to SHUTDOWN_TIMEOUT_S), then stop.
@@ -20,11 +22,12 @@ import redis.asyncio as redis
 from app.actions.composio_provider import preload_sdk
 from app.core.config import settings
 from app.core.logging import setup_logging
+from app.core.runs import close_interrupted, startup_close_interrupted
 from app.workers.analysis import process_analysis
 from app.workers.deferred import run_deferred_loop
 from app.workers.digest import run_digest_loop
 from app.workers.documents import run_documents_loop
-from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, stop_tasks
+from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, sleep_or_shutdown, stop_tasks
 from app.workers.photos import process_photos
 from app.workers.places import run_places_cleanup_loop
 from app.workers.reanalysis import process_reanalysis
@@ -39,6 +42,17 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 shutdown_event = asyncio.Event()
+
+# Runs a stopped process left `running` are closed this often (core/runs.py)
+INTERRUPTED_SWEEP_INTERVAL_S = 60
+
+
+async def run_interrupted_sweep_loop(event: asyncio.Event | None = None) -> None:
+    """At start and every minute until shutdown: close the runs left `running` past the
+    threshold as `interrupted` (an api or worker restart cut them off)."""
+    await startup_close_interrupted()
+    while not await sleep_or_shutdown(INTERRUPTED_SWEEP_INTERVAL_S, event):
+        await close_interrupted(settings.run_interrupted_after_seconds)
 
 
 def _handle_signal(sig: signal.Signals):
@@ -83,6 +97,9 @@ async def main():
             process_voice_queue(redis_client, shutdown_event), name="voice_worker"
         ),
         asyncio.create_task(process_photos(redis_client, shutdown_event), name="photo_worker"),
+        asyncio.create_task(
+            run_interrupted_sweep_loop(shutdown_event), name="interrupted_runs_worker"
+        ),
         asyncio.create_task(preload_sdk(), name="composio_preload"),
     ]
 

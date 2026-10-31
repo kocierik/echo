@@ -66,3 +66,4 @@
 
 <!-- Project-specific corrections from human feedback. -->
 <!-- Format: NEVER/ALWAYS [behavior] (learned [date]) -->
+- In ogni domanda a scelta, indicare l'opzione raccomandata (prima, con "(Raccomandata)") e spiegare in una riga perché; la scelta resta alla persona. (learned 2026-10-30) <!-- cid:261030-multi-agent-coordinator:requirements-analysis:486509f07d697ae792da64bfed3501089196bd4677291fd6dd208204b3a06435 -->

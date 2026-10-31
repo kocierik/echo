@@ -1,7 +1,8 @@
 """Delete expired audio while preserving segment metadata.
 
 Transcribed audio goes after `completed_audio_retention_hours`, audio that failed after
-`incomplete_audio_retention_days`; deferred audio waits for its transcription.
+`incomplete_audio_retention_days`; deferred audio waits for its transcription. Tracked
+runs and their steps (core/runs.py) go after `run_retention_days`.
 """
 
 import asyncio
@@ -14,6 +15,7 @@ from sqlalchemy import and_, or_, select
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.runs import purge_older_than
 from app.models.segment import Segment
 from app.workers.lifecycle import sleep_or_shutdown
 
@@ -81,6 +83,17 @@ async def run_retention_loop(shutdown_event: asyncio.Event | None = None):
             raise
         except Exception:
             logger.exception("[Retention] Error during cleanup")
+
+        # Run tracking (core/runs.py), on its own: a failure here never stops the audio
+        # cleanup above, nor the other way round
+        try:
+            purged = await purge_older_than(settings.run_retention_days)
+            if purged > 0:
+                logger.info("[Retention] Deleted %s tracked runs", purged)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("[Retention] Error while deleting old tracked runs")
 
         if await sleep_or_shutdown(RETENTION_CHECK_INTERVAL_S, shutdown_event):
             return

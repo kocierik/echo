@@ -30,6 +30,7 @@ from app.actions.voice import get_or_create_voice_session
 from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.logging import remember_correlation
 from app.core.rate_limit import limiter
 from app.models.photo import Photo
 from app.services.llm_openai import get_llm_vision_service
@@ -178,6 +179,8 @@ async def upload_photo_image(
 
     store_image(photo, data, captured_at)
     await db.commit()
+    # The photo worker logs under this request's correlation ID (core/logging.py)
+    await remember_correlation(request.app.state.redis, "photo", photo.id)
     await request.app.state.redis.lpush(PHOTO_QUEUE, str(photo.id))
     response.status_code = status.HTTP_201_CREATED
     return photo

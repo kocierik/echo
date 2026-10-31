@@ -23,6 +23,7 @@ from sqlalchemy import select
 
 from app.actions.voice import find_wake
 from app.core.database import async_session
+from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.adpcm_decoder import adpcm_to_wav
@@ -142,6 +143,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
         queue, segment_id_bytes = result
         late = (queue.decode() if isinstance(queue, bytes) else queue) == DEFERRED_STT_QUEUE
         segment_id = uuid.UUID(segment_id_bytes.decode())
+        # The upload's correlation ID (a new one for deferred speech past its key's expiry)
+        await restore_correlation_for(redis_client, "segment", segment_id)
         logger.info(f"Processing STT for segment {segment_id}{' (deferred)' if late else ''}")
         usage_owner.set(None)  # until the segment is known
 
