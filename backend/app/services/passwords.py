@@ -38,7 +38,7 @@ def verify_password(password_hash: str, password: str) -> bool:
 
 
 def _check_length(password: str) -> None:
-    # TEMPORARY: no minimum for accounts made from the command line (register keeps its own)
+    # No minimum for accounts made from the command line (register keeps its own)
     if not password:
         raise ValueError("password must not be empty")
 

@@ -33,13 +33,20 @@ async def test_create_user_attaches_to_existing_id(db_session):
     assert verify_password(user.password_hash, "long enough pw")
 
 
-async def test_create_user_rejects_duplicate_and_short_password(db_session):
+async def test_create_user_rejects_duplicate_and_empty_password(db_session):
     await create_user(db_session, "erik@example.com", "long enough pw")
 
     with pytest.raises(ValueError, match="email already exists"):
         await create_user(db_session, "ERIK@example.com", "another long pw")
-    with pytest.raises(ValueError, match="at least 10 characters"):
-        await create_user(db_session, "ada@example.com", "short")
+    with pytest.raises(ValueError, match="must not be empty"):
+        await create_user(db_session, "ada@example.com", "")
+
+
+async def test_create_user_accepts_a_short_password(db_session):
+    # Accounts made from the command line have no minimum; register keeps its own
+    user = await create_user(db_session, "ada@example.com", "short")
+
+    assert verify_password(user.password_hash, "short")
 
 
 async def test_set_password_changes_hash(db_session):
