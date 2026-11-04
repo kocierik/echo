@@ -7,7 +7,9 @@ runs are made by writing `started_at` in the past, never by waiting.
 import asyncio
 import json
 import logging
+import os
 import statistics
+import sys
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -509,6 +511,12 @@ async def _warm_pool(connections: int) -> None:
         await asyncio.gather(*(c.close() for c in held))
 
 
+# A measure of speed, not of correctness: on a shared CI runner (CI is set) or with coverage
+# tracing every line (make coverage-new) it measures the machine; make test-all runs it
+_SPEED_UNRELIABLE = bool(os.environ.get("CI")) or sys.gettrace() is not None
+
+
+@pytest.mark.skipif(_SPEED_UNRELIABLE, reason="timing is unreliable on CI or under coverage")
 @pytest.mark.timeout(30)
 async def test_record_step_p95_stays_under_50_ms(tracking):
     await _warm_pool(10)
