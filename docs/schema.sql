@@ -528,3 +528,51 @@ ALTER TABLE chat_sessions ADD COLUMN assistant_id UUID
     REFERENCES assistants(id) ON DELETE SET NULL;  -- 029
 ALTER TABLE routines ADD COLUMN assistant_id UUID
     REFERENCES assistants(id) ON DELETE SET NULL;  -- 029
+
+-- Firmware signed with the release key (Migration 030)
+ALTER TABLE firmware_releases ADD COLUMN signature VARCHAR(128);  -- 030
+
+-- Run tracking: one row per coordinator request or routine run, one per step (Migration 031)
+CREATE TABLE agent_runs (
+    id UUID PRIMARY KEY,
+    correlation_id VARCHAR(64) NOT NULL,
+    user_id UUID,
+    source VARCHAR(10) NOT NULL,                -- chat | voice | routine
+    status VARCHAR(20) NOT NULL DEFAULT 'running',
+    plan_summary VARCHAR(200),
+    started_at TIMESTAMPTZ NOT NULL,
+    ended_at TIMESTAMPTZ,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    cost_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
+    cost_unknown BOOLEAN NOT NULL DEFAULT false,
+    error_class VARCHAR(64),
+    CONSTRAINT ck_agent_runs_ended_when_final CHECK ((status = 'running') = (ended_at IS NULL)),
+    CONSTRAINT ck_agent_runs_ended_after_start CHECK (ended_at IS NULL OR ended_at >= started_at)
+);
+CREATE INDEX ix_agent_runs_user_started ON agent_runs(user_id, started_at);
+CREATE INDEX ix_agent_runs_correlation_id ON agent_runs(correlation_id);
+CREATE INDEX ix_agent_runs_started_at ON agent_runs(started_at);
+CREATE TABLE agent_steps (
+    id UUID PRIMARY KEY,
+    run_id UUID NOT NULL,
+    seq INTEGER NOT NULL,
+    kind VARCHAR(20) NOT NULL,                  -- plan | delegation | llm_call | tool_call | synthesis
+    agent_id VARCHAR(80),
+    tool_name VARCHAR(120),
+    model VARCHAR(80),
+    tier VARCHAR(10),
+    attempt INTEGER NOT NULL DEFAULT 1,
+    started_at TIMESTAMPTZ NOT NULL,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    cost_usd NUMERIC(12, 6) NOT NULL DEFAULT 0,
+    cost_unknown BOOLEAN NOT NULL DEFAULT false,
+    status VARCHAR(10) NOT NULL,
+    error_class VARCHAR(64),
+    args_redacted JSONB,                        -- the tool's arguments, secrets removed
+    action_log_id UUID,
+    CONSTRAINT fk_agent_steps_run FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+    CONSTRAINT uq_agent_steps_run_seq UNIQUE (run_id, seq)
+);
