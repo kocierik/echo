@@ -1,0 +1,46 @@
+# The iPhone app without a Mac: a GitHub Mac builds it unsigned, and SideStore on the
+# iPhone signs it with your own Apple ID (free, re-signed every 7 days).
+# Run it from GitHub → Actions → "iOS build (unsigned)" → Run workflow; the .ipa is in the
+# run's Artifacts. Installing it: docs/IPHONE-WITHOUT-MAC.md.
+name: iOS build (unsigned)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      # The server address is built in (https://echo.man.ovh), so no dart_defines file
+      - name: Build without signing
+        working-directory: mobile
+        run: flutter build ios --release --no-codesign
+
+      # An .ipa is the .app in a Payload folder, zipped; the Live Activity is inside it
+      - name: Package the .ipa
+        working-directory: mobile/build/ios/iphoneos
+        run: |
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -qry Echo-unsigned.ipa Payload
+          ls -lh Echo-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Echo-unsigned-ipa
+          path: mobile/build/ios/iphoneos/Echo-unsigned.ipa
+          retention-days: 14
