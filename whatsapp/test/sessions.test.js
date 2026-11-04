@@ -36,7 +36,14 @@ function fakeSocket() {
   return sock;
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+const settle = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Until `condition()` holds, at most ~2 s: link and reconnect do disk I/O first, slow on CI. */
+async function until(condition) {
+  for (let i = 0; i < 200 && !(await condition()); i++) await settle(10);
+}
+
+const folderGone = (userId) => access(path.join(dataDir, userId)).then(() => false, () => true);
 
 beforeEach(async () => {
   sockets = [];
@@ -52,7 +59,7 @@ beforeEach(async () => {
 
 async function linked(userId = 'u1') {
   const code = sessions.link(userId, '393330000000');
-  await settle();
+  await until(() => sessions.status(userId).state === 'linking');
   sockets.at(-1).ev.emit('connection.update', { qr: 'qr-data' });
   assert.equal(await code, 'ABCD1234');
   const sock = sockets.at(-1);
@@ -63,7 +70,7 @@ async function linked(userId = 'u1') {
 
 test('linking gives the pairing code once WhatsApp is ready, then the number', async () => {
   const code = sessions.link('u1', '393330000000');
-  await settle();
+  await until(() => sessions.status('u1').state === 'linking');
   assert.equal(sessions.status('u1').state, 'linking');
 
   sockets[0].ev.emit('connection.update', { qr: 'qr-data' });
@@ -110,7 +117,7 @@ test('logged out from the phone: keys and messages are gone', async () => {
     connection: 'close',
     lastDisconnect: { error: { output: { statusCode: 401 } } },
   });
-  await settle();
+  await until(async () => sessions.status('u1').state === 'unlinked' && (await folderGone('u1')));
 
   assert.equal(sessions.status('u1').state, 'unlinked');
   assert.deepEqual(store.chats('u1'), []);
@@ -134,7 +141,7 @@ test('a dropped connection connects again', async () => {
     connection: 'close',
     lastDisconnect: { error: { output: { statusCode: 515 } } },
   });
-  await settle();
+  await until(() => sockets.length === 2);
 
   assert.equal(sockets.length, 2);
 });
