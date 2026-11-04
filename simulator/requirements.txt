@@ -1,5 +1,5 @@
 # Echo Device Simulator dependencies
 sounddevice==0.5.1
 numpy==2.1.2
-requests==2.32.3
+requests==2.34.2
 faster-whisper==1.1.0

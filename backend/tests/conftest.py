@@ -1,6 +1,5 @@
 """Test fixtures for integration tests."""
 
-import asyncio
 import hashlib
 import uuid
 
@@ -42,13 +41,6 @@ settings.voice_model_path = "/nonexistent/voice_embedding.onnx"
 TEST_USER_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 TEST_API_KEY = "test-secret-key"
 TEST_API_KEY_HASH = hashlib.sha256(TEST_API_KEY.encode()).hexdigest()
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest_asyncio.fixture(autouse=True)
