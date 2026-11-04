@@ -134,6 +134,9 @@ class Settings(BaseSettings):
     # Plans (services/plans.py): changes to the defaults, per plan, as JSON in .env, e.g.
     # PLANS={"plus": {"monthly_minutes": 1200, "web_searches_per_day": 20}}
     plans: dict[str, dict[str, int]] = {}
+    # The plan of a new account, from the app or from `make create-user`; an unknown name
+    # is free
+    new_account_plan: str = "free"
 
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"

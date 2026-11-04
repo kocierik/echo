@@ -1,6 +1,7 @@
 """Account passwords (Argon2id) and the accounts made from the command line.
 
-Registration is closed: accounts are created on the server (app/cli/users.py).
+Registration from the app is open by default (REGISTRATION_OPEN); accounts are also
+made on the server (app/cli/users.py).
 """
 
 import uuid
@@ -10,6 +11,7 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.api_key import ApiKey
 from app.models.user import User
 
@@ -43,6 +45,14 @@ def _check_length(password: str) -> None:
         raise ValueError("password must not be empty")
 
 
+def _new_account_plan() -> str:
+    """NEW_ACCOUNT_PLAN, when it names a plan; free otherwise."""
+    from app.services.plans import plan_names  # plans imports this module
+
+    name = settings.new_account_plan.strip().lower()
+    return name if name in plan_names() else "free"
+
+
 async def create_user(
     db: AsyncSession,
     email: str,
@@ -65,6 +75,7 @@ async def create_user(
         id=user_id or uuid.uuid4(),
         email=email,
         password_hash=password_hash or hash_password(password),
+        plan=_new_account_plan(),
     )
     db.add(user)
     await db.commit()

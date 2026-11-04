@@ -83,3 +83,15 @@ async def test_registrations_are_limited_per_address(client, db_session):
 
     assert sixth.status_code == 429
     assert sixth.json()["detail"].startswith("Too many accounts from here.")
+
+
+async def test_a_registered_account_gets_the_plan_of_the_settings(
+    client, db_session, monkeypatch
+):
+    monkeypatch.setattr(settings, "new_account_plan", "unlimited")
+
+    response = await client.post("/api/auth/register", json=_register())
+
+    assert response.status_code == 200
+    user = await db_session.scalar(select(User).where(User.email == "ada@example.com"))
+    assert user.plan == "unlimited"

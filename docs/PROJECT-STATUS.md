@@ -1,4 +1,4 @@
-# Echo — Stato del progetto (28/10/2026)
+# Echo — Stato del progetto (04/11/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
@@ -6,8 +6,10 @@ Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le
 dal vivo). Aggiornato il 16/10 dopo la nuova interfaccia, il primo avvio con account e registrazione,
 l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. Aggiornato il 22/10 dopo la
 ricerca web, gli incarichi ricorrenti, le nuove schede Today · Ask · Profile, i to-do solo su richiesta e le
-promesse più rigide. Aggiornato il 28/10 dopo gli incarichi che parlano solo quando serve. Il dettaglio di
-quanto resta è in [ROADMAP.md](ROADMAP.md).
+promesse più rigide. Aggiornato il 28/10 dopo gli incarichi che parlano solo quando serve. Aggiornato il 04/11
+dopo memoria, documenti, assistenti e WhatsApp (29/10), le correzioni di sicurezza del 29/10, il deploy corretto
+(30/10) e il tracciamento delle esecuzioni (31/10). Il dettaglio di quanto resta è in [ROADMAP.md](ROADMAP.md);
+il progetto del coordinatore multi-agente in [multi-agent/](multi-agent/README.md).
 
 ---
 
@@ -35,7 +37,7 @@ XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-fir
 |---|---|---|
 | `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 12 suite Unity native, 109 test (protocollo, transfer, bond, mute, pulsante, OTA, buffer, foto) |
 | `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 581 test (servizi + widget, ~4 min), `flutter analyze` pulito |
-| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2, MCP SDK 1.30 | 735 test pytest (~2 min), ruff pulito |
+| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2, MCP SDK 1.30 | 1328 test pytest al 31/10, ruff pulito |
 | `simulator/` | Python, simula il device via HTTP | — |
 
 Fase attuale: **Core Beta** ([spec](superpowers/specs/2026-10-01-core-beta-design.md)): un utente, un iPhone,
@@ -180,6 +182,23 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   nel DB), `logout`, `devices`, revoca; password Argon2 controllate fuori dal loop; tentativi falliti contati prima
   del controllo, per indirizzo e per email (10 in 15 minuti); al massimo 5 registrazioni l'ora per indirizzo;
   `REGISTRATION_OPEN=false` chiude la registrazione; `make create-user` / `make set-password` dal server.
+  Dal 29/10 i limiti sono per account, al massimo 10 telefoni collegati (`MAX_PHONES`). La registrazione dall'app
+  chiede almeno 10 caratteri; gli account creati da riga di comando accettano qualsiasi password non vuota.
+- **Piani e quote** (24/10, `services/plans.py`, [design](superpowers/specs/2026-10-24-plans-and-quotas-design.md)):
+  free, plus e unlimited, assegnati dall'operatore con `make set-plan` (un account nuovo è free). Ogni piano ha
+  minuti di parlato al mese (oltre il limite si trascrivono solo i primi minuti del giorno; il parlato in ritardo
+  aspetta), ricerche web al giorno e numero di incarichi: free 300 min, 5 ricerche, 2 incarichi; plus 1500, 30, 10;
+  unlimited 9000, 60, 10. I valori si cambiano con `PLANS` nel `.env`; l'app li legge da `GET /api/plan`.
+- **Sicurezza dell'agente** (29/10): solo la voce di chi indossa il dispositivo può fare richieste a Echo; quello
+  dopo che una richiesta ha letto i dati di un'app, la memoria o una pagina web, l'agente non può più cambiare
+  incarichi, note di un assistente, cose salvate o fatti su di te (un fatto da ricordare resta un suggerimento); il
+  contesto dei follow-up della chat è tenuto per utente.
+- **Tracciamento delle esecuzioni** (31/10, `core/runs.py`, migrazione 031, [U1](multi-agent/u1-run-foundation/)):
+  ogni richiesta del coordinatore e ogni esecuzione di un incarico diventa una riga di `agent_runs` con i suoi passi
+  (`agent_steps`: modello, token, costo, durata, esito); un tetto per richiesta su passi, token e tempo
+  (`core/request_budget.py`); lo stesso correlation ID
+  dall'upload ai worker (chiavi Redis `corr:{tipo}:{id}`, 7 giorni). `make runs` mostra le ultime esecuzioni.
+  Spento di default (`RUN_TRACKING_ENABLED`). È la prima delle sette unità del coordinatore multi-agente.
 - **Costi** (`app/services/usage.py`): ogni chiamata a pagamento (trascrizione, embedding, i quattro ruoli
   dei modelli) è contata per utente e giorno in `llm_usage`; `make usage` stampa il costo di un giorno, per
   tipo di lavoro, e il costo di un'ora di parlato. I prezzi (`app/usage_prices.py`) sono da verificare.
@@ -291,19 +310,24 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   sostituto `gpt-transcribe`); il confronto (`make eval-stt`) resta utile per scegliere il migliore, non urgente.
   Analisi, chat, agente e instradamento sono già passati a `gpt-6-luna` ([MODEL-EVALUATION.md](MODEL-EVALUATION.md)).
 
-- **La chiave di esempio `my-secret-key` è l'unica API key del DB di sviluppo**, esposto su internet dal tunnel:
-  vedi §6, primo punto.
+- **Chiave di esempio:** risolto. Il 04/11 `my-secret-key` non è più nel DB del server, e `make deploy` non la crea
+  più dal 14/10.
+- **Registrazione aperta, per scelta:** chiunque trovi il server può crearsi un account e usare la chiave OpenAI
+  del server, entro le quote del piano free (300 minuti al mese, 5 ricerche web al giorno, 2 incarichi) e 5
+  registrazioni l'ora per indirizzo. `REGISTRATION_OPEN=false` la chiude.
+- **Il tuo account è sul piano free** (04/11, unico account del server): 2 incarichi e 5 ricerche web al giorno.
+  Per i limiti pieni: `make set-plan EMAIL=… PLAN=unlimited`.
+- **Tracciamento delle esecuzioni (U1):** la migrazione 031 non è ancora applicata sul server (che è alla 030):
+  la applica il prossimo `make deploy`. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
+  sotto misura della copertura, la chiusura delle esecuzioni interrotte all'avvio non ha un timeout, e le
+  esecuzioni `interrupted` hanno token e costo a zero.
 - **Speaker (#11):** con il profilo vocale registrato decidono le impronte; senza, la soglia di energia (da calibrare).
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
-- **Da applicare sul server** (`make deploy`): migrazioni 016–019 (lingua, consumi, permessi delle chiavi,
-  chiamate MCP) e l'immagine con l'SDK MCP. Prima di allora `make usage` e `/mcp` non funzionano lì.
 - **MCP solo con chiave:** claude.ai e ChatGPT vogliono OAuth, da fare; Claude Desktop non è verificato.
-- **Account appena fatti:** registrazione e accesso sono provati solo dai test. Sul server serve `make deploy`
-  e il proprio account (`make create-user`). Mancano conferma dell'email, recupero password via email, Apple e
-  Google. Con la registrazione aperta chiunque trovi il server può crearsi un account e usare la chiave OpenAI del
-  server: `REGISTRATION_OPEN=false` la chiude.
+- **Account:** il server ha il suo account (creato con `make create-user`); la registrazione dall'app è provata
+  solo dai test. Mancano conferma dell'email, recupero password via email, Apple e Google.
 - **Android mai compilato:** su questo Mac manca l'SDK. Non verificati: schermata di avvio Android 12+, canale
   `echo/device` in `MainActivity.kt`, tutto il resto dell'app. Promemoria/Calendario e Live Activity sono solo iOS.
 - **Nuova interfaccia vista solo nei test:** da guardare sul telefono (spaziature, tema quasi nero).
@@ -347,8 +371,13 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Firmware:** la lettura della batteria
   c'è (A0, partitore 1:2) ma va attivata con `BATTERY_DIVIDER_FITTED 1` dopo aver montato le resistenze.
 - **Provider alternativi:** solo OpenAI (LLM/embedding) e OpenAI/Deepgram (STT); niente modelli locali né Anthropic/Gemini.
-- **Multi-utente:** account, registrazione e dati separati ci sono; mancano quote/costi per utente, conferma
-  dell'email, recupero password, Apple/Google, più dispositivi Echo per account.
+- **Multi-utente:** account, registrazione, dati separati, piani con quote e costi per utente ci sono; mancano
+  conferma dell'email, recupero password, Apple/Google, più dispositivi Echo per account, e un tetto di spesa
+  giornaliero per utente (unità U7 del [coordinatore multi-agente](multi-agent/README.md)).
+- **Coordinatore multi-agente:** progettato in [multi-agent/](multi-agent/README.md); costruita solo U1
+  (tracciamento). Restano, nell'ordine: U3 registro e agente Azioni, U4 chat come coordinatore, U2 resilienza dei
+  modelli, U5 voce, U6 assistenti come agenti, U7 budget giornaliero. Prima di U4 misurare con il tracciamento
+  acceso quante richieste reali sono composte.
 - **Android in background:** non è un gate della beta.
 
 ---
@@ -369,21 +398,22 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 **Per te:**
 
-1. **`make deploy`** e riavvio dell'API: installa `argon2-cffi` e applica le migrazioni (la 015 è già applicata).
-2. **Il tuo account:** `make create-user EMAIL=…` (si aggancia ai dati che hai), poi nell'app esci e rientra per
-   avere una chiave tua; **`make revoke-example-key`** per la chiave pubblica `my-secret-key`; togli `ECHO_API_KEY`
-   da `mobile/dart_defines.json`.
+Fatti entro il 04/11: deploy, il tuo account, la chiave di esempio tolta; la registrazione resta aperta per scelta.
+
+1. **`make deploy`** per applicare la migrazione 031 (tracciamento delle esecuzioni, spento di default).
+2. **Il tuo piano:** `make set-plan EMAIL=… PLAN=unlimited`, altrimenti valgono i limiti del free (2 incarichi,
+   5 ricerche web al giorno, 300 minuti al mese).
 3. **Firmware 0.8.0 via cavo** (o via Bluetooth dal 0.7.0; conserva una copia di `firmware/signing/ota_private.pem`), reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
-4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero).
-5. **Decidere sulla registrazione aperta**: lasciarla (lo hai scelto) o chiuderla con `REGISTRATION_OPEN=false`.
-6. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.
-7. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md); test batteria di 12 ore.
-8. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
-9. **Provare la fotocamera** (OV3660): monitor seriale `[Camera] sensor PID`, tempo e peso della foto, poi 📷 in
+4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero); provare
+   memoria, documenti, assistenti e WhatsApp, visti finora solo nei test.
+5. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.
+6. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md); test batteria di 12 ore.
+7. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
+8. **Provare la fotocamera** (OV3660): monitor seriale `[Camera] sensor PID`, tempo e peso della foto, poi 📷 in
    Ask e "Echo, cos'è questo?"; misurare consumo e calore.
-10. **Android:** installare l'SDK (o una CI) e provare la build.
-11. Più avanti: spostare il server su un VPS in Europa con backup notturni; account sviluppatore Apple per
-    "Accedi con Apple" e la pubblicazione.
+9. **Android:** installare l'SDK (o una CI) e provare la build.
+10. Più avanti: spostare il server su un VPS in Europa con backup notturni; account sviluppatore Apple per
+   "Accedi con Apple" e la pubblicazione.
 
 **Per me**, se vuoi: equivalenti Android di Promemoria/Calendario, il deploy su VPS (Compose di produzione,
 backup), recupero password via email quando ci sarà un servizio di invio, traduzione delle entità estratte.

@@ -92,3 +92,15 @@ async def test_set_password_can_sign_out_every_device(db_session):
 
     assert signed_out >= 1
     assert await db_session.scalar(owner_keys) == 0
+
+
+async def test_a_new_account_gets_the_plan_of_the_settings(db_session, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "new_account_plan", "unlimited")
+    assert (await create_user(db_session, "erik@example.com", "long enough pw")).plan == (
+        "unlimited"
+    )
+
+    monkeypatch.setattr(settings, "new_account_plan", "gold")  # no such plan
+    assert (await create_user(db_session, "ada@example.com", "long enough pw")).plan == "free"
