@@ -163,7 +163,7 @@ void main() {
       expect(templates.single.name, 'Lavoro');
     });
 
-    test('sends the description, tries the draft, reads the proposal', () async {
+    test('sends the description, reads the proposal', () async {
       final bodies = <String, Map<String, dynamic>>{};
       final service = _service((request) async {
         bodies[request.url.path] =
@@ -172,20 +172,15 @@ void main() {
           '/api/assistants/compose' => {
               'name': 'Corsa', 'emoji': '🏃', 'instructions': 'Sei…', 'notes': '- 10 km',
             },
-          '/api/assistants/try' => {'answer': 'Domenica il lungo.'},
           _ => {'instructions': 'Meglio'},
         });
       });
 
       final proposal = await service.composeAssistant(topic: 'corsa');
-      final answer = await service.tryAssistant(proposal, 'domenica?');
       final better = await service.improveInstructions(name: 'Corsa', instructions: 'corri');
 
       expect(bodies['/api/assistants/compose'], {'topic': 'corsa'});
-      expect(bodies['/api/assistants/try']!['question'], 'domenica?');
-      expect(bodies['/api/assistants/try']!['instructions'], 'Sei…');
       expect((proposal.name, proposal.notes), ('Corsa', '- 10 km'));
-      expect(answer, 'Domenica il lungo.');
       expect(better, 'Meglio');
     });
   });

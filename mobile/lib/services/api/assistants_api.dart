@@ -13,11 +13,8 @@ abstract interface class AssistantsApi {
   Future<void> deleteAssistant(String id);
 
   /// What the user described ([topic]; a [template] key as its start) made into a
-  /// proposal, to try and save.
+  /// proposal, to change and save.
   Future<AssistantDraft> composeAssistant({String? template, String? topic});
-
-  /// Try it: how [draft], not saved yet, answers [question].
-  Future<String> tryAssistant(AssistantDraft draft, String question);
 
   /// ✨ Improve: a few words of instructions made into full ones.
   Future<String> improveInstructions({required String name, required String instructions});
@@ -39,10 +36,12 @@ mixin AssistantsEndpoints on ApiClient implements AssistantsApi {
   @override
   Future<List<AssistantTemplate>> assistantTemplates() async {
     final response = await get('/api/assistants/templates', shape: JsonShape.list);
-    return parse(response.data, (data) => [
-          for (final item in data as List<dynamic>)
-            if (item is Map<String, dynamic>) AssistantTemplate.fromJson(item),
-        ]);
+    return parse(
+        response.data,
+        (data) => [
+              for (final item in data as List<dynamic>)
+                if (item is Map<String, dynamic>) AssistantTemplate.fromJson(item),
+            ]);
   }
 
   @override
@@ -74,22 +73,6 @@ mixin AssistantsEndpoints on ApiClient implements AssistantsApi {
       response.data,
       (data) => AssistantDraft.fromJson(data as Map<String, dynamic>),
     );
-  }
-
-  @override
-  Future<String> tryAssistant(AssistantDraft draft, String question) async {
-    final response = await post(
-      '/api/assistants/try',
-      body: {
-        'name': draft.name,
-        'emoji': draft.emoji,
-        'instructions': draft.instructions,
-        'notes': draft.notes,
-        'question': question,
-      },
-      timeout: queryTimeout,
-    );
-    return parse(response.data, (data) => (data as Map<String, dynamic>)['answer'] as String);
   }
 
   @override

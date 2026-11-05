@@ -164,12 +164,13 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   In Ask una nuova chat parte con un assistente (chip Echo e uno per assistente); la sua chat passa sempre
   dall'agente con le sue istruzioni e note dopo quelle dell'utente, ricorda l'assistente anche riaperta, e la
   cronologia mostra emoji e nome. Gli incarichi creati nella sua chat girano come lui. Cancellarlo lascia chat e
-  incarichi a Echo. **Creazione a parole** (05/11, come Lindy e i Gem di Gemini; sostituisce le domande guidate): un solo
-  campo "What should it do for you?", scritto o dettato; i 6 modelli (Lavoro, Dieta, Sonno, Allenamento, Soldi,
-  Studio) sono testi di partenza. Echo scrive nome, emoji, istruzioni e prime note
-  (`services/assistant_builder.py`); "Try it" gli fa una domanda senza salvare niente (`POST /assistants/try`),
-  poi Save, Edit o "Write it again". Nell'editor "✨ Improve with Echo" riscrive le istruzioni da poche parole,
-  con Undo.
+  incarichi a Echo. **Creazione a voce** (05/11, come Lindy e i Gem di Gemini; sostituisce le domande guidate): una cosa alla
+  volta. 1) La domanda "What should it do for you?" e un microfono grande al centro ("Type it instead" e gli
+  esempi, cioè i 6 modelli come testi di partenza, piccoli sotto); 2) mentre parli le parole compaiono grandi e
+  il microfono pulsa; 3) le parole da correggere, "Create it" e a destra il microfono per aggiungerne; 4) Echo
+  scrive nome, emoji, istruzioni e prime note (`services/assistant_builder.py`), nome e istruzioni si cambiano
+  lì, poi "Save <nome>"; "Say it again" torna alle parole, "More settings" apre l'editor (emoji, note,
+  documenti), dove "✨ Improve with Echo" riscrive le istruzioni da poche parole, con Undo.
 - **WhatsApp in lettura** (29/10, Profile → WhatsApp): un servizio Node (`whatsapp/`, Baileys 7) collega il numero
   dell'utente come dispositivo con un codice di abbinamento; mai online, non invia e non segna come letto. Tiene
   le chat private (entrambi i lati, niente gruppi) solo in RAM, 7 giorni e 20.000 messaggi al massimo; le chiavi

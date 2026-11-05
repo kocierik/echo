@@ -1,5 +1,5 @@
 """New assistant from a description: Echo writes the proposal (a template, when chosen, is
-its start), the user tries it before saving. ✨ Improve rewrites a few words of
+its start), the user changes it in place and saves it. ✨ Improve rewrites a few words of
 instructions."""
 
 import pytest
@@ -135,27 +135,3 @@ async def test_described_in_words_it_is_written_without_questions(client, auth_h
     assert "x" * 600 in llm.asked[0][-1].content
     assert (await _post(client, auth_headers, "compose", {})).status_code == 422
 
-
-async def test_try_it_answers_as_the_assistant_would(client, auth_headers, llm):
-    class _Chat(_Llm):
-        async def complete(self, messages, temperature=0.3):
-            self.asked.append(messages)
-            from app.services.llm_base import LLMResponse
-
-            return LLMResponse(content="Domenica fai il lungo: 14 km tranquilli.", model="m")
-
-    chat = _Chat()
-    app.dependency_overrides[assistants_router.builder_llm] = lambda: chat
-
-    response = await _post(client, auth_headers, "try", {
-        "name": "Mezza di Bologna", "emoji": "🏃",
-        "instructions": "Sei il mio coach per la mezza.", "notes": "- Ginocchio destro",
-        "question": "cosa faccio domenica?",
-    })
-
-    assert response.json() == {"answer": "Domenica fai il lungo: 14 km tranquilli."}
-    system = chat.asked[0][0].content
-    assert "Sei il mio coach per la mezza." in system and "Ginocchio destro" in system
-    assert chat.asked[0][-1].content == "cosa faccio domenica?"
-    empty = await _post(client, auth_headers, "try", {"question": " "})
-    assert empty.status_code == 422

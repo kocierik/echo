@@ -10,12 +10,14 @@ import '../../services/chat/voice_input.dart';
 import '../../theme/app_theme.dart';
 import 'assistant_editor_screen.dart';
 
-/// New assistant, described in words (as Lindy and Gemini's Gems): what it should do for
-/// the user, said aloud ("Tell it", the phone's dictation) or typed; a template is a
-/// starting text. Echo writes it (name,
-/// emoji, instructions, first notes), the user tries it with a question, then saves it,
-/// edits it or has it written again. "Write it myself" opens the editor empty. Pops true
-/// once saved.
+/// New assistant, said aloud: one thing at a time, the voice first.
+///
+/// 1. The question and a large microphone ("Type it instead" and the examples below).
+/// 2. While the user speaks, their words, large.
+/// 3. Their words (to correct), Create it and, on the right, the microphone to add more.
+/// 4. What Echo wrote: its name and instructions, changed in place, and Save. "Say it
+///    again" goes back to 3; "More settings" opens the full editor (emoji, notes,
+///    documents). Pops true once saved.
 final class AssistantCreateScreen extends StatefulWidget {
   const AssistantCreateScreen({
     required this.api,
@@ -36,27 +38,34 @@ final class AssistantCreateScreen extends StatefulWidget {
 
 final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
   final _description = TextEditingController();
-  final _question = TextEditingController();
+  final _descriptionFocus = FocusNode();
+  final _name = TextEditingController();
+  final _instructions = TextEditingController();
   List<AssistantTemplate> _templates = const [];
   AssistantTemplate? _template;
+
+  /// What Echo wrote; its name and instructions are in [_name] and [_instructions].
   AssistantDraft? _proposal;
-  String? _answer;
+
+  /// "Type it instead": the words before any were said.
+  bool _typing = false;
   bool _writing = false;
-  bool _trying = false;
   bool _saving = false;
   String? _error;
 
   late final VoiceInput _voice = widget.voiceInput ?? SpeechToTextVoiceInput();
   bool _listening = false;
 
-  /// What was in the field when dictation started: what is said goes after it.
+  /// What was there when dictation started: what is said goes after it.
   String _before = '';
+
+  bool get _hasWords => _description.text.trim().isNotEmpty;
 
   @override
   void initState() {
     super.initState();
     _description.addListener(() => setState(() {}));
-    _question.addListener(() => setState(() {}));
+    _name.addListener(() => setState(() {}));
     unawaited(_loadTemplates());
   }
 
@@ -64,7 +73,9 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
   void dispose() {
     if (_listening) unawaited(_voice.cancel());
     _description.dispose();
-    _question.dispose();
+    _descriptionFocus.dispose();
+    _name.dispose();
+    _instructions.dispose();
     super.dispose();
   }
 
@@ -73,11 +84,11 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
       final templates = await widget.api.assistantTemplates();
       if (mounted) setState(() => _templates = templates);
     } catch (_) {
-      // Only the starting points are missing: the description still works
+      // Only the examples are missing: saying it still works
     }
   }
 
-  /// "Tell it": what is said goes into the description as it is heard; a tap stops it.
+  /// Tap and talk: what is said goes into the words as it is heard; a tap stops it.
   Future<void> _dictate() async {
     if (_listening) {
       await _voice.stop();
@@ -113,32 +124,40 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
     );
   }
 
-  /// A template as the starting text, to change; tapped again, it is dropped.
-  void _pick(AssistantTemplate template) {
+  void _type() {
+    setState(() => _typing = true);
+    _descriptionFocus.requestFocus();
+  }
+
+  /// An example: its text as the words, to change or add to.
+  void _example(AssistantTemplate template) {
     setState(() {
-      if (_template?.key == template.key) {
-        _template = null;
-      } else {
-        _template = template;
-        _description.text = template.instructions;
-        _description.selection = TextSelection.collapsed(offset: _description.text.length);
-      }
+      _template = template;
+      _description.text = template.instructions;
     });
   }
 
   Future<void> _write() async {
+    if (_listening) {
+      await _voice.stop();
+      if (mounted) setState(() => _listening = false);
+    }
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _writing = true;
       _error = null;
-      _answer = null;
     });
     try {
       final proposal = await widget.api.composeAssistant(
         template: _template?.key,
-        topic: _description.text.trim().isEmpty ? null : _description.text.trim(),
+        topic: _hasWords ? _description.text.trim() : null,
       );
-      if (mounted) setState(() => _proposal = proposal);
+      if (!mounted) return;
+      setState(() {
+        _proposal = proposal;
+        _name.text = proposal.name;
+        _instructions.text = proposal.instructions;
+      });
     } catch (error) {
       if (mounted) {
         setState(() => _error = userMessage(error, 'Echo could not write it. Try again.'));
@@ -148,34 +167,30 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
     }
   }
 
-  Future<void> _try() async {
-    final proposal = _proposal;
-    final question = _question.text.trim();
-    if (proposal == null || question.isEmpty) return;
-    FocusManager.instance.primaryFocus?.unfocus();
-    setState(() {
-      _trying = true;
-      _error = null;
-    });
-    try {
-      final answer = await widget.api.tryAssistant(proposal, question);
-      if (mounted) setState(() => _answer = answer);
-    } catch (error) {
-      if (mounted) setState(() => _error = userMessage(error, 'It could not answer. Try again.'));
-    } finally {
-      if (mounted) setState(() => _trying = false);
-    }
+  /// The proposal as it is now: the name and instructions as changed here.
+  AssistantDraft _current() {
+    final proposal = _proposal!;
+    return AssistantDraft(
+      name: _name.text.trim(),
+      emoji: proposal.emoji,
+      instructions: _instructions.text.trim(),
+      notes: proposal.notes,
+    );
   }
 
   Future<void> _save() async {
-    final proposal = _proposal;
-    if (proposal == null) return;
+    final draft = _current();
+    if (draft.name.isEmpty || draft.instructions.isEmpty) {
+      setState(() => _error = 'Give it a name and instructions.');
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() {
       _saving = true;
       _error = null;
     });
     try {
-      await widget.api.createAssistant(proposal);
+      await widget.api.createAssistant(draft);
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) {
@@ -187,15 +202,21 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
     }
   }
 
-  /// The editor, with the proposal or empty; saved there, this screen is done too.
-  Future<void> _edit({AssistantDraft? proposal}) async {
+  /// Back to the words, as they were said: to say more, or differently.
+  void _again() => setState(() {
+        _proposal = null;
+        _error = null;
+      });
+
+  /// The full editor (emoji, notes, documents); saved there, this screen is done too.
+  Future<void> _moreSettings() async {
     final saved = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => AssistantEditorScreen(
           api: widget.api,
           documents: widget.documents,
-          proposal: proposal,
+          proposal: _current(),
         ),
       ),
     );
@@ -205,347 +226,411 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final textTheme = Theme.of(context).textTheme;
-    final proposal = _proposal;
-    final busy = _writing || _saving;
-    final field = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: palette.border),
-    );
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(title: const Text('New assistant')),
-      // The microphone and Create stay at the bottom, in reach of the thumb and above
-      // the keyboard; the rest scrolls
       body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                children: [
-                  Text('What should it do for you?', style: textTheme.titleLarge),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Say it aloud or type it, as much as you like: its topic, what to keep track of, '
-                    'how to answer. Echo writes the assistant from it.',
-                    style: textTheme.bodySmall?.copyWith(color: palette.text2),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    key: const Key('create-description'),
-                    controller: _description,
-                    minLines: 5,
-                    maxLines: 12,
-                    maxLength: 2000,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: 'E.g. Help me with the house: bills and due dates, the weekly '
-                          'shopping, chores shared with Olta. Keep the answers short.',
-                      contentPadding: const EdgeInsets.all(16),
-                      border: field,
-                      enabledBorder: field,
-                      focusedBorder: field.copyWith(
-                        borderSide: BorderSide(color: palette.accent, width: 2),
-                      ),
-                    ),
-                  ),
-                  if (_templates.isNotEmpty) ...[
-                    Text('Or start from',
-                        style: textTheme.labelMedium?.copyWith(color: palette.text2)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final template in _templates)
-                          ChoiceChip(
-                            key: Key('create-template-${template.key}'),
-                            label: Text('${template.emoji} ${template.name}'),
-                            selected: _template?.key == template.key,
-                            showCheckmark: false,
-                            onSelected: busy ? null : (_) => _pick(template),
-                          ),
-                      ],
-                    ),
-                  ],
-                  if (_error case final error?)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(error, style: textTheme.bodySmall?.copyWith(color: palette.red)),
-                    ),
-                  if (proposal != null) ...[
-                    const SizedBox(height: 20),
-                    _Preview(proposal: proposal),
-                    const SizedBox(height: 12),
-                    _TryIt(
-                      question: _question,
-                      trying: _trying,
-                      answer: _answer,
-                      emoji: proposal.emoji,
-                      onAsk: () => unawaited(_try()),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            key: const Key('create-edit'),
-                            onPressed: busy ? null : () => unawaited(_edit(proposal: proposal)),
-                            child: const Text('Edit'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            key: const Key('create-save'),
-                            onPressed: busy ? null : () => unawaited(_save()),
-                            child: Text(_saving ? 'Saving…' : 'Save'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  TextButton(
-                    key: const Key('create-myself'),
-                    onPressed: busy ? null : () => unawaited(_edit()),
-                    child: const Text('Write it myself'),
-                  ),
-                ],
-              ),
-            ),
-            _BottomBar(
-              listening: _listening,
-              writing: _writing,
-              rewrite: proposal != null,
-              onDictate: busy ? null : () => unawaited(_dictate()),
-              onWrite: busy || (_description.text.trim().isEmpty && _template == null)
-                  ? null
-                  : () => unawaited(_write()),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 4, 22, 16),
+          child: _proposal != null
+              ? _proposalStep(context)
+              : (_hasWords || _typing || _listening)
+                  ? _wordsStep(context)
+                  : _startStep(context),
         ),
       ),
     );
   }
-}
 
-/// At the bottom: the microphone (saying it is quicker than typing it) and Create.
-final class _BottomBar extends StatelessWidget {
-  const _BottomBar({
-    required this.listening,
-    required this.writing,
-    required this.rewrite,
-    required this.onDictate,
-    required this.onWrite,
-  });
+  Widget _errorLine(BuildContext context) {
+    final error = _error;
+    if (error == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        error,
+        key: const Key('create-error'),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: EchoPalette.of(context).red,
+            ),
+      ),
+    );
+  }
 
-  final bool listening;
-  final bool writing;
-
-  /// A proposal is there: Create writes it again.
-  final bool rewrite;
-  final VoidCallback? onDictate;
-  final VoidCallback? onWrite;
-
-  @override
-  Widget build(BuildContext context) {
+  /// 1. The question, and the microphone in the middle.
+  Widget _startStep(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: palette.surface,
-        border: Border(top: BorderSide(color: palette.border)),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (listening)
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'What should it do for you?',
+          style: textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            height: 1.15,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Say it like you’d tell a friend: the topic, what to keep track of, how to '
+          'answer.',
+          style: textTheme.bodyMedium?.copyWith(color: palette.text2, height: 1.45),
+        ),
+        Expanded(
+          child: Center(
+            child: _BigMic(listening: false, onTap: () => unawaited(_dictate())),
+          ),
+        ),
+        _errorLine(context),
+        TextButton(
+          key: const Key('create-type'),
+          onPressed: _type,
+          child: const Text('Type it instead'),
+        ),
+        if (_templates.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Or start from an example',
+            textAlign: TextAlign.center,
+            style: textTheme.bodySmall?.copyWith(color: palette.text2),
+          ),
+          const SizedBox(height: 2),
+          Wrap(
+            alignment: WrapAlignment.center,
+            children: [
+              for (final template in _templates)
+                TextButton(
+                  key: Key('create-example-${template.key}'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: palette.text,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => _example(template),
+                  child: Text(template.name),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 2 and 3. The words, large; while speaking the microphone stays in the middle, after
+  /// it Create it and, on the right, the microphone to add more.
+  Widget _wordsStep(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'What should it do for you?',
+          style: textTheme.titleSmall?.copyWith(color: palette.text2),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: SingleChildScrollView(
+            child: TextField(
+              key: const Key('create-description'),
+              controller: _description,
+              focusNode: _descriptionFocus,
+              readOnly: _listening,
+              minLines: 2,
+              maxLines: null,
+              maxLength: 2000,
+              textCapitalization: TextCapitalization.sentences,
+              style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w400, height: 1.4),
+              decoration: InputDecoration(
+                hintText: _listening ? 'Listening…' : 'Help me with…',
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+                counterText: '',
+              ),
+            ),
+          ),
+        ),
+        _errorLine(context),
+        if (_listening)
+          Center(child: _BigMic(listening: true, onTap: () => unawaited(_dictate())))
+        else ...[
+          if (_hasWords)
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: 10),
               child: Text(
-                'Listening… tap to stop',
-                style: textTheme.bodySmall?.copyWith(color: palette.accent),
+                'Tap the words to correct them.',
+                style: textTheme.bodySmall?.copyWith(color: palette.text2),
               ),
             ),
           Row(
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
+              Expanded(
+                child: FilledButton(
+                  key: const Key('create-write'),
+                  onPressed: _writing || !_hasWords ? null : () => unawaited(_write()),
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                  child: Text(_writing ? 'Echo is writing it…' : 'Create it'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox.square(
+                dimension: 52,
+                child: IconButton.outlined(
+                  key: const Key('create-dictate'),
+                  tooltip: 'Say more',
+                  onPressed: _writing ? null : () => unawaited(_dictate()),
+                  style: IconButton.styleFrom(
+                    foregroundColor: palette.accent,
+                    side: BorderSide(color: palette.accent, width: 1.5),
+                  ),
+                  icon: const Icon(Icons.mic_rounded),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 4. What Echo wrote, to change in place, and Save.
+  Widget _proposalStep(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final proposal = _proposal!;
+    final name = _name.text.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: Container(
+              key: const Key('create-proposal'),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: palette.surface,
+                borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox.square(
-                    dimension: 60,
-                    child: IconButton.filled(
-                      key: const Key('create-dictate'),
-                      tooltip: listening ? 'Stop' : 'Tell it',
-                      onPressed: onDictate,
-                      style: IconButton.styleFrom(
-                        backgroundColor: listening ? palette.red : palette.accent,
-                        foregroundColor: palette.surface,
+                  Row(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: palette.accentSoft,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(proposal.emoji, style: const TextStyle(fontSize: 24)),
                       ),
-                      icon: Icon(
-                        listening ? Icons.stop_rounded : Icons.mic_rounded,
-                        size: 30,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          key: const Key('create-name'),
+                          controller: _name,
+                          maxLength: Assistant.maxName,
+                          textCapitalization: TextCapitalization.sentences,
+                          style: textTheme.titleMedium,
+                          decoration: const InputDecoration(
+                            filled: false,
+                            counterText: '',
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 6),
+                            border: UnderlineInputBorder(),
+                            enabledBorder: UnderlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    key: const Key('create-instructions'),
+                    controller: _instructions,
+                    minLines: 4,
+                    maxLines: null,
+                    maxLength: Assistant.maxInstructions,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: textTheme.bodyMedium?.copyWith(height: 1.5),
+                    decoration: InputDecoration(
+                      counterText: '',
+                      contentPadding: const EdgeInsets.all(12),
+                      fillColor: palette.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: palette.accent, width: 1.5),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 8),
                   Text(
-                    listening ? 'Stop' : 'Tell it',
-                    style: textTheme.labelSmall?.copyWith(color: palette.text2),
+                    'Tap the name or the text to change them.',
+                    style: textTheme.bodySmall?.copyWith(color: palette.text2),
                   ),
                 ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: FilledButton.icon(
-                  key: const Key('create-write'),
-                  onPressed: onWrite,
-                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                  icon: writing
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.auto_awesome_rounded, size: 18),
-                  label: Text(
-                    writing
-                        ? 'Echo is writing it…'
-                        : rewrite
-                            ? 'Write it again'
-                            : 'Create it',
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 12),
+        _errorLine(context),
+        FilledButton(
+          key: const Key('create-save'),
+          onPressed: _saving ? null : () => unawaited(_save()),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          child: Text(
+            _saving ? 'Saving…' : (name.isEmpty ? 'Save' : 'Save $name'),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Side by side, or one under the other with large text
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          children: [
+            TextButton(
+              key: const Key('create-again'),
+              onPressed: _saving ? null : _again,
+              child: const Text('Say it again'),
+            ),
+            TextButton(
+              key: const Key('create-more'),
+              onPressed: _saving ? null : () => unawaited(_moreSettings()),
+              child: const Text('More settings'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
 
-/// What Echo wrote: the assistant as it will be.
-final class _Preview extends StatelessWidget {
-  const _Preview({required this.proposal});
+/// The large microphone: "Tap and talk", and while listening a pulse around it (only
+/// when the phone allows motion) and "tap to stop".
+final class _BigMic extends StatefulWidget {
+  const _BigMic({required this.listening, required this.onTap});
 
-  final AssistantDraft proposal;
+  final bool listening;
+  final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    final textTheme = Theme.of(context).textTheme;
-    return Container(
-      key: const Key('create-preview'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: palette.accentSoft,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(proposal.emoji, style: const TextStyle(fontSize: 24)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Text(proposal.name, style: textTheme.titleMedium)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(proposal.instructions, style: textTheme.bodyMedium?.copyWith(height: 1.45)),
-          if (proposal.notes.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text('NOTES', style: textTheme.labelSmall?.copyWith(color: palette.text2)),
-            const SizedBox(height: 4),
-            Text(proposal.notes, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
-          ],
-        ],
-      ),
-    );
-  }
+  State<_BigMic> createState() => _BigMicState();
 }
 
-/// Try it: a question, and how the assistant answers it (nothing is kept).
-final class _TryIt extends StatelessWidget {
-  const _TryIt({
-    required this.question,
-    required this.trying,
-    required this.answer,
-    required this.emoji,
-    required this.onAsk,
-  });
+final class _BigMicState extends State<_BigMic> with SingleTickerProviderStateMixin {
+  late final _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
 
-  final TextEditingController question;
-  final bool trying;
-  final String? answer;
-  final String emoji;
-  final VoidCallback onAsk;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_BigMic old) {
+    super.didUpdateWidget(old);
+    _sync();
+  }
+
+  void _sync() {
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (widget.listening && !still) {
+      if (!_pulse.isAnimating) unawaited(_pulse.repeat());
+    } else {
+      _pulse.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text('Try it', style: textTheme.titleSmall),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                key: const Key('create-question'),
-                controller: question,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onAsk(),
-                decoration: const InputDecoration(hintText: 'Ask it something'),
+        SizedBox.square(
+          dimension: 150,
+          child: AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, child) => CustomPaint(
+              painter: widget.listening ? _RingPainter(_pulse.value, palette.accent) : null,
+              child: child,
+            ),
+            child: Center(
+              child: SizedBox.square(
+                dimension: 96,
+                child: IconButton.filled(
+                  key: const Key('create-mic'),
+                  tooltip: widget.listening ? 'Stop' : 'Tap and talk',
+                  onPressed: widget.onTap,
+                  style: IconButton.styleFrom(
+                    backgroundColor: palette.accent,
+                    foregroundColor: palette.surface,
+                  ),
+                  icon: Icon(
+                    widget.listening ? Icons.stop_rounded : Icons.mic_rounded,
+                    size: 40,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              key: const Key('create-ask'),
-              tooltip: 'Ask',
-              onPressed: trying || question.text.trim().isEmpty ? null : onAsk,
-              icon: trying
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.arrow_upward_rounded),
-            ),
-          ],
-        ),
-        if (answer case final text?)
-          Container(
-            key: const Key('create-answer'),
-            margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: palette.surface2,
-              borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(emoji, style: const TextStyle(fontSize: 18)),
-                const SizedBox(width: 10),
-                Expanded(child: Text(text, style: textTheme.bodyMedium)),
-              ],
-            ),
           ),
+        ),
+        Text(
+          widget.listening ? 'Listening… tap to stop' : 'Tap and talk',
+          style: textTheme.titleSmall,
+        ),
       ],
     );
   }
+}
+
+final class _RingPainter extends CustomPainter {
+  _RingPainter(this.t, this.color);
+
+  final double t;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    for (final shift in [0.0, 0.5]) {
+      final phase = (t + shift) % 1;
+      canvas.drawCircle(
+        center,
+        48 + 26 * phase,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2
+          ..color = color.withValues(alpha: 0.45 * (1 - phase)),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) => old.t != t || old.color != color;
 }

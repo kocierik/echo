@@ -2,8 +2,8 @@
 
 As Lindy and Gemini's Gems: the user says in words what it should do for them (a
 template, when chosen, is the starting point); Echo writes the proposal (name, emoji,
-instructions, first notes), which the user tries ("Try it", nothing kept) and saves or
-edits. "Improve" turns a few words of instructions into full ones.
+instructions, first notes), which the user changes in place and saves. "Improve" turns
+a few words of instructions into full ones.
 """
 
 import logging
@@ -160,38 +160,3 @@ async def improve(llm, language: str, *, name: str, instructions: str) -> str:
         raise AssistantError("Echo could not rewrite them now: try again", 503)
     return better
 
-
-async def try_out(llm, *, personal: str, draft: dict, question: str) -> str:
-    """How an assistant not saved yet would answer `question` (its prompt, the user's own
-    instructions and facts; no tools, nothing kept): "Try it" before saving."""
-    from app.models.assistant import Assistant
-    from app.services.assistants import assistant_prompt
-
-    question = " ".join((question or "").split())[:1000]
-    if not question:
-        raise AssistantError("Ask it something")
-    draft_assistant = Assistant(
-        name=" ".join(str(draft.get("name") or "").split())[:MAX_NAME] or "Assistant",
-        emoji=str(draft.get("emoji") or DEFAULT_EMOJI)[:8],
-        instructions=str(draft.get("instructions") or "")[:MAX_INSTRUCTIONS],
-        notes=str(draft.get("notes") or "")[:MAX_NOTES],
-    )
-    system = (
-        "You are Echo, the user's personal assistant inside a memory app that hears their "
-        "day. Answer briefly, in the user's language. This is a trial of an assistant the "
-        "user is making: answer as it would. It cannot search the memory or use apps in "
-        "this trial; when it would need them, say what it would do once saved.\n"
-        f"{personal}\n{assistant_prompt(draft_assistant, notes_tool=False)}"
-    )
-    try:
-        response = await llm.complete(
-            [LLMMessage(role="system", content=system), LLMMessage(role="user", content=question)],
-            temperature=0.4,
-        )
-    except Exception as exc:
-        logger.warning("Could not try an assistant", exc_info=True)
-        raise AssistantError("Echo could not answer now: try again", 503) from exc
-    answer = (response.content or "").strip()
-    if not answer:
-        raise AssistantError("Echo could not answer now: try again", 503)
-    return answer
