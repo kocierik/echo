@@ -1,6 +1,6 @@
-"""New assistant by answering questions: a template's own (no model call), or ones made
-for what an assistant from scratch is for; the answers become a proposal reviewed in the
-editor. ✨ Improve rewrites a few words of instructions."""
+"""New assistant from a description: Echo writes the proposal (a template, when chosen, is
+its start), the user tries it before saving. ✨ Improve rewrites a few words of
+instructions."""
 
 import pytest
 
@@ -42,64 +42,14 @@ async def _post(client, auth_headers, path, body):
     return await client.post(f"/api/assistants/{path}", headers=auth_headers, json=body)
 
 
-async def test_a_template_asks_its_own_questions_without_the_model(client, auth_headers, llm):
-    await _italian()
-
-    response = await _post(client, auth_headers, "questions", {"template": "diet"})
-
-    assert response.status_code == 200
-    questions = response.json()["questions"]
-    assert [q["id"] for q in questions] == ["goal", "limits", "help"]
-    assert "Allergie" in questions[1]["text"] and questions[1]["multi"] is True
-    assert "Vegetariano" in questions[1]["options"]
-    assert llm.asked == []
 
 
-@pytest.mark.parametrize("key", list(assistant_builder.QUESTIONS))
-def test_every_template_has_questions_in_both_languages(key):
-    for lang in ("it", "en"):
-        questions = assistant_builder.QUESTIONS[key][lang]
-        assert 2 <= len(questions) <= assistant_builder.MAX_QUESTIONS
-        assert all(q["text"] for q in questions)
 
 
-async def test_from_scratch_the_questions_are_made_for_the_topic(client, auth_headers, llm):
-    llm.answer = {"questions": [
-        {"text": "Che distanza vuoi correre?", "options": ["10 km", "Mezza", "Maratona"],
-         "hint": "Es. maratona di Roma"},
-        {"text": "  Quanti   giorni ti alleni? ", "options": [f"{i}" for i in range(9)]},
-        {"text": ""},
-        "not a question",
-        {"text": "Hai dolori o infortuni?", "options": [], "multi": True},
-    ]}
-
-    response = await _post(
-        client, auth_headers, "questions", {"topic": "preparare una maratona"}
-    )
-
-    questions = response.json()["questions"]
-    assert [q["text"] for q in questions] == [
-        "Che distanza vuoi correre?", "Quanti giorni ti alleni?", "Hai dolori o infortuni?",
-    ]
-    assert len(questions[1]["options"]) == assistant_builder.MAX_OPTIONS
-    assert questions[2]["multi"] is True
-    assert "preparare una maratona" in llm.asked[0][-1].content
 
 
-async def test_from_scratch_the_model_down_gives_the_generic_questions(client, auth_headers, llm):
-    llm.fail = True
-
-    response = await _post(client, auth_headers, "questions", {"topic": "il mio cane"})
-
-    assert response.status_code == 200
-    assert [q["id"] for q in response.json()["questions"]] == ["goal", "keep", "tone"]
 
 
-async def test_questions_need_a_template_or_a_topic(client, auth_headers, llm):
-    assert (await _post(client, auth_headers, "questions", {})).status_code == 422
-    assert (
-        await _post(client, auth_headers, "questions", {"template": "astrology"})
-    ).status_code == 422
 
 
 async def test_the_answers_become_a_proposal_from_the_template(client, auth_headers, llm):
@@ -167,3 +117,45 @@ async def test_improve_rewrites_a_few_words(client, auth_headers, llm):
     assert "aiutami a correre" in llm.asked[0][-1].content
     too_short = await _post(client, auth_headers, "improve", {"instructions": "a"})
     assert too_short.status_code == 422
+
+
+async def test_described_in_words_it_is_written_without_questions(client, auth_headers, llm):
+    llm.answer = {
+        "name": "Mezza di Bologna", "emoji": "🏃",
+        "instructions": "Sei il mio coach per la mezza di Bologna.",
+        "notes": ["Corsa: martedì, giovedì e domenica"],
+    }
+    description = "Seguimi per la mezza di Bologna, corro mar/gio/dom. " + "x" * 600
+
+    response = await _post(client, auth_headers, "compose", {"topic": description})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Mezza di Bologna"
+    # A long description reaches the model whole (not cut at 300)
+    assert "x" * 600 in llm.asked[0][-1].content
+    assert (await _post(client, auth_headers, "compose", {})).status_code == 422
+
+
+async def test_try_it_answers_as_the_assistant_would(client, auth_headers, llm):
+    class _Chat(_Llm):
+        async def complete(self, messages, temperature=0.3):
+            self.asked.append(messages)
+            from app.services.llm_base import LLMResponse
+
+            return LLMResponse(content="Domenica fai il lungo: 14 km tranquilli.", model="m")
+
+    chat = _Chat()
+    app.dependency_overrides[assistants_router.builder_llm] = lambda: chat
+
+    response = await _post(client, auth_headers, "try", {
+        "name": "Mezza di Bologna", "emoji": "🏃",
+        "instructions": "Sei il mio coach per la mezza.", "notes": "- Ginocchio destro",
+        "question": "cosa faccio domenica?",
+    })
+
+    assert response.json() == {"answer": "Domenica fai il lungo: 14 km tranquilli."}
+    system = chat.asked[0][0].content
+    assert "Sei il mio coach per la mezza." in system and "Ginocchio destro" in system
+    assert chat.asked[0][-1].content == "cosa faccio domenica?"
+    empty = await _post(client, auth_headers, "try", {"question": " "})
+    assert empty.status_code == 422

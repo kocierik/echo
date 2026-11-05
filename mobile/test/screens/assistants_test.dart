@@ -53,42 +53,25 @@ final class _Api implements AssistantsApi, DocumentsApi, ChatApi {
   @override
   Future<List<AssistantTemplate>> assistantTemplates() async => _templates;
 
-  final asked = <(String?, String?)>[];
-  final composed = <List<(String, String)>>[];
+  final composed = <(String?, String?)>[];
+  final tried = <(String, String)>[];
   final improved = <String>[];
 
   @override
-  Future<List<AssistantQuestion>> assistantQuestions({String? template, String? topic}) async {
-    asked.add((template, topic));
-    return const [
-      AssistantQuestion(
-        id: 'goal',
-        text: 'Qual è il tuo obiettivo?',
-        options: ['Perdere peso', 'Più energia'],
-      ),
-      AssistantQuestion(
-        id: 'limits',
-        text: 'Cose che non mangi?',
-        options: ['Vegetariano', 'Senza glutine'],
-        multi: true,
-        hint: 'Es. niente funghi',
-      ),
-    ];
-  }
-
-  @override
-  Future<AssistantDraft> composeAssistant({
-    String? template,
-    String? topic,
-    required List<(String, String)> answers,
-  }) async {
-    composed.add(answers);
+  Future<AssistantDraft> composeAssistant({String? template, String? topic}) async {
+    composed.add((template, topic));
     return const AssistantDraft(
       name: 'Dieta veg',
       emoji: '🥦',
       instructions: 'Sei il mio coach vegetariano.',
       notes: '- Vegetariano\n- Niente funghi',
     );
+  }
+
+  @override
+  Future<String> tryAssistant(AssistantDraft draft, String question) async {
+    tried.add((draft.name, question));
+    return 'Stasera: pasta e ceci.';
   }
 
   @override
@@ -252,77 +235,70 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
 
 void main() {
   group('Profile → Assistants', () {
-    testWidgets('a new one from a template, saved as it was edited', (tester) async {
+    testWidgets('described in words: Echo writes it, it is tried, then saved', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
       expect(find.byKey(const Key('assistants-empty')), findsOneWidget);
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-diet')));
-      await _tap(tester, find.byKey(const Key('wizard-skip')));
-      // Prefilled from the template, still editable
-      expect(find.text('Dieta'), findsOneWidget);
-      await tester.enterText(find.byKey(const Key('assistant-name')), 'Coach');
-      await _tap(tester, find.byKey(const Key('assistant-save')));
+      expect(tester.widget<FilledButton>(find.byKey(const Key('create-write'))).onPressed, isNull);
+      await tester.enterText(
+        find.byKey(const Key('create-description')),
+        'Aiutami a mangiare vegetariano, niente funghi',
+      );
+      await _tap(tester, find.byKey(const Key('create-write')));
 
-      expect(api.created.single.name, 'Coach');
-      expect(api.created.single.emoji, '🥗');
-      expect(api.created.single.instructions, contains('Non sono un medico'));
-      expect(find.byKey(const Key('assistant-n0')), findsOneWidget);
-      expect(find.text('Coach'), findsOneWidget);
-    });
-
-    testWidgets('a template asks its questions; Echo writes it from the answers', (tester) async {
-      final api = _Api();
-      await _pumpAssistants(tester, api);
-
-      await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-diet')));
-      expect(api.asked, [('diet', null)]);
-      expect(find.text('Qual è il tuo obiettivo?'), findsOneWidget);
-
-      // One option for a single choice: the second replaces the first
-      await _tap(tester, find.byKey(const Key('wizard-option-goal-Perdere peso')));
-      await _tap(tester, find.byKey(const Key('wizard-option-goal-Più energia')));
-      // Several for a multiple one, and words too
-      await _tap(tester, find.byKey(const Key('wizard-option-limits-Vegetariano')));
-      await _tap(tester, find.byKey(const Key('wizard-option-limits-Senza glutine')));
-      await tester.enterText(find.byKey(const Key('wizard-words-limits')), 'niente funghi');
-      await _tap(tester, find.byKey(const Key('wizard-create')));
-
-      expect(api.composed.single, [
-        ('Qual è il tuo obiettivo?', 'Più energia'),
-        ('Cose che non mangi?', 'Vegetariano, Senza glutine, niente funghi'),
-      ]);
-      // The proposal, in the editor to review
+      expect(api.composed.single, (null, 'Aiutami a mangiare vegetariano, niente funghi'));
+      expect(find.byKey(const Key('create-preview')), findsOneWidget);
       expect(find.text('Dieta veg'), findsOneWidget);
       expect(find.text('- Vegetariano\n- Niente funghi'), findsOneWidget);
-      await _tap(tester, find.byKey(const Key('assistant-save')));
 
+      await tester.enterText(find.byKey(const Key('create-question')), 'cosa mangio stasera?');
+      await _tap(tester, find.byKey(const Key('create-ask')));
+      expect(api.tried.single, ('Dieta veg', 'cosa mangio stasera?'));
+      expect(find.text('Stasera: pasta e ceci.'), findsOneWidget);
+      // Trying keeps nothing
+      expect(api.created, isEmpty);
+
+      await _tap(tester, find.byKey(const Key('create-save')));
       expect(api.created.single.emoji, '🥦');
       expect(find.byKey(const Key('assistant-n0')), findsOneWidget);
     });
 
-    testWidgets('from scratch: what it is for, then questions made for it', (tester) async {
+    testWidgets('a template is a starting text, sent with the description', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
-
       await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-blank')));
-      expect(tester.widget<FilledButton>(find.byKey(const Key('wizard-next'))).onPressed, isNull);
-      await tester.enterText(find.byKey(const Key('wizard-topic')), 'la mezza maratona');
-      await _tap(tester, find.byKey(const Key('wizard-next')));
 
-      expect(api.asked, [(null, 'la mezza maratona')]);
-      expect(find.text('Cose che non mangi?'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('create-template-diet')));
+      expect(find.textContaining('Coach per l’alimentazione'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('create-write')));
+
+      expect(api.composed.single.$1, 'diet');
+      expect(api.composed.single.$2, contains('Coach per l’alimentazione'));
+    });
+
+    testWidgets('Edit opens the proposal in the editor', (tester) async {
+      final api = _Api();
+      await _pumpAssistants(tester, api);
+      await _tap(tester, find.byKey(const Key('assistants-new')));
+      await tester.enterText(find.byKey(const Key('create-description')), 'dieta');
+      await _tap(tester, find.byKey(const Key('create-write')));
+
+      await _tap(tester, find.byKey(const Key('create-edit')));
+      await tester.enterText(find.byKey(const Key('assistant-name')), 'Coach');
+      await _tap(tester, find.byKey(const Key('assistant-save')));
+
+      expect(api.created.single.name, 'Coach');
+      expect(api.created.single.instructions, 'Sei il mio coach vegetariano.');
+      expect(find.text('Coach'), findsOneWidget);
     });
 
     testWidgets('Improve rewrites the instructions, and Undo puts them back', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
       await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-blank')));
-      await _tap(tester, find.byKey(const Key('wizard-skip')));
+      await _tap(tester, find.byKey(const Key('create-myself')));
 
       await tester.enterText(find.byKey(const Key('assistant-instructions')), 'bollette');
       await _tap(tester, find.byKey(const Key('assistant-improve')));
@@ -333,13 +309,12 @@ void main() {
       expect(find.text('bollette'), findsOneWidget);
     });
 
-    testWidgets('a blank one needs a name and instructions', (tester) async {
+    testWidgets('written myself: it needs a name and instructions', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-blank')));
-      await _tap(tester, find.byKey(const Key('wizard-skip')));
+      await _tap(tester, find.byKey(const Key('create-myself')));
       await _tap(tester, find.byKey(const Key('assistant-save')));
       expect(api.created, isEmpty);
       expect(find.text('Give it a name and instructions.'), findsOneWidget);
@@ -405,9 +380,9 @@ void main() {
       await _pumpAssistants(tester, api);
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
-      await _tap(tester, find.byKey(const Key('assistant-template-work')));
-      await _tap(tester, find.byKey(const Key('wizard-skip')));
-      await _tap(tester, find.byKey(const Key('assistant-save')));
+      await tester.enterText(find.byKey(const Key('create-description')), 'lavoro');
+      await _tap(tester, find.byKey(const Key('create-write')));
+      await _tap(tester, find.byKey(const Key('create-save')));
 
       expect(find.text('You can have at most 10 assistants.'), findsOneWidget);
     });

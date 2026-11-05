@@ -12,15 +12,12 @@ abstract interface class AssistantsApi {
   /// Its chats and routines stay, with plain Echo.
   Future<void> deleteAssistant(String id);
 
-  /// A template's questions ([template] its key), or ones made for [topic] (from scratch).
-  Future<List<AssistantQuestion>> assistantQuestions({String? template, String? topic});
+  /// What the user described ([topic]; a [template] key as its start) made into a
+  /// proposal, to try and save.
+  Future<AssistantDraft> composeAssistant({String? template, String? topic});
 
-  /// The answers ((question, answer)) made into a proposal, to review before saving.
-  Future<AssistantDraft> composeAssistant({
-    String? template,
-    String? topic,
-    required List<(String, String)> answers,
-  });
+  /// Try it: how [draft], not saved yet, answers [question].
+  Future<String> tryAssistant(AssistantDraft draft, String question);
 
   /// ✨ Improve: a few words of instructions made into full ones.
   Future<String> improveInstructions({required String name, required String instructions});
@@ -64,36 +61,12 @@ mixin AssistantsEndpoints on ApiClient implements AssistantsApi {
   Future<void> deleteAssistant(String id) => delete('/api/assistants/$id');
 
   @override
-  Future<List<AssistantQuestion>> assistantQuestions({String? template, String? topic}) async {
-    final response = await post(
-      '/api/assistants/questions',
-      body: {
-        if (template != null) 'template': template,
-        if (topic != null) 'topic': topic,
-      },
-      // From scratch, a model writes them
-      timeout: queryTimeout,
-    );
-    return parse(response.data, (data) => [
-          for (final item in (data as Map<String, dynamic>)['questions'] as List<dynamic>)
-            if (item is Map<String, dynamic>) AssistantQuestion.fromJson(item),
-        ]);
-  }
-
-  @override
-  Future<AssistantDraft> composeAssistant({
-    String? template,
-    String? topic,
-    required List<(String, String)> answers,
-  }) async {
+  Future<AssistantDraft> composeAssistant({String? template, String? topic}) async {
     final response = await post(
       '/api/assistants/compose',
       body: {
         if (template != null) 'template': template,
         if (topic != null) 'topic': topic,
-        'answers': [
-          for (final (question, answer) in answers) {'question': question, 'answer': answer},
-        ],
       },
       timeout: queryTimeout,
     );
@@ -101,6 +74,22 @@ mixin AssistantsEndpoints on ApiClient implements AssistantsApi {
       response.data,
       (data) => AssistantDraft.fromJson(data as Map<String, dynamic>),
     );
+  }
+
+  @override
+  Future<String> tryAssistant(AssistantDraft draft, String question) async {
+    final response = await post(
+      '/api/assistants/try',
+      body: {
+        'name': draft.name,
+        'emoji': draft.emoji,
+        'instructions': draft.instructions,
+        'notes': draft.notes,
+        'question': question,
+      },
+      timeout: queryTimeout,
+    );
+    return parse(response.data, (data) => (data as Map<String, dynamic>)['answer'] as String);
   }
 
   @override

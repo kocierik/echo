@@ -7,8 +7,8 @@ import '../../services/api/api_exception.dart';
 import '../../services/api/assistants_api.dart';
 import '../../services/api/memory_items_api.dart';
 import '../../theme/app_theme.dart';
+import 'assistant_create_screen.dart';
 import 'assistant_editor_screen.dart';
-import 'assistant_wizard_screen.dart';
 import 'settings_components.dart';
 
 /// Profile → Assistants: Echo focused on one part of the user's life (work, diet,
@@ -59,53 +59,13 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
   }
 
   /// "New assistant": a template to start from, or a blank one.
+  /// "New assistant": described in words, written by Echo, tried, then saved.
   Future<void> _new() async {
     setState(() => _error = null);
-    final List<AssistantTemplate> templates;
-    try {
-      templates = await widget.api.assistantTemplates();
-    } catch (error) {
-      if (mounted) setState(() => _error = userMessage(error, 'Could not load the templates.'));
-      return;
-    }
-    if (!mounted) return;
-    final chosen = await showModalBottomSheet<AssistantTemplate>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final template in templates)
-              ListTile(
-                key: Key('assistant-template-${template.key}'),
-                leading: Text(template.emoji, style: const TextStyle(fontSize: 24)),
-                title: Text(template.name),
-                onTap: () => Navigator.pop(context, template),
-              ),
-            ListTile(
-              key: const Key('assistant-template-blank'),
-              leading: const Icon(Icons.edit_outlined),
-              title: const Text('Start from scratch'),
-              onTap: () => Navigator.pop(
-                context,
-                const AssistantTemplate(key: '', name: '', emoji: '🤖', instructions: ''),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (chosen == null || !mounted) return;
-    // A few questions first; Echo writes it from the answers (or Skip: the editor)
     final saved = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => AssistantWizardScreen(
-          api: widget.api,
-          documents: widget.documents,
-          template: chosen.key.isEmpty ? null : chosen,
-        ),
+        builder: (_) => AssistantCreateScreen(api: widget.api, documents: widget.documents),
       ),
     );
     if (saved == true && mounted) await _load();

@@ -16,6 +16,7 @@ from app.models.assistant import Assistant
 from app.services import assistant_builder, assistants
 from app.services.assistants import AssistantError
 from app.services.language import account_languages
+from app.services.personal import personal_context
 from app.services.usage import usage_owner
 
 router = APIRouter(prefix="/assistants", tags=["assistants"])
@@ -89,24 +90,6 @@ async def list_templates(
     return [TemplateOut(**t) for t in assistants.templates(language)]
 
 
-class QuestionsIn(BaseModel):
-    # A template's questions, or ones for what an assistant from scratch is for
-    template: str | None = None
-    topic: str | None = Field(default=None, max_length=300)
-
-
-class QuestionOut(BaseModel):
-    id: str
-    text: str
-    options: list[str]
-    multi: bool
-    hint: str
-
-
-class QuestionsOut(BaseModel):
-    questions: list[QuestionOut]
-
-
 class AnswerIn(BaseModel):
     question: str = Field(max_length=300)
     answer: str = Field(max_length=500)
@@ -114,7 +97,8 @@ class AnswerIn(BaseModel):
 
 class ComposeIn(BaseModel):
     template: str | None = None
-    topic: str | None = Field(default=None, max_length=300)
+    # What the user wrote or dictated: what the assistant should do for them
+    topic: str | None = Field(default=None, max_length=2000)
     answers: list[AnswerIn] = Field(default_factory=list, max_length=8)
 
 
@@ -123,6 +107,18 @@ class ProposalOut(BaseModel):
     emoji: str
     instructions: str
     notes: str
+
+
+class TryIn(BaseModel):
+    name: str = Field(default="", max_length=200)
+    emoji: str = Field(default="", max_length=16)
+    instructions: str = Field(default="", max_length=10_000)
+    notes: str = Field(default="", max_length=10_000)
+    question: str = Field(max_length=1000)
+
+
+class TryOut(BaseModel):
+    answer: str
 
 
 class ImproveIn(BaseModel):
@@ -139,27 +135,6 @@ def builder_llm():
     from app.services.llm_openai import get_llm_query_service
 
     return get_llm_query_service()
-
-
-@router.post("/questions", response_model=QuestionsOut)
-@limiter.limit("20/minute")
-async def assistant_questions(
-    request: Request,
-    body: QuestionsIn,
-    user_id: uuid.UUID = Depends(get_current_user_id),
-    db: AsyncSession = Depends(get_db),
-    llm=Depends(builder_llm),
-):
-    """New assistant: the questions to answer (a template's, or made for the topic)."""
-    usage_owner.set(user_id)
-    language, _ = await account_languages(db, user_id)
-    try:
-        made = await assistant_builder.questions(
-            llm, language, key=body.template or None, topic=body.topic
-        )
-    except AssistantError as exc:
-        raise _refused(exc) from exc
-    return QuestionsOut(questions=[QuestionOut(**q) for q in made])
 
 
 @router.post("/compose", response_model=ProposalOut)
@@ -182,6 +157,27 @@ async def compose_assistant(
     except AssistantError as exc:
         raise _refused(exc) from exc
     return ProposalOut(**proposal)
+
+
+@router.post("/try", response_model=TryOut)
+@limiter.limit("20/minute")
+async def try_assistant(
+    request: Request,
+    body: TryIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    llm=Depends(builder_llm),
+):
+    """Try it: how the assistant being made would answer, before it is saved."""
+    usage_owner.set(user_id)
+    personal = await personal_context(db, user_id)
+    try:
+        answer = await assistant_builder.try_out(
+            llm, personal=personal, draft=body.model_dump(), question=body.question
+        )
+    except AssistantError as exc:
+        raise _refused(exc) from exc
+    return TryOut(answer=answer)
 
 
 @router.post("/improve", response_model=ImproveOut)

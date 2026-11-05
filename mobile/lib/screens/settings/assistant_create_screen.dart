@@ -1,0 +1,404 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+
+import '../../models/assistant.dart';
+import '../../services/api/api_exception.dart';
+import '../../services/api/assistants_api.dart';
+import '../../services/api/memory_items_api.dart';
+import '../../theme/app_theme.dart';
+import 'assistant_editor_screen.dart';
+
+/// New assistant, described in words (as Lindy and Gemini's Gems): what it should do for
+/// the user, typed or dictated; a template is a starting text. Echo writes it (name,
+/// emoji, instructions, first notes), the user tries it with a question, then saves it,
+/// edits it or has it written again. "Write it myself" opens the editor empty. Pops true
+/// once saved.
+final class AssistantCreateScreen extends StatefulWidget {
+  const AssistantCreateScreen({required this.api, required this.documents, super.key});
+
+  final AssistantsApi api;
+  final DocumentsApi documents;
+
+  @override
+  State<AssistantCreateScreen> createState() => _AssistantCreateScreenState();
+}
+
+final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
+  final _description = TextEditingController();
+  final _question = TextEditingController();
+  List<AssistantTemplate> _templates = const [];
+  AssistantTemplate? _template;
+  AssistantDraft? _proposal;
+  String? _answer;
+  bool _writing = false;
+  bool _trying = false;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _description.addListener(() => setState(() {}));
+    _question.addListener(() => setState(() {}));
+    unawaited(_loadTemplates());
+  }
+
+  @override
+  void dispose() {
+    _description.dispose();
+    _question.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadTemplates() async {
+    try {
+      final templates = await widget.api.assistantTemplates();
+      if (mounted) setState(() => _templates = templates);
+    } catch (_) {
+      // Only the starting points are missing: the description still works
+    }
+  }
+
+  /// A template as the starting text, to change; tapped again, it is dropped.
+  void _pick(AssistantTemplate template) {
+    setState(() {
+      if (_template?.key == template.key) {
+        _template = null;
+      } else {
+        _template = template;
+        _description.text = template.instructions;
+        _description.selection = TextSelection.collapsed(offset: _description.text.length);
+      }
+    });
+  }
+
+  Future<void> _write() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _writing = true;
+      _error = null;
+      _answer = null;
+    });
+    try {
+      final proposal = await widget.api.composeAssistant(
+        template: _template?.key,
+        topic: _description.text.trim().isEmpty ? null : _description.text.trim(),
+      );
+      if (mounted) setState(() => _proposal = proposal);
+    } catch (error) {
+      if (mounted) {
+        setState(() => _error = userMessage(error, 'Echo could not write it. Try again.'));
+      }
+    } finally {
+      if (mounted) setState(() => _writing = false);
+    }
+  }
+
+  Future<void> _try() async {
+    final proposal = _proposal;
+    final question = _question.text.trim();
+    if (proposal == null || question.isEmpty) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _trying = true;
+      _error = null;
+    });
+    try {
+      final answer = await widget.api.tryAssistant(proposal, question);
+      if (mounted) setState(() => _answer = answer);
+    } catch (error) {
+      if (mounted) setState(() => _error = userMessage(error, 'It could not answer. Try again.'));
+    } finally {
+      if (mounted) setState(() => _trying = false);
+    }
+  }
+
+  Future<void> _save() async {
+    final proposal = _proposal;
+    if (proposal == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.api.createAssistant(proposal);
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = userMessage(error, 'Could not save it.');
+        });
+      }
+    }
+  }
+
+  /// The editor, with the proposal or empty; saved there, this screen is done too.
+  Future<void> _edit({AssistantDraft? proposal}) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AssistantEditorScreen(
+          api: widget.api,
+          documents: widget.documents,
+          proposal: proposal,
+        ),
+      ),
+    );
+    if (saved == true && mounted) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    final proposal = _proposal;
+    final busy = _writing || _saving;
+    final field = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: palette.border),
+    );
+    return Scaffold(
+      backgroundColor: palette.background,
+      appBar: AppBar(title: const Text('New assistant')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+          children: [
+            Text('What should it do for you?', style: textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(
+              'Say it in your words, as much as you like: its topic, what to keep track of, how '
+              'to answer. Echo writes the assistant from it.',
+              style: textTheme.bodySmall?.copyWith(color: palette.text2),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('create-description'),
+              controller: _description,
+              minLines: 5,
+              maxLines: 12,
+              maxLength: 2000,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                hintText: 'E.g. Help me with the house: bills and due dates, the weekly '
+                    'shopping, chores shared with Olta. Keep the answers short.',
+                contentPadding: const EdgeInsets.all(16),
+                border: field,
+                enabledBorder: field,
+                focusedBorder: field.copyWith(
+                  borderSide: BorderSide(color: palette.accent, width: 2),
+                ),
+              ),
+            ),
+            if (_templates.isNotEmpty) ...[
+              Text('Or start from', style: textTheme.labelMedium?.copyWith(color: palette.text2)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final template in _templates)
+                    ChoiceChip(
+                      key: Key('create-template-${template.key}'),
+                      label: Text('${template.emoji} ${template.name}'),
+                      selected: _template?.key == template.key,
+                      showCheckmark: false,
+                      onSelected: busy ? null : (_) => _pick(template),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              key: const Key('create-write'),
+              onPressed: busy || (_description.text.trim().isEmpty && _template == null)
+                  ? null
+                  : () => unawaited(_write()),
+              icon: _writing
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(
+                _writing
+                    ? 'Echo is writing it…'
+                    : proposal == null
+                        ? 'Create it'
+                        : 'Write it again',
+              ),
+            ),
+            if (_error case final error?)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(error, style: textTheme.bodySmall?.copyWith(color: palette.red)),
+              ),
+            if (proposal != null) ...[
+              const SizedBox(height: 20),
+              _Preview(proposal: proposal),
+              const SizedBox(height: 12),
+              _TryIt(
+                question: _question,
+                trying: _trying,
+                answer: _answer,
+                emoji: proposal.emoji,
+                onAsk: () => unawaited(_try()),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      key: const Key('create-edit'),
+                      onPressed: busy ? null : () => unawaited(_edit(proposal: proposal)),
+                      child: const Text('Edit'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('create-save'),
+                      onPressed: busy ? null : () => unawaited(_save()),
+                      child: Text(_saving ? 'Saving…' : 'Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
+            TextButton(
+              key: const Key('create-myself'),
+              onPressed: busy ? null : () => unawaited(_edit()),
+              child: const Text('Write it myself'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What Echo wrote: the assistant as it will be.
+final class _Preview extends StatelessWidget {
+  const _Preview({required this.proposal});
+
+  final AssistantDraft proposal;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      key: const Key('create-preview'),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: palette.accentSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(proposal.emoji, style: const TextStyle(fontSize: 24)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(proposal.name, style: textTheme.titleMedium)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(proposal.instructions, style: textTheme.bodyMedium?.copyWith(height: 1.45)),
+          if (proposal.notes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text('NOTES', style: textTheme.labelSmall?.copyWith(color: palette.text2)),
+            const SizedBox(height: 4),
+            Text(proposal.notes, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Try it: a question, and how the assistant answers it (nothing is kept).
+final class _TryIt extends StatelessWidget {
+  const _TryIt({
+    required this.question,
+    required this.trying,
+    required this.answer,
+    required this.emoji,
+    required this.onAsk,
+  });
+
+  final TextEditingController question;
+  final bool trying;
+  final String? answer;
+  final String emoji;
+  final VoidCallback onAsk;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Try it', style: textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('create-question'),
+                controller: question,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => onAsk(),
+                decoration: const InputDecoration(hintText: 'Ask it something'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              key: const Key('create-ask'),
+              tooltip: 'Ask',
+              onPressed: trying || question.text.trim().isEmpty ? null : onAsk,
+              icon: trying
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_upward_rounded),
+            ),
+          ],
+        ),
+        if (answer case final text?)
+          Container(
+            key: const Key('create-answer'),
+            margin: const EdgeInsets.only(top: 10),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: palette.surface2,
+              borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(emoji, style: const TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(text, style: textTheme.bodyMedium)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
