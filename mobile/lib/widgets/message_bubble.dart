@@ -5,9 +5,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_message.dart';
 import '../models/saved.dart';
 import '../theme/app_theme.dart';
+import '../utils/answer_blocks.dart';
 import '../utils/formatting.dart';
 import '../utils/photo_follow_ups.dart';
 import 'action_card.dart';
+import 'echo_chart.dart';
 import 'panel.dart';
 import 'photo_thumbnail.dart';
 
@@ -213,29 +215,41 @@ final class MessageBubble extends StatelessWidget {
                 ),
               ),
             ),
-          MarkdownBody(
-            data: message.text,
-            selectable: true,
-            onTapLink: (_, href, __) => _launch(href),
-            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-              p: textTheme.bodyMedium?.copyWith(height: 1.5),
-              h1: textTheme.titleLarge,
-              h2: textTheme.titleMedium,
-              h3: textTheme.titleSmall,
-              code: TextStyle(
-                color: palette.accent,
-                backgroundColor: palette.surface2,
-                fontFamily: 'monospace',
-              ),
-              codeblockDecoration: BoxDecoration(
-                color: palette.surface2,
-                borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-              ),
-              blockquoteDecoration: BoxDecoration(
-                border: Border(left: BorderSide(color: palette.accent, width: 3)),
-              ),
-            ),
-          ),
+          for (final block in answerBlocks(message.text))
+            switch (block) {
+              TextBlock(:final markdown) => MarkdownBody(
+                  data: markdown,
+                  selectable: true,
+                  onTapLink: (_, href, __) => _launch(href),
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: textTheme.bodyMedium?.copyWith(height: 1.5),
+                    h1: textTheme.titleLarge,
+                    h2: textTheme.titleMedium,
+                    h3: textTheme.titleSmall,
+                    code: TextStyle(
+                      color: palette.accent,
+                      backgroundColor: palette.surface2,
+                      fontFamily: 'monospace',
+                    ),
+                    codeblockDecoration: BoxDecoration(
+                      color: palette.surface2,
+                      borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+                    ),
+                    blockquoteDecoration: BoxDecoration(
+                      border: Border(left: BorderSide(color: palette.accent, width: 3)),
+                    ),
+                  ),
+                ),
+              ChartBlock(:final spec) => EchoChart(spec),
+              PendingChartBlock() => Padding(
+                  key: const Key('echo-chart-pending'),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Text(
+                    'Drawing a chart…',
+                    style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                  ),
+                ),
+            },
           if (message.photoId != null && loadPhoto != null)
             PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
           ..._savedChips(),

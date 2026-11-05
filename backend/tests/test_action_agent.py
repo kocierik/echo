@@ -152,6 +152,21 @@ async def test_system_prompt_and_history_are_sent():
     assert datetime.now(user_zone()).date().isoformat() in system
 
 
+@pytest.mark.parametrize(
+    ("source", "charts"), [("chat", True), ("voice", False), ("routine", False)]
+)
+async def test_charts_are_offered_only_in_typed_chat(source, charts):
+    llm = RecordingLLM([_text("ok")])
+
+    await run_action_agent(
+        FakeSession(), USER, "Quanto ho speso?", [],
+        session_id=SESSION, source=source, provider=_provider([]), llm=llm,
+    )
+
+    # A spoken answer or a routine's notification has no screen to draw on
+    assert ("```echo-chart" in llm.call_log[0][0].content) is charts
+
+
 async def test_confirm_tool_creates_pending_action_and_is_not_executed():
     db = FakeSession()
     provider = _provider(["GMAIL_SEND_EMAIL"])

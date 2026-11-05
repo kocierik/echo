@@ -1,3 +1,5 @@
+import 'answer_blocks.dart';
+
 final _link = RegExp(r'\[([^\]]*)\]\([^)]*\)');
 final _bareLink = RegExp(r'https?://(?:www\.)?([^/\s?#]+)\S*');
 final _marker = RegExp(r'^\s*(#{1,6}|[-*+•>]|\d+[.)])\s+');
@@ -13,7 +15,8 @@ final _sentenceEnd = RegExp(r'[.!?:;…]$');
 /// (else at a word) and says the rest is in Ask, in [language] ("it" or "en").
 String spokenText(String markdown, {required String language, int limit = 500}) {
   final lines = <String>[];
-  for (final raw in markdown.split('\n')) {
+  // A chart is for the screen: its numbers are in the words around it
+  for (final raw in withoutCharts(markdown).split('\n')) {
     var line = raw.trim();
     if (line.startsWith('|')) {
       if (_tableRule.hasMatch(line)) continue;

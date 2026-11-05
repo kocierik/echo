@@ -50,6 +50,7 @@ from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
 from app.services.memory_retrieval import retrieve_memory_context
 from app.services.personal import personal_context
+from app.services.visuals import VISUALS_RULES
 from app.services.web_search import search_options, search_tool_for
 
 logger = logging.getLogger(__name__)
@@ -249,6 +250,7 @@ class _Failure:
 def _system_prompt(
     phone_apps: bool = False, can_search: bool = False, routines: bool = False,
     personal: str = "", saved_lists: str | None = None, photo_text: str | None = None,
+    visuals: bool = False,
 ) -> str:
     now = datetime.now(user_zone())
     prompt = _SYSTEM_PROMPT.format(
@@ -269,6 +271,8 @@ def _system_prompt(
             )
     if phone_apps:
         prompt += _PHONE_RULES
+    if visuals:
+        prompt += VISUALS_RULES
     # Last: the user's name and own instructions (services/personal.py)
     return f"{prompt}\n{personal}\n" if personal else prompt
 
@@ -443,6 +447,8 @@ async def run_action_agent(
     prompt = _system_prompt(
         phone_apps, search is not None, routine_tools, personal, saved_lists,
         saved.photo_text if saved.photo_id else None,
+        # Typed in Ask: the app draws charts; a spoken answer has no screen
+        visuals=source == "chat",
     )
     messages = [LLMMessage(role="system", content=prompt)]
     for item in history:

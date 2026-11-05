@@ -566,7 +566,7 @@ async def _answer_query(
         # prompt's rules)
         result = await answer_without_memory(
             llm_service, body.question, history, date_range, about, on_token, search,
-            personal,
+            personal, visuals=True,
         )
         # Save to history even for empty results
         await record_turn(
@@ -588,7 +588,7 @@ async def _answer_query(
     # 7. Generate answer via LLM (with conversation history)
     system_prompt = rag_system_prompt(
         date_range, about, clear_language(body.question), can_search=search is not None,
-        personal=personal,
+        personal=personal, visuals=True,
     )
 
     messages = [LLMMessage(role="system", content=system_prompt)]

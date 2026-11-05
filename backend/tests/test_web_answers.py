@@ -218,3 +218,10 @@ async def test_a_model_that_cannot_search_gets_no_tool(client, auth_headers, db_
         select(func.count()).select_from(LlmUsage).where(LlmUsage.kind == "web_search")
     )
     assert searches == 0
+
+
+def test_memory_answers_offer_charts_only_when_asked():
+    from app.services.memory_answers import rag_system_prompt
+
+    assert "```echo-chart" in rag_system_prompt(None, visuals=True)
+    assert "echo-chart" not in rag_system_prompt(None)

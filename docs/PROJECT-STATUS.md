@@ -113,6 +113,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   **Voice** (05/11): una delle voci installate sul telefono per la lingua (prima Premium e Enhanced, scaricabili
   in Impostazioni → Accessibilità → Contenuto letto ad alta voce), o quella del telefono; scelta salvata sul
   telefono, una per lingua.
+- **Grafici nelle risposte** (05/11, Ask, come ChatGPT): quando una risposta in chat confronta almeno 3 numeri
+  veri (memoria, cose salvate, app), il modello aggiunge un blocco ```echo-chart con barre, linea (fino a 3
+  serie), torta o barra di avanzamento (budget); l'app lo disegna con i suoi colori (`widgets/echo_chart.dart`,
+  nessuna libreria). Solo in chat scritta (mai a voce né negli incarichi); un blocco illeggibile si salta, uno a
+  metà mentre arriva la risposta dice "Drawing a chart…"; la voce legge solo il testo.
 - **Example data** (05/11, Profile, migrazione 033): un interruttore che riempie Echo con alcuni giorni di
   esempio (6 conversazioni in italiano o inglese secondo la lingua dell'account, 3 fatti, 3 cose salvate, 3
   luoghi). Le conversazioni sono segmenti con la trascrizione, analizzati dal worker come quelli veri (persone,
