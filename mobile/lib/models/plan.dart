@@ -13,6 +13,7 @@ final class PlanInfo {
     required this.overBudget,
     required this.webSearchesPerDay,
     required this.routines,
+    this.premiumVoice = false,
   });
 
   factory PlanInfo.fromJson(Map<String, dynamic> json) {
@@ -27,6 +28,7 @@ final class PlanInfo {
       overBudget: json['over_budget'] as bool? ?? false,
       webSearchesPerDay: (json['web_searches_per_day'] as num).toInt(),
       routines: (json['routines'] as num).toInt(),
+      premiumVoice: json['premium_voice'] as bool? ?? false,
     );
   }
 
@@ -46,6 +48,9 @@ final class PlanInfo {
   final bool overBudget;
   final int webSearchesPerDay;
   final int routines;
+
+  /// Spoken answers may use Echo's natural voices (Plus and Unlimited).
+  final bool premiumVoice;
 
   /// "Plus".
   String get name => plan.isEmpty ? plan : '${plan[0].toUpperCase()}${plan.substring(1)}';

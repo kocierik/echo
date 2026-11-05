@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/api/speech_api.dart';
 import '../../services/app/spoken_answers_store.dart';
 import '../../services/app/spoken_voice_store.dart';
 import '../../theme/app_theme.dart';
@@ -23,6 +24,7 @@ final class SpokenAnswersScreen extends StatelessWidget {
     this.voices,
     this.voiceStore,
     this.language = 'en',
+    this.naturalVoices,
     super.key,
   });
 
@@ -37,6 +39,9 @@ final class SpokenAnswersScreen extends StatelessWidget {
 
   /// The language answers are read in ("it", "en").
   final String language;
+
+  /// Echo's natural voices (the server's list), offered on the plans that have them.
+  final NaturalVoicesLoader? naturalVoices;
 
   @override
   Widget build(BuildContext context) {
@@ -93,23 +98,34 @@ final class SpokenAnswersScreen extends StatelessWidget {
             ListenableBuilder(
               listenable: voiceStore,
               builder: (context, _) => SettingsGroup(children: [
-                SettingsRow(
-                  key: const Key('spoken-answers-voice'),
-                  icon: Icons.graphic_eq_rounded,
-                  title: 'Voice',
-                  value: voiceStore.voiceFor(language)?.name ?? "The phone's",
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                      builder: (_) => VoicePickerScreen(
-                        voices: voices,
-                        store: voiceStore,
-                        language: language,
-                        onTry: onTry,
+                // The choice of a voice, and Echo's natural ones, come with Plus
+                if (!voiceStore.premium)
+                  const SettingsRow(
+                    key: Key('spoken-answers-voice'),
+                    icon: Icons.graphic_eq_rounded,
+                    title: 'Voice',
+                    value: "The phone's",
+                    subtitle: 'Echo\u2019s natural voices come with the Plus plan.',
+                  )
+                else
+                  SettingsRow(
+                    key: const Key('spoken-answers-voice'),
+                    icon: Icons.graphic_eq_rounded,
+                    title: 'Voice',
+                    value: voiceLabel(voiceStore, language),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute<void>(
+                        builder: (_) => VoicePickerScreen(
+                          voices: voices,
+                          store: voiceStore,
+                          language: language,
+                          onTry: onTry,
+                          naturalVoices: naturalVoices,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ]),
             ),
           Align(
@@ -130,14 +146,26 @@ final class SpokenAnswersScreen extends StatelessWidget {
   }
 }
 
-/// Spoken answers → Voice: the voices the phone has for the language, better ones first;
-/// a tap chooses one and says the sample with it.
+/// Loads Echo's natural voices and whether the account may use them.
+typedef NaturalVoicesLoader = Future<({List<NaturalVoiceInfo> voices, bool available})> Function();
+
+/// "Coral", "Federica", "The phone's": the voice the answers are read in.
+String voiceLabel(SpokenVoiceStore store, String language) {
+  if (store.naturalVoice case final id?) return _capitalized(id);
+  return store.voiceFor(language)?.name ?? "The phone's";
+}
+
+String _capitalized(String id) => id.isEmpty ? id : '${id[0].toUpperCase()}${id.substring(1)}';
+
+/// Spoken answers → Voice: Echo's natural voices (Plus), then the voices the phone has for
+/// the language, better ones first; a tap chooses one and says the sample with it.
 final class VoicePickerScreen extends StatefulWidget {
   const VoicePickerScreen({
     required this.voices,
     required this.store,
     required this.language,
     required this.onTry,
+    this.naturalVoices,
     super.key,
   });
 
@@ -145,6 +173,7 @@ final class VoicePickerScreen extends StatefulWidget {
   final SpokenVoiceStore store;
   final String language;
   final Future<void> Function() onTry;
+  final NaturalVoicesLoader? naturalVoices;
 
   @override
   State<VoicePickerScreen> createState() => _VoicePickerScreenState();
@@ -152,16 +181,35 @@ final class VoicePickerScreen extends StatefulWidget {
 
 final class _VoicePickerScreenState extends State<VoicePickerScreen> {
   List<PhoneVoice>? _voices;
+  List<NaturalVoiceInfo> _natural = const [];
 
   @override
   void initState() {
     super.initState();
     unawaited(_load());
+    unawaited(_loadNatural());
   }
 
   Future<void> _load() async {
     final voices = await widget.voices.voices(widget.language);
     if (mounted) setState(() => _voices = voices);
+  }
+
+  Future<void> _loadNatural() async {
+    final load = widget.naturalVoices;
+    if (load == null) return;
+    try {
+      final natural = await load();
+      if (mounted && natural.available) setState(() => _natural = natural.voices);
+    } catch (_) {
+      // Offline: the phone's voices only
+    }
+  }
+
+  Future<void> _chooseNatural(String id) async {
+    await widget.store.chooseNatural(id);
+    if (mounted) setState(() {});
+    await widget.onTry();
   }
 
   Future<void> _choose(PhoneVoice? voice) async {
@@ -174,11 +222,11 @@ final class _VoicePickerScreenState extends State<VoicePickerScreen> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final chosen = widget.store.voiceFor(widget.language);
+    final natural = widget.store.naturalVoice;
+    final chosen = natural == null ? widget.store.voiceFor(widget.language) : null;
     final voices = _voices;
-    Widget mark(bool on) => on
-        ? Icon(Icons.check_rounded, color: palette.accent)
-        : const SizedBox(width: 24);
+    Widget mark(bool on) =>
+        on ? Icon(Icons.check_rounded, color: palette.accent) : const SizedBox(width: 24);
     return SettingsPageScaffold(
       title: 'Voice',
       children: [
@@ -188,12 +236,25 @@ final class _VoicePickerScreenState extends State<VoicePickerScreen> {
             child: Center(child: CircularProgressIndicator()),
           )
         else ...[
+          if (_natural.isNotEmpty) ...[
+            const SettingsSection('ECHO\u2019S NATURAL VOICES'),
+            for (final voice in _natural)
+              SettingsRow(
+                key: Key('voice-natural-${voice.id}'),
+                icon: Icons.auto_awesome_rounded,
+                title: _capitalized(voice.id),
+                subtitle: voice.description,
+                trailing: mark(natural == voice.id),
+                onTap: () => unawaited(_chooseNatural(voice.id)),
+              ),
+            const SettingsSection('ON THIS PHONE'),
+          ],
           SettingsRow(
             key: const Key('voice-default'),
             icon: Icons.phone_iphone_rounded,
             title: "The phone's",
             subtitle: 'Its own voice for the language.',
-            trailing: mark(chosen == null),
+            trailing: mark(natural == null && chosen == null),
             onTap: () => unawaited(_choose(null)),
           ),
           for (final voice in voices)
@@ -209,8 +270,11 @@ final class _VoicePickerScreenState extends State<VoicePickerScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Text(
-            'For a more natural voice, download an Enhanced or Premium one in Settings → '
-            'Accessibility → Spoken Content → Voices: it then shows here.',
+            _natural.isEmpty
+                ? 'For a more natural voice, download an Enhanced or Premium one in Settings → '
+                    'Accessibility → Spoken Content → Voices: it then shows here.'
+                : 'Echo\u2019s natural voices need the internet and start a second later; '
+                    'offline the phone\u2019s voice reads instead.',
             style: textTheme.bodySmall?.copyWith(color: palette.text2),
           ),
         ),

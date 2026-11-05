@@ -23,6 +23,7 @@ import '../api/response_cache.dart';
 import '../device/device_command_loop.dart';
 import '../device/firmware_update.dart';
 import '../phone/answer_speaker.dart';
+import '../phone/natural_voice.dart';
 import '../phone/phone_actions.dart';
 import '../phone/phone_calendar.dart';
 import '../phone/phone_location.dart';
@@ -269,7 +270,8 @@ final class AppLifecycleCoordinator {
     final spokenVoice = SpokenVoiceStore(preferences);
     final phoneVoice = FlutterTtsVoice(null, spokenVoice.voiceFor);
     final answerSpeaker = AnswerSpeaker(
-      voice: phoneVoice,
+      // Echo's natural voice on Plus when chosen, else (and offline) the phone's
+      voice: NaturalVoice(api: credentialApiService, phone: phoneVoice, store: spokenVoice),
       output: const ChannelAudioOutput(),
       setting: spokenAnswers,
       preferences: preferences,

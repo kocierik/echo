@@ -21,6 +21,9 @@ PRICES: dict[str, dict] = {
     "nova-3": {"unit": "second", "per_minute": 0.0043},
     # Read on 2026-10-21; Brave and Perplexity Search are listed at ~$0.005
     "openai-web-search": {"unit": "search", "per_search": 0.010},
+    # Spoken answers' natural voices, by seconds of audio estimated from the text (about
+    # 15 characters a second); sources give about $0.015 a minute
+    "gpt-4o-mini-tts": {"unit": "second", "per_minute": 0.015},
     # Local (voice fingerprints): no money cost, counted for the load
     "sherpa-onnx": {"unit": "second", "per_minute": 0.0},
 }

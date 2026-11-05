@@ -37,6 +37,7 @@ async def test_the_plan_and_its_use(client, auth_headers, db_session):
         "over_budget": False,
         "web_searches_per_day": 30,
         "routines": 10,
+        "premium_voice": True,
     }
 
 

@@ -110,9 +110,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   muto mentre il telefono parla (anche in cuffia: un'auto o una cassa Bluetooth sembrano cuffie) e torna ad
   ascoltare dopo (se l'app muore a metà, lo rimette in ascolto alla riconnessione). Testo senza markdown né link,
   tagliato a ~500 caratteri ("Il resto è in Ask."); tenere premuto Ask ferma la voce, e mentre detti non parla.
-  **Voice** (05/11): una delle voci installate sul telefono per la lingua (prima Premium e Enhanced, scaricabili
-  in Impostazioni → Accessibilità → Contenuto letto ad alta voce), o quella del telefono; scelta salvata sul
-  telefono, una per lingua.
+  **Voice** (05/11): sul piano free la voce del telefono per la lingua, senza scelta. Su plus e unlimited
+  (`premium_voice`) le **voci naturali di Echo** (OpenAI gpt-4o-mini-tts, `POST /api/speech`, circa 0,015 $ al
+  minuto, nei costi di `make usage`): il server fa l'MP3, il telefono lo suona abbassando la musica
+  (just_audio, audio_session); offline o su errore legge la voce del telefono. Oppure una delle voci dell'iPhone
+  per la lingua (Premium e Enhanced prima). Scelta salvata sul telefono.
 - **Salute** (05/11, Profile → Health, migrazione 034): l'app firmata con un Apple ID gratuito (SideStore) non
   può leggere HealthKit, quindi lo fa un'automazione di **Comandi rapidi** ogni sera: sonno della notte, passi,
   distanza, esercizio e allenamenti, in POST a `/api/health/day` con una chiave che può solo inviare questo

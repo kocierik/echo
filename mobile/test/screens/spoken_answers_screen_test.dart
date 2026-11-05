@@ -33,6 +33,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
     final voiceStore = SpokenVoiceStore(preferences);
+    await voiceStore.setPremium(true);
     var tries = 0;
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
@@ -60,6 +61,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(voiceStore.voiceFor('it'), isNull);
     expect(tries, 2);
+  });
+
+  testWidgets('without Plus: the phone\'s own voice, and no choice', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final voiceStore = SpokenVoiceStore(preferences);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: SpokenAnswersScreen(
+        store: SpokenAnswersStore(preferences),
+        onTry: () async {},
+        voices: _Catalog(),
+        voiceStore: voiceStore,
+        language: 'it',
+      ),
+    ));
+
+    expect(find.textContaining('natural voices come with the Plus plan'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('spoken-answers-voice')));
+    await tester.pumpAndSettle();
+    expect(find.byType(VoicePickerScreen), findsNothing);
+  });
+
+  testWidgets('with Plus: Echo\'s natural voices first, one chosen and heard', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final voiceStore = SpokenVoiceStore(preferences);
+    await voiceStore.setPremium(true);
+    var tries = 0;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: SpokenAnswersScreen(
+        store: SpokenAnswersStore(preferences),
+        onTry: () async => tries++,
+        voices: _Catalog(),
+        voiceStore: voiceStore,
+        language: 'it',
+        naturalVoices: () async => (
+          voices: [(id: 'nova', description: 'Clear and friendly')],
+          available: true,
+        ),
+      ),
+    ));
+
+    await tester.tap(find.byKey(const Key('spoken-answers-voice')));
+    await tester.pumpAndSettle();
+    expect(find.text('Clear and friendly'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('voice-natural-nova')));
+    await tester.pumpAndSettle();
+
+    expect(voiceStore.naturalVoice, 'nova');
+    expect(tries, 1);
+    // A phone voice instead: the natural one is no longer used
+    await tester.tap(find.text('Federica'));
+    await tester.pumpAndSettle();
+    expect(voiceStore.naturalVoice, isNull);
+    expect(voiceStore.voiceFor('it')?.name, 'Federica');
   });
 }
 

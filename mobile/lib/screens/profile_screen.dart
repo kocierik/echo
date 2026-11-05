@@ -14,6 +14,7 @@ import '../services/app/network_policy.dart';
 import '../services/app/session_controller.dart';
 import '../services/app/spoken_answers_store.dart';
 import '../services/app/spoken_language.dart';
+import '../services/app/spoken_voice_store.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/phone_words.dart';
 import '../services/phone/places_visited.dart';
@@ -66,6 +67,7 @@ class ProfileScreen extends StatefulWidget {
     this.devicesBuilder,
     this.placesVisited,
     this.spokenAnswers,
+    this.spokenVoice,
     this.onTrySpeaking,
     super.key,
   });
@@ -92,6 +94,9 @@ class ProfileScreen extends StatefulWidget {
   /// Spoken answers and its "Try it"; the app's own by default (no row without them).
   final SpokenAnswersStore? spokenAnswers;
   final Future<void> Function()? onTrySpeaking;
+
+  /// The voice chosen and whether the plan has natural voices; the app's own by default.
+  final SpokenVoiceStore? spokenVoice;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -166,6 +171,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadPlan() async {
     try {
       final plan = await _api.getPlan();
+      // Echo's natural voices, and the choice of a voice, come with the plan
+      await (widget.spokenVoice ?? AppRuntime.maybeCoordinator?.spokenVoice)
+          ?.setPremium(plan.premiumVoice);
       if (mounted) setState(() => _plan = plan);
     } catch (_) {}
   }
@@ -205,8 +213,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final palette = EchoPalette.of(context);
     final phoneActions = AppRuntime.maybeCoordinator?.phoneActions;
     final places = widget.placesVisited ?? AppRuntime.maybeCoordinator?.placesVisited;
-    final language = spokenLanguages[_preferences.getString(SpokenLanguageStore.key) ??
-        _account?.language];
+    final language =
+        spokenLanguages[_preferences.getString(SpokenLanguageStore.key) ?? _account?.language];
     return Scaffold(
       backgroundColor: palette.background,
       body: SafeArea(
@@ -236,8 +244,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _AccountCard(account: _account, language: language),
             ValueListenableBuilder<AppViewState>(
               valueListenable: _appController,
-              builder: (context, state, _) =>
-                  _EchoCard(status: state.device, onTap: _openDevice),
+              builder: (context, state, _) => _EchoCard(status: state.device, onTap: _openDevice),
             ),
             if (_plan case final plan?) ...[
               const SizedBox(height: 8),
@@ -324,8 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 key: const Key('profile-instructions'),
                 icon: Icons.tune_rounded,
                 title: 'Instructions',
-                subtitle: _account?.instructions?.split('\n').first ??
-                    'How Echo talks to you.',
+                subtitle: _account?.instructions?.split('\n').first ?? 'How Echo talks to you.',
                 onTap: () async {
                   final account = await Navigator.push<AccountInfo>(
                     context,
@@ -429,7 +435,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           AppRuntime.maybeCoordinator?.answerSpeaker.sample ??
                           () async {},
                       voices: AppRuntime.maybeCoordinator?.phoneVoice,
-                      voiceStore: AppRuntime.maybeCoordinator?.spokenVoice,
+                      voiceStore: widget.spokenVoice ?? AppRuntime.maybeCoordinator?.spokenVoice,
+                      naturalVoices: _api.naturalVoices,
                       language: _preferences.getString(SpokenLanguageStore.key) ?? 'en',
                     )),
                   ),
@@ -511,9 +518,8 @@ final class _AccountCard extends StatelessWidget {
           child: Row(
             children: [
               PersonAvatar(
-                initials: email == null || email.isEmpty
-                    ? '?'
-                    : email.characters.first.toUpperCase(),
+                initials:
+                    email == null || email.isEmpty ? '?' : email.characters.first.toUpperCase(),
                 size: 52,
               ),
               const SizedBox(width: 14),
@@ -620,7 +626,6 @@ final class _EchoCard extends StatelessWidget {
     );
   }
 }
-
 
 /// Devices, server connection, diagnostics and About: rarely needed, one row down.
 final class _MoreScreen extends StatelessWidget {

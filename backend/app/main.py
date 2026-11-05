@@ -48,6 +48,7 @@ from app.routers import (
     saved,
     search,
     segments,
+    speech,
     voices,
     whatsapp,
 )
@@ -150,6 +151,7 @@ app.include_router(documents.router, prefix=settings.api_prefix)
 app.include_router(assistants.router, prefix=settings.api_prefix)
 app.include_router(demo.router, prefix=settings.api_prefix)
 app.include_router(health_data.router, prefix=settings.api_prefix)
+app.include_router(speech.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):

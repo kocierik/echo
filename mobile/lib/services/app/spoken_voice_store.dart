@@ -59,16 +59,45 @@ abstract interface class VoiceCatalog {
   Future<List<PhoneVoice>> voices(String language);
 }
 
-/// Profile → Spoken answers → Voice: the voice chosen for each language, kept on this
-/// phone; none is the phone's own for the language.
+/// Profile → Spoken answers → Voice, kept on this phone. On the plans with natural voices
+/// (Plus, Unlimited: [premium], from the server's plan): one of Echo's natural voices, or
+/// one of the phone's for each language. On the others: the phone's own voice for the
+/// language, no choice.
 final class SpokenVoiceStore extends ChangeNotifier {
   SpokenVoiceStore(this._preferences);
 
   final SharedPreferences _preferences;
 
   static String keyFor(String language) => 'spoken_voice_$language';
+  static const naturalKey = 'spoken_voice_natural';
+  static const premiumKey = 'spoken_voice_premium';
 
+  /// The plan has Echo's natural voices (and the choice of a voice at all).
+  bool get premium => _preferences.getBool(premiumKey) ?? false;
+
+  /// From the plan, when it is read (Profile).
+  Future<void> setPremium(bool value) async {
+    if (value == premium) return;
+    await _preferences.setBool(premiumKey, value);
+    notifyListeners();
+  }
+
+  /// Echo's natural voice chosen ("coral"), on a plan that has them.
+  String? get naturalVoice => premium ? _preferences.getString(naturalKey) : null;
+
+  /// One of Echo's natural voices; none: the phone's.
+  Future<void> chooseNatural(String? id) async {
+    if (id == null) {
+      await _preferences.remove(naturalKey);
+    } else {
+      await _preferences.setString(naturalKey, id);
+    }
+    notifyListeners();
+  }
+
+  /// The phone's voice chosen for [language]; none (the phone's own) without the plan.
   PhoneVoice? voiceFor(String language) {
+    if (!premium) return null;
     final stored = _preferences.getString(keyFor(language));
     if (stored == null) return null;
     try {
@@ -78,7 +107,10 @@ final class SpokenVoiceStore extends ChangeNotifier {
     }
   }
 
+  /// One of the phone's voices for [language] (none: its own); Echo's natural voice is
+  /// no longer used.
   Future<void> choose(String language, PhoneVoice? voice) async {
+    await _preferences.remove(naturalKey);
     if (voice == null) {
       await _preferences.remove(keyFor(language));
     } else {

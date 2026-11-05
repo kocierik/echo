@@ -30,13 +30,19 @@ FREE = "free"
 
 # To be revised with the prices (docs/superpowers/specs/2026-10-24-plans-and-quotas-design.md)
 DEFAULT_PLANS: dict[str, dict[str, int]] = {
-    "free": {"monthly_minutes": 300, "daily_minutes": 10, "web_searches_per_day": 5, "routines": 2},
+    # premium_voice: 1 when spoken answers may use Echo's natural voices (services/speech.py)
+    "free": {
+        "monthly_minutes": 300, "daily_minutes": 10, "web_searches_per_day": 5, "routines": 2,
+        "premium_voice": 0,
+    },
     "plus": {
         "monthly_minutes": 1500, "daily_minutes": 10, "web_searches_per_day": 30, "routines": 10,
+        "premium_voice": 1,
     },
     # Fair use: about 5 hours a day
     "unlimited": {
         "monthly_minutes": 9000, "daily_minutes": 10, "web_searches_per_day": 60, "routines": 10,
+        "premium_voice": 1,
     },
 }
 
@@ -49,6 +55,8 @@ class Plan:
     daily_minutes: int
     web_searches_per_day: int
     routines: int
+    # 1: spoken answers may use Echo's natural voices; 0: the phone's own
+    premium_voice: int = 0
 
 
 def plan_names() -> list[str]:

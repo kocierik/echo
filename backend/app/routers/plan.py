@@ -30,6 +30,8 @@ class PlanOut(BaseModel):
     over_budget: bool
     web_searches_per_day: int
     routines: int
+    # Spoken answers may use Echo's natural voices (Profile → Spoken answers → Voice)
+    premium_voice: bool = False
 
 
 @router.get("", response_model=PlanOut)
@@ -47,4 +49,5 @@ async def read_plan(
         over_budget=usage.over_budget,
         web_searches_per_day=usage.plan.web_searches_per_day,
         routines=usage.plan.routines,
+        premium_voice=bool(usage.plan.premium_voice),
     )

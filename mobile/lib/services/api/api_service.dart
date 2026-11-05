@@ -14,6 +14,7 @@ import 'places_api.dart';
 import 'plan_api.dart';
 import 'routines_api.dart';
 import 'saved_api.dart';
+import 'speech_api.dart';
 import 'voice_api.dart';
 import 'wearable_api.dart';
 import 'whatsapp_api.dart';
@@ -35,6 +36,7 @@ export 'places_api.dart';
 export 'plan_api.dart';
 export 'routines_api.dart';
 export 'saved_api.dart';
+export 'speech_api.dart';
 export 'voice_api.dart';
 
 /// The Echo server: every screen's interface, from the endpoint groups in this folder
@@ -58,6 +60,7 @@ class ApiService extends ApiClient
         AssistantsEndpoints,
         ExampleDataEndpoints,
         HealthEndpoints,
+        SpeechEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({
