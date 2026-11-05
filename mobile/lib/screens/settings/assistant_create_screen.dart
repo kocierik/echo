@@ -215,128 +215,213 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(title: const Text('New assistant')),
+      // The microphone and Create stay at the bottom, in reach of the thumb and above
+      // the keyboard; the rest scrolls
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        child: Column(
           children: [
-            Text('What should it do for you?', style: textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(
-              'Say it aloud or type it, as much as you like: its topic, what to keep track of, '
-              'how to answer. Echo writes the assistant from it.',
-              style: textTheme.bodySmall?.copyWith(color: palette.text2),
-            ),
-            const SizedBox(height: 12),
-            // Saying it is quicker than typing it: the first way offered
-            FilledButton.tonalIcon(
-              key: const Key('create-dictate'),
-              onPressed: busy ? null : () => unawaited(_dictate()),
-              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              icon: Icon(_listening ? Icons.stop_rounded : Icons.mic_rounded),
-              label: Text(_listening ? 'Listening… tap to stop' : 'Tell it'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('create-description'),
-              controller: _description,
-              minLines: 5,
-              maxLines: 12,
-              maxLength: 2000,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(
-                hintText: 'E.g. Help me with the house: bills and due dates, the weekly '
-                    'shopping, chores shared with Olta. Keep the answers short.',
-                contentPadding: const EdgeInsets.all(16),
-                border: field,
-                enabledBorder: field,
-                focusedBorder: field.copyWith(
-                  borderSide: BorderSide(color: palette.accent, width: 2),
-                ),
-              ),
-            ),
-            if (_templates.isNotEmpty) ...[
-              Text('Or start from', style: textTheme.labelMedium?.copyWith(color: palette.text2)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  for (final template in _templates)
-                    ChoiceChip(
-                      key: Key('create-template-${template.key}'),
-                      label: Text('${template.emoji} ${template.name}'),
-                      selected: _template?.key == template.key,
-                      showCheckmark: false,
-                      onSelected: busy ? null : (_) => _pick(template),
+                  Text('What should it do for you?', style: textTheme.titleLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Say it aloud or type it, as much as you like: its topic, what to keep track of, '
+                    'how to answer. Echo writes the assistant from it.',
+                    style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    key: const Key('create-description'),
+                    controller: _description,
+                    minLines: 5,
+                    maxLines: 12,
+                    maxLength: 2000,
+                    textCapitalization: TextCapitalization.sentences,
+                    decoration: InputDecoration(
+                      hintText: 'E.g. Help me with the house: bills and due dates, the weekly '
+                          'shopping, chores shared with Olta. Keep the answers short.',
+                      contentPadding: const EdgeInsets.all(16),
+                      border: field,
+                      enabledBorder: field,
+                      focusedBorder: field.copyWith(
+                        borderSide: BorderSide(color: palette.accent, width: 2),
+                      ),
                     ),
+                  ),
+                  if (_templates.isNotEmpty) ...[
+                    Text('Or start from',
+                        style: textTheme.labelMedium?.copyWith(color: palette.text2)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final template in _templates)
+                          ChoiceChip(
+                            key: Key('create-template-${template.key}'),
+                            label: Text('${template.emoji} ${template.name}'),
+                            selected: _template?.key == template.key,
+                            showCheckmark: false,
+                            onSelected: busy ? null : (_) => _pick(template),
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (_error case final error?)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Text(error, style: textTheme.bodySmall?.copyWith(color: palette.red)),
+                    ),
+                  if (proposal != null) ...[
+                    const SizedBox(height: 20),
+                    _Preview(proposal: proposal),
+                    const SizedBox(height: 12),
+                    _TryIt(
+                      question: _question,
+                      trying: _trying,
+                      answer: _answer,
+                      emoji: proposal.emoji,
+                      onAsk: () => unawaited(_try()),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            key: const Key('create-edit'),
+                            onPressed: busy ? null : () => unawaited(_edit(proposal: proposal)),
+                            child: const Text('Edit'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            key: const Key('create-save'),
+                            onPressed: busy ? null : () => unawaited(_save()),
+                            child: Text(_saving ? 'Saving…' : 'Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  TextButton(
+                    key: const Key('create-myself'),
+                    onPressed: busy ? null : () => unawaited(_edit()),
+                    child: const Text('Write it myself'),
+                  ),
                 ],
               ),
-            ],
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const Key('create-write'),
-              onPressed: busy || (_description.text.trim().isEmpty && _template == null)
+            ),
+            _BottomBar(
+              listening: _listening,
+              writing: _writing,
+              rewrite: proposal != null,
+              onDictate: busy ? null : () => unawaited(_dictate()),
+              onWrite: busy || (_description.text.trim().isEmpty && _template == null)
                   ? null
                   : () => unawaited(_write()),
-              icon: _writing
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.auto_awesome_rounded, size: 18),
-              label: Text(
-                _writing
-                    ? 'Echo is writing it…'
-                    : proposal == null
-                        ? 'Create it'
-                        : 'Write it again',
-              ),
-            ),
-            if (_error case final error?)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Text(error, style: textTheme.bodySmall?.copyWith(color: palette.red)),
-              ),
-            if (proposal != null) ...[
-              const SizedBox(height: 20),
-              _Preview(proposal: proposal),
-              const SizedBox(height: 12),
-              _TryIt(
-                question: _question,
-                trying: _trying,
-                answer: _answer,
-                emoji: proposal.emoji,
-                onAsk: () => unawaited(_try()),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      key: const Key('create-edit'),
-                      onPressed: busy ? null : () => unawaited(_edit(proposal: proposal)),
-                      child: const Text('Edit'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      key: const Key('create-save'),
-                      onPressed: busy ? null : () => unawaited(_save()),
-                      child: Text(_saving ? 'Saving…' : 'Save'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-            TextButton(
-              key: const Key('create-myself'),
-              onPressed: busy ? null : () => unawaited(_edit()),
-              child: const Text('Write it myself'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// At the bottom: the microphone (saying it is quicker than typing it) and Create.
+final class _BottomBar extends StatelessWidget {
+  const _BottomBar({
+    required this.listening,
+    required this.writing,
+    required this.rewrite,
+    required this.onDictate,
+    required this.onWrite,
+  });
+
+  final bool listening;
+  final bool writing;
+
+  /// A proposal is there: Create writes it again.
+  final bool rewrite;
+  final VoidCallback? onDictate;
+  final VoidCallback? onWrite;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        border: Border(top: BorderSide(color: palette.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (listening)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Listening… tap to stop',
+                style: textTheme.bodySmall?.copyWith(color: palette.accent),
+              ),
+            ),
+          Row(
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox.square(
+                    dimension: 60,
+                    child: IconButton.filled(
+                      key: const Key('create-dictate'),
+                      tooltip: listening ? 'Stop' : 'Tell it',
+                      onPressed: onDictate,
+                      style: IconButton.styleFrom(
+                        backgroundColor: listening ? palette.red : palette.accent,
+                        foregroundColor: palette.surface,
+                      ),
+                      icon: Icon(
+                        listening ? Icons.stop_rounded : Icons.mic_rounded,
+                        size: 30,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    listening ? 'Stop' : 'Tell it',
+                    style: textTheme.labelSmall?.copyWith(color: palette.text2),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: FilledButton.icon(
+                  key: const Key('create-write'),
+                  onPressed: onWrite,
+                  style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+                  icon: writing
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.auto_awesome_rounded, size: 18),
+                  label: Text(
+                    writing
+                        ? 'Echo is writing it…'
+                        : rewrite
+                            ? 'Write it again'
+                            : 'Create it',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
