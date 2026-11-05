@@ -6,19 +6,29 @@ import '../../models/assistant.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/assistants_api.dart';
 import '../../services/api/memory_items_api.dart';
+import '../../services/chat/voice_input.dart';
 import '../../theme/app_theme.dart';
 import 'assistant_editor_screen.dart';
 
 /// New assistant, described in words (as Lindy and Gemini's Gems): what it should do for
-/// the user, typed or dictated; a template is a starting text. Echo writes it (name,
+/// the user, said aloud ("Tell it", the phone's dictation) or typed; a template is a
+/// starting text. Echo writes it (name,
 /// emoji, instructions, first notes), the user tries it with a question, then saves it,
 /// edits it or has it written again. "Write it myself" opens the editor empty. Pops true
 /// once saved.
 final class AssistantCreateScreen extends StatefulWidget {
-  const AssistantCreateScreen({required this.api, required this.documents, super.key});
+  const AssistantCreateScreen({
+    required this.api,
+    required this.documents,
+    this.voiceInput,
+    super.key,
+  });
 
   final AssistantsApi api;
   final DocumentsApi documents;
+
+  /// The phone's dictation (replaced in the tests).
+  final VoiceInput? voiceInput;
 
   @override
   State<AssistantCreateScreen> createState() => _AssistantCreateScreenState();
@@ -36,6 +46,12 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
   bool _saving = false;
   String? _error;
 
+  late final VoiceInput _voice = widget.voiceInput ?? SpeechToTextVoiceInput();
+  bool _listening = false;
+
+  /// What was in the field when dictation started: what is said goes after it.
+  String _before = '';
+
   @override
   void initState() {
     super.initState();
@@ -46,6 +62,7 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
 
   @override
   void dispose() {
+    if (_listening) unawaited(_voice.cancel());
     _description.dispose();
     _question.dispose();
     super.dispose();
@@ -58,6 +75,42 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
     } catch (_) {
       // Only the starting points are missing: the description still works
     }
+  }
+
+  /// "Tell it": what is said goes into the description as it is heard; a tap stops it.
+  Future<void> _dictate() async {
+    if (_listening) {
+      await _voice.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _error = null);
+    if (!await _voice.request()) {
+      if (mounted) {
+        setState(() => _error =
+            'Dictation is off: allow the Microphone and Speech Recognition for Echo in Settings.');
+      }
+      return;
+    }
+    _before = _description.text.trim();
+    void heard(String words) {
+      if (!mounted) return;
+      final text = [if (_before.isNotEmpty) _before, words.trim()].join(' ');
+      _description.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+
+    setState(() => _listening = true);
+    await _voice.start(
+      onPartial: heard,
+      onFinal: (words) {
+        heard(words);
+        if (mounted) setState(() => _listening = false);
+      },
+    );
   }
 
   /// A template as the starting text, to change; tapped again, it is dropped.
@@ -169,11 +222,20 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
             Text('What should it do for you?', style: textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              'Say it in your words, as much as you like: its topic, what to keep track of, how '
-              'to answer. Echo writes the assistant from it.',
+              'Say it aloud or type it, as much as you like: its topic, what to keep track of, '
+              'how to answer. Echo writes the assistant from it.',
               style: textTheme.bodySmall?.copyWith(color: palette.text2),
             ),
             const SizedBox(height: 12),
+            // Saying it is quicker than typing it: the first way offered
+            FilledButton.tonalIcon(
+              key: const Key('create-dictate'),
+              onPressed: busy ? null : () => unawaited(_dictate()),
+              style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+              icon: Icon(_listening ? Icons.stop_rounded : Icons.mic_rounded),
+              label: Text(_listening ? 'Listening… tap to stop' : 'Tell it'),
+            ),
+            const SizedBox(height: 10),
             TextField(
               key: const Key('create-description'),
               controller: _description,

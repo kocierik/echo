@@ -4,6 +4,7 @@ import 'package:echo_app/models/chat_session.dart';
 import 'package:echo_app/models/memory_items.dart';
 import 'package:echo_app/screens/chat_history_screen.dart';
 import 'package:echo_app/screens/chat_screen.dart';
+import 'package:echo_app/screens/settings/assistant_create_screen.dart';
 import 'package:echo_app/screens/settings/assistants_screen.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/api_service.dart';
@@ -213,6 +214,52 @@ final class _Voice implements VoiceInput {
   Future<void> cancel() async {}
 }
 
+/// The phone's dictation, saying [words] (a part first, then all of it).
+final class _Speaking implements VoiceInput {
+  _Speaking(this.words, {this.allowed = true});
+
+  final String words;
+  final bool allowed;
+  ValueChanged<String>? _final;
+
+  @override
+  Future<bool> available() async => allowed;
+
+  @override
+  Future<bool> request() async => allowed;
+
+  @override
+  Future<void> start({
+    required ValueChanged<String> onPartial,
+    required ValueChanged<String> onFinal,
+    String? language,
+  }) async {
+    onPartial(words.split(' ').first);
+    _final = onFinal;
+  }
+
+  /// The user stops talking: the whole sentence.
+  void finish() => _final?.call(words);
+
+  @override
+  Future<void> stop() async {}
+
+  @override
+  Future<void> cancel() async {}
+}
+
+Future<void> _pumpCreate(WidgetTester tester, _Api api, VoiceInput voice) async {
+  tester.view.physicalSize = const Size(400, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+  await tester.pumpWidget(MaterialApp(
+    theme: AppTheme.light,
+    home: AssistantCreateScreen(api: api, documents: api, voiceInput: voice),
+  ));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpAssistants(WidgetTester tester, _Api api) async {
   // Tall enough for the whole editor: a list builds only what is on screen
   tester.view.physicalSize = const Size(400, 1600);
@@ -263,6 +310,33 @@ void main() {
       await _tap(tester, find.byKey(const Key('create-save')));
       expect(api.created.single.emoji, '🥦');
       expect(find.byKey(const Key('assistant-n0')), findsOneWidget);
+    });
+
+    testWidgets('told aloud: what is said goes into the description, after what is there',
+        (tester) async {
+      final api = _Api();
+      final voice = _Speaking('aiutami con le bollette e la spesa');
+      await _pumpCreate(tester, api, voice);
+      await tester.enterText(find.byKey(const Key('create-description')), 'Casa.');
+
+      await _tap(tester, find.byKey(const Key('create-dictate')));
+      expect(find.text('Listening… tap to stop'), findsOneWidget);
+      expect(find.text('Casa. aiutami'), findsOneWidget);
+      voice.finish();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Casa. aiutami con le bollette e la spesa'), findsOneWidget);
+      expect(find.text('Tell it'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('create-write')));
+      expect(api.composed.single.$2, 'Casa. aiutami con le bollette e la spesa');
+    });
+
+    testWidgets('dictation turned off says where to allow it', (tester) async {
+      await _pumpCreate(tester, _Api(), _Speaking('x', allowed: false));
+
+      await _tap(tester, find.byKey(const Key('create-dictate')));
+
+      expect(find.textContaining('allow the Microphone and Speech Recognition'), findsOneWidget);
     });
 
     testWidgets('a template is a starting text, sent with the description', (tester) async {
