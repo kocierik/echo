@@ -29,6 +29,22 @@ UNREACHABLE_TTL_S = 30
 LIST_CHATS = "WHATSAPP_LIST_CHATS"
 READ_CHAT = "WHATSAPP_READ_CHAT"
 
+# How the answer shows them: Markdown the app renders, clearer than prose
+SHOW_CHATS = (
+    "Show them as a Markdown list, one line per chat: '- **Name** · when · the last "
+    "message' (when as 'today 14:05', 'yesterday', 'Mon 3 Nov'); the user's own last "
+    "message starts with 'You:' in the user's language. A phone number as the name is "
+    "someone not in the user's contacts: write it as given."
+)
+SHOW_MESSAGES = (
+    "Show them as a chat transcript in Markdown, not as prose: for each chat its name in "
+    "bold on its own line; the day on its own line in italics when it changes ('_Mon 3 "
+    "Nov_'); then one line per message: '- 14:05 · **Name**: the message', the user's own "
+    "as **You** in the user's language. Keep the messages' own words. With more than 20, "
+    "say the earlier ones in one sentence first and show the last 20. A phone number as "
+    "the name is someone not in the user's contacts: write it as given."
+)
+
 TOOLS = [
     {
         "type": "function",
@@ -105,6 +121,21 @@ def _since(value: str | None) -> str | None:
     return moment.isoformat()
 
 
+def _by_chat(messages: list[dict]) -> list[dict]:
+    """The messages under their chat (its name once), oldest first in each."""
+    chats: dict[str, dict] = {}
+    for m in messages:
+        chat = chats.setdefault(
+            m.get("chat") or "", {"name": m.get("name"), "chat": m.get("chat"), "messages": []}
+        )
+        chat["messages"].append({
+            "from": "you" if m.get("from_me") else m.get("name"),
+            "at": _local(m.get("at")),
+            "text": m.get("text"),
+        })
+    return list(chats.values())
+
+
 def _count(value, default: int, most: int) -> int:
     try:
         number = int(value)
@@ -132,7 +163,7 @@ class WhatsAppProvider:
                 chats = await self._bridge.chats(owner, _count(arguments.get("limit"), 20, 50))
                 for chat in chats:
                     chat["last_at"] = _local(chat.get("last_at"))
-                return ToolResult(ok=True, data={"chats": chats})
+                return ToolResult(ok=True, data={"chats": chats, "how_to_show": SHOW_CHATS})
             if tool == READ_CHAT:
                 person = str(arguments.get("person") or "").strip() or None
                 chat = str(arguments.get("chat") or "").strip() or None
@@ -147,20 +178,13 @@ class WhatsAppProvider:
                 )
                 if not messages:
                     return ToolResult(ok=True, data={
-                        "messages": [],
+                        "chats": [],
                         "note": "No messages from this person in the last 7 days.",
                     })
-                return ToolResult(ok=True, data={"messages": [
-                    {
-                        "from": "you" if m.get("from_me") else m.get("name"),
-                        # Whose chat, also for the user's own lines
-                        "chat_name": m.get("name"),
-                        "chat": m.get("chat"),
-                        "text": m.get("text"),
-                        "at": _local(m.get("at")),
-                    }
-                    for m in messages
-                ]})
+                return ToolResult(ok=True, data={
+                    "chats": _by_chat(messages),
+                    "how_to_show": SHOW_MESSAGES,
+                })
         except BridgeError as exc:
             return ToolResult(ok=False, error=f"WhatsApp could not be read: {exc}")
         return ToolResult(ok=False, error=f"Unknown tool: {tool}")

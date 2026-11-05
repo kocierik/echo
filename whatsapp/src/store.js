@@ -1,5 +1,6 @@
 // The messages Echo can read: in this process's memory only, never on disk, for at most
-// seven days and `cap` messages per user (the oldest go first). A restart forgets them.
+// seven days and `cap` messages per user (the oldest go first). A restart forgets them;
+// the contacts' names are kept on disk by the sessions (names(), restoreNames()).
 
 const WEEK = 7 * 24 * 3600 * 1000;
 
@@ -156,6 +157,31 @@ export class MessageStore {
       text: message.text,
       at: message.at,
     }));
+  }
+
+  /** The contact names, for the disk (the messages never are): [[jid, name], …]. */
+  names(userId) {
+    const user = this.users.get(userId);
+    return user ? [...user.names] : [];
+  }
+
+  /** Contact names kept from before a restart. */
+  restoreNames(userId, entries) {
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      const [jid, name] = Array.isArray(entry) ? entry : [];
+      if (typeof jid === 'string' && typeof name === 'string') this.setName(userId, jid, name);
+    }
+  }
+
+  /** Lids named or chatting whose phone number is not known yet. */
+  unaliasedLids(userId) {
+    const user = this.users.get(userId);
+    if (!user) return [];
+    const lids = new Set();
+    for (const jid of [...user.names.keys(), ...user.messages.map((m) => m.chat)]) {
+      if (jid.endsWith('@lid') && !user.aliases.has(jid)) lids.add(jid);
+    }
+    return [...lids];
   }
 
   clear(userId) {

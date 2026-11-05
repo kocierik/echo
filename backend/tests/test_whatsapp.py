@@ -195,7 +195,12 @@ async def test_the_tools_read_the_bridge(bridge):
     since = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
     messages = await provider.execute(user, READ_CHAT, {"person": "Marco", "since": since})
     assert messages.ok
-    assert [m["from"] for m in messages.data["messages"]] == ["Marco", "you"]
+    [chat] = messages.data["chats"]
+    assert chat["name"] == "Marco"
+    assert [m["from"] for m in chat["messages"]] == ["Marco", "you"]
+    # Shown as a transcript, not prose
+    assert "transcript" in messages.data["how_to_show"]
+    assert "how_to_show" in chats.data
     asked = bridge.asked[-1].url.params
     assert (asked["name"], asked["since"]) == ("Marco", since)
 
@@ -292,8 +297,9 @@ async def test_messages_carry_the_chat_name_and_the_users_local_time(bridge, mon
         str(TEST_USER_ID), READ_CHAT, {"person": "Marco", "since": "2026-10-28T09:00"}
     )
 
-    first, mine = result.data["messages"]
-    assert (mine["from"], mine["chat_name"]) == ("you", "Marco")
+    [chat] = result.data["chats"]
+    first, mine = chat["messages"]
+    assert (mine["from"], chat["name"]) == ("you", "Marco")
     # 08:00 UTC is 09:00 in Rome (CET)
     assert first["at"].startswith("2026-10-28T09:00:00+01:00")
     # A time without a zone is the user's

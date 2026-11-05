@@ -3,13 +3,14 @@
 // shows online. Its keys stay in `dataDir/<userId>` so a restart does not unlink it; its
 // messages only go to the in-memory store.
 
-import { readdir, rm, stat } from 'node:fs/promises';
+import { readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import makeWASocket, {
   Browsers,
   DisconnectReason,
   fetchLatestBaileysVersion,
+  jidNormalizedUser,
   useMultiFileAuthState,
 } from 'baileys';
 
@@ -18,6 +19,10 @@ import { extractChange, extractMessage } from './extract.js';
 const PAIRING_WAIT_MS = 20_000;
 const MAX_BACKOFF_MS = 60_000;
 const VERSION_WAIT_MS = 5_000;
+// The contacts' names (never the messages), next to the keys: a restart keeps them
+const NAMES_FILE = 'echo-names.json';
+// Names arrive in bursts (the address book): written once it settles
+const NAMES_WAIT_MS = 2_000;
 
 function failure(status, publicMessage) {
   return Object.assign(new Error(publicMessage), { status, publicMessage });
@@ -42,6 +47,7 @@ export class Sessions {
     fetchVersion = fetchLatestBaileysVersion,
     authState = useMultiFileAuthState,
     pairingWaitMs = PAIRING_WAIT_MS,
+    namesWaitMs = NAMES_WAIT_MS,
   }) {
     this.dataDir = dataDir;
     this.store = store;
@@ -56,6 +62,9 @@ export class Sessions {
     this.blocked = new Set();
     this.pending = new Map();
     this.version = null;
+    // userId -> timer: names to resolve and write once a burst settles
+    this.nameTimers = new Map();
+    this.namesWaitMs = namesWaitMs;
   }
 
   status(userId) {
@@ -147,6 +156,8 @@ export class Sessions {
       }
       this.sessions.delete(userId);
     }
+    clearTimeout(this.nameTimers.get(userId));
+    this.nameTimers.delete(userId);
     if (forget) {
       await rm(path.join(this.dataDir, userId), { recursive: true, force: true });
       this.store.clear(userId);
@@ -167,12 +178,14 @@ export class Sessions {
     if (previous?.stopped) return null;
     const folder = path.join(this.dataDir, userId);
     const { state, saveCreds } = await this.authState(folder);
+    const hadNames = await this.#loadNames(userId, folder);
     const version = await this.#currentVersion();
     if (previous?.stopped) {
       // Unlinked while this reconnect waited: what it just made goes too
       await rm(folder, { recursive: true, force: true });
       return null;
     }
+    const restored = Boolean(state.creds?.registered);
     const sock = this.connect({
       auth: state,
       ...(version ? { version } : {}),
@@ -207,6 +220,13 @@ export class Sessions {
         session.state = 'linked';
         session.phone = phoneOf(sock.user?.id) ?? session.phone;
         session.retries = 0;
+        this.#namesChanged(userId, session);
+        // Linked before a restart that lost the names: the address book again, once (a
+        // new link gets it anyway)
+        if (restored && !hadNames && !session.contactsAsked) {
+          session.contactsAsked = true;
+          void this.#askContacts(userId, session, state);
+        }
       }
       if (connection === 'close') this.#closed(userId, session, lastDisconnect);
     });
@@ -230,6 +250,10 @@ export class Sessions {
     });
     sock.ev.on('contacts.update', (contacts) => {
       if (live()) this.#name(userId, contacts);
+    });
+    sock.ev.on('messages.upsert', () => {
+      // A chat by lid only: its number from the keys, when they know it
+      if (live() && this.store.unaliasedLids(userId).length) this.#namesChanged(userId, session);
     });
     return session;
   }
@@ -285,6 +309,66 @@ export class Sessions {
       for (const jid of [contact.id, contact.phoneNumber, contact.lid]) {
         if (jid) this.store.setName(userId, jid, name);
       }
+    }
+    const session = this.sessions.get(userId);
+    if (session) this.#namesChanged(userId, session);
+  }
+
+  /** Once a burst of names settles: lids to numbers, then the names to disk. */
+  #namesChanged(userId, session) {
+    clearTimeout(this.nameTimers.get(userId));
+    const timer = setTimeout(() => {
+      this.nameTimers.delete(userId);
+      void this.#settleNames(userId, session);
+    }, this.namesWaitMs);
+    timer.unref?.();
+    this.nameTimers.set(userId, timer);
+  }
+
+  async #settleNames(userId, session) {
+    if (session.stopped || this.sessions.get(userId) !== session) return;
+    // WhatsApp gives many contacts by lid only; the keys know most of their numbers
+    const lids = this.store.unaliasedLids(userId);
+    const mapping = session.sock.signalRepository?.lidMapping;
+    if (lids.length && mapping) {
+      try {
+        for (const pair of (await mapping.getPNsForLIDs(lids)) ?? []) {
+          if (pair?.lid && pair?.pn) this.store.alias(userId, pair.lid, jidNormalizedUser(pair.pn));
+        }
+      } catch (error) {
+        this.logger?.warn({ userId, err: error }, 'could not read the lid numbers');
+      }
+    }
+    if (session.stopped) return;
+    try {
+      await writeFile(
+        path.join(this.dataDir, userId, NAMES_FILE),
+        JSON.stringify(this.store.names(userId)),
+        { mode: 0o600 },
+      );
+    } catch (error) {
+      this.logger?.warn({ userId, err: error }, 'could not keep the names');
+    }
+  }
+
+  /** The names kept before a restart; false when there were none. */
+  async #loadNames(userId, folder) {
+    try {
+      const entries = JSON.parse(await readFile(path.join(folder, NAMES_FILE), 'utf8'));
+      this.store.restoreNames(userId, entries);
+      return Array.isArray(entries) && entries.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** The address book from WhatsApp again: its sync version dropped, a full snapshot. */
+  async #askContacts(userId, session, state) {
+    try {
+      await state.keys.set({ 'app-state-sync-version': { critical_unblock_low: null } });
+      await session.sock.resyncAppState?.(['critical_unblock_low'], false);
+    } catch (error) {
+      this.logger?.warn({ userId, err: error }, 'could not ask for the contacts again');
     }
   }
 }
