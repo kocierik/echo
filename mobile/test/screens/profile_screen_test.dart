@@ -207,6 +207,21 @@ void main() {
     expect(find.byKey(const Key('spoken-answers-control')), findsOneWidget);
   });
 
+  testWidgets('Example data opens its switch', (tester) async {
+    api.exampleData = true;
+    await pumpSettings(tester);
+
+    await tester.ensureVisible(find.byKey(const Key('profile-example-data')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('profile-example-data')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<Switch>(find.byKey(const Key('example-data-switch'))).value,
+      isTrue,
+    );
+  });
+
   testWidgets('Memory opens About you and Documents', (tester) async {
     await pumpSettings(tester);
 
@@ -466,6 +481,11 @@ final class _FakeApiService extends ApiService {
 
   @override
   Future<List<Assistant>> listAssistants() async => const [];
+
+  bool exampleData = false;
+
+  @override
+  Future<bool> exampleDataOn() async => exampleData;
 
   @override
   Future<PlanInfo> getPlan() async => plan ?? (throw Exception('no plan'));

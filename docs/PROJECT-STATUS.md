@@ -1,4 +1,4 @@
-# Echo — Stato del progetto (04/11/2026)
+# Echo — Stato del progetto (05/11/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
@@ -8,7 +8,8 @@ l'aggiornamento del firmware via Bluetooth e Promemoria/Calendario dell'iPhone. 
 ricerca web, gli incarichi ricorrenti, le nuove schede Today · Ask · Profile, i to-do solo su richiesta e le
 promesse più rigide. Aggiornato il 28/10 dopo gli incarichi che parlano solo quando serve. Aggiornato il 04/11
 dopo memoria, documenti, assistenti e WhatsApp (29/10), le correzioni di sicurezza del 29/10, il deploy corretto
-(30/10) e il tracciamento delle esecuzioni (31/10). Il dettaglio di quanto resta è in [ROADMAP.md](ROADMAP.md);
+(30/10) e il tracciamento delle esecuzioni (31/10). Aggiornato il 05/11 dopo i dati di esempio, la scelta della voce e i
+documenti divisi in passaggi più corti. Il dettaglio di quanto resta è in [ROADMAP.md](ROADMAP.md);
 il progetto del coordinatore multi-agente in [multi-agent/](multi-agent/README.md).
 
 ---
@@ -109,6 +110,15 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   muto mentre il telefono parla (anche in cuffia: un'auto o una cassa Bluetooth sembrano cuffie) e torna ad
   ascoltare dopo (se l'app muore a metà, lo rimette in ascolto alla riconnessione). Testo senza markdown né link,
   tagliato a ~500 caratteri ("Il resto è in Ask."); tenere premuto Ask ferma la voce, e mentre detti non parla.
+  **Voice** (05/11): una delle voci installate sul telefono per la lingua (prima Premium e Enhanced, scaricabili
+  in Impostazioni → Accessibilità → Contenuto letto ad alta voce), o quella del telefono; scelta salvata sul
+  telefono, una per lingua.
+- **Example data** (05/11, Profile, migrazione 033): un interruttore che riempie Echo con alcuni giorni di
+  esempio (6 conversazioni in italiano o inglese secondo la lingua dell'account, 3 fatti, 3 cose salvate, 3
+  luoghi). Le conversazioni sono segmenti con la trascrizione, analizzati dal worker come quelli veri (persone,
+  task, eventi, ricerca, riassunti). Ogni riga creata è in `demo_items`: spento, cancella solo quelle (persone e
+  task citati anche altrove restano; le liste salvate dove hai messo cose tue restano) e riscrive i riassunti dei
+  giorni scritti nel frattempo.
 - **Altre lingue e traduzione** (28/10, Profile → Language): fino a 4 lingue sentite intorno (en, it, es, fr, de,
   pt). Con almeno una, la trascrizione riconosce in quale lingua è ogni segmento (Deepgram `detect_language`
   ristretto a quelle; se rifiuta le keyterm insieme, riprova senza) e la salva; senza, nulla cambia. Nella
@@ -119,7 +129,8 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   religione, sessualità, etnia, debiti, e le usa solo se le tieni; "ricordati che…"/"dimentica che…" le aggiungono
   o tolgono a voce (tenuti solo se il tuo messaggio lo chiede; altrimenti restano suggerimenti). **Documents**:
   PDF, Word, testo, Markdown (10 MB, 30 al massimo); il worker legge il file in un thread, con limiti (pagine,
-  dimensione aperta, lunghezza del testo), lo butta appena letto e tiene solo il testo, diviso e indicizzato; uno
+  dimensione aperta, lunghezza del testo), lo butta appena letto e tiene solo il testo, diviso in passaggi corti (~120 parole, 1.200 caratteri al
+  massimo; dal 05/11, migrazione 032 che reindicizza quelli già caricati) e indicizzato sotto il nome del documento; uno
   illeggibile (PDF scansionato, password, file binario, zip enorme) finisce "failed" con il motivo. Le risposte di
   memoria usano i 3 passaggi più vicini (similarità ≥ 0,35), nominando il documento; le app collegate via MCP non
   vedono i documenti. Fatti e documenti sono nell'export.
@@ -315,10 +326,13 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 - **Registrazione aperta, per scelta:** chiunque trovi il server può crearsi un account e usare la chiave OpenAI
   del server, entro le quote del piano free (300 minuti al mese, 5 ricerche web al giorno, 2 incarichi) e 5
   registrazioni l'ora per indirizzo. `REGISTRATION_OPEN=false` la chiude.
-- **Il tuo account è sul piano free** (04/11, unico account del server): 2 incarichi e 5 ricerche web al giorno.
-  Per i limiti pieni: `make set-plan EMAIL=… PLAN=unlimited`.
+- **PDF da LaTeX senza spazi:** il testo di un CV fatto con LaTeX esce con le parole attaccate
+  ("Developsandoperatesproduction…"): pypdf non vede gli spazi stretti del testo giustificato. La ricerca lo trova
+  comunque con i passaggi corti, ma peggio; pdfminer.six regge spazi un po' più stretti, da provare sul file vero.
+- **Assistenti, "New assistant":** l'app leggeva i modelli come oggetto invece che come lista ("invalid
+  response"); corretto il 05/11, serve una nuova build.
 - **Tracciamento delle esecuzioni (U1):** la migrazione 031 non è ancora applicata sul server (che è alla 030):
-  la applica il prossimo `make deploy`. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
+  la applica il prossimo `make deploy`, con la 032 e la 033. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
   sotto misura della copertura, la chiusura delle esecuzioni interrotte all'avvio non ha un timeout, e le
   esecuzioni `interrupted` hanno token e costo a zero.
 - **Speaker (#11):** con il profilo vocale registrato decidono le impronte; senza, la soglia di energia (da calibrare).
@@ -400,9 +414,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 Fatti entro il 04/11: deploy, il tuo account, la chiave di esempio tolta; la registrazione resta aperta per scelta.
 
-1. **`make deploy`** per applicare la migrazione 031 (tracciamento delle esecuzioni, spento di default).
-2. **Il tuo piano:** `make set-plan EMAIL=… PLAN=unlimited`, altrimenti valgono i limiti del free (2 incarichi,
-   5 ricerche web al giorno, 300 minuti al mese).
+1. **`make deploy`** per applicare le migrazioni 031 (tracciamento, spento), 032 (documenti reindicizzati) e
+   033 (dati di esempio); poi una nuova build dell'app (workflow iOS + SideStore).
+2. **Il tuo piano:** fatto, sei su unlimited, e i nuovi account partono unlimited (`NEW_ACCOUNT_PLAN`).
 3. **Firmware 0.8.0 via cavo** (o via Bluetooth dal 0.7.0; conserva una copia di `firmware/signing/ota_private.pem`), reinstallare l'app, registrare la voce, provare Promemoria e Calendario.
 4. **Guardare la nuova interfaccia sul telefono** e dire cosa cambiare (anche il tema quasi nero); provare
    memoria, documenti, assistenti e WhatsApp, visti finora solo nei test.

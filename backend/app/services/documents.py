@@ -40,11 +40,12 @@ _TOO_MUCH_TEXT = "Too much text in it: at most about 300,000 words"
 # More than this share of control characters: binary, not text
 MAX_CONTROL_SHARE = 0.05
 
-# Passages: sentence-aware, then cut so none is too long to embed
-PASSAGE_TARGET = 300
-PASSAGE_OVERLAP = 40
-PASSAGE_WORDS = 400
-PASSAGE_CHARS = 6000
+# Passages: sentence-aware, then cut short. A long passage mixes many subjects, so a
+# question about one of them (where you studied, in your CV) is too far from all of it
+PASSAGE_TARGET = 120
+PASSAGE_OVERLAP = 20
+PASSAGE_WORDS = 160
+PASSAGE_CHARS = 1200
 
 
 class DocumentError(Exception):
@@ -203,3 +204,9 @@ def passages(text: str) -> list[str]:
             piece = " ".join(words[start : start + PASSAGE_WORDS])
             out += [piece[i : i + PASSAGE_CHARS] for i in range(0, len(piece), PASSAGE_CHARS)]
     return [p for p in out if p.strip()]
+
+
+def searchable(title: str, passage: str) -> str:
+    """What is embedded for a passage: under its document's name, so "my CV" finds the
+    passages of main-cv.pdf. The passage alone is kept and quoted."""
+    return f"From the document {title}:\n{passage}"

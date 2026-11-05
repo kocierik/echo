@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/device_status.dart';
 import '../../utils/spoken_text.dart';
 import '../app/spoken_answers_store.dart';
+import '../app/spoken_voice_store.dart';
 import '../device/device_controller.dart';
 
 /// The phone's voice: speaks [text] in [language] ("it" or "en"), done when it is said or
@@ -193,10 +194,14 @@ final class AnswerSpeaker {
 /// other audio is lowered meanwhile (iOS: a ducking session; Android: audio focus).
 /// A stopped answer's cancel can come late: the next answer waits for it briefly, so
 /// it cannot end that one.
-final class FlutterTtsVoice implements AnswerVoice {
-  FlutterTtsVoice([FlutterTts? tts]) : _tts = tts ?? FlutterTts();
+final class FlutterTtsVoice implements AnswerVoice, VoiceCatalog {
+  FlutterTtsVoice([FlutterTts? tts, this._chosen]) : _tts = tts ?? FlutterTts();
 
   final FlutterTts _tts;
+
+  /// The voice chosen for a language (Profile → Spoken answers → Voice); none: the
+  /// phone's own.
+  final PhoneVoice? Function(String language)? _chosen;
   Completer<void>? _done;
 
   /// Set by [stop]: the engine's report of that cancel, still to come.
@@ -258,6 +263,12 @@ final class FlutterTtsVoice implements AnswerVoice {
       _draining = null;
     }
     await _tts.setLanguage(language == 'it' ? 'it-IT' : 'en-US');
+    if (_chosen?.call(language) case final voice?) {
+      try {
+        // A voice deleted from the phone since: the language's own speaks
+        await _tts.setVoice(voice.toTts());
+      } catch (_) {}
+    }
     final done = _done = Completer<void>();
     // 1 when it started; anything else (Android without a working engine): no callback
     final started = await _tts.speak(
@@ -266,6 +277,27 @@ final class FlutterTtsVoice implements AnswerVoice {
     );
     if (started != 1) return;
     await done.future;
+  }
+
+  @override
+  Future<List<PhoneVoice>> voices(String language) async {
+    final List<dynamic> raw;
+    try {
+      raw = await _tts.getVoices as List<dynamic>? ?? const [];
+    } catch (_) {
+      return const [];
+    }
+    final found = <PhoneVoice>{
+      for (final item in raw)
+        if (PhoneVoice.fromMap(item) case final voice?
+            when voice.locale.toLowerCase().startsWith(language.toLowerCase()))
+          voice,
+    }.toList()
+      ..sort((a, b) {
+        final byRank = a.rank.compareTo(b.rank);
+        return byRank != 0 ? byRank : a.name.compareTo(b.name);
+      });
+    return found;
   }
 
   @override

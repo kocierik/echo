@@ -30,6 +30,7 @@ import 'settings/assistants_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/devices_screen.dart';
+import 'settings/example_data_screen.dart';
 import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
 import 'settings/logout_row.dart';
@@ -419,6 +420,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTry: widget.onTrySpeaking ??
                           AppRuntime.maybeCoordinator?.answerSpeaker.sample ??
                           () async {},
+                      voices: AppRuntime.maybeCoordinator?.phoneVoice,
+                      voiceStore: AppRuntime.maybeCoordinator?.spokenVoice,
+                      language: _preferences.getString(SpokenLanguageStore.key) ?? 'en',
                     )),
                   ),
                 ),
@@ -446,6 +450,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onAsk: _appController.requestAsk,
                   onOpenVoices: () => _push(const VoiceSettingsScreen()),
                 )),
+              ),
+              SettingsRow(
+                key: const Key('profile-example-data'),
+                icon: Icons.auto_awesome_motion_outlined,
+                title: 'Example data',
+                subtitle: 'A few example days, to see Echo filled in.',
+                onTap: () => _push(ExampleDataScreen(api: _api)),
               ),
               SettingsRow(
                 key: const Key('profile-more'),

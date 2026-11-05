@@ -28,7 +28,7 @@ mixin AssistantsEndpoints on ApiClient implements AssistantsApi {
 
   @override
   Future<List<AssistantTemplate>> assistantTemplates() async {
-    final response = await get('/api/assistants/templates');
+    final response = await get('/api/assistants/templates', shape: JsonShape.list);
     return parse(response.data, (data) => [
           for (final item in data as List<dynamic>)
             if (item is Map<String, dynamic>) AssistantTemplate.fromJson(item),

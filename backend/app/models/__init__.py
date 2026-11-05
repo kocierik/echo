@@ -6,6 +6,7 @@ from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 from app.models.chat_session import ChatSession
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
+from app.models.demo_item import DemoItem
 from app.models.digest import Digest
 from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
@@ -38,6 +39,7 @@ __all__ = [
     "ChatSession",
     "Chunk",
     "Conversation",
+    "DemoItem",
     "Digest",
     "Entity",
     "EntityMention",

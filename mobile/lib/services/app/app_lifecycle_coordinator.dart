@@ -17,6 +17,7 @@ import '../device/photo_service.dart';
 import 'session_controller.dart';
 import 'spoken_answers_store.dart';
 import 'spoken_language.dart';
+import 'spoken_voice_store.dart';
 import '../chat/voice_updates_service.dart';
 import '../api/response_cache.dart';
 import '../device/device_command_loop.dart';
@@ -47,6 +48,8 @@ final class AppLifecycleCoordinator {
     required this.phoneLocation,
     required this.placesVisited,
     required this.spokenAnswers,
+    required this.spokenVoice,
+    required this.phoneVoice,
     required this.answerSpeaker,
     required StreamSubscription<DeviceStatus> speakerSubscription,
     required VoidCallback onDictation,
@@ -84,6 +87,10 @@ final class AppLifecycleCoordinator {
 
   /// Profile → Spoken answers, and the voice that reads the answers aloud.
   final SpokenAnswersStore spokenAnswers;
+
+  /// The voice chosen for each language, and the phone's voices to choose from.
+  final SpokenVoiceStore spokenVoice;
+  final VoiceCatalog phoneVoice;
   final AnswerSpeaker answerSpeaker;
   final StreamSubscription<DeviceStatus> _speakerSubscription;
   final VoidCallback _onDictation;
@@ -259,8 +266,10 @@ final class AppLifecycleCoordinator {
         .listen((_) => firmwareUpdate.deviceChanged());
     unawaited(firmwareUpdate.check());
     final spokenAnswers = SpokenAnswersStore(preferences);
+    final spokenVoice = SpokenVoiceStore(preferences);
+    final phoneVoice = FlutterTtsVoice(null, spokenVoice.voiceFor);
     final answerSpeaker = AnswerSpeaker(
-      voice: FlutterTtsVoice(),
+      voice: phoneVoice,
       output: const ChannelAudioOutput(),
       setting: spokenAnswers,
       preferences: preferences,
@@ -321,6 +330,8 @@ final class AppLifecycleCoordinator {
       phoneLocation: phoneLocation,
       placesVisited: placesVisited,
       spokenAnswers: spokenAnswers,
+      spokenVoice: spokenVoice,
+      phoneVoice: phoneVoice,
       answerSpeaker: answerSpeaker,
       speakerSubscription: speakerSubscription,
       onDictation: onDictation,
@@ -373,6 +384,7 @@ final class AppLifecycleCoordinator {
     appController.askDictation.removeListener(_onDictation);
     await answerSpeaker.stop();
     spokenAnswers.dispose();
+    spokenVoice.dispose();
     photoService.dispose();
     placesVisited.dispose();
     await liveActivity.dispose();

@@ -28,6 +28,7 @@ from app.routers import (
     auth,
     chat_sessions,
     conversations,
+    demo,
     device,
     digest,
     documents,
@@ -146,6 +147,7 @@ app.include_router(whatsapp.router, prefix=settings.api_prefix)
 app.include_router(facts.router, prefix=settings.api_prefix)
 app.include_router(documents.router, prefix=settings.api_prefix)
 app.include_router(assistants.router, prefix=settings.api_prefix)
+app.include_router(demo.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):

@@ -435,7 +435,9 @@ final class _ChatScreenState extends State<ChatScreen> {
     ));
   }
 
+  /// Sent: the keyboard goes, so the answer has the screen.
   void _send() {
+    FocusManager.instance.primaryFocus?.unfocus();
     unawaited(_controller.send(_textController.text));
   }
 
@@ -452,6 +454,7 @@ final class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendSuggestion(String suggestion) {
+    FocusManager.instance.primaryFocus?.unfocus();
     _controller.setComposerText(suggestion);
     unawaited(_controller.send(suggestion));
   }

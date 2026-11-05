@@ -576,3 +576,12 @@ CREATE TABLE agent_steps (
     CONSTRAINT fk_agent_steps_run FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
     CONSTRAINT uq_agent_steps_run_seq UNIQUE (run_id, seq)
 );
+
+-- 033: the rows made by the example data (Profile → Example data); off deletes only them
+CREATE TABLE demo_items (
+    user_id UUID NOT NULL,
+    kind VARCHAR(20) NOT NULL,  -- conversation | fact | saved_item | saved_list | place_visit
+    item_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_id, kind, item_id)
+);

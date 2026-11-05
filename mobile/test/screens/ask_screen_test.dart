@@ -114,6 +114,24 @@ void main() {
     expect(find.text('Lunch with Marco'), findsOneWidget);
   });
 
+  testWidgets('sending closes the keyboard', (tester) async {
+    final harness = _Harness(
+      queryHandler: (_, __) => Future.value(_response(answer: 'Done')),
+    );
+    await harness.pump(tester);
+
+    await tester.tap(find.byType(TextField));
+    await tester.enterText(find.byType(TextField), 'What is on today?');
+    await tester.pump();
+    expect(tester.testTextInput.isVisible, isTrue);
+
+    await tester.tap(find.byKey(const Key('chat-send')));
+    await tester.pumpAndSettle();
+
+    expect(tester.testTextInput.isVisible, isFalse);
+    expect(find.text('Done'), findsOneWidget);
+  });
+
   testWidgets('send shows loading then error and retry recovers',
       (tester) async {
     final pending = Completer<QueryResponse>();

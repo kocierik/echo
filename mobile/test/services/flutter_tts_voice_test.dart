@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:echo_app/services/app/spoken_voice_store.dart';
 import 'package:echo_app/services/phone/answer_speaker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -27,6 +28,19 @@ final class _Tts extends FlutterTts {
     stops++;
     return 1;
   }
+
+  final calls = <String>[];
+
+  @override
+  Future<dynamic> setVoice(Map<String, String> voice) async {
+    calls.add('voice ${voice['name']} ${voice['locale']}');
+    return 1;
+  }
+
+  List<Object?> installed = const [];
+
+  @override
+  Future<dynamic> get getVoices async => installed;
 }
 
 void main() {
@@ -80,5 +94,35 @@ void main() {
     tts.completionHandler!();
     await tester.pump();
     expect(second, isTrue);
+  });
+
+  testWidgets('the voice chosen for the language speaks, the phone\'s for the others',
+      (tester) async {
+    final tts = _Tts(result: 0);
+    final voice = FlutterTtsVoice(
+      tts,
+      (language) => language == 'it' ? const PhoneVoice(name: 'Federica', locale: 'it-IT') : null,
+    );
+
+    await voice.speak('Domani piove.', 'it');
+    await voice.speak('It rains tomorrow.', 'en');
+
+    expect(tts.calls, ['voice Federica it-IT']);
+  });
+
+  test("the language's voices, premium and enhanced first", () async {
+    final tts = _Tts()
+      ..installed = [
+        {'name': 'Alice', 'locale': 'it-IT', 'quality': 'default'},
+        {'name': 'Samantha', 'locale': 'en-US', 'quality': 'default'},
+        {'name': 'Federica', 'locale': 'it-IT', 'quality': 'premium'},
+        {'name': 'Luca', 'locale': 'it-IT', 'quality': 'enhanced'},
+        {'locale': 'it-IT'},
+        'not a voice',
+      ];
+
+    final voices = await FlutterTtsVoice(tts).voices('it');
+
+    expect(voices.map((v) => v.name), ['Federica', 'Luca', 'Alice']);
   });
 }

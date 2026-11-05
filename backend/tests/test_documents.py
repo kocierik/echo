@@ -170,12 +170,36 @@ async def test_text_without_sentence_ends_is_indexed_in_short_passages(client, a
     )
     await _upload(client, auth_headers, "estratto.txt", rows.encode())
 
+    await _index()
+
+    assert (await _only(client, auth_headers))["status"] == "ready"
+    async with test_session() as db:
+        passages = list(await db.scalars(select(DocumentChunk.text)))
+    assert passages and max(len(p.split()) for p in passages) <= documents.PASSAGE_WORDS
+
+
+async def test_each_passage_is_embedded_under_the_document_name(client, auth_headers):
+    await _upload(client, auth_headers, "main-cv.txt", b"Master in computer science, Bologna.")
+
     embeddings = _Embeddings()
     await _index(embeddings)
 
-    assert (await _only(client, auth_headers))["status"] == "ready"
-    passages = [p for batch in embeddings.batches for p in batch]
-    assert passages and max(len(p.split()) for p in passages) <= documents.PASSAGE_WORDS
+    [embedded] = [p for batch in embeddings.batches for p in batch]
+    assert embedded.startswith("From the document main-cv.txt:\n")
+    async with test_session() as db:
+        [chunk] = list(await db.scalars(select(DocumentChunk)))
+    # The passage alone is quoted
+    assert chunk.text == "Master in computer science, Bologna."
+
+
+def test_a_one_page_cv_is_several_passages():
+    # A CV read from a PDF: short lines, few full stops, words often run together
+    cv = " ".join(f"Universitàdi{i}Bologna MASTER’S DEGREE Sep20{i}-Oct20{i}" for i in range(80))
+
+    parts = documents.passages(cv)
+
+    assert len(parts) >= 3
+    assert max(len(p) for p in parts) <= documents.PASSAGE_CHARS
 
 
 @pytest.mark.parametrize(

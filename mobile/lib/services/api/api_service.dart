@@ -3,6 +3,7 @@ import 'api_client.dart';
 import 'assistants_api.dart';
 import 'auth_api.dart';
 import 'chat_api.dart';
+import 'demo_api.dart';
 import 'device_api.dart';
 import 'memory_api.dart';
 import 'memory_items_api.dart';
@@ -22,6 +23,7 @@ export 'assistants_api.dart';
 export 'auth_api.dart';
 export 'api_credentials.dart';
 export 'chat_api.dart';
+export 'demo_api.dart';
 export 'device_api.dart';
 export 'memory_api.dart';
 export 'memory_items_api.dart';
@@ -52,6 +54,7 @@ class ApiService extends ApiClient
         WhatsAppEndpoints,
         MemoryItemsEndpoints,
         AssistantsEndpoints,
+        ExampleDataEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({

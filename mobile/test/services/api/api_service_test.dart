@@ -151,6 +151,35 @@ void main() {
     });
   });
 
+  group('Assistants', () {
+    test('reads the templates, which the server sends as a list', () async {
+      final service = _service((request) async => _jsonResponse(request, 200, [
+            {'key': 'work', 'name': 'Lavoro', 'emoji': '💼', 'instructions': 'Aiutami.'},
+          ]));
+
+      final templates = await service.assistantTemplates();
+
+      expect(templates.single.key, 'work');
+      expect(templates.single.name, 'Lavoro');
+    });
+  });
+
+  group('Example data', () {
+    test('reads and sets it', () async {
+      final calls = <String>[];
+      final service = _service((request) async {
+        calls.add('${request.method} ${request.url.path} '
+            '${request is http.Request ? request.body : ''}');
+        return _jsonResponse(request, 200, {'on': request.method == 'PUT'});
+      });
+
+      expect(await service.exampleDataOn(), isFalse);
+      expect(await service.setExampleData(true), isTrue);
+
+      expect(calls, ['GET /api/demo ', 'PUT /api/demo {"on":true}']);
+    });
+  });
+
   group('Routine runs', () {
     test('lists runs with their filters and asks about one', () async {
       final calls = <String>[];

@@ -15,7 +15,7 @@ from sqlalchemy import delete, or_, select
 
 from app.core.database import async_session
 from app.models.document import Document, DocumentChunk
-from app.services.documents import DocumentError, extract_text, passages
+from app.services.documents import DocumentError, extract_text, passages, searchable
 from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
 
@@ -63,9 +63,9 @@ async def _index_one(session_factory, embeddings, document_id: uuid.UUID) -> Non
     async with session_factory() as db:
         row = (
             await db.execute(
-                select(Document.user_id, Document.kind, Document.raw, Document.text).where(
-                    Document.id == document_id
-                )
+                select(
+                    Document.user_id, Document.title, Document.kind, Document.raw, Document.text
+                ).where(Document.id == document_id)
             )
         ).first()
     if row is None:
@@ -90,10 +90,11 @@ async def _index_one(session_factory, embeddings, document_id: uuid.UUID) -> Non
             await db.commit()
 
     parts = passages(text)
+    titled = [searchable(row.title, part) for part in parts]
     try:
         vectors: list[list[float]] = []
-        for start in range(0, len(parts), EMBED_BATCH):
-            vectors += await embeddings.embed_batch(parts[start : start + EMBED_BATCH])
+        for start in range(0, len(titled), EMBED_BATCH):
+            vectors += await embeddings.embed_batch(titled[start : start + EMBED_BATCH])
     except Exception:
         logger.warning("[Documents] Could not embed %s", document_id, exc_info=True)
         await _fail(session_factory, document_id, COULD_NOT_INDEX)
