@@ -31,6 +31,7 @@ import 'settings/capabilities_screen.dart';
 import 'settings/connection_settings_screen.dart';
 import 'settings/devices_screen.dart';
 import 'settings/example_data_screen.dart';
+import 'settings/health_screen.dart';
 import 'settings/instructions_screen.dart';
 import 'settings/language_settings_screen.dart';
 import 'settings/logout_row.dart';
@@ -395,6 +396,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
                   ),
                 ),
+              SettingsRow(
+                key: const Key('profile-health'),
+                icon: Icons.favorite_border_rounded,
+                title: 'Health',
+                subtitle: 'Sleep, steps and workouts, from the Health app.',
+                onTap: () => _push(HealthScreen(api: _api)),
+              ),
               if (_whatsapp case final whatsapp? when whatsapp.available)
                 SettingsRow(
                   key: const Key('profile-whatsapp'),

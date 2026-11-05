@@ -19,6 +19,7 @@ from app.core.timezone import to_user_local_date
 from app.models.conversation import Conversation
 from app.models.demo_item import DemoItem
 from app.models.digest import Digest
+from app.models.health_day import HealthDay
 from app.models.place_visit import PlaceVisit
 from app.models.saved import SavedItem, SavedList
 from app.models.segment import Segment
@@ -32,6 +33,13 @@ from app.services.saved import Moment, save_item
 from app.services.weekly_digest import week_start_of
 
 logger = logging.getLogger(__name__)
+
+# A week of the Health app (Profile → Health), oldest first: (sleep min, steps, workout)
+_HEALTH_WEEK = (
+    (412, 7840, None), (385, 9120, "Corsa 35 min, 6,2 km"), (448, 6530, None),
+    (342, 11870, "Palestra 50 min"), (430, 8210, None), (465, 5480, None),
+    (398, 12650, "Corsa 48 min, 8,4 km"),
+)
 
 ANALYSIS_QUEUE = "queue:analysis"
 # Seconds between one line and the next in a conversation
@@ -281,6 +289,16 @@ async def turn_on(
             new_lists.add(item.list_id)
             _record(db, user_id, "saved_list", item.list_id)
 
+    # A week of Health, never over the user's own days
+    for back, (sleep, steps, workout) in enumerate(reversed(_HEALTH_WEEK), start=1):
+        day = to_user_local_date(now) - timedelta(days=back - 1)
+        if await db.get(HealthDay, (user_id, day)) is None:
+            db.add(HealthDay(
+                user_id=user_id, day=day, sleep_minutes=sleep, steps=steps,
+                distance_km=round(steps * 0.00072, 1), exercise_minutes=40 if workout else 12,
+                workouts=workout, source="demo",
+            ))
+
     for spec in content.places:
         arrived = now - timedelta(hours=spec.hours_ago)
         visit = PlaceVisit(
@@ -379,6 +397,9 @@ async def turn_off(db: AsyncSession, user_id: uuid.UUID) -> Removed:
         await db.execute(
             delete(SavedList).where(SavedList.user_id == user_id, SavedList.id == list_id)
         )
+    await db.execute(
+        delete(HealthDay).where(HealthDay.user_id == user_id, HealthDay.source == "demo")
+    )
     if ids.get("place_visit"):
         await db.execute(
             delete(PlaceVisit).where(

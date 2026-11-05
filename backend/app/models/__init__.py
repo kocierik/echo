@@ -12,6 +12,7 @@ from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
 from app.models.firmware_release import FirmwareRelease
+from app.models.health_day import HealthDay
 from app.models.llm_usage import LlmUsage
 from app.models.mcp_call import McpCall
 from app.models.pending_action import PendingAction
@@ -44,6 +45,7 @@ __all__ = [
     "Entity",
     "EntityMention",
     "FirmwareRelease",
+    "HealthDay",
     "LlmUsage",
     "McpCall",
     "PendingAction",

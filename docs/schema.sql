@@ -585,3 +585,19 @@ CREATE TABLE demo_items (
     created_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (user_id, kind, item_id)
 );
+
+-- 034: a day of the iPhone's Health app, sent by Apple's Shortcuts (Profile → Health)
+CREATE TABLE health_days (
+    user_id UUID NOT NULL,
+    day DATE NOT NULL,
+    sleep_minutes INTEGER,          -- asleep, the night that ended that morning
+    steps INTEGER,
+    distance_km DOUBLE PRECISION,
+    active_kcal INTEGER,
+    exercise_minutes INTEGER,
+    resting_hr INTEGER,
+    workouts TEXT,
+    source VARCHAR(12) NOT NULL DEFAULT 'shortcuts',  -- shortcuts | demo
+    updated_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (user_id, day)
+);

@@ -5,6 +5,7 @@ import 'auth_api.dart';
 import 'chat_api.dart';
 import 'demo_api.dart';
 import 'device_api.dart';
+import 'health_api.dart';
 import 'memory_api.dart';
 import 'memory_items_api.dart';
 import 'notifications_api.dart';
@@ -25,6 +26,7 @@ export 'api_credentials.dart';
 export 'chat_api.dart';
 export 'demo_api.dart';
 export 'device_api.dart';
+export 'health_api.dart';
 export 'memory_api.dart';
 export 'memory_items_api.dart';
 export 'notifications_api.dart';
@@ -55,6 +57,7 @@ class ApiService extends ApiClient
         MemoryItemsEndpoints,
         AssistantsEndpoints,
         ExampleDataEndpoints,
+        HealthEndpoints,
         AuthEndpoints
     implements TodayApi {
   ApiService({
@@ -82,6 +85,7 @@ class ApiService extends ApiClient
 
   Future<void> clearConfiguration() => credentials.clear();
 
+  @override
   Future<String> getServerUrl() => credentials.serverUrl;
 
   /// Whether [apiKey] opens [serverUrl], before saving them.

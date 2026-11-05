@@ -12,6 +12,7 @@ from app.core.timezone import to_user_local_date
 from app.main import app
 from app.models.conversation import Conversation
 from app.models.digest import Digest
+from app.models.health_day import HealthDay
 from app.models.place_visit import PlaceVisit
 from app.models.saved import SavedItem, SavedList
 from app.models.segment import Segment
@@ -67,6 +68,7 @@ async def test_on_makes_the_examples_and_queues_their_speech(client, auth_header
     assert await _count(UserFact, UserFact.status == "kept") == len(content.facts)
     assert await _count(SavedItem) == len(content.saved)
     assert await _count(PlaceVisit) == len(content.places)
+    assert await _count(HealthDay, HealthDay.source == "demo") == 7
     async with test_session() as db:
         texts = list(await db.scalars(select(Transcription.text)))
         newest = await db.scalar(select(func.max(Conversation.started_at)))
@@ -131,6 +133,7 @@ async def test_off_deletes_the_examples_and_keeps_the_users_own(client, auth_hea
     assert lists == {"Vini"}
     assert await _count(Segment) == 0
     assert await _count(PlaceVisit) == 0
+    assert await _count(HealthDay) == 0
     assert (await client.get("/api/demo", headers=auth_headers)).json() == {"on": False}
 
 

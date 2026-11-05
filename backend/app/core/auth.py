@@ -155,6 +155,20 @@ async def get_current_api_key(
     db: AsyncSession = Depends(get_db),
 ) -> ApiKey:
     """The key the request was made with (401 when unknown, 429 after too many)."""
+    return await _key_for(request, api_key, db, {"full"})
+
+
+async def get_health_writer(
+    request: Request,
+    api_key: str = Security(api_key_header),
+    db: AsyncSession = Depends(get_db),
+) -> ApiKey:
+    """A key that may send the day's health data: the phone's, or the one made for Apple's
+    Shortcuts (scope "health"), which can do nothing else."""
+    return await _key_for(request, api_key, db, {"full", "health"})
+
+
+async def _key_for(request: Request, api_key: str, db: AsyncSession, scopes: set[str]) -> ApiKey:
     redis = getattr(request.app.state, "redis", None)
     failure_key = client_failure_key(request)
     if redis is not None:
@@ -174,11 +188,14 @@ async def get_current_api_key(
             detail="Invalid API key",
         )
 
-    if getattr(api_key_record, "scope", "full") != "full":
-        # A connected app's key on the REST API: a real key, used in the wrong place
+    scope = getattr(api_key_record, "scope", "full")
+    if scope not in scopes:
+        # A real key, used in the wrong place: a connected app's, or the Shortcuts' one
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This key is for connected apps only.",
+            detail="This key only sends health data."
+            if scope == "health"
+            else "This key is for connected apps only.",
         )
 
     api_key_record.last_used_at = datetime.now(timezone.utc)

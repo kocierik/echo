@@ -113,6 +113,13 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   **Voice** (05/11): una delle voci installate sul telefono per la lingua (prima Premium e Enhanced, scaricabili
   in Impostazioni → Accessibilità → Contenuto letto ad alta voce), o quella del telefono; scelta salvata sul
   telefono, una per lingua.
+- **Salute** (05/11, Profile → Health, migrazione 034): l'app firmata con un Apple ID gratuito (SideStore) non
+  può leggere HealthKit, quindi lo fa un'automazione di **Comandi rapidi** ogni sera: sonno della notte, passi,
+  distanza, esercizio e allenamenti, in POST a `/api/health/day` con una chiave che può solo inviare questo
+  (scope `health`, creata in Profile → Health, revocabile). Il server legge numeri all'italiana e il sonno in ore,
+  minuti o secondi; gli ultimi 14 giorni entrano in ogni risposta (`services/health.py` via `personal.py`), quindi
+  anche nei grafici. Guida: [HEALTH-SHORTCUT.md](HEALTH-SHORTCUT.md). I dati di esempio aggiungono una settimana
+  di Salute (solo nei giorni senza dati veri).
 - **Grafici nelle risposte** (05/11, Ask, come ChatGPT): quando una risposta in chat confronta almeno 3 numeri
   veri (memoria, cose salvate, app), il modello aggiunge un blocco ```echo-chart con barre, linea (fino a 3
   serie), torta o barra di avanzamento (budget); l'app lo disegna con i suoi colori (`widgets/echo_chart.dart`,

@@ -51,6 +51,7 @@ from app.routers import (
     voices,
     whatsapp,
 )
+from app.routers import health as health_data  # /health is the server's own check
 
 # Configure structured JSON logging on import
 setup_logging()
@@ -148,6 +149,7 @@ app.include_router(facts.router, prefix=settings.api_prefix)
 app.include_router(documents.router, prefix=settings.api_prefix)
 app.include_router(assistants.router, prefix=settings.api_prefix)
 app.include_router(demo.router, prefix=settings.api_prefix)
+app.include_router(health_data.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):

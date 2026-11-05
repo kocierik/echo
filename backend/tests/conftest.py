@@ -66,6 +66,7 @@ async def setup_database():
         await conn.execute(text("DELETE FROM agent_steps"))
         await conn.execute(text("DELETE FROM agent_runs"))
         await conn.execute(text("DELETE FROM demo_items"))
+        await conn.execute(text("DELETE FROM health_days"))
         await conn.execute(text("DELETE FROM user_facts"))
         await conn.execute(text("DELETE FROM assistants"))
         await conn.execute(text("DELETE FROM document_chunks"))
