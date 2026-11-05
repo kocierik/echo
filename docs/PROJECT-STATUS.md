@@ -120,11 +120,22 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   minuti o secondi; gli ultimi 14 giorni entrano in ogni risposta (`services/health.py` via `personal.py`), quindi
   anche nei grafici. Guida: [HEALTH-SHORTCUT.md](HEALTH-SHORTCUT.md). I dati di esempio aggiungono una settimana
   di Salute (solo nei giorni senza dati veri).
-- **Grafici nelle risposte** (05/11, Ask, come ChatGPT): quando una risposta in chat confronta almeno 3 numeri
-  veri (memoria, cose salvate, app), il modello aggiunge un blocco ```echo-chart con barre, linea (fino a 3
-  serie), torta o barra di avanzamento (budget); l'app lo disegna con i suoi colori (`widgets/echo_chart.dart`,
+- **Grafici nelle risposte** (05/11, Ask, come ChatGPT): senza che l'utente lo chieda, quando una risposta in
+  chat parla di almeno 4 numeri veri nel tempo o per categoria (memoria, Salute, cose salvate, app, web; per un
+  andamento cerca prima abbastanza punti), il modello aggiunge un blocco ```echo-chart: colonne (giorni,
+  settimane, mesi), barre (categorie), linea (fino a 3 serie, scala che segue i valori), torta o barra di
+  avanzamento; con un obiettivo tratteggiato ("target") e una frase di sintesi ("note"), la colonna più alta
+  piena e i valori oltre l'obiettivo in ambra; l'app lo disegna con i suoi colori (`widgets/echo_chart.dart`,
   nessuna libreria). Solo in chat scritta (mai a voce né negli incarichi); un blocco illeggibile si salta, uno a
   metà mentre arriva la risposta dice "Drawing a chart…"; la voce legge solo il testo.
+- **Assistenti, 05/11 pomeriggio:** in Ask una riga sempre visibile con Echo e ogni assistente, un tocco
+  apre la sua ultima chat (o una nuova): ogni assistente ha la sua storia, ritrovata cambiando. L'agente
+  conosce i documenti dell'assistente (o tutti, se nessuno è scelto) e li legge interi con
+  `ECHO_READ_DOCUMENT` ("riassumi la busta paga"), non solo i passaggi vicini alla domanda. Le note si
+  aggiornano da sole, senza chiederlo, quando l'utente dice qualcosa di durevole sul tema, e la risposta lo dice
+  ("Added to its notes: …").
+- **To-do solo su richiesta** (05/11): dalle conversazioni non nasce più nessun to-do, nemmeno le promesse; li
+  crea solo una richiesta a Echo ("Echo, segnami…"). `CONVERSATION_PROMISES=true` riaccende le promesse.
 - **Example data** (05/11, Profile, migrazione 033): un interruttore che riempie Echo con alcuni giorni di
   esempio (6 conversazioni in italiano o inglese secondo la lingua dell'account, 3 fatti, 3 cose salvate, 3
   luoghi). Le conversazioni sono segmenti con la trascrizione, analizzati dal worker come quelli veri (persone,

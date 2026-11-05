@@ -135,6 +135,8 @@ class QueryResponse(BaseModel):
     # What the answer saved or changed in Saved ({"id", "title", "list", "address"}): Ask
     # shows a chip opening it
     saved: list[dict] = []
+    # What an assistant added to its notes in this answer: Ask shows "Added to its notes"
+    noted: list[str] = []
 
 
 # Words that may introduce a request on a connected tool (prefix match, IT + EN).
@@ -523,6 +525,8 @@ async def _answer_query(
                 extra["citations"] = outcome.web_sources
             if outcome.saved:
                 extra["saved"] = outcome.saved
+            if outcome.noted:
+                extra["noted"] = outcome.noted
             await record_turn(
                 redis_client, db, user_id, session_id, history, body.question,
                 outcome.answer, extra, assistant_id=assistant_id,
@@ -535,6 +539,7 @@ async def _answer_query(
                 pending_action=pending_out,
                 web_sources=outcome.web_sources,
                 saved=outcome.saved,
+                noted=outcome.noted,
             )
 
     # 1. Determine date filter: explicit params take priority, then NLP extraction

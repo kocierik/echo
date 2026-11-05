@@ -20,6 +20,12 @@ from app.actions.assistant_tools import (
 )
 from app.actions.audit import log_action, pending_summary
 from app.actions.availability import APP_NAMES
+from app.actions.document_tools import (
+    DOCUMENT_TOOLS,
+    READ_DOCUMENT,
+    documents_prompt,
+    run_document_tool,
+)
 from app.actions.fact_tools import FACT_TOOL_NAMES, FACT_TOOLS, run_fact_tool
 from app.actions.pending import create_pending_action
 from app.actions.phone_provider import PHONE_APP_NAMES
@@ -236,6 +242,8 @@ class AgentOutcome:
     web_sources: list[dict] = field(default_factory=list)
     # Things saved or changed in Saved: {"id", "title", "list", "address"} (Ask's chip)
     saved: list[dict] = field(default_factory=list)
+    # Lines an assistant added to its notes in this answer (Ask's "Added to its notes")
+    noted: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -275,6 +283,17 @@ def _system_prompt(
         prompt += VISUALS_RULES
     # Last: the user's name and own instructions (services/personal.py)
     return f"{prompt}\n{personal}\n" if personal else prompt
+
+
+def _note_lines(assistant: Assistant | None) -> list[str]:
+    if assistant is None:
+        return []
+    return [line for line in (assistant.notes or "").splitlines() if line.strip()]
+
+
+def _document_ids(assistant: Assistant | None) -> list[str] | None:
+    """An assistant's chosen documents; None: all of the user's."""
+    return (assistant.document_ids or None) if assistant is not None else None
 
 
 def _keep(kept: list[dict], data: dict) -> None:
@@ -432,6 +451,10 @@ async def run_action_agent(
         # is there and what is read (an email) must not become a note
         own = own | ASSISTANT_TOOL_NAMES
         own_tools = [*own_tools, *ASSISTANT_TOOLS]
+    # The documents it may read whole: an assistant's own when it has some, else all
+    documents = await documents_prompt(db, user_id, _document_ids(assistant))
+    if documents:
+        own_tools = [*own_tools, *DOCUMENT_TOOLS]
     saved = saved or SavedContext()
     if saved.chat_session_id is None:
         saved.chat_session_id = session_id
@@ -443,6 +466,8 @@ async def run_action_agent(
     if assistant is not None:
         # After the user's own instructions and facts: who answers in this chat
         personal = f"{personal}\n{assistant_prompt(assistant, notes_tool=routine_tools)}".strip()
+    if documents:
+        personal = f"{personal}\n{documents}".strip()
     saved_lists = await saved_lists_prompt(db, user_id) if routine_tools else None
     prompt = _system_prompt(
         phone_apps, search is not None, routine_tools, personal, saved_lists,
@@ -460,6 +485,11 @@ async def run_action_agent(
     failures: list[_Failure] = []
     succeeded: set[str] = set()
     kept: list[dict] = []
+    # What an assistant learns in this answer: its notes' new lines, shown to the user
+    notes_before = set(_note_lines(assistant))
+
+    def learned() -> list[str]:
+        return [line for line in _note_lines(assistant) if line not in notes_before]
 
     cited: list[dict] = []
     # Once the agent has read words the user did not write (an app's data, the memory, a
@@ -475,6 +505,7 @@ async def run_action_agent(
             answer = _final_answer(response.content, failures, succeeded, texts)
             return AgentOutcome(
                 answer=answer, executed_tools=executed, web_sources=cited, saved=kept,
+                noted=learned(),
             )
 
         confirm_call = next(
@@ -512,6 +543,7 @@ async def run_action_agent(
                 pending_action=pending,
                 executed_tools=executed,
                 saved=kept,
+                noted=learned(),
             )
 
         messages.append(LLMMessage(
@@ -522,7 +554,11 @@ async def run_action_agent(
                 db, user_id, source, provider, call, offered, executed, failures, succeeded,
                 own, saved, request, kept, assistant, untrusted,
             )
-            untrusted = untrusted or call.name == "search_memory" or call.name in offered
+            untrusted = (
+                untrusted
+                or call.name in ("search_memory", READ_DOCUMENT)
+                or call.name in offered
+            )
             messages.append(LLMMessage(
                 role="tool", content=content, tool_call_id=call.id, name=call.name,
             ))
@@ -531,6 +567,7 @@ async def run_action_agent(
         answer=_with_unknown_notes(texts["step_limit"], failures, succeeded, texts),
         executed_tools=executed,
         saved=kept,
+        noted=learned(),
     )
 
 
@@ -564,6 +601,11 @@ async def _run_tool(
             document_ids=(assistant.document_ids or None) if assistant is not None else None,
         )
         return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
+
+    if call.name == READ_DOCUMENT:
+        # Read only, and not an action in the user's apps: not in Activity
+        result = await run_document_tool(db, user_id, call.arguments, _document_ids(assistant))
+        return serialize_tool_result(result.data if result.ok else {"error": result.error})
 
     if call.name in own:
         if untrusted and call.name in _LASTING_OWN:

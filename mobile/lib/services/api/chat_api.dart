@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../models/action_models.dart';
+import '../../models/chat_message.dart';
 import '../../models/chat_session.dart';
 import '../../models/saved.dart';
 import 'api_client.dart';
@@ -20,6 +21,9 @@ class QueryResponse {
   /// What the answer saved in Saved.
   final List<SavedChip> saved;
 
+  /// What an assistant added to its notes in this answer.
+  final List<String> noted;
+
   QueryResponse({
     required this.answer,
     required this.sessionId,
@@ -28,6 +32,7 @@ class QueryResponse {
     this.pendingAction,
     this.webSources = const [],
     this.saved = const [],
+    this.noted = const [],
   });
 
   factory QueryResponse.fromJson(Map<String, dynamic> json) {
@@ -38,6 +43,7 @@ class QueryResponse {
       dateFilter: json['date_filter'],
       webSources: List<Map<String, dynamic>>.from(json['web_sources'] ?? []),
       saved: SavedChip.listFrom(json['saved']),
+      noted: notedLines(json['noted']),
       pendingAction: json['pending_action'] == null
           ? null
           : PendingAction.fromJson(

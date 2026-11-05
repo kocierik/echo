@@ -84,6 +84,8 @@ void main() {
         '{"type": "bar", "labels": ["a"], "values": ["x"]}',
         '{"type": "pie", "labels": ["a", "b"], "values": [3, -1]}',
         '{"type": "line", "labels": ["a"], "values": [1]}',
+        // Two points say nothing a sentence does not
+        '{"type": "line", "labels": ["a", "b"], "values": [285, 287]}',
         '{"type": "progress", "value": 1, "max": 0}',
         '[1, 2]',
       ]) {
@@ -111,29 +113,83 @@ void main() {
     });
 
     testWidgets('a pie says each share', (tester) async {
-      await _pump(tester, EchoChart(ChartSpec.tryParse(
-        '{"type": "pie", "labels": ["Lavoro", "Casa"], "values": [3, 1]}',
-      )!));
+      await _pump(
+          tester,
+          EchoChart(ChartSpec.tryParse(
+            '{"type": "pie", "labels": ["Lavoro", "Casa"], "values": [3, 1]}',
+          )!));
 
       expect(find.text('75%'), findsOneWidget);
       expect(find.text('25%'), findsOneWidget);
     });
 
     testWidgets('a line and a progress bar draw', (tester) async {
-      await _pump(tester, Column(children: [
-        EchoChart(ChartSpec.tryParse(
-          '{"type": "line", "unit": "h", "labels": ["lun", "mar", "mer", "gio", "ven"], '
-          '"values": [7, 6.5, 8, 5, 7.5]}',
-        )!),
-        EchoChart(ChartSpec.tryParse(
-          '{"type": "progress", "title": "Budget", "unit": "€", "value": 760, "max": 700}',
-        )!),
-      ]));
+      await _pump(
+          tester,
+          Column(children: [
+            EchoChart(ChartSpec.tryParse(
+              '{"type": "line", "unit": "h", "labels": ["lun", "mar", "mer", "gio", "ven"], '
+              '"values": [7, 6.5, 8, 5, 7.5]}',
+            )!),
+            EchoChart(ChartSpec.tryParse(
+              '{"type": "progress", "title": "Budget", "unit": "€", "value": 760, "max": 700}',
+            )!),
+          ]));
 
       expect(find.text('lun'), findsOneWidget);
-      expect(find.text('8 h'), findsOneWidget);
       expect(find.textContaining('of 700 €'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('richer', () {
+    testWidgets('columns with their values, the target dashed and the note', (tester) async {
+      final spec = ChartSpec.tryParse(
+        '{"type": "column", "title": "Sonno", "unit": "h", "labels": ["lun", "mar", "mer", "gio"], '
+        '"values": [6.9, 6.4, 8.5, 5.7], "target": 8, "note": "Giovedì la notte più corta"}',
+      )!;
+      await _pump(tester, EchoChart(spec));
+
+      expect(spec.kind, ChartKind.column);
+      expect(spec.target, 8);
+      expect(find.text('gio'), findsOneWidget);
+      expect(find.text('Target 8 h'), findsOneWidget);
+      expect(find.text('Giovedì la notte più corta'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    test('at most 14 columns; a pie has no target', () {
+      final columns = ChartSpec.tryParse(
+        '{"type": "column", "labels": ${List.generate(20, (i) => '"$i"')}, '
+        '"values": ${List.generate(20, (i) => i)}}',
+      )!;
+      final pie = ChartSpec.tryParse(
+        '{"type": "pie", "labels": ["a", "b"], "values": [1, 2], "target": 3}',
+      )!;
+
+      expect(columns.labels, hasLength(ChartSpec.maxColumns));
+      expect(pie.target, isNull);
+    });
+
+    test('over the target a bar is amber, the largest full, the others softer', () {
+      const palette = EchoPalette.light;
+
+      expect(barColor(palette, 9, 8, emphasized: false), palette.amber);
+      expect(barColor(palette, 7, 8, emphasized: true), palette.accent);
+      expect(barColor(palette, 7, 8, emphasized: false), isNot(palette.accent));
+      expect(barColor(palette, -1, null, emphasized: true), palette.red);
+    });
+
+    test('a line follows its values, from zero when they are near it', () {
+      final (priceLow, priceHigh) = lineRange([285, 290, 287, 295]);
+      final (sleepLow, _) = lineRange([6.9, 6.4, 7.5, 5.7]);
+      final (kmLow, _) = lineRange([1.2, 3.5, 0.8, 4.1]);
+
+      expect(priceLow, greaterThan(270));
+      expect(priceHigh, greaterThan(295));
+      // The differences show: not from zero
+      expect(sleepLow, closeTo(5.43, 0.01));
+      expect(kmLow, 0);
     });
   });
 }

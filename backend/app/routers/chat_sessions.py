@@ -36,6 +36,8 @@ class ChatMessage(BaseModel):
     about_photo_id: str | None = None
     # What the answer saved or changed in Saved: {"id", "title", "list", "address"}
     saved: list[dict] | None = None
+    # What an assistant added to its notes in this answer
+    noted: list[str] | None = None
 
 
 class ChatSessionSummary(BaseModel):

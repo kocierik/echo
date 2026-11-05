@@ -42,6 +42,7 @@ final class ChatMessage {
     this.routineSchedule,
     this.aboutPhotoId,
     this.saved = const [],
+    this.noted = const [],
   }) : sources = List<ChatSource>.unmodifiable(sources);
 
   final String text;
@@ -78,6 +79,9 @@ final class ChatMessage {
   /// What the answer saved in Saved ("Your car · Saved"): a chip opening each.
   final List<SavedChip> saved;
 
+  /// What an assistant added to its notes in this answer: it learns, and says so.
+  final List<String> noted;
+
   ChatMessage copyWith({
     String? text,
     bool? isUser,
@@ -111,8 +115,16 @@ final class ChatMessage {
       routineSchedule: routineSchedule,
       aboutPhotoId: aboutPhotoId,
       saved: saved,
+      noted: noted,
     );
   }
 }
+
+/// The lines of a "noted" list from the server (anything else: none).
+List<String> notedLines(Object? raw) => [
+      if (raw is List)
+        for (final line in raw)
+          if (line is String && line.trim().isNotEmpty) line.trim(),
+    ];
 
 const _unset = Object();

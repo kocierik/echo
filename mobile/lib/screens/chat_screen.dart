@@ -145,6 +145,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     final api = _api;
     return widget.routinesApi ?? (api is RoutinesApi ? api as RoutinesApi : null);
   }
+
   int _messageCount = 0;
 
   /// The language the user speaks, for dictation (kept on the phone, else the account's).
@@ -204,8 +205,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     // A request made before this screen existed (cold start from a tap); else Ask
     // opens on the thread with Echo
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final opening = widget.openSessionRequest?.value != null ||
-          widget.askRequest?.value != null;
+      final opening = widget.openSessionRequest?.value != null || widget.askRequest?.value != null;
       _onOpenSessionRequest();
       _onAskRequest();
       final state = _controller.state;
@@ -348,8 +348,7 @@ final class _ChatScreenState extends State<ChatScreen> {
         itemId: chip.id,
         api: _api as SavedApi,
         loadPhoto: _api is PhotoApi ? (_api as PhotoApi).photoImage : null,
-        openConversation:
-            _memoryApi == null ? null : (context, id) async => _openConversation(id),
+        openConversation: _memoryApi == null ? null : (context, id) async => _openConversation(id),
       ),
     )));
   }
@@ -539,7 +538,14 @@ final class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                 ),
-              if (!routines && state.assistant != null && state.messages.isNotEmpty)
+              // Echo and each assistant, one tap away; each with its own history
+              if (!routines && _assistants.isNotEmpty)
+                _AssistantSwitcher(
+                  assistants: _assistants,
+                  selected: state.assistant?.id,
+                  onSelected: (choice) => unawaited(_controller.openAssistant(choice)),
+                )
+              else if (!routines && state.assistant != null && state.messages.isNotEmpty)
                 _AssistantBar(state.assistant!),
               if (routines)
                 Expanded(
@@ -567,17 +573,15 @@ final class _ChatScreenState extends State<ChatScreen> {
               else
                 ChatComposer(
                   focusNode: _composerFocus,
-                  hintText: state.photoContext != null
-                      ? 'Ask about this photo'
-                      : 'Ask about your day',
+                  hintText:
+                      state.photoContext != null ? 'Ask about this photo' : 'Ask about your day',
                   controller: _textController,
                   sending: state.sending,
                   enabled: !state.loadingSession,
                   onChanged: _controller.setComposerText,
                   onSend: _send,
-                  onCamera: _controller.canTakePhotos
-                      ? () => unawaited(_controller.takePhoto())
-                      : null,
+                  onCamera:
+                      _controller.canTakePhotos ? () => unawaited(_controller.takePhoto()) : null,
                 ),
             ],
           ),
@@ -599,38 +603,9 @@ final class _ChatScreenState extends State<ChatScreen> {
 
     if (state.messages.isEmpty) {
       final assistant = state.assistant;
-      // A new chat (not the thread): it may start with an assistant
-      final choosing = !state.isThread && state.sessionId == null && _assistants.isNotEmpty;
       return ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
         children: [
-          if (choosing) ...[
-            // One row, scrolling sideways: up to ten assistants never push the page down
-            SingleChildScrollView(
-              key: const Key('ask-assistants'),
-              scrollDirection: Axis.horizontal,
-              clipBehavior: Clip.none,
-              child: Row(
-                spacing: 8,
-                children: [
-                  ChoiceChip(
-                    key: const Key('ask-assistant-echo'),
-                    label: const Text('Echo'),
-                    selected: assistant == null,
-                    onSelected: (_) => _controller.chooseAssistant(null),
-                  ),
-                  for (final choice in _assistants)
-                    ChoiceChip(
-                      key: Key('ask-assistant-${choice.id}'),
-                      label: Text(choice.label),
-                      selected: assistant?.id == choice.id,
-                      onSelected: (_) => _controller.chooseAssistant(choice),
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-          ],
           Text(
             assistant == null ? 'Ask what your memory knows' : assistant.label,
             style: Theme.of(context).textTheme.titleLarge,
@@ -669,22 +644,20 @@ final class _ChatScreenState extends State<ChatScreen> {
           // Suggestions are about the user's memory, not an assistant's topic
           if (assistant == null)
             ..._suggestions.map((suggestion) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: OutlinedButton(
-                  onPressed: state.sending
-                      ? null
-                      : () => _sendSuggestion(suggestion),
-                  style: OutlinedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    minimumSize: const Size.fromHeight(44),
-                    foregroundColor: palette.text,
-                    side: BorderSide(color: palette.border),
-                    shape: const StadiumBorder(),
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: OutlinedButton(
+                    onPressed: state.sending ? null : () => _sendSuggestion(suggestion),
+                    style: OutlinedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      minimumSize: const Size.fromHeight(44),
+                      foregroundColor: palette.text,
+                      side: BorderSide(color: palette.border),
+                      shape: const StadiumBorder(),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                    ),
+                    child: Text(suggestion),
                   ),
-                  child: Text(suggestion),
-                ),
-              )),
+                )),
         ],
       );
     }
@@ -693,14 +666,13 @@ final class _ChatScreenState extends State<ChatScreen> {
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: rows.length +
-          (state.sending ? 1 : 0) +
-          (state.error != null ? 1 : 0),
+      itemCount: rows.length + (state.sending ? 1 : 0) + (state.error != null ? 1 : 0),
       itemBuilder: (context, row) {
         if (row < rows.length && rows[row].day != null) {
           return _DayLabel(day: rows[row].day!);
         }
-        final index = row < rows.length ? rows[row].message! : state.messages.length + row - rows.length;
+        final index =
+            row < rows.length ? rows[row].message! : state.messages.length + row - rows.length;
         if (index < state.messages.length) {
           final message = state.messages[index];
           return MessageBubble(
@@ -726,9 +698,8 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ? () => unawaited(_controller.translatePhoto(message.photoId!))
                 : null,
             onAskMore: _followUps(message) ? () => _askMore(message.photoId!) : null,
-            onRemind: _followUps(message)
-                ? (when) => unawaited(_controller.remindFromPhoto(when))
-                : null,
+            onRemind:
+                _followUps(message) ? (when) => unawaited(_controller.remindFromPhoto(when)) : null,
             onOpenSaved: _api is SavedApi ? _openSaved : null,
           );
         }
@@ -786,6 +757,52 @@ List<({int? message, DateTime? day})> _threadRows(List<ChatMessage> messages) {
     rows.add((message: index, day: null));
   }
   return rows;
+}
+
+/// Under Ask's header: Echo and the user's assistants, one tap each (the selected one
+/// answers here). One row, scrolling sideways: ten assistants never push the page down.
+final class _AssistantSwitcher extends StatelessWidget {
+  const _AssistantSwitcher({
+    required this.assistants,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<ChatAssistant> assistants;
+
+  /// The assistant of the chat shown; null: Echo.
+  final String? selected;
+  final ValueChanged<ChatAssistant?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      key: const Key('ask-assistants'),
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        spacing: 8,
+        children: [
+          ChoiceChip(
+            key: const Key('ask-assistant-echo'),
+            avatar: const Icon(Icons.graphic_eq_rounded, size: 18),
+            label: const Text('Echo'),
+            selected: selected == null,
+            showCheckmark: false,
+            onSelected: (_) => onSelected(null),
+          ),
+          for (final choice in assistants)
+            ChoiceChip(
+              key: Key('ask-assistant-${choice.id}'),
+              label: Text(choice.label),
+              selected: selected == choice.id,
+              showCheckmark: false,
+              onSelected: (_) => onSelected(choice),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Under the header of a chat with an assistant: who answers here.

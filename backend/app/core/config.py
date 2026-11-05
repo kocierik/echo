@@ -137,6 +137,9 @@ class Settings(BaseSettings):
     # The plan of a new account, from the app or from `make create-user`; an unknown name
     # is free
     new_account_plan: str = "free"
+    # To-dos from what is said in a conversation (promises, "I'll send it Friday"); off:
+    # only when the user asks Echo ("Echo, segnami...")
+    conversation_promises: bool = False
 
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"

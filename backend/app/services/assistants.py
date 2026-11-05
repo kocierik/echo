@@ -217,6 +217,9 @@ def assistant_prompt(assistant: Assistant, notes_tool: bool = True) -> str:
 
 
 _HOW_TO_NOTE = (
-    "; add or remove a line with ECHO_UPDATE_ASSISTANT_NOTES when the user tells you "
-    "something worth keeping for this topic"
+    "; keep them up to date yourself with ECHO_UPDATE_ASSISTANT_NOTES, in the same turn and "
+    "without being asked: whenever the user says something lasting about this topic (a "
+    "fact about them, a goal, a preference, a limit, a number such as a salary, a weight, "
+    "a time, a decision, what they did), add one short line; when a line is no longer true, "
+    "remove it and add the new one. Do not note small talk or what is already there"
 )

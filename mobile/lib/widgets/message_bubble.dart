@@ -253,6 +253,7 @@ final class MessageBubble extends StatelessWidget {
           if (message.photoId != null && loadPhoto != null)
             PhotoThumbnail(photoId: message.photoId!, loadSource: loadPhoto!),
           ..._savedChips(),
+          if (message.noted.isNotEmpty) _Noted(message.noted),
           if (message.pendingAction != null)
             ActionCard(
               action: message.pendingAction!,
@@ -291,6 +292,41 @@ final class MessageBubble extends StatelessWidget {
     final uri = rawUrl == null ? null : Uri.tryParse(rawUrl);
     if (uri == null || !uri.hasScheme) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
+
+/// What an assistant learned in this answer: the lines it added to its notes.
+final class _Noted extends StatelessWidget {
+  const _Noted(this.lines);
+
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      key: const Key('answer-noted'),
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: palette.accentSoft,
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.edit_note_rounded, size: 18, color: palette.onAccentSoft),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Added to its notes: ${lines.map((l) => l.replaceFirst(RegExp(r'^- '), '')).join(' · ')}',
+              style: textTheme.bodySmall?.copyWith(color: palette.onAccentSoft),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

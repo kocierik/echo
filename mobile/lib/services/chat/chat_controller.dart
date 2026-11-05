@@ -239,6 +239,7 @@ final class ChatController extends ChangeNotifier {
             sources: _mapSources([...response.webSources, ...response.sources]),
             pendingAction: response.pendingAction,
             saved: response.saved,
+            noted: response.noted,
           ),
         ],
         sessionId: response.sessionId,
@@ -341,6 +342,32 @@ final class ChatController extends ChangeNotifier {
     _emit(_state.copyWith(assistant: assistant));
   }
 
+  /// Ask's row of assistants, one tap each: Echo's thread, or [assistant]'s latest chat
+  /// (a new one when it has none). Each keeps its own history, found again when switching.
+  Future<void> openAssistant(ChatAssistant? assistant) async {
+    if (_disposed) return;
+    if (assistant == null) {
+      if (_state.isThread) return;
+      if (hasThread) return openThread();
+      return newChat();
+    }
+    if (_state.assistant?.id == assistant.id) return;
+    final generation = _generation;
+    ChatSessionSummary? latest;
+    try {
+      for (final session in await _api.getSessions()) {
+        if (session.assistant?.id != assistant.id) continue;
+        if (latest == null || session.updatedAt.isAfter(latest.updatedAt)) latest = session;
+      }
+    } catch (_) {
+      // Its chats cannot be listed now: a new one with it
+    }
+    // Something else was opened meanwhile
+    if (!_isCurrent(generation) || _disposed) return;
+    if (latest != null) return loadSession(latest.id);
+    newChat(assistant: assistant);
+  }
+
   /// Whether Ask has a thread with Echo to open (the server's; not in older fakes).
   bool get hasThread => _api is ThreadApi;
 
@@ -431,6 +458,7 @@ final class ChatController extends ChangeNotifier {
         routineSchedule: message.routineSchedule,
         aboutPhotoId: message.aboutPhotoId,
         saved: message.saved,
+        noted: message.noted,
       );
     }).toList();
   }

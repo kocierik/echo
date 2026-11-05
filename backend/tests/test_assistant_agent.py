@@ -60,6 +60,29 @@ async def test_the_assistant_answers_with_its_instructions_and_notes(db_session)
     assert "coach per l'alimentazione" in system
     assert "Vegetariano." in system
     assert NOTES_TOOL in [t["function"]["name"] for t in llm.tools_log[0]]
+    # It notes on its own, without being asked
+    assert "without being asked" in system
+
+
+async def test_an_assistant_knows_its_documents_and_reads_one_whole(db_session):
+    from app.models.document import Document
+
+    payslip = Document(
+        id=uuid.uuid4(), user_id=TEST_USER_ID, title="busta-paga-ottobre.pdf", kind="pdf",
+        size_bytes=1, status="ready", text="Netto in busta: 2282,92 €", word_count=5,
+    )
+    db_session.add(payslip)
+    await db_session.commit()
+    assistant = await _assistant(db_session, document_ids=[str(payslip.id)])
+    llm = RecordingLLM([
+        _calls(("ECHO_READ_DOCUMENT", {"document": "busta"})),
+        _text("Netto 2282,92 €."),
+    ])
+
+    await _run(db_session, "riassumi la busta paga", llm, assistant)
+
+    assert "busta-paga-ottobre.pdf" in llm.call_log[0][0].content
+    assert "2282,92" in llm.call_log[1][-1].content
 
 
 async def test_plain_echo_has_no_assistant_and_no_notes_tool(db_session):
@@ -80,9 +103,11 @@ async def test_the_assistant_keeps_and_drops_a_note(db_session):
         ]
     )
 
-    await _run(db_session, "a colazione yogurt e frutta", llm, assistant)
+    outcome = await _run(db_session, "a colazione yogurt e frutta", llm, assistant)
     await db_session.refresh(assistant)
     assert assistant.notes == "- Colazione: yogurt e frutta"
+    # The answer says what it learned
+    assert outcome.noted == ["- Colazione: yogurt e frutta"]
 
     llm = RecordingLLM(
         [

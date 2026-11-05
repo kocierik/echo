@@ -179,8 +179,25 @@ final class _Api implements AssistantsApi, DocumentsApi, ChatApi {
   @override
   Future<List<ChatSessionSummary>> getSessions() async => sessions;
 
+  final opened = <String>[];
+
   @override
-  Future<ChatSessionDetail> getSessionDetail(String id) => throw UnimplementedError();
+  Future<ChatSessionDetail> getSessionDetail(String id) async {
+    opened.add(id);
+    final summary = sessions.firstWhere((s) => s.id == id);
+    return ChatSessionDetail(
+      id: id,
+      title: summary.title,
+      createdAt: summary.createdAt,
+      updatedAt: summary.updatedAt,
+      assistant: summary.assistant,
+      messages: [
+        ChatSessionMessage(role: 'user', content: 'domanda $id', timestamp: summary.updatedAt),
+        ChatSessionMessage(
+            role: 'assistant', content: 'risposta $id', timestamp: summary.updatedAt),
+      ],
+    );
+  }
 
   @override
   Future<void> deleteSession(String id) async {}
@@ -255,8 +272,7 @@ void main() {
       expect(find.text('Coach'), findsOneWidget);
     });
 
-    testWidgets('a template asks its questions; Echo writes it from the answers',
-        (tester) async {
+    testWidgets('a template asks its questions; Echo writes it from the answers', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
 
@@ -401,10 +417,10 @@ void main() {
     testWidgets('a new chat can start with an assistant', (tester) async {
       final api = _Api(assistants: [
         _diet,
-        const Assistant(id: 'a2', name: 'Lavoro', emoji: '💼', instructions: 'x', notes: '',
-            documentIds: []),
-        const Assistant(id: 'a3', name: 'Sonno', emoji: '😴', instructions: 'x', notes: '',
-            documentIds: []),
+        const Assistant(
+            id: 'a2', name: 'Lavoro', emoji: '💼', instructions: 'x', notes: '', documentIds: []),
+        const Assistant(
+            id: 'a3', name: 'Sonno', emoji: '😴', instructions: 'x', notes: '', documentIds: []),
       ]);
       // A phone's width: three assistants do not fit on one line
       tester.view.physicalSize = const Size(390, 844);
@@ -432,9 +448,50 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.assistantIds, ['a1']);
-      // The chat says who it is with; no choosing once it started
-      expect(find.byKey(const Key('chat-assistant')), findsOneWidget);
-      expect(find.byKey(const Key('ask-assistant-echo')), findsNothing);
+      // The row stays, with who answers here chosen
+      expect(
+        tester.widget<ChoiceChip>(find.byKey(const Key('ask-assistant-a1'))).selected,
+        isTrue,
+      );
+      expect(find.byKey(const Key('ask-assistant-echo')), findsOneWidget);
+    });
+
+    testWidgets('one tap opens each assistant\'s own latest chat', (tester) async {
+      ChatSessionSummary session(String id, String assistantId, String at) => ChatSessionSummary(
+            id: id,
+            title: id,
+            messageCount: 2,
+            createdAt: DateTime.parse(at),
+            updatedAt: DateTime.parse(at),
+            assistant: ChatAssistant(id: assistantId, name: assistantId, emoji: '🤖'),
+          );
+      final api = _Api(assistants: [
+        _diet,
+        const Assistant(
+            id: 'a2', name: 'Lavoro', emoji: '💼', instructions: 'x', notes: '', documentIds: []),
+      ])
+        ..sessions = [
+          session('old-diet', 'a1', '2026-11-01T09:00:00Z'),
+          session('diet', 'a1', '2026-11-04T09:00:00Z'),
+          session('work', 'a2', '2026-11-03T09:00:00Z'),
+        ];
+      final controller = ChatController(api: api, voiceInput: _Voice());
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: ChatScreen(controller: controller),
+      ));
+      await tester.pumpAndSettle();
+
+      await _tap(tester, find.byKey(const Key('ask-assistant-a1')));
+      expect(find.text('risposta diet'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('ask-assistant-a2')));
+      expect(find.text('risposta work'), findsOneWidget);
+      // Back to the first: its chat, not a new one
+      await _tap(tester, find.byKey(const Key('ask-assistant-a1')));
+
+      expect(api.opened, ['diet', 'work', 'diet']);
+      expect(controller.state.assistant?.id, 'a1');
     });
 
     testWidgets('an assistant deleted elsewhere: the question waits, the chips refresh',

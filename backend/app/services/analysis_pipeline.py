@@ -373,10 +373,11 @@ async def extract_entities(
         if not name:
             continue
         metadata = entity_data.get("metadata") or {}
-        # To-dos come only from promises, the user's or made to them ("expected"); the
-        # others are asked of Echo
+        # To-dos are asked of Echo ("Echo, segnami..."); from a conversation only the
+        # promises, the user's or made to them ("expected"), and only when turned on
         if entity_data.get("type") == "task" and not (
-            metadata.get("promise") is True or metadata.get("expected") is True
+            settings.conversation_promises
+            and (metadata.get("promise") is True or metadata.get("expected") is True)
         ):
             continue
 

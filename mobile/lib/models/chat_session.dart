@@ -1,5 +1,6 @@
 import 'action_models.dart';
 import 'assistant.dart';
+import 'chat_message.dart';
 import 'saved.dart';
 
 final class ChatSessionSummary {
@@ -51,6 +52,7 @@ final class ChatSessionMessage {
     this.routineSchedule,
     this.aboutPhotoId,
     this.saved = const [],
+    this.noted = const [],
   });
 
   final String role;
@@ -82,6 +84,9 @@ final class ChatSessionMessage {
   /// What the answer saved in Saved: a chip opening each.
   final List<SavedChip> saved;
 
+  /// What an assistant added to its notes in this answer.
+  final List<String> noted;
+
   factory ChatSessionMessage.fromJson(Map<String, dynamic> json) {
     final role = _requiredString(json, 'role');
     if (role != 'user' && role != 'assistant') {
@@ -105,6 +110,7 @@ final class ChatSessionMessage {
       aboutPhotoId:
           json['about_photo_id'] is String ? json['about_photo_id'] as String : null,
       saved: SavedChip.listFrom(json['saved']),
+      noted: notedLines(json['noted']),
     );
   }
 }
