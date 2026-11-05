@@ -217,8 +217,10 @@ async def retrieve_memory_context(
 
 
 # A document passage joins an answer only this close to the question, so documents never
-# crowd out the conversations with something unrelated
-DOCUMENT_MIN_SIMILARITY = 0.35
+# crowd out the conversations with something unrelated. Measured on a real CV (English,
+# asked in Italian): its passages score 0.32-0.40 for "where did I study", "what is my
+# job"; an unrelated question at most 0.30
+DOCUMENT_MIN_SIMILARITY = 0.31
 DOCUMENT_PASSAGES = 3
 
 

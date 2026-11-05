@@ -214,8 +214,12 @@ async def test_connected_apps_never_see_the_documents(client, auth_headers, db_s
     assert "Referto" not in str(theirs)
 
 
-def test_documents_need_the_same_closeness_as_saved_things():
-    assert DOCUMENT_MIN_SIMILARITY >= 0.35
+def test_documents_need_closeness_a_little_below_saved_things():
+    # A passage mixes several subjects (a CV's studies and jobs), so it scores lower than a
+    # saved thing for the same question; still never anything at all
+    from app.services.saved import MIN_SIMILARITY
+
+    assert 0.3 <= DOCUMENT_MIN_SIMILARITY <= MIN_SIMILARITY
 
 
 async def test_the_export_has_the_facts_and_the_documents(client, auth_headers, db_session):
