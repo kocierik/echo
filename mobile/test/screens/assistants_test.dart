@@ -53,6 +53,50 @@ final class _Api implements AssistantsApi, DocumentsApi, ChatApi {
   @override
   Future<List<AssistantTemplate>> assistantTemplates() async => _templates;
 
+  final asked = <(String?, String?)>[];
+  final composed = <List<(String, String)>>[];
+  final improved = <String>[];
+
+  @override
+  Future<List<AssistantQuestion>> assistantQuestions({String? template, String? topic}) async {
+    asked.add((template, topic));
+    return const [
+      AssistantQuestion(
+        id: 'goal',
+        text: 'Qual è il tuo obiettivo?',
+        options: ['Perdere peso', 'Più energia'],
+      ),
+      AssistantQuestion(
+        id: 'limits',
+        text: 'Cose che non mangi?',
+        options: ['Vegetariano', 'Senza glutine'],
+        multi: true,
+        hint: 'Es. niente funghi',
+      ),
+    ];
+  }
+
+  @override
+  Future<AssistantDraft> composeAssistant({
+    String? template,
+    String? topic,
+    required List<(String, String)> answers,
+  }) async {
+    composed.add(answers);
+    return const AssistantDraft(
+      name: 'Dieta veg',
+      emoji: '🥦',
+      instructions: 'Sei il mio coach vegetariano.',
+      notes: '- Vegetariano\n- Niente funghi',
+    );
+  }
+
+  @override
+  Future<String> improveInstructions({required String name, required String instructions}) async {
+    improved.add(instructions);
+    return 'Sei il mio assistente per la casa: tieni le bollette nelle note.';
+  }
+
   @override
   Future<Assistant> createAssistant(AssistantDraft draft) async {
     if (refuseCreate != null) throw refuseCreate!;
@@ -198,6 +242,7 @@ void main() {
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
       await _tap(tester, find.byKey(const Key('assistant-template-diet')));
+      await _tap(tester, find.byKey(const Key('wizard-skip')));
       // Prefilled from the template, still editable
       expect(find.text('Dieta'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('assistant-name')), 'Coach');
@@ -210,12 +255,75 @@ void main() {
       expect(find.text('Coach'), findsOneWidget);
     });
 
+    testWidgets('a template asks its questions; Echo writes it from the answers',
+        (tester) async {
+      final api = _Api();
+      await _pumpAssistants(tester, api);
+
+      await _tap(tester, find.byKey(const Key('assistants-new')));
+      await _tap(tester, find.byKey(const Key('assistant-template-diet')));
+      expect(api.asked, [('diet', null)]);
+      expect(find.text('Qual è il tuo obiettivo?'), findsOneWidget);
+
+      // One option for a single choice: the second replaces the first
+      await _tap(tester, find.byKey(const Key('wizard-option-goal-Perdere peso')));
+      await _tap(tester, find.byKey(const Key('wizard-option-goal-Più energia')));
+      // Several for a multiple one, and words too
+      await _tap(tester, find.byKey(const Key('wizard-option-limits-Vegetariano')));
+      await _tap(tester, find.byKey(const Key('wizard-option-limits-Senza glutine')));
+      await tester.enterText(find.byKey(const Key('wizard-words-limits')), 'niente funghi');
+      await _tap(tester, find.byKey(const Key('wizard-create')));
+
+      expect(api.composed.single, [
+        ('Qual è il tuo obiettivo?', 'Più energia'),
+        ('Cose che non mangi?', 'Vegetariano, Senza glutine, niente funghi'),
+      ]);
+      // The proposal, in the editor to review
+      expect(find.text('Dieta veg'), findsOneWidget);
+      expect(find.text('- Vegetariano\n- Niente funghi'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('assistant-save')));
+
+      expect(api.created.single.emoji, '🥦');
+      expect(find.byKey(const Key('assistant-n0')), findsOneWidget);
+    });
+
+    testWidgets('from scratch: what it is for, then questions made for it', (tester) async {
+      final api = _Api();
+      await _pumpAssistants(tester, api);
+
+      await _tap(tester, find.byKey(const Key('assistants-new')));
+      await _tap(tester, find.byKey(const Key('assistant-template-blank')));
+      expect(tester.widget<FilledButton>(find.byKey(const Key('wizard-next'))).onPressed, isNull);
+      await tester.enterText(find.byKey(const Key('wizard-topic')), 'la mezza maratona');
+      await _tap(tester, find.byKey(const Key('wizard-next')));
+
+      expect(api.asked, [(null, 'la mezza maratona')]);
+      expect(find.text('Cose che non mangi?'), findsOneWidget);
+    });
+
+    testWidgets('Improve rewrites the instructions, and Undo puts them back', (tester) async {
+      final api = _Api();
+      await _pumpAssistants(tester, api);
+      await _tap(tester, find.byKey(const Key('assistants-new')));
+      await _tap(tester, find.byKey(const Key('assistant-template-blank')));
+      await _tap(tester, find.byKey(const Key('wizard-skip')));
+
+      await tester.enterText(find.byKey(const Key('assistant-instructions')), 'bollette');
+      await _tap(tester, find.byKey(const Key('assistant-improve')));
+
+      expect(api.improved, ['bollette']);
+      expect(find.textContaining('tieni le bollette nelle note'), findsOneWidget);
+      await _tap(tester, find.text('Undo'));
+      expect(find.text('bollette'), findsOneWidget);
+    });
+
     testWidgets('a blank one needs a name and instructions', (tester) async {
       final api = _Api();
       await _pumpAssistants(tester, api);
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
       await _tap(tester, find.byKey(const Key('assistant-template-blank')));
+      await _tap(tester, find.byKey(const Key('wizard-skip')));
       await _tap(tester, find.byKey(const Key('assistant-save')));
       expect(api.created, isEmpty);
       expect(find.text('Give it a name and instructions.'), findsOneWidget);
@@ -282,6 +390,7 @@ void main() {
 
       await _tap(tester, find.byKey(const Key('assistants-new')));
       await _tap(tester, find.byKey(const Key('assistant-template-work')));
+      await _tap(tester, find.byKey(const Key('wizard-skip')));
       await _tap(tester, find.byKey(const Key('assistant-save')));
 
       expect(find.text('You can have at most 10 assistants.'), findsOneWidget);

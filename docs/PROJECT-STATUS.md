@@ -141,7 +141,11 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
   In Ask una nuova chat parte con un assistente (chip Echo e uno per assistente); la sua chat passa sempre
   dall'agente con le sue istruzioni e note dopo quelle dell'utente, ricorda l'assistente anche riaperta, e la
   cronologia mostra emoji e nome. Gli incarichi creati nella sua chat girano come lui. Cancellarlo lascia chat e
-  incarichi a Echo.
+  incarichi a Echo. **Creazione guidata** (05/11, come "Create" di GPT Builder e i Gem di Gemini): 6 modelli
+  (Lavoro, Dieta, Sonno, Allenamento, Soldi, Studio), ognuno con 3 domande sue a risposta rapida o libera; da zero
+  prima "di cosa si occupa", poi 3 domande generate dal modello (generiche se fallisce). Dalle risposte Echo
+  scrive nome, emoji, istruzioni e prime note (`services/assistant_builder.py`), rivisti nell'editor prima di
+  salvare; "✨ Improve with Echo" riscrive le istruzioni da poche parole, con Undo.
 - **WhatsApp in lettura** (29/10, Profile → WhatsApp): un servizio Node (`whatsapp/`, Baileys 7) collega il numero
   dell'utente come dispositivo con un codice di abbinamento; mai online, non invia e non segna come letto. Tiene
   le chat private (entrambi i lati, niente gruppi) solo in RAM, 7 giorni e 20.000 messaggi al massimo; le chiavi

@@ -4,17 +4,19 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user_id
 from app.core.database import get_db
+from app.core.rate_limit import limiter
 from app.models.assistant import Assistant
-from app.services import assistants
+from app.services import assistant_builder, assistants
 from app.services.assistants import AssistantError
 from app.services.language import account_languages
+from app.services.usage import usage_owner
 
 router = APIRouter(prefix="/assistants", tags=["assistants"])
 
@@ -85,6 +87,122 @@ async def list_templates(
 ):
     language, _ = await account_languages(db, user_id)
     return [TemplateOut(**t) for t in assistants.templates(language)]
+
+
+class QuestionsIn(BaseModel):
+    # A template's questions, or ones for what an assistant from scratch is for
+    template: str | None = None
+    topic: str | None = Field(default=None, max_length=300)
+
+
+class QuestionOut(BaseModel):
+    id: str
+    text: str
+    options: list[str]
+    multi: bool
+    hint: str
+
+
+class QuestionsOut(BaseModel):
+    questions: list[QuestionOut]
+
+
+class AnswerIn(BaseModel):
+    question: str = Field(max_length=300)
+    answer: str = Field(max_length=500)
+
+
+class ComposeIn(BaseModel):
+    template: str | None = None
+    topic: str | None = Field(default=None, max_length=300)
+    answers: list[AnswerIn] = Field(default_factory=list, max_length=8)
+
+
+class ProposalOut(BaseModel):
+    name: str
+    emoji: str
+    instructions: str
+    notes: str
+
+
+class ImproveIn(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    instructions: str = Field(max_length=10_000)
+
+
+class ImproveOut(BaseModel):
+    instructions: str
+
+
+def builder_llm():
+    """The model that writes assistants (replaced in the tests)."""
+    from app.services.llm_openai import get_llm_query_service
+
+    return get_llm_query_service()
+
+
+@router.post("/questions", response_model=QuestionsOut)
+@limiter.limit("20/minute")
+async def assistant_questions(
+    request: Request,
+    body: QuestionsIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    llm=Depends(builder_llm),
+):
+    """New assistant: the questions to answer (a template's, or made for the topic)."""
+    usage_owner.set(user_id)
+    language, _ = await account_languages(db, user_id)
+    try:
+        made = await assistant_builder.questions(
+            llm, language, key=body.template or None, topic=body.topic
+        )
+    except AssistantError as exc:
+        raise _refused(exc) from exc
+    return QuestionsOut(questions=[QuestionOut(**q) for q in made])
+
+
+@router.post("/compose", response_model=ProposalOut)
+@limiter.limit("20/minute")
+async def compose_assistant(
+    request: Request,
+    body: ComposeIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    llm=Depends(builder_llm),
+):
+    """The answers made into a proposal, reviewed in the editor before it is saved."""
+    usage_owner.set(user_id)
+    language, _ = await account_languages(db, user_id)
+    try:
+        proposal = await assistant_builder.compose(
+            llm, language, key=body.template or None, topic=body.topic,
+            answers=[a.model_dump() for a in body.answers],
+        )
+    except AssistantError as exc:
+        raise _refused(exc) from exc
+    return ProposalOut(**proposal)
+
+
+@router.post("/improve", response_model=ImproveOut)
+@limiter.limit("20/minute")
+async def improve_instructions(
+    request: Request,
+    body: ImproveIn,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+    llm=Depends(builder_llm),
+):
+    """✨ Improve: a few words of instructions made into full ones."""
+    usage_owner.set(user_id)
+    language, _ = await account_languages(db, user_id)
+    try:
+        better = await assistant_builder.improve(
+            llm, language, name=body.name or "", instructions=body.instructions
+        )
+    except AssistantError as exc:
+        raise _refused(exc) from exc
+    return ImproveOut(instructions=better)
 
 
 @router.get("", response_model=AssistantsOut)

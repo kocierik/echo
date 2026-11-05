@@ -27,10 +27,10 @@ async def _document(db, user_id=TEST_USER_ID):
     return document
 
 
-async def test_templates_for_work_diet_and_sleep(client, auth_headers):
+async def test_templates_for_work_diet_sleep_training_money_and_study(client, auth_headers):
     templates = (await client.get("/api/assistants/templates", headers=auth_headers)).json()
 
-    assert [t["key"] for t in templates] == ["work", "diet", "sleep"]
+    assert [t["key"] for t in templates] == ["work", "diet", "sleep", "fitness", "money", "study"]
     diet = templates[1]
     assert diet["emoji"] and diet["name"]
     # Never a doctor

@@ -8,6 +8,7 @@ import '../../services/api/assistants_api.dart';
 import '../../services/api/memory_items_api.dart';
 import '../../theme/app_theme.dart';
 import 'assistant_editor_screen.dart';
+import 'assistant_wizard_screen.dart';
 import 'settings_components.dart';
 
 /// Profile → Assistants: Echo focused on one part of the user's life (work, diet,
@@ -43,7 +44,7 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
     }
   }
 
-  Future<void> _open({Assistant? assistant, AssistantTemplate? template}) async {
+  Future<void> _open({required Assistant assistant}) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -51,7 +52,6 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
           api: widget.api,
           documents: widget.documents,
           assistant: assistant,
-          template: template,
         ),
       ),
     );
@@ -96,7 +96,19 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
         ),
       ),
     );
-    if (chosen != null && mounted) await _open(template: chosen);
+    if (chosen == null || !mounted) return;
+    // A few questions first; Echo writes it from the answers (or Skip: the editor)
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AssistantWizardScreen(
+          api: widget.api,
+          documents: widget.documents,
+          template: chosen.key.isEmpty ? null : chosen,
+        ),
+      ),
+    );
+    if (saved == true && mounted) await _load();
   }
 
   @override

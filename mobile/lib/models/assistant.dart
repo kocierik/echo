@@ -92,6 +92,39 @@ final class AssistantTemplate {
   final String instructions;
 }
 
+/// A question asked before a new assistant is written: tap options, or say it in words.
+@immutable
+final class AssistantQuestion {
+  const AssistantQuestion({
+    required this.id,
+    required this.text,
+    this.options = const [],
+    this.multi = false,
+    this.hint = '',
+  });
+
+  factory AssistantQuestion.fromJson(Map<String, dynamic> json) => AssistantQuestion(
+        id: json['id'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        options: [
+          for (final option in json['options'] as List<dynamic>? ?? const [])
+            if (option is String) option,
+        ],
+        multi: json['multi'] as bool? ?? false,
+        hint: json['hint'] as String? ?? '',
+      );
+
+  final String id;
+  final String text;
+  final List<String> options;
+
+  /// Several options may apply.
+  final bool multi;
+
+  /// An example answer, for the words.
+  final String hint;
+}
+
 /// What the editor saves: a new assistant, or every field of one.
 @immutable
 final class AssistantDraft {
@@ -108,6 +141,14 @@ final class AssistantDraft {
   final String instructions;
   final String notes;
   final List<String> documentIds;
+
+  /// Echo's proposal from the answers (no documents yet).
+  factory AssistantDraft.fromJson(Map<String, dynamic> json) => AssistantDraft(
+        name: json['name'] as String? ?? '',
+        emoji: json['emoji'] as String? ?? '🤖',
+        instructions: json['instructions'] as String? ?? '',
+        notes: json['notes'] as String? ?? '',
+      );
 
   Map<String, dynamic> toJson() => {
         'name': name,

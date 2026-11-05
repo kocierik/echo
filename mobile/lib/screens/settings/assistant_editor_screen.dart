@@ -11,13 +11,15 @@ import '../../theme/app_theme.dart';
 import 'settings_components.dart';
 
 /// One assistant: its name and emoji, instructions, notes and documents; a new one starts
-/// from [template]. Pops true once something was saved or deleted.
+/// from Echo's [proposal] or a [template]. ✨ Improve rewrites the instructions. Pops true
+/// once something was saved or deleted.
 final class AssistantEditorScreen extends StatefulWidget {
   const AssistantEditorScreen({
     required this.api,
     required this.documents,
     this.assistant,
     this.template,
+    this.proposal,
     super.key,
   });
 
@@ -28,21 +30,32 @@ final class AssistantEditorScreen extends StatefulWidget {
   final Assistant? assistant;
   final AssistantTemplate? template;
 
+  /// Written by Echo from the answers to its questions (assistant_wizard_screen.dart).
+  final AssistantDraft? proposal;
+
   @override
   State<AssistantEditorScreen> createState() => _AssistantEditorScreenState();
 }
 
 final class _AssistantEditorScreenState extends State<AssistantEditorScreen> {
   late final _emoji = TextEditingController(
-    text: widget.assistant?.emoji ?? widget.template?.emoji ?? '🤖',
+    text: widget.assistant?.emoji ?? widget.proposal?.emoji ?? widget.template?.emoji ?? '🤖',
   );
   late final _name = TextEditingController(
-    text: widget.assistant?.name ?? widget.template?.name ?? '',
+    text: widget.assistant?.name ?? widget.proposal?.name ?? widget.template?.name ?? '',
   );
   late final _instructions = TextEditingController(
-    text: widget.assistant?.instructions ?? widget.template?.instructions ?? '',
+    text: widget.assistant?.instructions ??
+        widget.proposal?.instructions ??
+        widget.template?.instructions ??
+        '',
   );
-  late final _notes = TextEditingController(text: widget.assistant?.notes ?? '');
+  late final _notes = TextEditingController(
+    text: widget.assistant?.notes ?? widget.proposal?.notes ?? '',
+  );
+
+  /// ✨ Improve is rewriting the instructions.
+  bool _improving = false;
   late final Set<String> _chosen = {...?widget.assistant?.documentIds};
   List<UserDocument>? _documents;
 
@@ -54,7 +67,12 @@ final class _AssistantEditorScreenState extends State<AssistantEditorScreen> {
   @override
   void initState() {
     super.initState();
+    _instructions.addListener(_instructionsChanged);
     unawaited(_loadDocuments());
+  }
+
+  void _instructionsChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -119,6 +137,34 @@ final class _AssistantEditorScreenState extends State<AssistantEditorScreen> {
           _error = userMessage(error, 'Could not save it.');
         });
       }
+    }
+  }
+
+  /// ✨ Improve: the instructions rewritten by Echo; Undo puts the old ones back.
+  Future<void> _improve() async {
+    final before = _instructions.text;
+    setState(() {
+      _improving = true;
+      _error = null;
+    });
+    try {
+      final better = await widget.api.improveInstructions(
+        name: _name.text.trim(),
+        instructions: before.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _instructions.text = better);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Instructions rewritten.'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => setState(() => _instructions.text = before),
+        ),
+      ));
+    } catch (error) {
+      if (mounted) setState(() => _error = userMessage(error, 'Could not rewrite them.'));
+    } finally {
+      if (mounted) setState(() => _improving = false);
     }
   }
 
@@ -219,6 +265,23 @@ final class _AssistantEditorScreenState extends State<AssistantEditorScreen> {
               hintText: 'Its role, its tone, what to watch for.',
               alignLabelWithHint: true,
               border: OutlineInputBorder(),
+            ),
+          ),
+          // A few words are enough: Echo writes the full instructions from them
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('assistant-improve'),
+              onPressed: _improving || _saving || _instructions.text.trim().length < 3
+                  ? null
+                  : () => unawaited(_improve()),
+              icon: _improving
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text(_improving ? 'Rewriting…' : 'Improve with Echo'),
             ),
           ),
           const SizedBox(height: 8),

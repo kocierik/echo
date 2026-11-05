@@ -162,6 +162,41 @@ void main() {
       expect(templates.single.key, 'work');
       expect(templates.single.name, 'Lavoro');
     });
+
+    test('asks the questions, sends the answers, reads the proposal', () async {
+      final bodies = <String, Map<String, dynamic>>{};
+      final service = _service((request) async {
+        bodies[request.url.path] =
+            jsonDecode((request as http.Request).body) as Map<String, dynamic>;
+        return _jsonResponse(request, 200, switch (request.url.path) {
+          '/api/assistants/questions' => {
+              'questions': [
+                {'id': 'goal', 'text': 'Obiettivo?', 'options': ['A', 3], 'multi': true},
+              ],
+            },
+          '/api/assistants/compose' => {
+              'name': 'Corsa', 'emoji': '🏃', 'instructions': 'Sei…', 'notes': '- 10 km',
+            },
+          _ => {'instructions': 'Meglio'},
+        });
+      });
+
+      final questions = await service.assistantQuestions(topic: 'corsa');
+      final proposal = await service.composeAssistant(
+        topic: 'corsa',
+        answers: const [('Obiettivo?', 'A')],
+      );
+      final better = await service.improveInstructions(name: 'Corsa', instructions: 'corri');
+
+      expect(questions.single.options, ['A']);
+      expect(questions.single.multi, isTrue);
+      expect(bodies['/api/assistants/questions'], {'topic': 'corsa'});
+      expect(bodies['/api/assistants/compose']!['answers'], [
+        {'question': 'Obiettivo?', 'answer': 'A'},
+      ]);
+      expect((proposal.name, proposal.notes), ('Corsa', '- 10 km'));
+      expect(better, 'Meglio');
+    });
   });
 
   group('Example data', () {
