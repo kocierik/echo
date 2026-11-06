@@ -42,7 +42,7 @@ final class AnswerSpeaker {
     required AudioOutput output,
     required ValueListenable<SpokenAnswers> setting,
     required SharedPreferences preferences,
-    required String Function() language,
+    required String? Function() language,
     EchoMic? mic,
     ValueListenable<bool>? quiet,
   })  : _voice = voice,
@@ -60,7 +60,9 @@ final class AnswerSpeaker {
   final AudioOutput _output;
   final ValueListenable<SpokenAnswers> _setting;
   final SharedPreferences _preferences;
-  final String Function() _language;
+
+  /// The user's language; null when not known yet: then the answer's own.
+  final String? Function() _language;
   final EchoMic? _mic;
 
   /// True while the user dictates in Ask: an answer then is left to the notification.
@@ -86,7 +88,7 @@ final class AnswerSpeaker {
         final choice = _setting.value;
         if (choice == SpokenAnswers.off || (_quiet?.value ?? false)) return;
         if (choice == SpokenAnswers.headphones && !await _headphones()) return;
-        final language = _language();
+        final language = _language() ?? guessLanguage(answer);
         await _speak(spokenText(answer, language: language), language, generation);
       });
 
@@ -95,7 +97,7 @@ final class AnswerSpeaker {
     if (_sampling) return Future.value();
     _sampling = true;
     return _enqueue((generation) async {
-      final language = _language();
+      final language = _language() ?? 'en';
       final text = language == 'it'
           ? 'Ciao, sono Echo. Ti leggerò le risposte così.'
           : "Hi, I'm Echo. This is how I'll read you my answers.";
@@ -124,7 +126,14 @@ final class AnswerSpeaker {
   Future<void> deviceSeen(DeviceConnectionState state) async {
     final before = _lastSeen;
     _lastSeen = state;
-    if (_muting) return;
+    if (_muting) {
+      // Muted for the answer, then listening again: the user held the wearable's button
+      // to speak. The phone stops talking (Echo cannot hear "Hey Echo" while muted)
+      if (before == DeviceConnectionState.muted && state == DeviceConnectionState.listening) {
+        await stop();
+      }
+      return;
+    }
     if (state == DeviceConnectionState.muted) {
       await _unmute();
     } else if (state == DeviceConnectionState.listening &&
@@ -317,8 +326,7 @@ final class ChannelAudioOutput implements AudioOutput {
   static const _channel = MethodChannel('echo/device');
 
   @override
-  Future<bool> headphones() async =>
-      await _channel.invokeMethod<bool>('headphones') ?? false;
+  Future<bool> headphones() async => await _channel.invokeMethod<bool>('headphones') ?? false;
 }
 
 /// The wearable, through its controller.

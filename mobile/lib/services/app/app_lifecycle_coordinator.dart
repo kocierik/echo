@@ -267,6 +267,9 @@ final class AppLifecycleCoordinator {
         .listen((_) => firmwareUpdate.deviceChanged());
     unawaited(firmwareUpdate.check());
     final spokenAnswers = SpokenAnswersStore(preferences);
+    // The account's language on this phone at once: answers are read and dictation heard
+    // in it, also before the user first dictates or opens Language
+    unawaited(SpokenLanguageStore(api: credentialApiService, preferences: preferences).current());
     final spokenVoice = SpokenVoiceStore(preferences);
     final phoneVoice = FlutterTtsVoice(null, spokenVoice.voiceFor);
     final answerSpeaker = AnswerSpeaker(
@@ -275,7 +278,8 @@ final class AppLifecycleCoordinator {
       output: const ChannelAudioOutput(),
       setting: spokenAnswers,
       preferences: preferences,
-      language: () => preferences.getString(SpokenLanguageStore.key) ?? 'en',
+      // Not known yet (a new install): the answer's own language, never English by default
+      language: () => preferences.getString(SpokenLanguageStore.key),
       mic: DeviceEchoMic(deviceController),
       quiet: appController.askDictation,
     );

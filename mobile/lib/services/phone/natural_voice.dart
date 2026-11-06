@@ -46,7 +46,7 @@ final class NaturalVoice implements AnswerVoice {
     final generation = _generation;
     final Uint8List mp3;
     try {
-      mp3 = await _api.speak(text, voice);
+      mp3 = await _api.speak(text, voice, language: language);
     } catch (_) {
       // Offline, the plan changed, the server could not: the phone's voice
       if (generation != _generation) return;
@@ -97,13 +97,21 @@ final class JustAudioPlayback implements AudioPlayback {
     final file = File('${(await getTemporaryDirectory()).path}/echo-answer.mp3');
     await file.writeAsBytes(mp3, flush: true);
     final player = _player ??= AudioPlayer();
+    // A player that finished stays "playing" (just_audio): play() would then return at
+    // once, Echo would listen again over the answer, and the next answer would cut it
+    await player.stop();
     await player.setFilePath(file.path);
     final session = await AudioSession.instance;
     await session.setActive(true);
     try {
+      unawaited(player.play());
       // Done when heard to the end, or stopped
-      await player.play();
+      await player.playerStateStream.firstWhere((state) => state.playing);
+      await player.playerStateStream.firstWhere(
+        (state) => state.processingState == ProcessingState.completed || !state.playing,
+      );
     } finally {
+      await player.stop();
       await session.setActive(false);
     }
   }

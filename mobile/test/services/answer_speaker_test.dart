@@ -106,8 +106,7 @@ void main() {
     expect(voice.said, [('Domani piove.', 'it')]);
   });
 
-  test('Echo is muted even in headphones: a car or a Bluetooth speaker looks the same',
-      () async {
+  test('Echo is muted even in headphones: a car or a Bluetooth speaker looks the same', () async {
     output.on = true;
 
     await speaker().say('Domani piove.');
@@ -257,6 +256,38 @@ void main() {
     voice.hold!.complete();
     await speaking;
     expect(mic.listening, isTrue);
+  });
+
+  test("the wearable's button held while the phone speaks stops it", () async {
+    voice.hold = Completer();
+    final echo = speaker();
+    final speaking = echo.say('Una risposta lunga.');
+    await pumpEventQueue();
+    await echo.deviceSeen(DeviceConnectionState.muted);
+    expect(voice.stops, 0);
+
+    // A long press unmutes Echo: the user wants to speak
+    await echo.deviceSeen(DeviceConnectionState.listening);
+    await speaking;
+
+    expect(voice.stops, 1);
+    expect(mic.listening, isTrue);
+  });
+
+  test('an unknown language reads the answer in its own, never English by default', () async {
+    final echo = AnswerSpeaker(
+      voice: voice,
+      output: output,
+      setting: setting,
+      preferences: preferences,
+      language: () => null,
+      mic: mic,
+    );
+
+    await echo.say('Domani a Nizza piove, porta l’ombrello.');
+    await echo.say('Tomorrow it rains in Nice, take your umbrella.');
+
+    expect(voice.said.map((s) => s.$2), ['it', 'en']);
   });
 
   test('recover leaves Echo alone without the flag', () async {

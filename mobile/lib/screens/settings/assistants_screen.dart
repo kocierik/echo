@@ -14,7 +14,15 @@ import 'settings_components.dart';
 /// Profile → Assistants: Echo focused on one part of the user's life (work, diet,
 /// sleep…), each with its instructions, notes and documents; chatted with in Ask.
 final class AssistantsScreen extends StatefulWidget {
-  const AssistantsScreen({required this.api, required this.documents, super.key});
+  const AssistantsScreen({
+    required this.api,
+    required this.documents,
+    this.onChanged,
+    super.key,
+  });
+
+  /// One was made, changed or deleted (Ask's row reloads).
+  final VoidCallback? onChanged;
 
   final AssistantsApi api;
 
@@ -55,7 +63,10 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
         ),
       ),
     );
-    if (changed == true) await _load();
+    if (changed == true) {
+      widget.onChanged?.call();
+      await _load();
+    }
   }
 
   /// "New assistant": a template to start from, or a blank one.
@@ -68,7 +79,10 @@ final class _AssistantsScreenState extends State<AssistantsScreen> {
         builder: (_) => AssistantCreateScreen(api: widget.api, documents: widget.documents),
       ),
     );
-    if (saved == true && mounted) await _load();
+    if (saved == true && mounted) {
+      widget.onChanged?.call();
+      await _load();
+    }
   }
 
   @override

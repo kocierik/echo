@@ -17,6 +17,7 @@ import '../services/app/spoken_language.dart';
 import '../services/app/spoken_voice_store.dart';
 import '../services/device/device_controller.dart';
 import '../services/device/phone_words.dart';
+import '../services/phone/phone_actions.dart';
 import '../services/phone/places_visited.dart';
 import '../theme/app_theme.dart';
 import '../widgets/person_avatar.dart';
@@ -160,6 +161,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await _loadWhatsApp();
   }
 
+  /// "WhatsApp, Gmail": what Apps has connected, WhatsApp first when it is linked.
+  String? get _appsLine {
+    final names = [
+      if (_whatsapp case final whatsapp? when whatsapp.available && whatsapp.isLinked) 'WhatsApp',
+      if (_apps case final apps?) apps,
+    ];
+    return names.isEmpty ? null : names.join(', ');
+  }
+
+  /// At the top of Apps: what needs no account elsewhere, the phone's own apps and
+  /// WhatsApp (linked from here).
+  List<Widget> _phoneApps(PhoneActionsService? phoneActions) => [
+        if (phoneActions != null)
+          SettingsRow(
+            key: const Key('apps-phone'),
+            icon: PhoneWords.isIPhone ? Icons.phone_iphone_rounded : Icons.phone_android_rounded,
+            title: PhoneWords.onThisPhone,
+            subtitle: PhoneWords.isIPhone
+                ? 'Reminders and Calendar, for Echo to use.'
+                : 'The calendar, for Echo to use.',
+            onTap: () => _push(PhoneAppsScreen(phoneActions: phoneActions)),
+          ),
+        if (_whatsapp case final whatsapp? when whatsapp.available)
+          SettingsRow(
+            key: const Key('apps-whatsapp'),
+            icon: Icons.chat_outlined,
+            title: 'WhatsApp',
+            subtitle: whatsAppText(whatsapp),
+            onTap: () async {
+              await _push(WhatsAppScreen(api: _api));
+              await _loadWhatsApp();
+            },
+          ),
+      ];
+
   Future<void> _loadWhatsApp() async {
     try {
       final whatsapp = await _api.getWhatsApp();
@@ -267,13 +303,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SettingsRow(
                 icon: Icons.extension_outlined,
                 title: 'Apps',
-                subtitle: _apps == null ? 'Connect the apps Echo can act in.' : null,
-                value: _apps,
+                subtitle: _appsLine == null
+                    ? 'WhatsApp, Reminders, Calendar and the apps Echo can act in.'
+                    : null,
+                value: _appsLine,
                 onTap: () async {
                   await Navigator.push(
                     context,
                     MaterialPageRoute<void>(
-                      builder: widget.integrationsBuilder ?? (_) => const IntegrationsScreen(),
+                      builder: widget.integrationsBuilder ??
+                          (_) => IntegrationsScreen(extras: _phoneApps(phoneActions)),
                     ),
                   );
                   if (mounted) unawaited(_load());
@@ -289,17 +328,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onOpenThread: _appController.requestOpenThread,
                 )),
               ),
-              if (phoneActions != null)
-                SettingsRow(
-                  icon: PhoneWords.isIPhone
-                      ? Icons.phone_iphone_rounded
-                      : Icons.phone_android_rounded,
-                  title: PhoneWords.onThisPhone,
-                  subtitle: PhoneWords.isIPhone
-                      ? 'Reminders and Calendar, for Echo to use.'
-                      : 'The calendar, for Echo to use.',
-                  onTap: () => _push(PhoneAppsScreen(phoneActions: phoneActions)),
-                ),
               SettingsRow(
                 icon: Icons.notifications_none_rounded,
                 title: 'Notifications',
@@ -357,7 +385,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.smart_toy_outlined,
                 title: 'Assistants',
                 subtitle: 'Echo for work, diet, sleep, or what you choose.',
-                onTap: () => _push(AssistantsScreen(api: _api, documents: _api)),
+                onTap: () => _push(AssistantsScreen(
+                  api: _api,
+                  documents: _api,
+                  onChanged: _appController.assistantsEdited,
+                )),
               ),
               SettingsRow(
                 icon: Icons.record_voice_over_outlined,
@@ -409,17 +441,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: 'Sleep, steps and workouts, from the Health app.',
                 onTap: () => _push(HealthScreen(api: _api)),
               ),
-              if (_whatsapp case final whatsapp? when whatsapp.available)
-                SettingsRow(
-                  key: const Key('profile-whatsapp'),
-                  icon: Icons.chat_outlined,
-                  title: 'WhatsApp',
-                  subtitle: whatsAppText(whatsapp),
-                  onTap: () async {
-                    await _push(WhatsAppScreen(api: _api));
-                    await _loadWhatsApp();
-                  },
-                ),
               if (widget.spokenAnswers ?? AppRuntime.maybeCoordinator?.spokenAnswers
                   case final spoken?)
                 ValueListenableBuilder<SpokenAnswers>(

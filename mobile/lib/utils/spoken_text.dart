@@ -39,11 +39,24 @@ String spokenText(String markdown, {required String language, int limit = 500}) 
 
   final tail = language == 'it' ? 'Il resto è in Ask.' : 'The rest is in Ask.';
   final window = text.substring(0, limit);
-  final ends = RegExp(r'[.!?](?=\s|$)')
-      .allMatches(window)
-      .where((end) => end.end > limit ~/ 2);
+  final ends = RegExp(r'[.!?](?=\s|$)').allMatches(window).where((end) => end.end > limit ~/ 2);
   if (ends.isNotEmpty) return '${window.substring(0, ends.last.end)} $tail';
   final word = window.lastIndexOf(RegExp(r'\s'));
   final cut = (word > 0 ? window.substring(0, word) : window).trimRight();
   return '$cut… $tail';
 }
+
+final _italian = RegExp(
+  r"\b(il|lo|la|gli|le|di|che|non|per|con|una|sono|hai|è|perché|anche|oggi|domani)\b",
+  caseSensitive: false,
+  unicode: true,
+);
+final _english = RegExp(
+  r"\b(the|and|is|are|you|your|with|for|this|that|have|today|tomorrow)\b",
+  caseSensitive: false,
+);
+
+/// "it" or "en", from the words of [text]: an answer read aloud in its own language when
+/// the user's is not known yet (an Italian answer in an English voice sounds foreign).
+String guessLanguage(String text) =>
+    _italian.allMatches(text).length >= _english.allMatches(text).length ? 'it' : 'en';

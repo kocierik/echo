@@ -61,6 +61,14 @@ final class _WhatsAppScreenState extends State<WhatsAppScreen> {
     try {
       final status = await widget.api.getWhatsApp();
       if (!mounted) return;
+      // The code shown was typed and accepted: say it worked
+      final justLinked = status.isLinked && (_code != null || _status?.state == 'linking');
+      if (justLinked) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          key: Key('whatsapp-linked'),
+          content: Text('WhatsApp linked. Echo can now read your private chats.'),
+        ));
+      }
       setState(() {
         _status = status;
         if (status.isLinked) _code = null;

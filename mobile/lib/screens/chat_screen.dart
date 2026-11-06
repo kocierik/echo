@@ -43,6 +43,7 @@ final class ChatScreen extends StatefulWidget {
     this.headerAction,
     this.dictation,
     this.threadUpdates,
+    this.assistantsChanged,
     this.askView,
     this.routinesFilter,
     this.routineRunsChanged,
@@ -80,6 +81,9 @@ final class ChatScreen extends StatefulWidget {
 
   /// Changes when the thread got messages from elsewhere: reloaded if it is shown.
   final ValueListenable<int>? threadUpdates;
+
+  /// Profile → Assistants changed one: the row of assistants reloads.
+  final ValueListenable<int>? assistantsChanged;
 
   /// Chat or Routines (the app's, so a notification can open Routines); without one
   /// Ask keeps its own.
@@ -187,6 +191,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.askRequest?.addListener(_onAskRequest);
     widget.dictation?.addListener(_onDictation);
     widget.threadUpdates?.addListener(_onThreadUpdate);
+    widget.assistantsChanged?.addListener(_onAssistantsChanged);
     _ownsView = widget.askView == null;
     _view = widget.askView ?? ValueNotifier(AskView.chat);
     _view.addListener(_onView);
@@ -227,6 +232,8 @@ final class _ChatScreenState extends State<ChatScreen> {
     } catch (_) {}
   }
 
+  void _onAssistantsChanged() => unawaited(_loadAssistants());
+
   /// "New chat": with Echo, or an assistant chosen before the first question.
   void _newChat() {
     _controller.newChat();
@@ -245,6 +252,10 @@ final class _ChatScreenState extends State<ChatScreen> {
       oldWidget.askRequest?.removeListener(_onAskRequest);
       widget.askRequest?.addListener(_onAskRequest);
       _onAskRequest();
+    }
+    if (oldWidget.assistantsChanged != widget.assistantsChanged) {
+      oldWidget.assistantsChanged?.removeListener(_onAssistantsChanged);
+      widget.assistantsChanged?.addListener(_onAssistantsChanged);
     }
     if (oldWidget.threadUpdates != widget.threadUpdates) {
       oldWidget.threadUpdates?.removeListener(_onThreadUpdate);
@@ -465,6 +476,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     widget.askRequest?.removeListener(_onAskRequest);
     widget.dictation?.removeListener(_onDictation);
     widget.threadUpdates?.removeListener(_onThreadUpdate);
+    widget.assistantsChanged?.removeListener(_onAssistantsChanged);
     _view.removeListener(_onView);
     if (_ownsView) _view.dispose();
     _filter.removeListener(_onView);

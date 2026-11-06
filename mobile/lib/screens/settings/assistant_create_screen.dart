@@ -1,11 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../models/assistant.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/assistants_api.dart';
 import '../../services/api/memory_items_api.dart';
+import '../../services/app/spoken_language.dart';
 import '../../services/chat/voice_input.dart';
 import '../../theme/app_theme.dart';
 import 'assistant_editor_screen.dart';
@@ -23,6 +25,7 @@ final class AssistantCreateScreen extends StatefulWidget {
     required this.api,
     required this.documents,
     this.voiceInput,
+    this.language,
     super.key,
   });
 
@@ -31,6 +34,9 @@ final class AssistantCreateScreen extends StatefulWidget {
 
   /// The phone's dictation (replaced in the tests).
   final VoiceInput? voiceInput;
+
+  /// The language dictation hears ("it", "en"); else the account's, kept on the phone.
+  final String? language;
 
   @override
   State<AssistantCreateScreen> createState() => _AssistantCreateScreenState();
@@ -121,7 +127,19 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
         heard(words);
         if (mounted) setState(() => _listening = false);
       },
+      // The account's language, not the phone's (an English phone heard Italian as English)
+      language: await _spokenLanguage(),
     );
+  }
+
+  Future<String?> _spokenLanguage() async {
+    final given = widget.language;
+    if (given != null) return given;
+    try {
+      return (await SharedPreferences.getInstance()).getString(SpokenLanguageStore.key);
+    } catch (_) {
+      return null;
+    }
   }
 
   void _type() {
@@ -438,19 +456,35 @@ final class _AssistantCreateScreenState extends State<AssistantCreateScreen> {
                           maxLength: Assistant.maxName,
                           textCapitalization: TextCapitalization.sentences,
                           style: textTheme.titleMedium,
-                          decoration: const InputDecoration(
+                          // A field, not a title: its label and a pencil say it changes
+                          decoration: InputDecoration(
+                            labelText: 'Name',
                             filled: false,
                             counterText: '',
                             isDense: true,
-                            contentPadding: EdgeInsets.symmetric(vertical: 6),
-                            border: UnderlineInputBorder(),
-                            enabledBorder: UnderlineInputBorder(),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                            border: const UnderlineInputBorder(),
+                            enabledBorder: const UnderlineInputBorder(),
+                            suffixIcon: Icon(Icons.edit_outlined, size: 18, color: palette.accent),
+                            suffixIconConstraints: const BoxConstraints(minWidth: 28),
                           ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'What it does',
+                          style: textTheme.labelMedium?.copyWith(color: palette.text2),
+                        ),
+                      ),
+                      Icon(Icons.edit_outlined, size: 16, color: palette.accent),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
                   TextField(
                     key: const Key('create-instructions'),
                     controller: _instructions,

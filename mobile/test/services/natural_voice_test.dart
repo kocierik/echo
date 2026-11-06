@@ -15,7 +15,7 @@ final class _Api implements SpeechApi {
   Completer<void>? gate;
 
   @override
-  Future<Uint8List> speak(String text, String voice) async {
+  Future<Uint8List> speak(String text, String voice, {String? language}) async {
     asked.add((text, voice));
     await gate?.future;
     if (refuse != null) throw refuse!;

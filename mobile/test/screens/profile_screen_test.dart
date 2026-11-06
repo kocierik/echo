@@ -242,20 +242,19 @@ void main() {
     expect(find.byKey(const Key('assistants-new')), findsOneWidget);
   });
 
-  testWidgets('no WhatsApp row on a server without it', (tester) async {
+  testWidgets('WhatsApp lives in Apps: not a row of its own on Profile', (tester) async {
     await pumpSettings(tester);
 
     expect(find.byKey(const Key('profile-whatsapp')), findsNothing);
+    expect(find.textContaining('WhatsApp, Gmail'), findsNothing);
   });
 
-  testWidgets('WhatsApp says its state where the server has it', (tester) async {
+  testWidgets('linked WhatsApp shows among the connected apps', (tester) async {
     api.whatsapp =
         const WhatsAppStatus(available: true, state: 'linked', phone: '+393330000000');
     await pumpSettings(tester);
 
-    final row = find.byKey(const Key('profile-whatsapp'));
-    expect(find.descendant(of: row, matching: find.text('WhatsApp')), findsOneWidget);
-    expect(find.descendant(of: row, matching: find.text('Linked: +393330000000')), findsOneWidget);
+    expect(find.text('WhatsApp, Gmail, Google Calendar'), findsOneWidget);
   });
 
   testWidgets('the account shows the email, with no name to add', (tester) async {

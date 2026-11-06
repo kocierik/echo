@@ -510,6 +510,7 @@ class MainShell extends StatelessWidget {
                       openSessionRequest: appController.pendingChatSessionId,
                       composerFocusRequest: appController.composerFocusRequest,
                       threadUpdates: appController.threadUpdates,
+                      assistantsChanged: appController.assistantsChanged,
                       askView: appController.askView,
                       routinesFilter: appController.routinesFilter,
                       routineRunsChanged: appController.routineRunsChanged,

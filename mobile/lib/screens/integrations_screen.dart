@@ -8,11 +8,11 @@ import '../models/action_models.dart';
 import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
+import 'settings/settings_components.dart';
 
 typedef UrlLauncher = Future<bool> Function(Uri uri);
 
-Future<bool> _defaultLauncher(Uri uri) =>
-    launchUrl(uri, mode: LaunchMode.externalApplication);
+Future<bool> _defaultLauncher(Uri uri) => launchUrl(uri, mode: LaunchMode.externalApplication);
 
 /// Detail of the backend's 503 when COMPOSIO_API_KEY is missing.
 const notConfiguredDetail = 'Composio is not configured';
@@ -21,19 +21,21 @@ const notConfiguredDetail = 'Composio is not configured';
 const refreshFailedMessage = "Couldn't refresh the list.";
 
 class IntegrationsScreen extends StatefulWidget {
-  const IntegrationsScreen({this.api, this.launcher, super.key});
+  const IntegrationsScreen({this.api, this.launcher, this.extras = const [], super.key});
 
   /// Injected API (not disposed by the screen); a private one is created when
   /// omitted.
   final ApiService? api;
   final UrlLauncher? launcher;
 
+  /// Above the apps to connect: the phone's own apps and WhatsApp (Profile's rows).
+  final List<Widget> extras;
+
   @override
   State<IntegrationsScreen> createState() => _IntegrationsScreenState();
 }
 
-class _IntegrationsScreenState extends State<IntegrationsScreen>
-    with WidgetsBindingObserver {
+class _IntegrationsScreenState extends State<IntegrationsScreen> with WidgetsBindingObserver {
   late final ApiService _api = widget.api ?? ApiService();
   final _searchController = TextEditingController();
   Timer? _debounce;
@@ -44,6 +46,9 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
   bool _unavailable = false;
   String? _error;
   String? _pendingSlug;
+
+  /// An app whose connect page was opened: back in Echo, whether it worked is said.
+  Toolkit? _connecting;
 
   @override
   void initState() {
@@ -63,7 +68,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _load(silent: true);
+    if (state == AppLifecycleState.resumed) _load(silent: true, report: true);
   }
 
   /// A list (not the spinner, an error or the setup text) is on screen.
@@ -80,7 +85,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
   /// Loads the toolkits. A [silent] reload shows no spinner and, if it fails
   /// while a list is shown, keeps that list; only the initial or an explicit
   /// load (Retry, search) replaces it with the error view.
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool report = false}) async {
     final id = ++_requestId;
     if (!silent) {
       setState(() {
@@ -99,6 +104,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
         _error = null;
         _unavailable = false;
       });
+      if (report) _reportConnection(toolkits);
     } on ApiException catch (error) {
       if (!mounted || id != _requestId) return;
       if (_keptListAfterFailure(silent)) return;
@@ -106,8 +112,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
         _loading = false;
         // Only the server's "no API key" 503 is a setup state; other 503s
         // (e.g. a proxy) are ordinary errors with Retry.
-        _unavailable = error.code == 'unavailable' &&
-            error.message == notConfiguredDetail;
+        _unavailable = error.code == 'unavailable' && error.message == notConfiguredDetail;
         _error = _unavailable ? null : error.message;
       });
     } catch (_) {
@@ -119,6 +124,19 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
         _error = 'Could not load integrations.';
       });
     }
+  }
+
+  /// Back from an app's connect page: connected, or not yet.
+  void _reportConnection(List<Toolkit> toolkits) {
+    final asked = _connecting;
+    if (asked == null) return;
+    _connecting = null;
+    final now = toolkits.where((t) => t.slug == asked.slug).firstOrNull;
+    _showMessage(
+      now?.connected == true
+          ? '${asked.name} connected. Echo can use it now.'
+          : '${asked.name} is not connected yet. Finish in the browser, or tap Connect again.',
+    );
   }
 
   void _onQueryChanged(String _) {
@@ -153,6 +171,7 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
         await Clipboard.setData(ClipboardData(text: url));
         _showMessage('Link copied. Open it in your browser to connect.');
       }
+      _connecting = toolkit;
     } catch (error) {
       _showMessage(_messageOf(error));
     } finally {
@@ -197,8 +216,17 @@ class _IntegrationsScreenState extends State<IntegrationsScreen>
     final palette = EchoPalette.of(context);
     return Scaffold(
       backgroundColor: palette.background,
-      appBar: AppBar(title: const Text('Integrations')),
-      body: _body(palette),
+      appBar: AppBar(title: const Text('Apps')),
+      body: widget.extras.isEmpty
+          ? _body(palette)
+          : Column(
+              children: [
+                const SettingsSection('ON THIS PHONE'),
+                SettingsGroup(children: widget.extras),
+                const SettingsSection('OTHER APPS'),
+                Expanded(child: _body(palette)),
+              ],
+            ),
     );
   }
 

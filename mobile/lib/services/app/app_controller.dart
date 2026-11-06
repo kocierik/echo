@@ -74,6 +74,9 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// Counts the times new routine runs arrived; Today and Ask → Routines reload them.
   final ValueNotifier<int> routineRunsChanged = ValueNotifier(0);
 
+  /// An assistant was made, changed or deleted (Profile → Assistants): Ask's row reloads.
+  final ValueNotifier<int> assistantsChanged = ValueNotifier(0);
+
   static const personPayloadPrefix = 'person:';
 
   final Stream<DeviceStatus> _deviceStates;
@@ -174,6 +177,12 @@ final class AppController extends ValueNotifier<AppViewState> {
     // Set first: the session request is what Ask acts on
     composerFocusRequest.value = true;
     requestOpenSession(sessionId);
+  }
+
+  /// Profile → Assistants saved or deleted one.
+  void assistantsEdited() {
+    if (_disposed) return;
+    assistantsChanged.value++;
   }
 
   /// New routine runs arrived (voice updates found some).
@@ -279,6 +288,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     routinesFilter.dispose();
     composerFocusRequest.dispose();
     routineRunsChanged.dispose();
+    assistantsChanged.dispose();
     super.dispose();
   }
 }

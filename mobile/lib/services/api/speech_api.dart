@@ -8,8 +8,9 @@ typedef NaturalVoiceInfo = ({String id, String description});
 
 /// Spoken answers in Echo's natural voices (POST /api/speech), on the plans that have them.
 abstract interface class SpeechApi {
-  /// The answer as MP3 in [voice]; an [ApiException] (403) on a plan without them.
-  Future<Uint8List> speak(String text, String voice);
+  /// The answer as MP3 in [voice], spoken as a native of [language] ("it", "en"); an
+  /// [ApiException] (403) on a plan without them.
+  Future<Uint8List> speak(String text, String voice, {String? language});
 
   /// The natural voices, and whether this account may use them.
   Future<({List<NaturalVoiceInfo> voices, bool available})> naturalVoices();
@@ -17,12 +18,20 @@ abstract interface class SpeechApi {
 
 mixin SpeechEndpoints on ApiClient implements SpeechApi {
   @override
-  Future<Uint8List> speak(String text, String voice) async {
+  Future<Uint8List> speak(String text, String voice, {String? language}) async {
     final target = await url('/api/speech');
     final headers = {...await credentials.headers, 'Content-Type': 'application/json'};
     final response = await guard(
       () => httpClient
-          .post(target, headers: headers, body: jsonEncode({'text': text, 'voice': voice}))
+          .post(
+            target,
+            headers: headers,
+            body: jsonEncode({
+              'text': text,
+              'voice': voice,
+              if (language != null) 'language': language,
+            }),
+          )
           .timeout(const Duration(seconds: 20)),
     );
     if (response.statusCode != 200) throw statusException(response.statusCode, response.body);

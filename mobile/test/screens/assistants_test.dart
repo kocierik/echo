@@ -248,7 +248,7 @@ Future<void> _pumpCreate(WidgetTester tester, _Api api, VoiceInput voice) async 
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(MaterialApp(
     theme: AppTheme.light,
-    home: AssistantCreateScreen(api: api, documents: api, voiceInput: voice),
+    home: AssistantCreateScreen(api: api, documents: api, voiceInput: voice, language: 'it'),
   ));
   await tester.pumpAndSettle();
 }

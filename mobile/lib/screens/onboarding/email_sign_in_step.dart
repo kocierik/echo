@@ -79,7 +79,6 @@ final class _EmailSignInStepState extends State<EmailSignInStep> {
           onSubmitted: (_) => widget.onSubmit(),
           decoration: InputDecoration(
             labelText: 'Password',
-            helperText: creating ? 'At least 10 characters.' : null,
             suffixIcon: IconButton(
               key: const Key('sign-in-show-password'),
               tooltip: _showPassword ? 'Hide password' : 'Show password',
