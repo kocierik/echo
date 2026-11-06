@@ -109,6 +109,10 @@ class _Op:
             self.state.tables[m.group(3)]["indexes"].append(
                 {"name": m.group(2), "column_names": cols, "unique": bool(m.group(1))}
             )
+        elif sql.startswith("DROP INDEX"):
+            name = sql.split()[-1]
+            for table in self.state.tables.values():
+                table["indexes"] = [i for i in table["indexes"] if i["name"] != name]
         elif sql.split()[0] in {"INSERT", "UPDATE", "DELETE"}:
             pass  # data backfills: no schema change
         else:
@@ -195,7 +199,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 35)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 36)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision

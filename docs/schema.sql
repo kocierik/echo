@@ -119,7 +119,7 @@ CREATE TABLE chunks (
 );
 
 CREATE INDEX idx_chunks_conversation ON chunks (conversation_id);
-CREATE INDEX idx_chunks_embedding ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);  -- 035: was IVFFlat
 
 -- ============================================================
 -- ENTITIES: structured knowledge extracted by LLM
@@ -143,7 +143,7 @@ CREATE TABLE entities (
 CREATE INDEX idx_entities_user_type ON entities (user_id, entity_type);
 CREATE INDEX idx_entities_name ON entities (user_id, name);
 CREATE INDEX idx_entities_conversation ON entities (conversation_id);
-CREATE INDEX idx_entities_embedding ON entities USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+CREATE INDEX idx_entities_embedding ON entities USING hnsw (embedding vector_cosine_ops);  -- 035: was IVFFlat
 
 -- ============================================================
 -- DIGESTS: daily summaries generated automatically
