@@ -4,8 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Echo, the pendant you can ask about your day</title>
-<meta name="description" content="Echo is a pendant that hears your conversations, writes them out and answers your questions about them.">
-<link rel="stylesheet" href="styles.css?v=3">
+<meta name="description" content="Echo is a pendant that writes down your conversations and answers what you ask about them.">
+<meta name="theme-color" content="#0E0F10">
+<link rel="preload" as="image" href="img/pendant.webp" type="image/webp">
+<link rel="stylesheet" href="styles.css?v=4">
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
@@ -13,9 +15,10 @@
 
 <header class="nav">
   <div class="nav__pill">
-    <a class="wordmark" href="#main" aria-label="Echo, home">echo</a>
+    <a class="wordmark" href="#main" aria-label="Echo, home"><span class="wordmark__led" aria-hidden="true"></span>echo</a>
     <nav aria-label="Sections">
       <ul class="nav__links">
+        <li><a href="#day">Your day</a></li>
         <li><a href="#path">How it works</a></li>
         <li><a href="#plans">Plans</a></li>
       </ul>
@@ -26,56 +29,77 @@
 
 <main id="main">
 
+  <!-- The page opens dark; the photo comes on with the LED -->
   <section class="hero" aria-labelledby="hero-head">
     <div class="container hero__grid">
       <div class="hero__text">
-        <h1 id="hero-head">What did Marco say about the offer?</h1>
-        <p class="lead">A pendant that hears your day, so you can ask it.</p>
-        <form class="signup" data-endpoint="/api/beta" novalidate>
+        <h1 id="hero-head" class="rise" style="--i: 0">It lights up when someone talks.</h1>
+        <p class="lead rise" style="--i: 1">Echo is a pendant that writes down your conversations and answers what you ask about them.</p>
+        <form class="signup rise" style="--i: 2" data-endpoint="/api/beta" novalidate>
           <label for="email-top">Your email address</label>
           <div class="signup__row">
             <input id="email-top" name="email" type="email" autocomplete="email" inputmode="email" required>
             <button class="btn btn--primary" type="submit">Join the beta</button>
           </div>
-          <p class="signup__help" id="email-top-help" aria-live="polite"></p>
+          <p class="signup__help" id="email-top-help" aria-live="polite">Free while the beta lasts. Plans from €12 a month after.</p>
         </form>
       </div>
-
-      <div class="hero__visual" data-slot="hero" data-kind="product" data-alt="Echo's Ask screen on the iPhone, answering a question about a call">
-        <div class="app" aria-label="Sample of Echo's Ask screen">
-          <div class="app__bar">
-            <span class="app__title">Ask</span>
-            <span class="app__status" role="status"><span class="led" aria-hidden="true"></span>Pendant listening</span>
-          </div>
-          <p class="bubble">What did Marco say about the offer?</p>
-          <div class="answer">
-            <p class="answer__text" data-reveal style="--i: 0">He is fine with 4,000 if delivery moves to March, and wants your answer by Friday.</p>
-            <a class="source" href="#path" data-reveal style="--i: 1">
-              <span class="source__title">Call with Marco</span>
-              <span class="source__meta">Tuesday, 10:14, 6 min</span>
-            </a>
-            <p class="promise" data-reveal style="--i: 2"><span class="promise__label">Your promise</span> Send Marco the new offer by Friday</p>
-          </div>
-          <div class="app__composer">
-            <span class="app__field">Ask about your day</span>
-            <span class="app__mic" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5"/></svg>
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="statement" aria-label="Echo's answer">
-    <div class="container">
-      <figure class="statement__figure">
-        <blockquote><p class="statement__text">He wants your answer by Friday.</p></blockquote>
-        <figcaption>Echo’s answer, from a sample call on Tuesday at 10:14.</figcaption>
+      <figure class="hero__photo">
+        <picture>
+          <source srcset="img/pendant.webp" type="image/webp">
+          <img src="img/pendant.jpg" width="876" height="1024" alt="The Echo pendant on a desk, its light on" fetchpriority="high">
+        </picture>
+        <span class="hero__glow" aria-hidden="true"></span>
       </figure>
     </div>
   </section>
 
+  <!-- A: a day, drawn as when someone was talking -->
+  <section id="day" class="day" aria-labelledby="day-head">
+    <div class="container">
+      <div class="day__head">
+        <h2 id="day-head">A Tuesday, heard</h2>
+        <p class="lead">Orange where someone was talking. Everything else, Echo ignores.</p>
+      </div>
+      <div class="strip" data-reveal role="img" aria-label="A sample day: a morning meeting, a call, lunch, two calls in the afternoon and dinner">
+        <i style="--x: 31%; --w: 5%; --d: 0" data-label="Standup, 8:20"></i>
+        <i style="--x: 41%; --w: 1.6%; --d: 1" data-label="Call with Marco, 10:14"></i>
+        <i style="--x: 52%; --w: 6%; --d: 2" data-label="Lunch with Anna, 13:02"></i>
+        <i style="--x: 63%; --w: 2%; --d: 3" data-label="Call with Giulia, 15:10"></i>
+        <i style="--x: 68%; --w: 1.2%; --d: 4" data-label="Supplier call, 16:30"></i>
+        <i style="--x: 82%; --w: 6%; --d: 5" data-label="Dinner, 19:40"></i>
+      </div>
+      <div class="ticks" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+      <dl class="facts">
+        <div data-reveal style="--i: 0"><dt>24 h</dt><dd>The audio, then deleted. The words stay in your memory.</dd></div>
+        <div data-reveal style="--i: 1"><dt>1 press</dt><dd>A long press on its button mutes it.</dd></div>
+        <div data-reveal style="--i: 2"><dt>2 languages</dt><dd>Italian and English; others around you, translated.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- C: what it keeps, on the app's Today -->
+  <section class="kept" aria-labelledby="kept-head">
+    <div class="container kept__grid">
+      <div class="kept__text">
+        <h2 id="kept-head">Your day, kept for you</h2>
+        <ul class="kept__list">
+          <li data-reveal style="--i: 0"><b>People</b><span>Who you met, what they said, when you last saw them.</span></li>
+          <li data-reveal style="--i: 1"><b>Promises</b><span>“I’ll send it Friday” comes back on Friday.</span></li>
+          <li data-reveal style="--i: 2"><b>Dates</b><span>Appointments heard in passing, ready for your calendar.</span></li>
+        </ul>
+      </div>
+      <div class="phone" data-reveal aria-label="Sample of Echo's Today screen">
+        <p class="phone__title">Today</p>
+        <div class="panel panel--needs"><span>Needs you</span><b>Send Marco the new offer, Friday</b></div>
+        <div class="panel"><span>10:14, 6 min</span><b>Call with Marco</b></div>
+        <div class="panel"><span>13:02, 41 min</span><b>Lunch with Anna</b></div>
+        <div class="panel"><span>People</span><b>Marco, Anna, Giulia</b></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works: pinned while the call underlines itself -->
   <section id="path" class="story" aria-labelledby="path-head">
     <div class="container story__pin">
       <div class="story__text">
@@ -84,7 +108,7 @@
           <li><h3>It hears</h3><p>From the first word to the silence.</p></li>
           <li><h3>Your iPhone passes it on</h3><p>Over Bluetooth, to Echo’s server, to be written out.</p></li>
           <li><h3>It finds what matters</h3><p>People, promises and dates, from the words alone.</p></li>
-          <li><h3>You ask</h3><p>In Ask, typed or said, or on Today and People.</p></li>
+          <li><h3>You ask</h3><p>“What did Marco say about the offer?”</p></li>
         </ol>
       </div>
       <div class="transcript" aria-label="Sample transcript of a call, with what Echo found in it">
@@ -96,21 +120,10 @@
           <li class="line" data-stage="1"><span class="line__who">Marco</span><span class="line__said">4,000 works for us, if delivery moves to <mark>March</mark>.</span></li>
           <li class="line" data-stage="2"><span class="line__who">You</span><span class="line__said">Fine. I’ll send you the new offer <mark>by Friday</mark>.</span></li>
         </ol>
-        <dl class="found" data-stage="3">
-          <div><dt>Person</dt><dd>Marco</dd></div>
-          <div><dt>Promise</dt><dd>Send Marco the new offer, Friday</dd></div>
-          <div><dt>Date</dt><dd>Delivery in March</dd></div>
-        </dl>
-      </div>
-    </div>
-  </section>
-
-  <section class="day" aria-labelledby="day-head">
-    <div class="container day__grid">
-      <p class="day__figure" aria-hidden="true">24 h</p>
-      <div>
-        <h2 id="day-head">The audio lasts a day</h2>
-        <p class="lead">Then it is deleted. The words stay in your memory.</p>
+        <div class="answer" data-stage="4">
+          <span class="answer__label">Echo</span>
+          <p>He is fine with 4,000 if delivery moves to March, and wants your answer by Friday.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -121,11 +134,11 @@
       <dl class="rows">
         <div class="row">
           <dt>Does it record everything?</dt>
-          <dd>Only speech. A long press on its button mutes it.</dd>
+          <dd>Only speech, from the first word to the silence. A long press on its button mutes it.</dd>
         </div>
         <div class="row">
-          <dt>Which languages does it hear?</dt>
-          <dd>Italian and English; others around you, translated.</dd>
+          <dt>Where does the audio go?</dt>
+          <dd>To your phone, then to Echo’s server to be written out. It is deleted a day later.</dd>
         </div>
         <div class="row">
           <dt>Does it act on its own?</dt>
@@ -158,27 +171,25 @@
   <section id="plans" class="plans" aria-labelledby="plans-head">
     <div class="container">
       <div class="plans__head">
-        <h2 id="plans-head">How much it hears</h2>
-        <p class="lead">Paid for the year, two months are free.</p>
+        <h2 id="plans-head">Free while the beta lasts</h2>
+        <p class="lead">Then one of three plans. Paid for the year, two months are free.</p>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Each plan</th>
-              <th scope="col"><span class="plan">Free</span><span class="price">€0</span></th>
-              <th scope="col"><span class="plan">Plus</span><span class="price">€12</span><span class="per">a month</span></th>
-              <th scope="col"><span class="plan">Unlimited</span><span class="price">€39</span><span class="per">a month</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><th scope="row">A year</th><td class="num">€0</td><td class="num">€120</td><td class="num">€390</td></tr>
-            <tr><th scope="row">Speech written out a month</th><td class="num">300 min</td><td class="num">1,500 min</td><td class="num">9,000 min</td></tr>
-            <tr><th scope="row">Web searches a day</th><td class="num">5</td><td class="num">30</td><td class="num">60</td></tr>
-            <tr><th scope="row">Routines</th><td class="num">2</td><td class="num">10</td><td class="num">10</td></tr>
-            <tr><th scope="row">Natural voices for spoken answers</th><td>the phone’s own</td><td>six</td><td>six</td></tr>
-          </tbody>
-        </table>
+      <div class="tiers">
+        <div class="tier" data-reveal style="--i: 0">
+          <h3>Free</h3>
+          <p class="tier__price">€0</p>
+          <ul><li>300 min of speech a month</li><li>5 web searches a day</li><li>2 routines</li><li>The phone’s own voice</li></ul>
+        </div>
+        <div class="tier" data-reveal style="--i: 1">
+          <h3>Plus</h3>
+          <p class="tier__price">€12 <small>a month, €120 a year</small></p>
+          <ul><li>1,500 min of speech a month</li><li>30 web searches a day</li><li>10 routines</li><li>Six natural voices</li></ul>
+        </div>
+        <div class="tier" data-reveal style="--i: 2">
+          <h3>Unlimited</h3>
+          <p class="tier__price">€39 <small>a month, €390 a year</small></p>
+          <ul><li>9,000 min of speech a month</li><li>60 web searches a day</li><li>10 routines</li><li>Six natural voices</li></ul>
+        </div>
       </div>
     </div>
   </section>
@@ -207,12 +218,12 @@
     <p class="footer__mark">echo</p>
     <div>
       <ul class="footer__links">
-        <li><a href="#questions">Questions</a></li>
+        <li><a href="#day">Your day</a></li>
         <li><a href="#path">How it works</a></li>
+        <li><a href="#questions">Questions</a></li>
         <li><a href="#plans">Plans</a></li>
-        <li><a href="#beta">The beta</a></li>
       </ul>
-      <p class="footer__legal">Echo, 2026. Fonts: Archivo, under the SIL Open Font License.</p>
+      <p class="footer__legal">Echo, 2026. The pendant shown is a render. Fonts: Archivo, under the SIL Open Font License.</p>
     </div>
   </div>
 </footer>
@@ -225,17 +236,19 @@ document.querySelectorAll('form[data-endpoint]').forEach((form) => {
     const ok = input.checkValidity();
     input.toggleAttribute('aria-invalid', !ok);
     if (!ok) { input.setAttribute('aria-describedby', help.id); help.textContent = 'That address looks incomplete. Write it as name@example.com.'; input.focus(); return; }
-    if (!form.dataset.endpoint) { help.textContent = 'Nothing was sent: this form is not connected yet.'; return; }
+    const button = form.querySelector('button');
+    button.setAttribute('aria-busy', 'true');
     fetch(form.dataset.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: input.value.trim() }) })
       .then((r) => { help.textContent = r.ok ? 'Thanks. Erik will write to ' + input.value.trim() + '.' : r.status === 503 ? 'The beta list is not open yet. Try again tomorrow.' : 'That did not go through. Try again in a minute.'; })
-      .catch(() => { help.textContent = 'That did not go through. Try again in a minute.'; });
+      .catch(() => { help.textContent = 'That did not go through. Try again in a minute.'; })
+      .finally(() => button.removeAttribute('aria-busy'));
   });
 });
-// The answer arrives once, as in the app
-const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -10% 0px' });
-document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+// Each block arrives once, as it scrolls in
+const seen = new IntersectionObserver((entries) => entries.forEach((e) => {
+  if (e.isIntersecting) { e.target.classList.add('is-in'); seen.unobserve(e.target); }
+}), { rootMargin: '0px 0px -12% 0px' });
+document.querySelectorAll('[data-reveal]').forEach((el) => seen.observe(el));
 </script>
-<script>window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
-document.querySelectorAll('[data-slot] img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });</script>
 </body>
 </html>
