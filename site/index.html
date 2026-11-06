@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Echo, the pendant you can ask about your day</title>
+<meta name="description" content="Echo is a pendant that hears your conversations, writes them out and answers your questions about them.">
+<link rel="stylesheet" href="styles.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="container nav__row">
+    <a class="wordmark" href="#main" aria-label="Echo, home">echo</a>
+    <nav aria-label="Sections">
+      <ul class="nav__links">
+        <li><a href="#path">how it works</a></li>
+        <li><a href="#plans">plans</a></li>
+      </ul>
+    </nav>
+    <a class="btn btn--quiet nav__action" href="#beta">join the beta</a>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero" aria-labelledby="hero-head">
+    <div class="container hero__grid">
+      <div class="hero__text">
+        <h1 id="hero-head">what did marco say about the offer?</h1>
+        <p class="lead">A pendant that hears your day, so you can ask it.</p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#beta">join the beta</a>
+          <a class="btn btn--quiet" href="#questions">read the questions</a>
+        </div>
+      </div>
+
+      <div class="hero__visual" data-slot="hero" data-kind="product" data-alt="Echo's Ask screen on the iPhone, answering a question about a call">
+        <div class="app" aria-label="Sample of Echo's Ask screen">
+          <div class="app__bar">
+            <span class="app__title">ask</span>
+            <span class="app__status" role="status">pendant listening</span>
+          </div>
+          <div class="app__thread">
+            <p class="bubble bubble--you">What did Marco say about the offer?</p>
+            <div class="answer">
+              <p>He is fine with 4,000 if delivery moves to March, and wants your answer by Friday.</p>
+              <a class="source" href="#path">
+                <span class="source__title">Call with Marco</span>
+                <span class="source__meta">Tuesday, 10:14, 6 min</span>
+              </a>
+              <p class="promise"><span class="promise__label">your promise</span> Send Marco the new offer by Friday</p>
+            </div>
+          </div>
+          <div class="app__composer">
+            <span class="app__field">Ask about your day</span>
+            <span class="app__mic" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v5"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="questions" class="questions" aria-labelledby="questions-head">
+    <div class="container questions__grid">
+      <h2 id="questions-head">before you wear it?</h2>
+      <dl class="rows">
+        <div class="row">
+          <dt>does it record everything?</dt>
+          <dd>Only speech, first word to silence. A long press on its button mutes it.</dd>
+        </div>
+        <div class="row">
+          <dt>where does the audio go?</dt>
+          <dd>To your phone, then to Echo’s server to be written out. The audio is deleted a day later.</dd>
+        </div>
+        <div class="row">
+          <dt>which languages does it hear?</dt>
+          <dd>Italian and English; others around you, translated.</dd>
+        </div>
+        <div class="row">
+          <dt>does it act on its own?</dt>
+          <dd>Only when you ask. “Ehi Echo, segnami il dentista giovedì” puts it in your calendar.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="path" class="path-section" aria-labelledby="path-head">
+    <div class="container">
+      <h2 id="path-head">what happens to a sentence?</h2>
+      <div class="well blueprint">
+        <ol class="path" aria-label="Diagram of where a sentence goes, from the pendant to your memory">
+          <li class="node">
+            <span class="node__name">the pendant</span>
+            <span class="node__does">hears speech, lights its LED</span>
+          </li>
+          <li class="node">
+            <span class="node__name">your iPhone</span>
+            <span class="node__does">takes it over Bluetooth</span>
+          </li>
+          <li class="node">
+            <span class="node__name">Echo’s server</span>
+            <span class="node__does">writes it out, finds people, promises and dates</span>
+          </li>
+          <li class="node node--end">
+            <span class="node__name">your memory</span>
+            <span class="node__does">Today, People and Ask</span>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="apps" aria-labelledby="apps-head">
+    <div class="container apps__grid">
+      <div class="apps__text">
+        <h2 id="apps-head">what can it reach?</h2>
+        <dl class="reach">
+          <div><dt>WhatsApp</dt><dd>reads your chats, when asked</dd></div>
+          <div><dt>Calendar and mail</dt><dd>adds events, sums up mail</dd></div>
+          <div><dt>Apple Health</dt><dd>sleep and steps, sent by a Shortcut</dd></div>
+          <div><dt>Claude and Cursor</dt><dd>read your memory, never change it</dd></div>
+        </dl>
+      </div>
+      <figure class="code">
+        <figcaption>Connect Claude Code to your memory</figcaption>
+        <pre><code>claude mcp add --transport http echo \
+  "$ECHO_URL/mcp" \
+  --header "Authorization: Bearer $ECHO_KEY"</code></pre>
+      </figure>
+    </div>
+  </section>
+
+  <section id="plans" class="plans" aria-labelledby="plans-head">
+    <div class="container">
+      <div class="plans__head">
+        <h2 id="plans-head">how much can it hear?</h2>
+        <p class="lead">Prices: <span class="fill" data-fill="prices">to be announced</span></p>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th scope="col">each plan</th><th scope="col">free</th><th scope="col">plus</th><th scope="col">unlimited</th></tr>
+          </thead>
+          <tbody>
+            <tr><th scope="row">speech written out a month</th><td class="num">300 min</td><td class="num">1,500 min</td><td class="num">9,000 min</td></tr>
+            <tr><th scope="row">web searches a day</th><td class="num">5</td><td class="num">30</td><td class="num">60</td></tr>
+            <tr><th scope="row">routines</th><td class="num">2</td><td class="num">10</td><td class="num">10</td></tr>
+            <tr><th scope="row">natural voices for spoken answers</th><td>the phone’s own</td><td>six</td><td>six</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="beta" class="beta" aria-labelledby="beta-head">
+    <div class="container beta__grid">
+      <div>
+        <h2 id="beta-head">ready to wear one?</h2>
+        <p class="lead">The beta runs on iPhone. The Android app builds, untested.</p>
+      </div>
+      <form class="signup" data-endpoint="" novalidate>
+        <label for="email">your email address</label>
+        <div class="signup__row">
+          <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
+          <button class="btn btn--primary" type="submit">join the beta</button>
+        </div>
+        <p class="signup__help" id="email-help" aria-live="polite"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    <p class="footer__mark">echo</p>
+    <ul class="footer__links">
+      <li><a href="#questions">questions</a></li>
+      <li><a href="#path">how it works</a></li>
+      <li><a href="#plans">plans</a></li>
+      <li><a href="#beta">the beta</a></li>
+    </ul>
+    <p class="footer__legal">Echo, 2026. Fonts: Archivo, under the SIL Open Font License.</p>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll('form[data-endpoint]').forEach((form) => {
+  const input = form.querySelector('input'), help = form.querySelector('[aria-live]');
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const ok = input.checkValidity();
+    input.toggleAttribute('aria-invalid', !ok);
+    if (!ok) { input.setAttribute('aria-describedby', help.id); help.textContent = 'That address looks incomplete. Write it as name@example.com.'; input.focus(); return; }
+    if (!form.dataset.endpoint) { help.textContent = 'Nothing was sent: this form is not connected yet.'; return; }
+    fetch(form.dataset.endpoint, { method: 'POST', body: new FormData(form) })
+      .then((r) => { help.textContent = r.ok ? 'Thanks. We will write to ' + input.value.trim() + '.' : 'That did not go through. Try again in a minute.'; })
+      .catch(() => { help.textContent = 'That did not go through. Try again in a minute.'; });
+  });
+});
+</script>
+<script>window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
+document.querySelectorAll('[data-slot] img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });</script>
+</body>
+</html>

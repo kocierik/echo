@@ -1,0 +1,29 @@
+[
+ {
+  "shape": "Conversational FAQ",
+  "theme": "lumen",
+  "axes": "dark/expanded-grotesk/warm",
+  "hero": "Stage",
+  "nav": "slab",
+  "footer": "mast",
+  "imagery": "the product built, Ask screen in the hero",
+  "photos": [],
+  "entry": "index.html",
+  "sections": [
+   "hero",
+   "rows",
+   "diagram",
+   "split-code",
+   "table",
+   "band-form",
+   "footer"
+  ],
+  "signature": "the hero question answered in Echo Ask screen",
+  "waived": [
+   "47c"
+  ],
+  "prompt": "Echo website, graphite and LED orange",
+  "date": "2026-11-06",
+  "mode": "build"
+ }
+]
