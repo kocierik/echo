@@ -28,6 +28,7 @@ from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.photo import Photo
 from app.services.analysis_pipeline import (
+    assistant_names,
     extract_entities,
     known_people_names,
     save_entities,
@@ -350,6 +351,7 @@ async def extract_photo_entities(
         photo.conversation_id,
         known_people=await known_people_names(db, photo.user_id),
         reference_date=to_user_local_date(taken_at),
+        not_people=await assistant_names(db, photo.user_id),
     )
     for entity in entities:
         entity.metadata_ = {**(entity.metadata_ or {}), "photo_id": str(photo.id)}

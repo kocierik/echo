@@ -41,6 +41,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
   PersonDetail? _detail;
   String? _error;
   bool _loading = true;
+  bool _deleting = false;
 
   @override
   MemoryApi get taskApi => widget.api;
@@ -87,11 +88,61 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
     if (mounted) await _load();
   }
 
+  /// A person Echo got wrong (a misheard word, someone else's name) goes, with what
+  /// was said about them; their conversations stay.
+  Future<void> _delete() async {
+    final name = _detail?.person.name ?? 'this person';
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Delete $name?'),
+            content: const Text(
+              'Echo forgets this person. The conversations they came up in stay.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await widget.api.deleteEntity(widget.personId);
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(userMessage(error, 'Could not delete this person.')),
+        ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: EchoPalette.of(context).background,
-      appBar: AppBar(),
+      appBar: AppBar(
+        actions: [
+          if (_detail != null)
+            IconButton(
+              key: const Key('person-delete'),
+              tooltip: 'Delete',
+              icon: const Icon(Icons.delete_outline_rounded),
+              onPressed: _deleting ? null : _delete,
+            ),
+        ],
+      ),
       body: _body(),
     );
   }

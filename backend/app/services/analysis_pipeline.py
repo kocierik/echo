@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.timezone import to_user_local_date
+from app.models.assistant import Assistant
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
 from app.models.entity import Entity
@@ -64,6 +65,7 @@ class AnalysisPipeline:
             conversation.id,
             known_people=known_people,
             reference_date=to_user_local_date(segment.recorded_at),
+            not_people=await assistant_names(db, user_id),
             operation_name=f"Entity extraction segment {segment.id}",
         )
 
@@ -122,6 +124,12 @@ class AnalysisPipeline:
 
         await db.commit()
         return AnalysisResult(len(entities), len(new_entities), len(new_chunks))
+
+
+async def assistant_names(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
+    """The names of the user's assistants: extraction must not take them for people."""
+    result = await db.execute(select(Assistant.name).where(Assistant.user_id == user_id))
+    return [row[0] for row in result.all()]
 
 
 async def known_people_names(db: AsyncSession, user_id: uuid.UUID, limit: int = 20) -> list[str]:
@@ -267,6 +275,7 @@ async def extract_entities(
     conversation_id: uuid.UUID,
     known_people: list[str] | None = None,
     reference_date: date | None = None,
+    not_people: list[str] | None = None,
 ) -> list[Entity]:
     """Use LLM to extract structured entities from transcription text.
 
@@ -280,7 +289,9 @@ async def extract_entities(
                       recognize and normalize references.
         reference_date: Day the speech was recorded (user's timezone), used to
                         resolve relative dates ("domani", "venerdì") to ISO dates.
+        not_people: The user's assistants' names: like Echo, they are not people.
     """
+    not_people = ["Echo", *(not_people or [])]
     # Build system prompt with known people context
     people_context = ""
     if known_people:
@@ -346,6 +357,12 @@ async def extract_entities(
                 "preventivo domani\"). Non lo sono le frasi ipotetiche, le formule di "
                 "cortesia (\"ti faccio sapere\") e le domande; nel dubbio non è un'attesa\n"
                 "- Per le persone, usa il nome completo se disponibile\n"
+                "- Una persona è un nome detto come nome: qualcuno a cui si parla, di cui "
+                "si parla o con cui si fa qualcosa. Il testo viene da una trascrizione che "
+                "a volte sbaglia: una parola che nella frase non ha senso è un errore di "
+                "trascrizione, non un nome (\"Siems five years\" è \"since five years\"). "
+                "Nel dubbio non è una persona\n"
+                f"- {', '.join(not_people)}: sono assistenti dell'utente, non sono persone\n"
                 "- Ignora filler e parole senza contenuto informativo\n"
                 "- Le richieste rivolte all'assistente \"Echo\" (es. \"Echo, segnami il "
                 "dentista giovedì\", \"Ehi Echo, riassumimi le mail\") sono comandi per "
@@ -366,11 +383,14 @@ async def extract_entities(
     result = await llm_service.complete_json(messages)
     entities_data = result.get("entities", [])
 
+    assistants = {name.casefold() for name in not_people}
     entities = []
     for entity_data in entities_data:
         # Skip entities with empty names
         name = entity_data.get("name", "").strip()
         if not name:
+            continue
+        if entity_data.get("type") == "person" and name.casefold() in assistants:
             continue
         metadata = entity_data.get("metadata") or {}
         # To-dos are asked of Echo ("Echo, segnami..."); from a conversation only the

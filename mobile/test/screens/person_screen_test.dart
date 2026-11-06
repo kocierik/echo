@@ -101,6 +101,41 @@ void main() {
     expect(api.calls, contains('done t1 true'));
   });
 
+  testWidgets('a person Echo got wrong is deleted, after a confirmation', (tester) async {
+    final api = FakeMemoryApi()..personDetails = {'p1': marco()};
+    await pump(tester, api);
+
+    await tester.tap(find.byKey(const Key('person-delete')));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete Marco Rossi?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(api.calls, isNot(contains('delete entity p1')));
+
+    await tester.tap(find.byKey(const Key('person-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(api.calls, contains('delete entity p1'));
+    // Back where the person was opened
+    expect(find.text('tabs'), findsOneWidget);
+  });
+
+  testWidgets('a failed delete stays on the person and says so', (tester) async {
+    final api = FakeMemoryApi()..personDetails = {'p1': marco()};
+    await pump(tester, api);
+    api.taskError = serverError('Offline');
+
+    await tester.tap(find.byKey(const Key('person-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Marco Rossi'), findsOneWidget);
+    expect(find.byType(SnackBar), findsOneWidget);
+  });
+
   testWidgets('nothing linked yet, and a retry after a failure', (tester) async {
     final api = FakeMemoryApi()..peopleError = serverError('Offline');
     await pump(tester, api);

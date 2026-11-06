@@ -194,6 +194,9 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
         events.append("assign")
         return conversation
 
+    async def _assistants(_db, _user_id):
+        return ["Coach"]
+
     async def fake_extract(
         _llm,
         _text,
@@ -202,8 +205,11 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
         conversation_id,
         known_people=None,
         reference_date=None,
+        not_people=None,
     ):
         events.append("extract")
+        # The user's assistants are not people
+        assert not_people == ["Coach"]
         captured["extract_text"] = _text
         # 22:30 UTC is already the next day in the user's timezone (Europe/Rome)
         assert reference_date == date(2026, 10, 14)
@@ -241,6 +247,7 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
 
     monkeypatch.setattr(pipeline_module, "assign_to_conversation", fake_assign)
     monkeypatch.setattr(pipeline_module, "extract_entities", fake_extract)
+    monkeypatch.setattr(pipeline_module, "assistant_names", _assistants)
     monkeypatch.setattr(pipeline_module, "generate_conversation_summary", fake_summary)
     monkeypatch.setattr(pipeline_module, "consolidate_entities", fake_consolidate)
     monkeypatch.setattr(pipeline_module, "deduplicate_entities", fake_deduplicate)

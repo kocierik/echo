@@ -14,6 +14,7 @@ from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import (
+    assistant_names,
     extract_entities,
     generate_conversation_summary,
 )
@@ -108,6 +109,7 @@ async def reanalyse_conversation(
             .limit(20)
         )
         known_people = [row[0] for row in people_result.all()]
+        assistants = await assistant_names(db, conversation.user_id)
 
         fresh_entities: list[Entity] = []
         for transcription_id, text in transcriptions:
@@ -120,6 +122,7 @@ async def reanalyse_conversation(
                 conversation.id,
                 known_people=known_people,
                 reference_date=recorded_dates[transcription_id],
+                not_people=assistants,
                 operation_name=(
                     f"Reanalysis entity extraction conversation {conversation_id}"
                 ),
