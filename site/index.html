@@ -6,8 +6,8 @@
 <title>Echo, the pendant you can ask about your day</title>
 <meta name="description" content="Echo is a pendant that writes down your conversations and answers what you ask about them.">
 <meta name="theme-color" content="#0E0F10">
-<link rel="preload" as="image" href="img/pendant.webp" type="image/webp">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="preload" as="image" href="img/pendant-cam.webp" type="image/webp">
+<link rel="stylesheet" href="styles.css?v=5">
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
@@ -29,12 +29,12 @@
 
 <main id="main">
 
-  <!-- The page opens dark; the photo comes on with the LED -->
+  <!-- The page opens dark; the photo comes on -->
   <section class="hero" aria-labelledby="hero-head">
     <div class="container hero__grid">
       <div class="hero__text">
-        <h1 id="hero-head" class="rise" style="--i: 0">It lights up when someone talks.</h1>
-        <p class="lead rise" style="--i: 1">Echo is a pendant that writes down your conversations and answers what you ask about them.</p>
+        <h1 id="hero-head" class="rise" style="--i: 0">What did Marco say about the offer?</h1>
+        <p class="lead rise" style="--i: 1">Echo is a pendant that hears your conversations, so you can ask it later.</p>
         <form class="signup rise" style="--i: 2" data-endpoint="/api/beta" novalidate>
           <label for="email-top">Your email address</label>
           <div class="signup__row">
@@ -46,10 +46,9 @@
       </div>
       <figure class="hero__photo">
         <picture>
-          <source srcset="img/pendant.webp" type="image/webp">
-          <img src="img/pendant.jpg" width="876" height="1024" alt="The Echo pendant on a desk, its light on" fetchpriority="high">
+          <source srcset="img/pendant-cam.webp" type="image/webp">
+          <img src="img/pendant-cam.jpg" width="886" height="1024" alt="The Echo pendant on a desk, its camera facing out" fetchpriority="high">
         </picture>
-        <span class="hero__glow" aria-hidden="true"></span>
       </figure>
     </div>
   </section>
@@ -151,20 +150,16 @@
   <section class="apps" aria-labelledby="apps-head">
     <div class="container apps__grid">
       <div>
-        <h2 id="apps-head">What it can reach</h2>
-        <dl class="reach">
+        <h2 id="apps-head">It works with your apps</h2>
+        <p class="lead">Gmail, Calendar, Slack, Notion and thousands more. It acts only when you ask.</p>
+      </div>
+      <dl class="reach">
           <div><dt>WhatsApp</dt><dd>reads your chats, when asked</dd></div>
           <div><dt>Calendar and mail</dt><dd>adds events, sums up mail</dd></div>
+          <div><dt>Slack and Notion</dt><dd>sends, finds and notes, on request</dd></div>
           <div><dt>Apple Health</dt><dd>sleep and steps, sent by a Shortcut</dd></div>
           <div><dt>Claude and Cursor</dt><dd>read your memory, never change it</dd></div>
-        </dl>
-      </div>
-      <figure class="code">
-        <figcaption>Connect Claude Code to your memory</figcaption>
-        <pre><code>claude mcp add --transport http echo \
-  "$ECHO_URL/mcp" \
-  --header "Authorization: Bearer $ECHO_KEY"</code></pre>
-      </figure>
+      </dl>
     </div>
   </section>
 
