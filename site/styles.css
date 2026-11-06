@@ -6,8 +6,8 @@
 /* Hallmark · dismissed 25 · the statement is six words of display type, a line break by measure, not running prose */
 /* Hallmark · dismissed F8 · one pinned chapter: the stages, the lines, the underlines and the findings all read the same --story timeline */
 /* Hallmark · reworded "before you wear it?" to "Before you wear it", "what can it reach?" to "What it can reach", "how much can it hear?" to "How much it hears", "what happens to a sentence?" to "From a sentence to an answer" · Kiln heads are sentence-case statements; the questions stay as the rows */
-@import url("./tokens.css");
-@import url("./base.css");
+@import url("./tokens.css?v=3");
+@import url("./base.css?v=3");
 
 @font-face { font-family: "Archivo"; src: url("fonts/Archivo-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "Archivo"; src: url("fonts/Archivo-Medium.ttf") format("truetype"); font-weight: 500; font-display: swap; }
