@@ -1,5 +1,34 @@
 [
  {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "page",
+  "shape": "Narrative Workflow",
+  "theme": "kiln",
+  "axes": "dark/expanded-grotesk/warm",
+  "hero": "Counter",
+  "nav": "floating pill",
+  "footer": "colophon block",
+  "imagery": "the product built: Ask screen, a call transcript",
+  "photos": [],
+  "entry": "index.html",
+  "sections": [
+   "hero",
+   "statement",
+   "pinned-story",
+   "figure-band",
+   "rows",
+   "split-code",
+   "table",
+   "band-form",
+   "footer"
+  ],
+  "signature": "the transcript underlining itself in orange as the stages scroll",
+  "waived": [],
+  "prompt": "Echo website redesign, more captivating",
+  "date": "2026-11-06"
+ },
+ {
   "shape": "Conversational FAQ",
   "theme": "lumen",
   "axes": "dark/expanded-grotesk/warm",

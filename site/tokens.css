@@ -9,14 +9,13 @@
   --color-error: oklch(72% 0.15 27); --color-success: oklch(76% 0.13 150);
   --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
   --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
-  /* Echo's dark palette (mobile/lib/theme/app_theme.dart): graphite and the LED's orange */
+  /* Echo's brand (mobile/lib/theme/app_theme.dart, dark): graphite, the LED's orange, Archivo */
   --color-paper: oklch(16.8% 0.006 248); --color-paper-2: oklch(22.5% 0.006 248); --color-paper-3: oklch(26.7% 0.007 248);
   --color-ink: oklch(94.4% 0.006 122); --color-ink-2: oklch(84.2% 0.006 138); --color-muted: oklch(72.9% 0.008 242);
-  --color-rule: oklch(30.3% 0.007 248); --color-rule-2: oklch(46.1% 0.010 248); --rule-blueprint: oklch(94.4% 0.006 122 / 0.05);
-  --color-accent: oklch(72.5% 0.181 45); --color-accent-ink: oklch(16.8% 0.006 248);
-  --color-on: oklch(76.2% 0.087 186); --color-focus: oklch(72.5% 0.181 45);
+  --color-rule: oklch(94.4% 0.006 122 / 0.12); --color-rule-2: oklch(46.1% 0.010 248);
+  --color-accent: oklch(72.5% 0.181 45); --color-accent-ink: oklch(16.8% 0.006 248); --color-focus: oklch(76% 0.17 52);
   --font-display: "Archivo Expanded", "Archivo", ui-sans-serif, system-ui, sans-serif; --font-body: "Archivo", ui-sans-serif, system-ui, sans-serif;
-  --radius-card: 10px; --radius-pill: 999px; --rule-hair: 1px;
-  --shadow-card: 0 28px 64px -30px oklch(4% 0.02 290 / 0.8);
-  --tracking-display: -0.02em; --display-weight: 700;
+  --radius-card: 22px; --radius-well: 14px; --radius-pill: 999px; --rule-hair: 1px;
+  --shadow-card: 0 50px 90px -30px oklch(6% 0.006 248 / 0.7);
+  --tracking-display: -0.025em; --display-weight: 700;
 }
