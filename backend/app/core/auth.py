@@ -6,8 +6,9 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -198,13 +199,31 @@ async def _key_for(request: Request, api_key: str, db: AsyncSession, scopes: set
             else "This key is for connected apps only.",
         )
 
-    api_key_record.last_used_at = datetime.now(timezone.utc)
+    await _mark_used(db, api_key_record)
     # The model calls of this request are counted for the key's user (services/usage.py)
     usage_owner.set(api_key_record.user_id)
     # Rate limits are per account, not per key (core/rate_limit.py)
     request.state.rate_limit_owner = str(api_key_record.user_id)
 
     return api_key_record
+
+
+async def _mark_used(db: AsyncSession, record: ApiKey) -> None:
+    """When the key was last used, as a statement of its own: a key deleted while its
+    request runs (signing out while the app still loads Profile) updates no row, where
+    the ORM's change would fail the whole request at commit."""
+    now = datetime.now(timezone.utc)
+    if not isinstance(record, ApiKey):
+        record.last_used_at = now  # a stand-in key (tests): nothing stored to update
+        return
+    await db.execute(
+        update(ApiKey)
+        .where(ApiKey.id == record.id)
+        .values(last_used_at=now)
+        .execution_options(synchronize_session=False)
+    )
+    # Seen in this request too, without a change left for the commit to write
+    set_committed_value(record, "last_used_at", now)
 
 
 async def require_operator(request: Request) -> None:
@@ -247,7 +266,7 @@ async def authenticate_connected_app(request: Request, db: AsyncSession) -> ApiK
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Use a connected app's key"
         )
 
-    record.last_used_at = datetime.now(timezone.utc)
+    await _mark_used(db, record)
     usage_owner.set(record.user_id)
     return record
 

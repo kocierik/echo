@@ -136,3 +136,35 @@ async def test_a_revoked_connected_app_is_not_counted_as_a_wrong_key(client, aut
 async def test_metrics_accept_a_full_key(client, auth_headers):
     # It answered 500 for any API key: the check was called without the request
     assert (await client.get("/metrics", headers=auth_headers)).status_code == 200
+
+
+async def test_a_key_deleted_while_its_request_runs_fails_nothing(db_session, monkeypatch):
+    """Signing out while the app still loads Profile: a request in flight with that key
+    finishes, instead of a 500 when its commit marks a key that is gone as used."""
+    from tests.conftest import test_session
+
+    key = "a-key-signed-out-meanwhile"
+    async with test_session() as db:
+        db.add(ApiKey(user_id=TEST_USER_ID, key_hash=auth.hash_api_key(key), name="iPhone"))
+        await db.commit()
+    mark_used = auth._mark_used
+
+    async def signed_out_first(db, record):
+        # Another request signs out between this one reading the key and marking it used
+        async with test_session() as other:
+            await other.delete(await other.get(ApiKey, record.id))
+            await other.commit()
+        await mark_used(db, record)
+
+    monkeypatch.setattr(auth, "_mark_used", signed_out_first)
+    request = types.SimpleNamespace(
+        app=types.SimpleNamespace(state=types.SimpleNamespace(redis=InMemoryRedis())),
+        client=types.SimpleNamespace(host="1.2.3.4"),
+        headers={},
+        state=types.SimpleNamespace(),
+    )
+
+    record = await auth.get_current_api_key(request, api_key=key, db=db_session)
+    await db_session.commit()
+
+    assert record.last_used_at is not None
