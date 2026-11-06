@@ -33,7 +33,6 @@ from app.models.user import User
 from app.services.language import HEARD_LANGUAGES, MAX_OTHER_LANGUAGES, SUPPORTED_LANGUAGES
 from app.services.passwords import (
     DUMMY_PASSWORD_HASH,
-    MIN_PASSWORD_LENGTH,
     create_user,
     hash_password,
     normalize_email,
@@ -203,10 +202,15 @@ async def register(
     email = normalize_email(body.email)
     if not _EMAIL.match(email):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter a valid email.")
-    if len(body.password) < MIN_PASSWORD_LENGTH:
+    # MIN_PASSWORD_LENGTH in .env raises it again (temporarily any password)
+    if len(body.password) < max(1, settings.min_password_length):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Use at least {MIN_PASSWORD_LENGTH} characters for the password.",
+            detail=(
+                "Enter a password."
+                if settings.min_password_length <= 1
+                else f"Use at least {settings.min_password_length} characters for the password."
+            ),
         )
     redis = getattr(request.app.state, "redis", None)
     if redis is not None:

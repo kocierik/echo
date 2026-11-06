@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.models.api_key import ApiKey
 from app.models.user import User
 
-MIN_PASSWORD_LENGTH = 10
+# Registration's minimum is settings.min_password_length (routers/auth.py)
 
 _hasher = PasswordHasher()
 

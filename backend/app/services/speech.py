@@ -33,6 +33,17 @@ INSTRUCTIONS = (
     "You are Echo, a personal assistant, reading an answer aloud to the user. Speak "
     "naturally, warmly and calmly, at a relaxed pace, in the language of the text."
 )
+# Without it these voices read Italian with an English accent
+ACCENTS = {
+    "it": "Speak Italian as a native speaker from Italy, with a natural Italian accent and "
+    "Italian pronunciation of every word; never an English accent.",
+    "en": "Speak English as a native speaker, with a natural accent.",
+}
+
+
+def instructions_for(language: str | None) -> str:
+    accent = ACCENTS.get(language or "")
+    return f"{INSTRUCTIONS} {accent}" if accent else INSTRUCTIONS
 
 
 class SpeechError(Exception):
@@ -47,11 +58,11 @@ class OpenAISpeech:
             client = AsyncOpenAI(api_key=settings.openai_api_key)
         self._client = client
 
-    async def speak(self, text: str, voice: str) -> bytes:
-        """The text as MP3 audio."""
+    async def speak(self, text: str, voice: str, language: str | None = None) -> bytes:
+        """The text as MP3 audio, spoken as a native of `language` when it is given."""
         try:
             response = await self._client.audio.speech.create(
-                model=MODEL, voice=voice, input=text, instructions=INSTRUCTIONS,
+                model=MODEL, voice=voice, input=text, instructions=instructions_for(language),
                 response_format="mp3",
             )
             audio = response.content

@@ -140,6 +140,8 @@ class Settings(BaseSettings):
     # To-dos from what is said in a conversation (promises, "I'll send it Friday"); off:
     # only when the user asks Echo ("Echo, segnami...")
     conversation_promises: bool = False
+    # The shortest password registration takes; 1 for now (any password), 10 before
+    min_password_length: int = 1
 
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"

@@ -68,10 +68,59 @@ async def build_stt_context(db: "AsyncSession", user_id: uuid.UUID) -> STTContex
             )
         ).scalars()
     )
+    places = await place_terms(db, user_id)
     return STTContext(
         prompt=_prompt(people_names, topic_names),
-        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *topic_names]),
+        # Places before topics: a city said once is a request ("che tempo fa a Nizza")
+        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *places, *topic_names]),
     )
+
+
+# The Italian names of cities the phone's addresses give in their own language: an
+# Italian says "Nizza", the address says "Nice", and without the hint "a Nizza" is heard
+# as "Anit"
+ITALIAN_NAMES = {
+    "nice": "Nizza", "menton": "Mentone", "monaco": "Monaco", "paris": "Parigi",
+    "london": "Londra", "marseille": "Marsiglia", "lyon": "Lione", "geneva": "Ginevra",
+    "genève": "Ginevra", "zurich": "Zurigo", "zürich": "Zurigo", "munich": "Monaco di Baviera",
+    "münchen": "Monaco di Baviera", "barcelona": "Barcellona", "lisbon": "Lisbona",
+    "lisboa": "Lisbona", "brussels": "Bruxelles", "berlin": "Berlino", "wien": "Vienna",
+    "prague": "Praga", "praha": "Praga", "antibes": "Antibes", "cannes": "Cannes",
+}
+MAX_PLACES = 10
+
+
+async def place_terms(db: "AsyncSession", user_id: uuid.UUID) -> list[str]:
+    """The cities of the places the user stayed at (the last part of their addresses),
+    each also by its Italian name: the most visited first."""
+    from sqlalchemy import func, select
+
+    from app.models.place_visit import PlaceVisit
+
+    try:
+        rows = (
+            await db.execute(
+                select(PlaceVisit.address, func.count())
+                .where(PlaceVisit.user_id == user_id, PlaceVisit.address.isnot(None))
+                .group_by(PlaceVisit.address)
+                .order_by(func.count().desc())
+                .limit(200)
+            )
+        ).all()
+    except Exception:
+        return []
+    counts: dict[str, int] = {}
+    for address, count in rows:
+        city = " ".join(str(address).rsplit(",", 1)[-1].split())
+        # "06000 Nice" in some formats: the name without the postcode
+        city = " ".join(word for word in city.split() if not word.isdigit())
+        if city:
+            counts[city] = counts.get(city, 0) + count
+    terms: list[str] = []
+    for city in sorted(counts, key=counts.get, reverse=True)[:MAX_PLACES]:
+        italian = ITALIAN_NAMES.get(city.lower())
+        terms += [italian, city] if italian and italian.lower() != city.lower() else [city]
+    return terms
 
 
 # The name the user calls the assistant by: said by an Italian it comes out as "ecco"

@@ -49,15 +49,26 @@ async def test_an_email_with_an_account_says_sign_in(client, db_session):
     )
 
 
-async def test_bad_email_and_short_password_are_explained(client, db_session):
+async def test_bad_email_and_empty_password_are_explained(client, db_session):
     bad = await client.post("/api/auth/register", json=_register(email="ada.example.com"))
-    short = await client.post("/api/auth/register", json=_register(password="short"))
+    empty = await client.post("/api/auth/register", json=_register(password=""))
 
     assert bad.status_code == 400
     assert bad.json()["detail"] == "Enter a valid email."
-    assert short.status_code == 400
-    assert short.json()["detail"] == "Use at least 10 characters for the password."
+    # Refused by the request's own schema (422) or by the check (400)
+    assert empty.status_code in (400, 422)
     assert (await db_session.scalars(select(User))).all() == []
+
+
+async def test_any_password_for_now_and_a_minimum_when_set(client, monkeypatch):
+    short = await client.post("/api/auth/register", json=_register(password="abc"))
+    assert short.status_code in (200, 201)
+
+    monkeypatch.setattr("app.routers.auth.settings.min_password_length", 10)
+    longer = await client.post(
+        "/api/auth/register", json=_register(email="bea@example.com", password="short")
+    )
+    assert longer.json()["detail"] == "Use at least 10 characters for the password."
 
 
 async def test_registration_can_be_closed(client, db_session):

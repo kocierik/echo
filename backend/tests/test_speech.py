@@ -15,9 +15,11 @@ class _Speaker:
     def __init__(self, fail=False):
         self.fail = fail
         self.asked: list[tuple[str, str]] = []
+        self.languages: list[str | None] = []
 
-    async def speak(self, text, voice):
+    async def speak(self, text, voice, language=None):
         self.asked.append((text, voice))
+        self.languages.append(language)
         if self.fail:
             raise speech.SpeechError("The voice could not be made now")
         return b"ID3-mp3"
@@ -92,3 +94,15 @@ async def test_too_long_or_empty_is_refused(client, auth_headers, speaker):
     empty = await client.post("/api/speech", headers=auth_headers, json={"text": ""})
 
     assert (long.status_code, empty.status_code) == (422, 422)
+
+
+async def test_italian_is_spoken_with_an_italian_accent(client, auth_headers, speaker):
+    await _account("plus")
+
+    await client.post(
+        "/api/speech", headers=auth_headers, json={"text": "Ciao", "language": "it"}
+    )
+
+    assert speaker.languages == ["it"]
+    assert "Italian accent" in speech.instructions_for("it")
+    assert speech.instructions_for(None) == speech.INSTRUCTIONS

@@ -32,6 +32,8 @@ class VoicesOut(BaseModel):
 class SpeakIn(BaseModel):
     text: str = Field(min_length=1, max_length=speech.MAX_CHARS)
     voice: str | None = None
+    # The answer's language ("it", "en"): a native accent for it
+    language: str | None = Field(default=None, max_length=5)
 
 
 def speaker():
@@ -64,7 +66,9 @@ async def speak(
     if not plan.premium_voice:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=NOT_IN_PLAN)
     try:
-        audio = await voice_maker.speak(body.text.strip(), speech.voice_or_default(body.voice))
+        audio = await voice_maker.speak(
+            body.text.strip(), speech.voice_or_default(body.voice), body.language
+        )
     except speech.SpeechError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc))
     return Response(content=audio, media_type="audio/mpeg")
