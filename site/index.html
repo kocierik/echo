@@ -7,7 +7,7 @@
 <meta name="description" content="Echo is a pendant that writes down your conversations and answers what you ask about them.">
 <meta name="theme-color" content="#0E0F10">
 <link rel="preload" as="image" href="img/pendant-cam.webp" type="image/webp">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 <script>document.documentElement.classList.add('js');</script>
 </head>
 <body>
@@ -20,6 +20,7 @@
       <ul class="nav__links">
         <li><a href="#day">Your day</a></li>
         <li><a href="#path">How it works</a></li>
+        <li><a href="#features">Everything</a></li>
         <li><a href="#plans">Plans</a></li>
       </ul>
     </nav>
@@ -127,9 +128,96 @@
     </div>
   </section>
 
+  <!-- Ask: an answer from the receipts, with its chart -->
+  <section id="ask" class="ask" aria-labelledby="ask-head">
+    <div class="container ask__grid">
+      <div>
+        <h2 id="ask-head">Ask it anything</h2>
+        <p class="lead">From what it heard, what you saved and what’s on the web right now.</p>
+        <ul class="ticks-list">
+          <li data-reveal style="--i: 0"><b>With its sources</b><span>Every answer opens the conversation it came from.</span></li>
+          <li data-reveal style="--i: 1"><b>Live when it must</b><span>Weather, news and prices, with the sites named.</span></li>
+          <li data-reveal style="--i: 2"><b>Charts when numbers help</b><span>Columns, lines and pies, drawn in the answer.</span></li>
+          <li data-reveal style="--i: 3"><b>Typed, dictated or said</b><span>“Ehi Echo, …” to the pendant, the answer in Ask.</span></li>
+          <li data-reveal style="--i: 4"><b>Out loud</b><span>Read to you, in your headphones, even with the screen locked.</span></li>
+        </ul>
+      </div>
+      <div class="chat" data-reveal aria-label="Sample answer in Ask, with a chart">
+        <p class="chat__q">How much did I spend on lunch this week?</p>
+        <div class="chat__a">
+          <p>€62 over five lunches. Thursday was the most, €18.</p>
+          <div class="bars" role="img" aria-label="Lunch spending by day: Monday 11, Tuesday 9, Wednesday 12, Thursday 18, Friday 12 euros">
+            <div style="--v: 11; --i: 0"><b>€11</b><span>Mon</span></div>
+            <div style="--v: 9; --i: 1"><b>€9</b><span>Tue</span></div>
+            <div style="--v: 12; --i: 2"><b>€12</b><span>Wed</span></div>
+            <div class="bars__top" style="--v: 18; --i: 3"><b>€18</b><span>Thu</span></div>
+            <div style="--v: 12; --i: 4"><b>€12</b><span>Fri</span></div>
+          </div>
+          <span class="chip">From 5 receipts in Saved</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- It comes to you: the lock screen, rarely -->
+  <section id="notify" class="notify" aria-labelledby="notify-head">
+    <div class="container notify__grid">
+      <div class="lock" aria-label="Sample notifications from Echo on the lock screen">
+        <p class="lock__time">9:50</p>
+        <div class="live" data-reveal style="--i: 0"><span class="live__led" aria-hidden="true"></span><b>Listening</b><span>3 min to send</span></div>
+        <div class="note" data-reveal style="--i: 1"><b>Marco is talking</b><span>You promised him the new offer by Friday.</span></div>
+        <div class="note" data-reveal style="--i: 2"><b>In 10 minutes: Giulia</b><span>Last time she asked for the Q4 budget.</span></div>
+        <div class="note" data-reveal style="--i: 3"><b>Your 7:00 routine</b><span>Rain in Milan from 15:00.</span></div>
+      </div>
+      <div>
+        <h2 id="notify-head">It comes to you, rarely</h2>
+        <p class="lead">When someone you know starts talking, what you owe each other. Ten minutes before a meeting, what to know. Promises on their day.</p>
+        <p class="notify__small">At most three a day, never between 22 and 8, each kind can be turned off. While it listens, it’s on your lock screen and in the Dynamic Island.</p>
+        <blockquote class="routine">
+          <p>“Ehi Echo, every morning at 7, tell me if it rains in Milan.”</p>
+          <footer>A routine: daily, weekdays, weekly or monthly. It tells you always, only when it’s true, or only what’s new.</footer>
+        </blockquote>
+      </div>
+    </div>
+  </section>
+
+  <!-- Assistants -->
+  <section id="assistants" class="assist" aria-labelledby="assist-head">
+    <div class="container">
+      <h2 id="assist-head">An assistant for each part of your life</h2>
+      <ul class="assist__names">
+        <li data-reveal style="--i: 0">Work</li>
+        <li data-reveal style="--i: 1">Diet</li>
+        <li data-reveal style="--i: 2">Sleep</li>
+        <li data-reveal style="--i: 3">Fitness</li>
+        <li data-reveal style="--i: 4">Money</li>
+        <li data-reveal style="--i: 5">Study</li>
+        <li data-reveal style="--i: 6" class="assist__own">or your own, described out loud</li>
+      </ul>
+      <p class="lead assist__line">Each keeps its own instructions, its own notes and the documents you give it. Sleep and fitness read Apple Health. Coaches, never medical advice.</p>
+    </div>
+  </section>
+
+  <!-- The camera -->
+  <section id="camera" class="sees" aria-labelledby="sees-head">
+    <div class="container sees__grid">
+      <div>
+        <h2 id="sees-head">It sees, when you ask</h2>
+        <p class="lead">A short press on its button takes one photo. Nothing stays on the pendant.</p>
+      </div>
+      <dl class="sees__rows">
+        <div data-reveal style="--i: 0"><dt>“What plant is this?”</dt><dd>An answer in the chat, with the photo.</dd></div>
+        <div data-reveal style="--i: 1"><dt>A business card</dt><dd>A new person in People.</dd></div>
+        <div data-reveal style="--i: 2"><dt>A poster</dt><dd>An event, with its date.</dd></div>
+        <div data-reveal style="--i: 3"><dt>A receipt</dt><dd>Kept in Saved, summed when you ask.</dd></div>
+        <div data-reveal style="--i: 4"><dt>A whiteboard</dt><dd>Attached to the meeting it was in.</dd></div>
+      </dl>
+    </div>
+  </section>
+
   <section id="questions" class="questions" aria-labelledby="questions-head">
     <div class="container questions__grid">
-      <h2 id="questions-head">Before you wear it</h2>
+      <h2 id="questions-head">Private by design</h2>
       <dl class="rows">
         <div class="row">
           <dt>Does it record everything?</dt>
@@ -137,11 +225,19 @@
         </div>
         <div class="row">
           <dt>Where does the audio go?</dt>
-          <dd>To your phone, then to Echo’s server to be written out. It is deleted a day later.</dd>
+          <dd>Over encrypted Bluetooth to your phone, then to Echo’s server to be written out. It is deleted a day later.</dd>
+        </div>
+        <div class="row">
+          <dt>And without my phone?</dt>
+          <dd>It holds about 13 minutes. With a microSD, about 36 hours per GB, encrypted with a key that never leaves it.</dd>
         </div>
         <div class="row">
           <dt>Does it act on its own?</dt>
-          <dd>Only when you ask. “Ehi Echo, segnami il dentista giovedì” puts it in your calendar.</dd>
+          <dd>Only when you ask. Sending, changing or deleting waits for your Confirm.</dd>
+        </div>
+        <div class="row">
+          <dt>Can I take my data?</dt>
+          <dd>All of it, as one file. Each phone has its own key, and you can revoke it.</dd>
         </div>
       </dl>
     </div>
@@ -151,14 +247,36 @@
     <div class="container apps__grid">
       <div>
         <h2 id="apps-head">It works with your apps</h2>
-        <p class="lead">Gmail, Calendar, Slack, Notion and thousands more. It acts only when you ask.</p>
+        <p class="lead">Gmail, Calendar, Slack, Notion and thousands more. Every action is in your activity log.</p>
       </div>
       <dl class="reach">
-          <div><dt>WhatsApp</dt><dd>reads your chats, when asked</dd></div>
+          <div><dt>WhatsApp</dt><dd>reads your private chats, when asked</dd></div>
           <div><dt>Calendar and mail</dt><dd>adds events, sums up mail</dd></div>
           <div><dt>Slack and Notion</dt><dd>sends, finds and notes, on request</dd></div>
-          <div><dt>Apple Health</dt><dd>sleep and steps, sent by a Shortcut</dd></div>
+          <div><dt>iPhone Reminders</dt><dd>and the iPhone’s Calendar, with nothing to connect</dd></div>
+          <div><dt>Apple Health</dt><dd>sleep, steps and workouts, sent by a Shortcut</dd></div>
           <div><dt>Claude and Cursor</dt><dd>read your memory, never change it</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- Everything else, as an index -->
+  <section id="features" class="index" aria-labelledby="index-head">
+    <div class="container">
+      <h2 id="index-head">And everything else</h2>
+      <dl class="index__grid">
+        <div><dt>Saved</dt><dd>Where you parked, where the passport is, the wine you liked.</dd></div>
+        <div><dt>Places</dt><dd>Where you’ve been today, off until you turn it on.</dd></div>
+        <div><dt>About you</dt><dd>Facts it uses in every answer, kept only if you agree.</dd></div>
+        <div><dt>Instructions</dt><dd>How it should answer you, in chat and out loud.</dd></div>
+        <div><dt>Documents</dt><dd>PDF, Word and text, searched when it answers.</dd></div>
+        <div><dt>Languages</dt><dd>Up to four more around you, translated line by line.</dd></div>
+        <div><dt>Voices</dt><dd>It learns who is speaking, and asks “Marco?” when unsure.</dd></div>
+        <div><dt>Corrections</dt><dd>Fix a line and it reads the conversation again.</dd></div>
+        <div><dt>Summaries</dt><dd>One for each day and one for each week.</dd></div>
+        <div><dt>Offline</dt><dd>Today stays readable without a connection.</dd></div>
+        <div><dt>Sharing</dt><dd>Send a conversation as text, to anyone.</dd></div>
+        <div><dt>Updates</dt><dd>New firmware over Bluetooth, signed, with a way back.</dd></div>
       </dl>
     </div>
   </section>
@@ -215,7 +333,10 @@
       <ul class="footer__links">
         <li><a href="#day">Your day</a></li>
         <li><a href="#path">How it works</a></li>
-        <li><a href="#questions">Questions</a></li>
+        <li><a href="#ask">Ask</a></li>
+        <li><a href="#assistants">Assistants</a></li>
+        <li><a href="#questions">Privacy</a></li>
+        <li><a href="#features">Everything</a></li>
         <li><a href="#plans">Plans</a></li>
       </ul>
       <p class="footer__legal">Echo, 2026. The pendant shown is a render. Fonts: Archivo, under the SIL Open Font License.</p>

@@ -172,6 +172,71 @@ mark::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.08e
 .reach dt { font-weight: 500; }
 .reach dd { margin: 0; color: var(--on-2); }
 
+/* Ask: the answer from the receipts, its chart growing in */
+.ask { padding-block: 140px; border-top: 1px solid var(--line); }
+.ask__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; align-items: center; }
+.ask .lead { margin-top: 20px; }
+.ticks-list { display: grid; margin: 40px 0 0; padding: 0; list-style: none; }
+.ticks-list li { display: grid; grid-template-columns: 13rem minmax(0, 1fr); gap: 20px; padding-block: 16px; border-top: 1px solid var(--line); }
+.ticks-list b { font-weight: 500; }
+.ticks-list span { color: var(--on-2); }
+.chat { display: grid; gap: 20px; padding: 32px; border-radius: 28px; background: var(--graphite-2); box-shadow: inset 0 0 0 1px var(--line), 0 50px 100px -40px rgba(0, 0, 0, 0.8); }
+.chat__q { justify-self: end; max-width: 28ch; padding: 12px 18px; border-radius: 18px; background: var(--graphite-3); }
+.chat__a { display: grid; gap: 18px; }
+.chat__a > p { font-size: 1.25rem; line-height: 1.4; }
+.bars { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: end; height: 200px; padding: 16px 16px 0; border-radius: 16px; background: var(--graphite); }
+.bars div { display: grid; grid-template-rows: auto 1fr auto; justify-items: center; gap: 6px; height: calc(var(--v) / 18 * 100%); }
+.bars div::before { content: ""; grid-row: 2; width: 100%; border-radius: 8px 8px 0 0; background: var(--line-2); transform-origin: bottom; }
+.bars .bars__top::before { background: var(--led); }
+.bars b { grid-row: 1; font-weight: 500; font-size: 0.8125rem; }
+.bars span { grid-row: 3; padding-bottom: 10px; font-size: 0.8125rem; color: var(--muted); }
+.js .chat[data-reveal] .bars div::before { transform: scaleY(0); transition: transform 0.8s var(--ease); transition-delay: calc(0.35s + var(--i) * 0.08s); }
+.js .chat[data-reveal].is-in .bars div::before { transform: none; }
+.chip { justify-self: start; padding: 8px 14px; border-radius: 999px; background: var(--graphite-3); font-size: 0.875rem; color: var(--on-2); }
+
+/* It comes to you: the lock screen */
+.notify { padding-block: 140px; background: var(--graphite-2); overflow: hidden; }
+.notify__grid { display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr); gap: 80px; align-items: center; }
+.notify .lead { margin-top: 20px; }
+.notify__small { margin-top: 20px; color: var(--muted); max-width: 52ch; }
+.lock { display: grid; gap: 10px; align-content: start; min-height: 520px; padding: 28px 18px; border-radius: 44px; background: linear-gradient(170deg, #2b2f33, #121315 70%); box-shadow: inset 0 0 0 6px var(--graphite-3), 0 50px 100px -30px rgba(0, 0, 0, 0.8); }
+.lock__time { margin: 12px 0 28px; text-align: center; font: 700 4rem/1 var(--display); letter-spacing: -0.04em; color: var(--on); }
+.live, .note { display: grid; gap: 2px; padding: 14px 18px; border-radius: 22px; background: rgba(236, 237, 234, 0.12); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.live { grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; border-radius: 999px; background: var(--graphite); }
+.live__led { width: 10px; height: 10px; border-radius: 50%; background: var(--led); }
+.live span:last-child { font-size: 0.875rem; color: var(--muted); }
+.note b { font-weight: 600; font-size: 0.9375rem; }
+.note span { font-size: 0.9375rem; color: var(--on-2); }
+.js .lock [data-reveal] { transform: translateY(-24px) scale(0.96); }
+.js .lock [data-reveal].is-in { transform: none; }
+.routine { margin: 48px 0 0; padding-top: 32px; border-top: 1px solid var(--line); }
+.routine p { font: 700 clamp(1.375rem, 1.4vw + 0.8rem, 2rem)/1.2 var(--display); letter-spacing: -0.02em; max-width: 26ch; }
+.routine footer { margin-top: 14px; color: var(--muted); max-width: 52ch; }
+
+/* Assistants: the names, set large */
+.assist { padding-block: 140px; }
+.assist__names { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 40px; margin: 48px 0 0; padding: 0; list-style: none; }
+.assist__names li { font: 700 clamp(2.75rem, 5.5vw, 5.5rem)/1.05 var(--display); letter-spacing: -0.045em; }
+.assist__names .assist__own { font: 400 clamp(1.125rem, 1vw + 0.8rem, 1.5rem)/1.3 var(--body); letter-spacing: 0; color: var(--led); }
+.assist__line { margin-top: 40px; max-width: 60ch; }
+
+/* The camera: what a photo becomes */
+.sees { padding-block: 140px; border-top: 1px solid var(--line); }
+.sees__grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 64px; align-items: start; }
+.sees .lead { margin-top: 20px; }
+.sees__rows { margin: 0; }
+.sees__rows div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; padding-block: 20px; border-top: 1px solid var(--line); }
+.sees__rows div:last-child { border-bottom: 1px solid var(--line); }
+.sees__rows dt { font: 700 1.25rem/1.3 var(--display); letter-spacing: -0.02em; }
+.sees__rows dd { margin: 0; color: var(--on-2); align-self: center; }
+
+/* Everything else, as an index */
+.index { padding-block: 140px; border-top: 1px solid var(--line); }
+.index__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 32px; margin: 56px 0 0; }
+.index__grid div { padding-block: 24px 28px; border-top: 1px solid var(--line); }
+.index__grid dt { font: 700 1.125rem/1.3 var(--display); letter-spacing: -0.02em; }
+.index__grid dd { margin: 8px 0 0; color: var(--on-2); max-width: 30ch; }
+
 /* Plans */
 .plans { padding-block: 140px; border-top: 1px solid var(--line); }
 .plans__head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: end; margin-bottom: 72px; }
@@ -202,8 +267,13 @@ mark::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.08e
   .nav__links { display: none; }
   .hero__grid { grid-template-columns: minmax(0, 1fr); min-height: 0; padding-block: 104px 48px; }
   .hero__photo { height: auto; width: 100%; }
-  .day__head, .kept__grid, .story__pin, .questions__grid, .row, .apps__grid, .plans__head, .beta__grid, .footer__grid { grid-template-columns: minmax(0, 1fr); }
-  .day, .kept, .story, .questions, .plans { padding-block: 96px; }
+  .ask__grid, .notify__grid, .sees__grid, .day__head, .kept__grid, .story__pin, .questions__grid, .row, .apps__grid, .plans__head, .beta__grid, .footer__grid { grid-template-columns: minmax(0, 1fr); }
+  .day, .kept, .story, .questions, .plans, .ask, .notify, .assist, .sees, .index { padding-block: 96px; }
+  .index__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ticks-list li, .sees__rows div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .notify__grid { gap: 48px; }
+  .lock { min-height: 0; }
+  .chat { padding: 20px; }
   .facts, .tiers { grid-template-columns: minmax(0, 1fr); gap: 32px; margin-top: 56px; }
   .facts > div, .tier { padding: 32px 0 0; border-left: 0; border-top: 1px solid var(--line); }
   .facts > div:first-child, .tier:first-child { padding-top: 0; border-top: 0; }
@@ -217,7 +287,11 @@ mark::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.08e
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .rise, .hero__photo img { animation: none; }
-  .js [data-reveal], .js .phone[data-reveal], .js .strip i { opacity: 1; transform: none; transition: none; }
+  .js [data-reveal], .js .phone[data-reveal], .js .strip i, .js .lock [data-reveal], .js .chat[data-reveal] .bars div::before { opacity: 1; transform: none; transition: none; }
   .js .phone[data-reveal] { transform: rotate(-3deg); }
   .btn { transition: none; }
+}
+
+@media (max-width: 40rem) {
+  .index__grid { grid-template-columns: minmax(0, 1fr); }
 }
