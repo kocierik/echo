@@ -143,6 +143,17 @@ class Settings(BaseSettings):
     # The shortest password registration takes; 1 for now (any password), 10 before
     min_password_length: int = 1
 
+    # The website's beta form (routers/beta.py) mails each address here; off without a host
+    beta_notify_email: str = "erik@man.ovh"
+    smtp_host: str = ""
+    # 465: SSL; any other port: STARTTLS
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    # The website (site/), served at / when the folder is there (docker-compose mounts it)
+    site_dir: str = "/site"
+
     # User's local timezone (IANA name): calendar events, relative dates in extraction
     user_timezone: str = "Europe/Rome"
 

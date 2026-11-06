@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -49,6 +50,7 @@ from app.routers import (
     search,
     segments,
     speech,
+    beta,
     voices,
     whatsapp,
 )
@@ -152,6 +154,7 @@ app.include_router(assistants.router, prefix=settings.api_prefix)
 app.include_router(demo.router, prefix=settings.api_prefix)
 app.include_router(health_data.router, prefix=settings.api_prefix)
 app.include_router(speech.router, prefix=settings.api_prefix)
+app.include_router(beta.router, prefix=settings.api_prefix)
 
 # Connected apps (Claude, Cursor…): the memory over MCP, read-only (app/mcp/server.py)
 for _mcp_path in ("/mcp", "/mcp/"):
@@ -265,3 +268,10 @@ async def prometheus_metrics():
     from fastapi.responses import PlainTextResponse
 
     return PlainTextResponse(metrics.export(), media_type="text/plain")
+
+
+# The website at /, after every route so none is shadowed
+if os.path.isdir(settings.site_dir):
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=settings.site_dir, html=True), name="site")

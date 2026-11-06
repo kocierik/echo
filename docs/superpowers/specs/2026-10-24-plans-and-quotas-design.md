@@ -75,3 +75,18 @@ measured; this builds the machinery so the numbers are a setting.
 - How the STT worker marks and re-queues deferred segments (a status, a nightly job, a hook when the
   plan changes).
 - The exact Profile → Plan and Today copy.
+
+## Prices (simulation, 2026-11-06)
+
+Costs from `llm_usage` (Nov 4 to 6) at `app/usage_prices.py` rates: a minute of speech about
+$0.006 (nova-3 $0.0043, analysis, summaries, embeddings), a question in Ask about $0.0006, a web
+search $0.010, a minute of natural voice $0.015.
+
+| Plan | Price | Cost, typical use | Cost, every limit used |
+|---|---|---|---|
+| free | €0 | ~€1 (100 min) | ~€3 |
+| plus | €12 a month, €120 a year | ~€7 (1,000 min, 5 searches a day) | ~€17 |
+| unlimited | €39 a month, €390 a year | ~€26 (4,000 min, 15 searches a day) | ~€68 |
+
+Typical use leaves about a third after costs; a user at every limit costs more than the plan.
+Card fees, the server and the pendant are not counted.

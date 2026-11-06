@@ -139,7 +139,7 @@
     <div class="container">
       <div class="plans__head">
         <h2 id="plans-head">how much can it hear?</h2>
-        <p class="lead">Prices: <span class="fill" data-fill="prices">to be announced</span></p>
+        <p class="lead">Paid for the year, two months are free.</p>
       </div>
       <div class="table-wrap">
         <table>
@@ -147,6 +147,8 @@
             <tr><th scope="col">each plan</th><th scope="col">free</th><th scope="col">plus</th><th scope="col">unlimited</th></tr>
           </thead>
           <tbody>
+            <tr><th scope="row">a month</th><td class="num">€0</td><td class="num">€12</td><td class="num">€39</td></tr>
+            <tr><th scope="row">a year</th><td class="num">€0</td><td class="num">€120</td><td class="num">€390</td></tr>
             <tr><th scope="row">speech written out a month</th><td class="num">300 min</td><td class="num">1,500 min</td><td class="num">9,000 min</td></tr>
             <tr><th scope="row">web searches a day</th><td class="num">5</td><td class="num">30</td><td class="num">60</td></tr>
             <tr><th scope="row">routines</th><td class="num">2</td><td class="num">10</td><td class="num">10</td></tr>
@@ -163,7 +165,7 @@
         <h2 id="beta-head">ready to wear one?</h2>
         <p class="lead">The beta runs on iPhone. The Android app builds, untested.</p>
       </div>
-      <form class="signup" data-endpoint="" novalidate>
+      <form class="signup" data-endpoint="/api/beta" novalidate>
         <label for="email">your email address</label>
         <div class="signup__row">
           <input id="email" name="email" type="email" autocomplete="email" inputmode="email" required>
@@ -198,8 +200,8 @@ document.querySelectorAll('form[data-endpoint]').forEach((form) => {
     input.toggleAttribute('aria-invalid', !ok);
     if (!ok) { input.setAttribute('aria-describedby', help.id); help.textContent = 'That address looks incomplete. Write it as name@example.com.'; input.focus(); return; }
     if (!form.dataset.endpoint) { help.textContent = 'Nothing was sent: this form is not connected yet.'; return; }
-    fetch(form.dataset.endpoint, { method: 'POST', body: new FormData(form) })
-      .then((r) => { help.textContent = r.ok ? 'Thanks. We will write to ' + input.value.trim() + '.' : 'That did not go through. Try again in a minute.'; })
+    fetch(form.dataset.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: input.value.trim() }) })
+      .then((r) => { help.textContent = r.ok ? 'Thanks. Erik will write to ' + input.value.trim() + '.' : r.status === 503 ? 'The beta list is not open yet. Try again tomorrow.' : 'That did not go through. Try again in a minute.'; })
       .catch(() => { help.textContent = 'That did not go through. Try again in a minute.'; });
   });
 });

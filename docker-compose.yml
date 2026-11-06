@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend:/app
       - audio_data:/data/audio
+      - ./site:/site:ro
     depends_on:
       postgres:
         condition: service_healthy
