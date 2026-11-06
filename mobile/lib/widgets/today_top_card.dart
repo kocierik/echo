@@ -32,13 +32,6 @@ TodayMoment? pickMoment({required List<PendingAction> pending}) {
   return null;
 }
 
-/// "Good morning", "Good afternoon" or "Good evening".
-String greeting(DateTime now) => now.hour >= 5 && now.hour < 12
-    ? 'Good morning'
-    : now.hour >= 12 && now.hour < 18
-        ? 'Good afternoon'
-        : 'Good evening';
-
 /// Today's one card at the top: what needs the user.
 final class TodayTopCard extends StatelessWidget {
   const TodayTopCard({

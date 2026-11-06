@@ -33,13 +33,6 @@ void main() {
     });
   });
 
-  test('the greeting follows the time of day', () {
-    expect(greeting(DateTime(2026, 10, 20, 9)), 'Good morning');
-    expect(greeting(DateTime(2026, 10, 20, 14)), 'Good afternoon');
-    expect(greeting(DateTime(2026, 10, 20, 19)), 'Good evening');
-    expect(greeting(DateTime(2026, 10, 20, 2)), 'Good evening');
-  });
-
   testWidgets('an action to confirm, and how many more', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,

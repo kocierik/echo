@@ -171,11 +171,11 @@ void main() {
   });
 
   group('top', () {
-    testWidgets('the day, and a greeting', (tester) async {
+    testWidgets('the day as the title, no greeting', (tester) async {
       await pumpToday(tester);
       await tester.pumpAndSettle();
-      expect(find.text('WEDNESDAY 14 OCTOBER'), findsOneWidget);
-      expect(find.text('Good evening'), findsOneWidget);
+      expect(find.text('Wednesday 14 October'), findsOneWidget);
+      expect(find.text('Good evening'), findsNothing);
     });
 
     testWidgets('one card: what to confirm first, the others one tap away', (tester) async {

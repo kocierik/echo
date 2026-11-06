@@ -943,10 +943,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // The day, no greeting
             ScreenHeader(
-              overline: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}'
-                  .toUpperCase(),
-              title: greeting(now),
+              title: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}',
               compact: true,
               actions: [
                 HeaderIconButton(
