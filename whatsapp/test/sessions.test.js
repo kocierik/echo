@@ -27,6 +27,10 @@ function fakeSocket() {
     async logout() {
       this.loggedOut++;
     },
+    presence: [],
+    async sendPresenceUpdate(type) {
+      this.presence.push(type);
+    },
     async requestPairingCode(phone) {
       this.paired = phone;
       return 'ABCD1234';
@@ -132,6 +136,18 @@ test('unlink logs the device out and deletes its keys', async () => {
   assert.equal(sock.loggedOut, 1);
   assert.equal(sessions.status('u1').state, 'unlinked');
   await assert.rejects(access(path.join(dataDir, 'u1')));
+});
+
+test('once the profile name is known, the bridge says it is not online, once', async () => {
+  const sock = await linked();
+
+  sock.ev.emit('creds.update', { account: {} });
+  sock.ev.emit('creds.update', { me: { id: '393330000000:12@s.whatsapp.net', name: 'Erik' } });
+  sock.ev.emit('creds.update', { me: { id: '393330000000:12@s.whatsapp.net', name: 'Erik' } });
+  await settle();
+
+  // Online, it would keep WhatsApp from notifying the phone
+  assert.deepEqual(sock.presence, ['unavailable']);
 });
 
 test('a dropped connection connects again', async () => {

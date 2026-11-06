@@ -208,7 +208,15 @@ export class Sessions {
     // Events of a session that was stopped or replaced change nothing
     const live = () => !session.stopped && this.sessions.get(userId) === session;
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', (update) => {
+      void saveCreds();
+      // Baileys says "not online" at connect only if it knows the profile name; a new link
+      // learns it later, and a companion never marked offline mutes the phone's notifications
+      if (live() && update?.me?.name && !session.offline) {
+        session.offline = true;
+        sock.sendPresenceUpdate('unavailable').catch(() => { session.offline = false; });
+      }
+    });
 
     sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
       if (!live()) return;
