@@ -299,6 +299,7 @@ void loop() {
     // Read audio frame from microphone
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
+    amplify(pcmBuffer, samplesRead, MIC_GAIN);
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);

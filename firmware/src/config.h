@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 8
-#define FIRMWARE_VERSION_PATCH 0
+#define FIRMWARE_VERSION_PATCH 1
 
 // ============================================================
 // Audio Configuration
@@ -34,8 +34,12 @@
 // (offset included, ~1400 on the XIAO Sense mic) made 500 meaningless; calibrate with the
 // serial log "[VAD] idle energy" in silence and while speaking
 #define VAD_ENERGY_THRESHOLD 250
+// The microphone's samples MIC_GAIN times louder (audio_level.h amplify): speech a metre
+// away measured 45 to 250, under the threshold; three times that clears it, while
+// silence (~30) stays well below
+#define MIC_GAIN 3
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
-#define VAD_SPEECH_END_FRAMES 25       // Consecutive frames below threshold to stop (~800ms)
+#define VAD_SPEECH_END_FRAMES 45       // Consecutive frames below threshold to stop (~1.4s: a pause between sentences no longer splits them)
 #define VAD_FRAME_DURATION_MS 32       // Duration of one VAD frame
 
 // Pre-buffer: keep last N frames of audio before VAD triggers

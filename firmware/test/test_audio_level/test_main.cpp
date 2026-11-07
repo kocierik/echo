@@ -35,9 +35,30 @@ void test_full_scale_does_not_overflow() {
     TEST_ASSERT_UINT32_WITHIN(2, 32767, acRms(frame, 512));
 }
 
+void test_amplify_takes_the_offset_away_then_multiplies() {
+    int16_t frame[4] = {1400 + 100, 1400 - 100, 1400 + 100, 1400 - 100};
+    amplify(frame, 4, 3);
+    TEST_ASSERT_EQUAL_INT16(300, frame[0]);
+    TEST_ASSERT_EQUAL_INT16(-300, frame[1]);
+}
+
+void test_amplify_clips_instead_of_wrapping() {
+    int16_t frame[2] = {20000, -20000};
+    amplify(frame, 2, 3);
+    TEST_ASSERT_EQUAL_INT16(32767, frame[0]);
+    TEST_ASSERT_EQUAL_INT16(-32768, frame[1]);
+}
+
+void test_amplify_leaves_an_empty_frame() {
+    amplify(nullptr, 0, 3);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_a_constant_offset_is_silence);
+    RUN_TEST(test_amplify_takes_the_offset_away_then_multiplies);
+    RUN_TEST(test_amplify_clips_instead_of_wrapping);
+    RUN_TEST(test_amplify_leaves_an_empty_frame);
     RUN_TEST(test_sound_on_top_of_the_offset_is_measured_alone);
     RUN_TEST(test_a_negative_offset_too);
     RUN_TEST(test_an_empty_frame_is_silence);

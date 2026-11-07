@@ -26,3 +26,25 @@ inline uint32_t acRms(const int16_t* samples, size_t count) {
     }
     return (uint32_t)sqrt(sumSquares / (double)count);
 }
+
+/**
+ * The frame without its constant offset, `gain` times louder, clipped to 16 bits.
+ *
+ * The Sense microphone is quiet: speech a metre away peaked at about a tenth of full
+ * scale, under the VAD's threshold, and reached the transcription in fragments. The
+ * offset goes first, or the gain would multiply it too.
+ */
+inline void amplify(int16_t* samples, size_t count, int32_t gain) {
+    if (samples == nullptr || count == 0) return;
+
+    int64_t total = 0;
+    for (size_t i = 0; i < count; i++) total += samples[i];
+    const int32_t mean = (int32_t)(total / (int64_t)count);
+
+    for (size_t i = 0; i < count; i++) {
+        int32_t value = ((int32_t)samples[i] - mean) * gain;
+        if (value > 32767) value = 32767;
+        if (value < -32768) value = -32768;
+        samples[i] = (int16_t)value;
+    }
+}
