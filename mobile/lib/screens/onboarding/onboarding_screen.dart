@@ -75,6 +75,10 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
             _passwordController.text,
           );
         }
+        // In the browser setup ends at sign-in (no wearable to pair)
+        if (mounted && widget.controller.value.completed) {
+          widget.onComplete();
+        }
       case OnboardingStep.permissions:
         await widget.controller.requestPermissions();
       case OnboardingStep.pairing:
