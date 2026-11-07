@@ -27,6 +27,7 @@ from app.routers import (
     admin,
     assistants,
     auth,
+    beta,
     chat_sessions,
     conversations,
     demo,
@@ -50,7 +51,6 @@ from app.routers import (
     search,
     segments,
     speech,
-    beta,
     voices,
     whatsapp,
 )
