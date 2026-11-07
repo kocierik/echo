@@ -67,10 +67,11 @@ def test_the_message_goes_to_the_notify_address(monkeypatch):
     monkeypatch.setattr(settings, "smtp_port", 465)
     monkeypatch.setattr(settings, "smtp_user", "echo@example.com")
     monkeypatch.setattr(settings, "smtp_from", "")
+    monkeypatch.setattr(settings, "beta_notify_email", "owner@example.com")
     monkeypatch.setattr(beta.smtplib, "SMTP_SSL", _Smtp)
 
     beta._send("anna@example.com")
 
-    assert sent[0]["To"] == settings.beta_notify_email == "erik@man.ovh"
+    assert sent[0]["To"] == "owner@example.com"
     assert sent[0]["Reply-To"] == "anna@example.com"
     assert "anna@example.com" in sent[0].get_content()
