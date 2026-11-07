@@ -52,6 +52,8 @@ SEARCH_LIMIT = 20
 # accounts are refreshed when the Integrations screen lists them, after a disconnect, and
 # before telling the user an app is not connected; tool schemas rarely change.
 CONNECTED_CACHE_SECONDS = 60
+# A toolkit's name and description: one lookup each, ~0.6 s, and they hardly change
+TOOLKIT_CACHE_SECONDS = 24 * 3600
 TOOLS_CACHE_SECONDS = 600
 # Tool schemas offered to the model per request (token cost and tool-choice quality).
 MAX_OFFERED_TOOLS = 100
@@ -151,6 +153,7 @@ class ComposioActionProvider:
         self._auth_config_ids: dict[str, str] = {}
         self._connected: dict[str, tuple[float, list[str]]] = {}
         self._tools: dict[tuple[str, tuple[str, ...]], tuple[float, list[dict]]] = {}
+        self._toolkits: dict[str, tuple[float, str, str]] = {}
 
     def _remember_connected(self, user_id: str, accounts: list) -> list[str]:
         slugs = list(dict.fromkeys(a.toolkit.slug for a in accounts))
@@ -215,8 +218,13 @@ class ComposioActionProvider:
             # Toolkits connected through search are listed too, so they can be disconnected
             extra = [s for s in connected_order if s not in INITIAL_TOOLKITS]
             for slug in (*INITIAL_TOOLKITS, *extra):
+                cached = self._toolkits.get(slug)
+                if cached and time.monotonic() - cached[0] < TOOLKIT_CACHE_SECONDS:
+                    result.append(Toolkit(slug, cached[1], cached[2], slug in connected))
+                    continue
                 try:
                     t = self.client.toolkits.get(slug)
+                    self._toolkits[slug] = (time.monotonic(), t.name, t.meta.description)
                     result.append(Toolkit(slug, t.name, t.meta.description, slug in connected))
                 except Exception as e:
                     logger.warning("Composio toolkit lookup failed: %s", type(e).__name__)

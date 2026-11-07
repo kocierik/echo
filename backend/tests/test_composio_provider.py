@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -101,6 +102,25 @@ async def test_list_toolkits_marks_connected_ones():
     toolkits = await p.list_toolkits("u1")
     assert [t.slug for t in toolkits] == list(INITIAL_TOOLKITS)
     assert {t.slug for t in toolkits if t.connected} == {"slack"}
+
+
+async def test_the_toolkits_details_are_asked_once_a_day(monkeypatch):
+    client = StubClient(active=["slack"])
+    asked = []
+    lookup = client.toolkits.get
+    client.toolkits.get = lambda slug=None, **kw: asked.append(slug) or lookup(slug, **kw)
+    p = ComposioActionProvider(client=client)
+
+    await p.list_toolkits("u1")
+    again = await p.list_toolkits("u1")
+    assert len(asked) == len(INITIAL_TOOLKITS)
+    # Still fresh on which accounts are connected
+    assert {t.slug for t in again if t.connected} == {"slack"}
+
+    later = time.monotonic() + composio_provider.TOOLKIT_CACHE_SECONDS + 1
+    monkeypatch.setattr(composio_provider.time, "monotonic", lambda: later)
+    await p.list_toolkits("u1")
+    assert len(asked) == 2 * len(INITIAL_TOOLKITS)
 
 
 async def test_list_toolkits_with_query_searches():
