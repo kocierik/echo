@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, Security, status
@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import async_session, get_db
 from app.models.api_key import ApiKey
 from app.services.usage import usage_owner
 
@@ -208,20 +208,26 @@ async def _key_for(request: Request, api_key: str, db: AsyncSession, scopes: set
     return api_key_record
 
 
+# "Last used" in Devices needs no more than this
+MARK_USED_EVERY = timedelta(minutes=1)
+
+
 async def _mark_used(db: AsyncSession, record: ApiKey) -> None:
-    """When the key was last used, as a statement of its own: a key deleted while its
-    request runs (signing out while the app still loads Profile) updates no row, where
-    the ORM's change would fail the whole request at commit."""
+    """When the key was last used, at most once a minute, in a transaction of its own
+    committed at once. Inside the request's transaction the row stayed locked until the
+    request ended: the wearable's 20 s long poll held up every other request of the
+    phone. A key deleted meanwhile (signing out) just updates no row."""
     now = datetime.now(timezone.utc)
     if not isinstance(record, ApiKey):
         record.last_used_at = now  # a stand-in key (tests): nothing stored to update
         return
-    await db.execute(
-        update(ApiKey)
-        .where(ApiKey.id == record.id)
-        .values(last_used_at=now)
-        .execution_options(synchronize_session=False)
-    )
+    if record.last_used_at is not None and now - record.last_used_at < MARK_USED_EVERY:
+        return
+    async with async_session() as own:
+        await own.execute(
+            update(ApiKey).where(ApiKey.id == record.id).values(last_used_at=now)
+        )
+        await own.commit()
     # Seen in this request too, without a change left for the commit to write
     set_committed_value(record, "last_used_at", now)
 

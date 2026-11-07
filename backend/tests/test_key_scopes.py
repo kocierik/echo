@@ -168,3 +168,33 @@ async def test_a_key_deleted_while_its_request_runs_fails_nothing(db_session, mo
     await db_session.commit()
 
     assert record.last_used_at is not None
+
+
+async def test_a_long_request_does_not_hold_up_the_others_of_its_key():
+    """The wearable's long poll keeps its request open for 20 s: marking the key as used
+    must not keep the key's row locked meanwhile, or every other request of the phone
+    waits behind it (and the app shows Offline)."""
+    import asyncio
+
+    from tests.conftest import test_session
+
+    key = "a-key-with-a-long-poll"
+    async with test_session() as db:
+        db.add(ApiKey(user_id=TEST_USER_ID, key_hash=auth.hash_api_key(key), name="iPhone"))
+        await db.commit()
+
+    def request():
+        return types.SimpleNamespace(
+            app=types.SimpleNamespace(state=types.SimpleNamespace(redis=InMemoryRedis())),
+            client=types.SimpleNamespace(host="1.2.3.4"),
+            headers={},
+            state=types.SimpleNamespace(),
+        )
+
+    async with test_session() as long_poll, test_session() as other:
+        await auth.get_current_api_key(request(), api_key=key, db=long_poll)
+        # The long poll's transaction is still open: the next request goes through at once
+        record = await asyncio.wait_for(
+            auth.get_current_api_key(request(), api_key=key, db=other), timeout=5
+        )
+        assert record.last_used_at is not None

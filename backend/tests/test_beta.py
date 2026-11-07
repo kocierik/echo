@@ -64,7 +64,9 @@ def test_the_message_goes_to_the_notify_address(monkeypatch):
             sent.append(message)
 
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(settings, "smtp_port", 465)
     monkeypatch.setattr(settings, "smtp_user", "echo@example.com")
+    monkeypatch.setattr(settings, "smtp_from", "")
     monkeypatch.setattr(beta.smtplib, "SMTP_SSL", _Smtp)
 
     beta._send("anna@example.com")
