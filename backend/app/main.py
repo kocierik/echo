@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.actions.composio_provider import preload_sdk
-from app.core.auth import get_current_user_id
+from app.core.auth import client_address, get_current_user_id
 from app.core.config import settings
 from app.core.database import async_session, engine
 from app.core.logging import new_correlation_id, setup_logging
@@ -120,6 +120,16 @@ async def correlation_id_middleware(request: Request, call_next):
     metrics.observe("http_request_duration_seconds", duration)
     if response.status_code >= 400:
         metrics.inc("http_errors_total")
+    # What the phone sees as offline or signed out: failed or slow requests, by path
+    # (the long poll waits by design)
+    path = request.url.path
+    if path.startswith("/api/") and path != "/api/device/commands" and (
+        response.status_code >= 400 or duration > 2
+    ):
+        logger.warning(
+            "%s %s -> %s in %.1fs from %s",
+            request.method, path, response.status_code, duration, client_address(request),
+        )
 
     return response
 
