@@ -30,7 +30,13 @@ if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 echo "Building firmware $version..."
-pio run -e xiao_esp32s3
+if command -v pio >/dev/null; then
+    pio run -e xiao_esp32s3
+else
+    # No PlatformIO here (the server): the same build in a container, its toolchain cached
+    docker run --rm -v echo-pio-cache:/root/.platformio -v "$PWD:/fw" -w /fw python:3.11 sh -c \
+        "pip install -q platformio >/dev/null && pio run -e xiao_esp32s3; status=\$?; chown -R $(id -u):$(id -g) .pio; exit \$status"
+fi
 image=.pio/build/xiao_esp32s3/firmware.bin
 signature="$(openssl dgst -sha256 -sign "$key" "$image" | od -An -v -tx1 | tr -d ' 
 ')"
