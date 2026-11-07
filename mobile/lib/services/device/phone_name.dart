@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// This phone's model, to tell it apart in Settings → Devices ("iPhone 15 Pro",
@@ -7,6 +8,8 @@ import 'package:flutter/services.dart';
 /// MainActivity.kt); a plain "iPhone" / "Android phone" when it cannot be read.
 Future<String> phoneName(
     {MethodChannel channel = const MethodChannel('echo/device')}) async {
+  // dart:io's Platform throws in a browser
+  if (kIsWeb) return 'Browser';
   try {
     final raw = await channel.invokeMethod<String>('model') ?? '';
     if (Platform.isIOS) return iosModelName(raw);

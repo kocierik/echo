@@ -49,7 +49,8 @@ class LoginRequest(BaseModel):
     email: str = Field(min_length=1, max_length=320)
     password: str = Field(min_length=1, max_length=1024)
     device_name: str = Field(min_length=1, max_length=100)
-    platform: Literal["ios", "android"]
+    # "web": the app in a browser (/app), signed in like a phone
+    platform: Literal["ios", "android", "web"]
 
     @field_validator("device_name")
     @classmethod

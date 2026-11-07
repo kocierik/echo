@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show PlatformDispatcher;
 
+import 'package:flutter/foundation.dart';
+
 import '../../models/signed_in_device.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
@@ -142,7 +144,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
             'email': email.trim(),
             'password': password,
             'device_name': name,
-            'platform': Platform.isIOS ? 'ios' : 'android',
+            'platform': kIsWeb ? 'web' : Platform.isIOS ? 'ios' : 'android',
             if (language != null) 'language': language,
           }),
         ),

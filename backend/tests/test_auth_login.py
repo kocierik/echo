@@ -40,6 +40,20 @@ async def test_login_issues_a_key_that_works(client, db_session):
     assert (row.name, row.platform, row.user_id) == ("iPhone", "ios", TEST_USER_ID)
 
 
+async def test_the_browser_signs_in_like_a_phone(client, db_session):
+    await _owner(db_session)
+
+    response = await client.post("/api/auth/login", json=_login(name="Browser", platform="web"))
+    refused = await client.post("/api/auth/login", json=_login(platform="windows"))
+
+    assert response.status_code == 200
+    row = await db_session.scalar(
+        select(ApiKey).where(ApiKey.key_hash == auth.hash_api_key(response.json()["api_key"]))
+    )
+    assert (row.name, row.platform) == ("Browser", "web")
+    assert refused.status_code == 422
+
+
 async def test_login_wrong_password_and_unknown_email_look_the_same(client, db_session):
     await _owner(db_session)
 
