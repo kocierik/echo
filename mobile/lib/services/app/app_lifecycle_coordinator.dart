@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -205,7 +206,7 @@ final class AppLifecycleCoordinator {
       commands: credentialApiService,
       server: credentialApiService,
     );
-    unawaited(phoneActions.report(force: true));
+    if (!kIsWeb) unawaited(phoneActions.report(force: true));
     // The place of a thing being saved, read only when the server asks for it
     final phoneLocation = PhoneLocationService(
       reader: const GeolocatorReader(),
@@ -229,7 +230,7 @@ final class AppLifecycleCoordinator {
       networkPolicy: networkPolicy,
       geocode: const GeolocatorReader().address,
     );
-    unawaited(placesVisited.resume());
+    if (!kIsWeb) unawaited(placesVisited.resume());
     // The server's commands: photos for the wearable, actions for this iPhone
     // Set below: a routine's answer is checked (and notified) when its nudge arrives
     late final VoiceUpdatesService voiceUpdates;
@@ -243,21 +244,24 @@ final class AppLifecycleCoordinator {
         notifications: notificationService,
         preferences: NotificationPreferences(preferences),
       ).show,
-    )..start();
+    );
+    // The browser is not the phone: the wearable's and the iPhone's commands stay there
+    if (!kIsWeb) commandLoop.start();
     final notificationScheduler = NotificationScheduler(
       api: credentialApiService,
       notifications: notificationService,
       preferences: NotificationPreferences(preferences),
       phoneEvents: phoneActions.upcomingEvents,
     );
-    unawaited(notificationScheduler.refresh(force: true));
+    if (!kIsWeb) unawaited(notificationScheduler.refresh(force: true));
     final notificationChoices = NotificationPreferences(preferences);
     final liveActivity = LiveActivityService(
       initial: deviceController.state,
       statuses: deviceController.stateStream,
       // On Android it is the foreground service that keeps Echo connected: always on
       enabled: () => !PhoneWords.isIPhone || notificationChoices.liveActivity,
-    )..start();
+    );
+    if (!kIsWeb) liveActivity.start();
     final firmwareUpdate = FirmwareUpdateController(
       api: credentialApiService,
       link: bleService,
@@ -265,11 +269,16 @@ final class AppLifecycleCoordinator {
     );
     final firmwareSubscription = deviceController.stateStream
         .listen((_) => firmwareUpdate.deviceChanged());
-    unawaited(firmwareUpdate.check());
+    if (!kIsWeb) unawaited(firmwareUpdate.check());
     final spokenAnswers = SpokenAnswersStore(preferences);
     // The account's language on this phone at once: answers are read and dictation heard
     // in it, also before the user first dictates or opens Language
-    unawaited(SpokenLanguageStore(api: credentialApiService, preferences: preferences).current());
+    // Only with an account: signed out, the request would come back 401 and read as a revoked key
+    unawaited(() async {
+      if (await credentialStore.configured) {
+        await SpokenLanguageStore(api: credentialApiService, preferences: preferences).current();
+      }
+    }());
     final spokenVoice = SpokenVoiceStore(preferences);
     final phoneVoice = FlutterTtsVoice(null, spokenVoice.voiceFor);
     final answerSpeaker = AnswerSpeaker(
@@ -309,11 +318,12 @@ final class AppLifecycleCoordinator {
       segmentUploadedStream: bleService.segmentUploadedStream,
       notifications: notificationService,
       networkAccess: networkAccess,
-      startController: deviceController.start,
+      startController: kIsWeb ? () async {} : deviceController.start,
       reconnectOnResume: deviceController.reconnect,
       onWake: () async {
         await answerSpeaker.recover();
         await voiceUpdates.check();
+        if (kIsWeb) return;
         await notificationScheduler.refresh();
         await firmwareUpdate.check();
         await phoneActions.report();

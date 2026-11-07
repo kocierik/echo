@@ -27,7 +27,8 @@ final class FileResponseCache implements ResponseCache {
   FileResponseCache({Future<Directory> Function()? directory})
       : _directory = directory ?? _defaultDirectory;
 
-  static final FileResponseCache shared = FileResponseCache();
+  // The browser has no files: the copy lives as long as the tab
+  static final ResponseCache shared = kIsWeb ? MemoryResponseCache() : FileResponseCache();
 
   final Future<Directory> Function() _directory;
 

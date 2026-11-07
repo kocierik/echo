@@ -19,7 +19,10 @@ build/
 macos/
 windows/
 web/
+!mobile/web/
 linux/
+# The app built for the browser (make web): output, not source
+site/app/
 .kiro
 # OS
 .DS_Store

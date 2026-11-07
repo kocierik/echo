@@ -267,6 +267,11 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
       if (_disposed) return;
       await _persistHighest(OnboardingStep.signIn);
       if (_disposed) return;
+      // The browser has no wearable, Bluetooth or phone permissions: setup ends here
+      if (kIsWeb) {
+        value = value.copyWith(busy: false, error: null);
+        return complete();
+      }
       value = value.copyWith(
         step: OnboardingStep.permissions,
         busy: false,

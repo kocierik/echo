@@ -91,6 +91,9 @@ fmt: ## Auto-format code with ruff in the api container
 deploy: ## Full deploy: build, migrate, restart (idempotent, always safe)
 	bash scripts/deploy.sh
 
+web: ## Build the app for the browser and publish it at /app (each build in its own folder, past Cloudflare's cache)
+	bash scripts/web-release.sh
+
 firmware-release: ## Build the wearable firmware and publish it for the app: make firmware-release NOTES="..."
 	bash scripts/firmware-release.sh "$(NOTES)"
 
