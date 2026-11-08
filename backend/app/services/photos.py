@@ -416,9 +416,9 @@ async def analyse_photo(
     and the thread shows the save's answer with the photo; a failure there keeps the
     photo's own answer.
 
-    With `analysis_llm`, what the photo shows also becomes entities (tasks, events,
-    people), and a business card a person in People; that part is best effort: a
-    failure there never loses the answer.
+    With `analysis_llm`, a business card becomes a person in People, and once the answer
+    is sent what the photo shows becomes entities (tasks, events, people); both are best
+    effort: a failure there never loses the answer.
     """
     result = await db.execute(
         select(Photo)
@@ -474,33 +474,13 @@ async def analyse_photo(
 
     contact = reply.get("contact")
     saved_contact = None
-    if analysis_llm is not None:
+    if analysis_llm is not None and isinstance(contact, dict):
         try:
             async with db.begin_nested():
-                if isinstance(contact, dict):
-                    saved_contact = await save_contact(db, photo, contact, embedding_service)
-                entities = await extract_photo_entities(db, photo, analysis_llm)
-                if saved_contact:
-                    # The card's person is already saved, with every detail
-                    entities = [
-                        e
-                        for e in entities
-                        if not (
-                            e.entity_type == "person"
-                            and e.name.strip().lower() == saved_contact.lower()
-                        )
-                    ]
-                await save_entities(
-                    db,
-                    entities,
-                    photo.user_id,
-                    analysis_llm,
-                    embedding_service,
-                    label=f"photo {photo.id}",
-                )
+                saved_contact = await save_contact(db, photo, contact, embedding_service)
         except Exception:
             saved_contact = None
-            logger.warning(f"[Photos] Entities of photo {photo.id} failed", exc_info=True)
+            logger.warning(f"[Photos] Contact of photo {photo.id} failed", exc_info=True)
     if saved_contact:
         saved = TEXTS[message_language(photo)]["contact_saved"].format(name=saved_contact)
         answer = f"{answer}\n\n{saved}"
@@ -533,6 +513,34 @@ async def analyse_photo(
         },
     )
     await db.commit()
+
+    # The answer is out: what the photo shows becomes memory after it (several model
+    # calls, ~20 s), so it never delays the answer
+    if analysis_llm is not None:
+        try:
+            async with db.begin_nested():
+                entities = await extract_photo_entities(db, photo, analysis_llm)
+                if saved_contact:
+                    # The card's person is already saved, with every detail
+                    entities = [
+                        e
+                        for e in entities
+                        if not (
+                            e.entity_type == "person"
+                            and e.name.strip().lower() == saved_contact.lower()
+                        )
+                    ]
+                await save_entities(
+                    db,
+                    entities,
+                    photo.user_id,
+                    analysis_llm,
+                    embedding_service,
+                    label=f"photo {photo.id}",
+                )
+            await db.commit()
+        except Exception:
+            logger.warning(f"[Photos] Entities of photo {photo.id} failed", exc_info=True)
     return True
 
 

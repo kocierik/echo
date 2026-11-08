@@ -35,6 +35,8 @@ from app.workers.retry import RetryExhaustedError, retry_with_backoff
 logger = logging.getLogger(__name__)
 
 EXPIRE_EVERY_S = 10
+# The vision model alone has taken 40 s on a photo: 60 s (the default) left too little
+ANALYSIS_TIMEOUT_S = 90
 POP_TIMEOUT_S = 2
 
 
@@ -94,6 +96,7 @@ async def handle_photo(raw, session_factory=async_session, redis_client=None) ->
             _analyse_once,
             photo_id,
             session_factory,
+            timeout=ANALYSIS_TIMEOUT_S,
             operation_name=f"Photo analysis {photo_id}",
         )
         logger.info(f"[Photos] Analysed photo {photo_id}")

@@ -527,6 +527,26 @@ async def test_failing_entities_never_lose_the_answer(client, auth_headers, db_s
 
 
 @pytest.mark.asyncio
+async def test_the_answer_is_sent_before_what_the_photo_shows_is_remembered(
+    client, auth_headers, db_session
+):
+    """Extracting entities takes several model calls: the user does not wait for them."""
+    from tests.conftest import test_session
+
+    seen = []
+
+    class _Watching(AnalysisLLM):
+        async def complete_json(self, messages, temperature=0.1):
+            async with test_session() as other:
+                seen.append((await other.execute(select(Photo.status))).scalars().all())
+            return await super().complete_json(messages, temperature)
+
+    await _analysed(client, auth_headers, db_session, analysis=_Watching())
+
+    assert seen and seen[0] == ["done"]
+
+
+@pytest.mark.asyncio
 async def test_photos_in_the_conversation_and_in_the_list(client, auth_headers, db_session):
     photo = await _analysed(client, auth_headers, db_session)
 
