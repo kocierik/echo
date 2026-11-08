@@ -17,6 +17,8 @@ DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
 
 # Deepgram's keyterm limit is 500 tokens per request; it advises 20-50 terms
 MAX_KEYTERMS = 50
+# The languages Nova-3 follows switching within a sentence (language=multi)
+MULTILINGUAL = {"de", "en", "es", "fr", "hi", "it", "ja", "nl", "pt", "ru"}
 
 
 class DeepgramSTTService(STTService):
@@ -49,7 +51,10 @@ class DeepgramSTTService(STTService):
         """
         detecting = bool(also)
         params: list[tuple[str, str]] = [("model", self.model)]
-        if detecting:
+        if detecting and self.model.startswith("nova-3") and {language, *also} <= MULTILINGUAL:
+            # One language per word, not per segment: "Ho detto since five years" whole
+            params.append(("language", "multi"))
+        elif detecting:
             params += [("detect_language", code) for code in [language, *also]]
         else:
             params.append(("language", language))
@@ -88,8 +93,12 @@ class DeepgramSTTService(STTService):
         if not channels:
             return STTResult(text="", language=language, confidence=None)
 
-        heard = heard_language(channels[0].get("detected_language"), language, also)
         alternatives = channels[0].get("alternatives", [])
+        # Detection names one language; multilingual lists those heard, the most first
+        spoken = (alternatives[0].get("languages") or [None])[0] if alternatives else None
+        heard = heard_language(
+            channels[0].get("detected_language") or spoken, language, also
+        )
         if not alternatives:
             return STTResult(text="", language=heard, confidence=None)
 

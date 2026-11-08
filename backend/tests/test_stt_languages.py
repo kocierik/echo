@@ -46,16 +46,33 @@ async def test_deepgram_without_other_languages_asks_as_before(monkeypatch):
     assert result.language == "it"
 
 
-async def test_deepgram_detects_among_the_accounts_languages(monkeypatch):
+async def test_deepgram_follows_italian_and_english_within_a_sentence(monkeypatch):
+    """Code-switching ("Vado in palestra since five years"): one language per word."""
     seen: list[httpx.Request] = []
-    service = _deepgram(monkeypatch, [_heard("See you tomorrow", "en-US")], seen)
+    multi = httpx.Response(200, json={"results": {"channels": [{"alternatives": [{
+        "transcript": "Vado in palestra since five years", "languages": ["it", "en"],
+    }]}]}})
+    service = _deepgram(monkeypatch, [multi], seen)
 
     result = await service.transcribe(b"wav", language="it", keyterms=["Marco"], also=["en"])
 
     params = seen[0].url.params
+    assert params["language"] == "multi"
+    assert params.get_list("detect_language") == []
+    assert params.get_list("keyterm") == ["Marco"]
+    assert result.language == "it"
+
+
+async def test_deepgram_detects_among_languages_it_cannot_mix(monkeypatch):
+    seen: list[httpx.Request] = []
+    service = _deepgram(monkeypatch, [_heard("Vi ses i morgon", "sv")], seen)
+
+    result = await service.transcribe(b"wav", language="it", keyterms=["Marco"], also=["sv"])
+
+    params = seen[0].url.params
     assert "language" not in params
-    assert params.get_list("detect_language") == ["it", "en"]
-    assert (result.text, result.language) == ("See you tomorrow", "en")
+    assert params.get_list("detect_language") == ["it", "sv"]
+    assert (result.text, result.language) == ("Vi ses i morgon", "sv")
 
 
 @pytest.mark.parametrize("detected", ["ja", None])
