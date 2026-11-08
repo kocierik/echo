@@ -94,9 +94,9 @@ void main() {
   });
 
   test('the voice sample is in the language the user speaks', () {
-    expect(enrollmentTextFor('it'), startsWith('Ciao Echo'));
-    expect(enrollmentTextFor('en'), startsWith('Hi Echo'));
-    expect(enrollmentTextFor(null), startsWith('Hi Echo'));
+    expect(enrollmentTextFor('it'), startsWith('Ciao, questa'));
+    expect(enrollmentTextFor('en'), startsWith('Hi, this'));
+    expect(enrollmentTextFor(null), startsWith('Hi, this'));
   });
 }
 

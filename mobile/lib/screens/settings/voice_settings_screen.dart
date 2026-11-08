@@ -12,12 +12,13 @@ import 'settings_components.dart';
 
 /// The text read aloud to record the user's voice (~20 s at a normal pace), in the
 /// language they speak: reading a foreign text sounds unlike their voice.
+/// No "Echo" in it: read aloud wearing Echo, the name would wake the voice assistant.
 const enrollmentTexts = {
-  'en': 'Hi Echo, this is my voice. Today is a nice day and I have a lot to do: write a few '
+  'en': 'Hi, this is my voice. Today is a nice day and I have a lot to do: write a few '
       'emails, call a friend, buy some bread and maybe take a walk in the park. When I talk '
       'with the people around me, I want you to know when I am the one speaking and when '
       'someone else is.',
-  'it': 'Ciao Echo, questa è la mia voce. Oggi è una bella giornata e ho molte cose da '
+  'it': 'Ciao, questa è la mia voce. Oggi è una bella giornata e ho molte cose da '
       'fare: scrivere qualche email, chiamare un amico, comprare il pane e magari fare una '
       'passeggiata nel parco. Quando parlo con le persone intorno a me, voglio che tu '
       'sappia quando sto parlando io e quando parla qualcun altro.',
