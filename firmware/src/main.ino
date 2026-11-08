@@ -5,7 +5,7 @@
  * Main loop:
  * 1. Capture PCM audio from PDM microphone (I2S)
  * 2. Run VAD to detect speech
- * 3. Encode speech to ADPCM
+ * 3. Encode speech to Opus (opus_segment.h)
  * 4. Store every completed segment in PSRAM
  * 5. Relay the oldest segment over BLE
  * 6. Keep capture active while BLE advances incrementally
@@ -20,7 +20,8 @@
 #include "config.h"
 #include "audio_capture.h"
 #include "vad.h"
-#include "adpcm_encoder.h"
+#include "opus_codec.h"
+#include "opus_segment.h"
 #include "ble_transport.h"
 #include "psram_buffer.h"
 #include "sd_cipher.h"
@@ -40,7 +41,11 @@
 // ============================================================
 AudioCapture audio;
 VAD vad;
-ADPCMEncoder encoder;
+OpusCodec opusCodec;
+OpusSegmentWriter<OpusCodec> opusWriter(opusCodec);
+
+// libopus keeps its scratch on the stack: the loop's default 8 KB is too little
+SET_LOOP_TASK_STACK_SIZE(48 * 1024);
 BleTransport bleTransport;
 PSRAMBuffer psram;
 // The segments for the phone: PSRAM, and the microSD when one is mounted
@@ -73,7 +78,8 @@ DeviceState state = STATE_IDLE;
 
 // Buffers
 int16_t pcmBuffer[PCM_BUFFER_SIZE];
-uint8_t adpcmFrame[PCM_BUFFER_SIZE / 2];  // ADPCM is 4:1
+// A VAD frame of 512 samples completes at most two 20 ms Opus frames
+uint8_t encodedFrame[2 * OpusSegment::MAX_FRAME_BYTES];
 
 // Pre-buffer: circular buffer of recent audio frames (captures speech onset)
 int16_t preBuffer[PRE_BUFFER_FRAMES][PCM_BUFFER_SIZE];
@@ -91,6 +97,7 @@ uint32_t nextSegmentId = 1;
 uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
 void discardInProgressCapture();
+void appendEncoded(size_t bytes);
 void dropPhotoForPrivacy();
 
 // The Arduino core would accept a new firmware as soon as it boots; Echo waits for the app.
@@ -225,8 +232,7 @@ void setup() {
     // Initialize audio capture
     if (!audio.begin()) fatal("[FATAL] Audio capture init failed");
 
-    // Reset encoder and VAD
-    encoder.reset();
+    if (!opusCodec.begin()) fatal("[FATAL] Opus encoder init failed");
     vad.reset();
 
     indicators.setBlinking(false);
@@ -320,7 +326,7 @@ void loop() {
                 energySum = 0;
                 energyFrameCount = 0;
                 segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
-                encoder.reset();
+                appendEncoded(opusWriter.begin(encodedFrame));
                 indicators.setRecording(true);
 
                 // Encode the pre-buffer first (captures speech onset)
@@ -372,7 +378,7 @@ void discardInProgressCapture() {
     energySum = 0;
     energyFrameCount = 0;
     segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
-    encoder.reset();
+    opusCodec.reset();
     vad.reset();
     preBufferCount = 0;
     preBufferWriteIdx = 0;
@@ -387,17 +393,23 @@ void dropPhotoForPrivacy() {
 }
 
 void encodeFrame(const int16_t* samples, size_t count) {
-    size_t adpcmBytes = encoder.encode(samples, count, adpcmFrame);
-    if (segmentPos + adpcmBytes <= SEGMENT_MAX_SIZE) {
-        memcpy(segmentBuffer + segmentPos, adpcmFrame, adpcmBytes);
-        segmentPos += adpcmBytes;
+    appendEncoded(opusWriter.write(samples, count, encodedFrame, sizeof(encodedFrame)));
+}
+
+/** The first `bytes` of encodedFrame onto the segment, in its CRC. */
+void appendEncoded(size_t bytes) {
+    if (bytes > 0 && segmentPos + bytes <= SEGMENT_MAX_SIZE) {
+        memcpy(segmentBuffer + segmentPos, encodedFrame, bytes);
+        segmentPos += bytes;
         segmentCrcAccumulator = EchoBleProtocol::crc32Update(
-            segmentCrcAccumulator, adpcmFrame, adpcmBytes);
+            segmentCrcAccumulator, encodedFrame, bytes);
     }
 }
 
 void finalizeSegment() {
     indicators.setRecording(false);
+    // The last part of a 20 ms frame
+    if (state == STATE_RECORDING) appendEncoded(opusWriter.finish(encodedFrame, sizeof(encodedFrame)));
 
     if (segmentPos == 0) {
         Serial.println("[Main] Empty segment, resetting");

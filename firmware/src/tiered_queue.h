@@ -132,8 +132,8 @@ private:
         return value > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(value);
     }
 
-    // A typical segment (~8 s of ADPCM speech), for the count of those on the card
-    static constexpr uint64_t ESTIMATED_SEGMENT_BYTES = 64 * 1024;
+    // A typical segment (~8 s of Opus speech, ~16 KB), for the count of those on the card
+    static constexpr uint64_t ESTIMATED_SEGMENT_BYTES = 16 * 1024;
 
     Hot& _hot;
     SegmentLog* _card = nullptr;

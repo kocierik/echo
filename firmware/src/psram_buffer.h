@@ -33,7 +33,7 @@ public:
     /**
      * Peek at the oldest buffered segment without removing it.
      * @param header Output: segment header.
-     * @param data Output: pointer to ADPCM data (valid until next dequeue).
+     * @param data Output: pointer to the encoded speech (valid until next dequeue).
      * @return true if a segment is available.
      */
     bool peek(BufferedSegment& header, const uint8_t** data);

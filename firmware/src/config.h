@@ -3,8 +3,8 @@
 // The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
-#define FIRMWARE_VERSION_MINOR 8
-#define FIRMWARE_VERSION_PATCH 2
+#define FIRMWARE_VERSION_MINOR 9
+#define FIRMWARE_VERSION_PATCH 0
 
 // ============================================================
 // Audio Configuration
@@ -49,20 +49,20 @@
 #define PRE_BUFFER_FRAMES 16           // ~500ms of audio (16 × 32ms)
 
 // ============================================================
-// ADPCM Encoding
+// Encoding
 // ============================================================
-// IMA-ADPCM compresses 16-bit PCM to 4-bit (4:1 ratio)
-// At 16kHz mono: 32KB/s PCM → 8KB/s ADPCM
+// Opus at 16 kbit/s since 0.9 (opus_segment.h, opus_codec.h): 32 KB/s of PCM becomes
+// ~2 KB/s; up to 0.8 it was IMA-ADPCM at 8 KB/s
 
 // ============================================================
 // PSRAM Buffer
 // ============================================================
-// Speech waiting for the phone: up to 6 MB (~13 minutes of speech at 8 KB/s; only speech
-// is stored, so it covers much longer away from the phone). The rest of the 8 MB PSRAM
+// Speech waiting for the phone: up to 6 MB (~50 minutes of speech at ~2 KB/s of Opus; only
+// speech is stored, so it covers much longer away from the phone). The rest of the 8 MB PSRAM
 // holds the segment being recorded, the photo slot and the camera's frame buffer.
 #define PSRAM_BUFFER_SIZE (6 * 1024 * 1024)
 #define PSRAM_RESERVE (768 * 1024)         // left free for the camera at each photo
-#define SEGMENT_MAX_SIZE (256 * 1024)  // Max 256KB per segment (~32s ADPCM): SEGMENT_DURATION_MS fits
+#define SEGMENT_MAX_SIZE (256 * 1024)  // 25 s of Opus is ~50 KB: room to spare
 
 // ============================================================
 // BLE Relay

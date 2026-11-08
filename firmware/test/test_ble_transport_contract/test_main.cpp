@@ -269,7 +269,7 @@ void test_muted_gate_discards_capture_before_reading_audio() {
     TEST_ASSERT_TRUE(helperEnd != std::string::npos);
     const std::string helper = source.substr(helperStart, helperEnd - helperStart);
     TEST_ASSERT_TRUE(helper.find("segmentPos = 0") != std::string::npos);
-    TEST_ASSERT_TRUE(helper.find("encoder.reset()") != std::string::npos);
+    TEST_ASSERT_TRUE(helper.find("opusCodec.reset()") != std::string::npos);
     TEST_ASSERT_TRUE(helper.find("vad.reset()") != std::string::npos);
     TEST_ASSERT_TRUE(helper.find("preBufferCount = 0") != std::string::npos);
     TEST_ASSERT_TRUE(helper.find("preBufferWriteIdx = 0") != std::string::npos);
