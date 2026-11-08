@@ -111,7 +111,11 @@ private:
         config.fb_count = 1;
         config.fb_location = CAMERA_FB_IN_PSRAM;
         config.grab_mode = CAMERA_GRAB_LATEST;
-        return esp_camera_init(&config) == ESP_OK;
+        if (esp_camera_init(&config) != ESP_OK) return false;
+        // The Sense board's sensor reads left and right swapped: photos came mirrored
+        sensor_t* sensor = esp_camera_sensor_get();
+        if (sensor != nullptr) sensor->set_hmirror(sensor, 1);
+        return true;
     }
 
     static void stop() { esp_camera_deinit(); }
