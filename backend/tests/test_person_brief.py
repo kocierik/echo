@@ -267,7 +267,7 @@ async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=N
     )
     monkeypatch.setattr(stt_worker, "async_session", lambda: _Factory())
     monkeypatch.setattr(stt_worker, "_claim_stt_audio", claim)
-    monkeypatch.setattr(stt_worker, "adpcm_to_wav", lambda data: data)
+    monkeypatch.setattr(stt_worker, "segment_to_wav", lambda data: data)
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "account_languages", language)
