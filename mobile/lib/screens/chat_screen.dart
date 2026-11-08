@@ -439,8 +439,9 @@ final class _ChatScreenState extends State<ChatScreen> {
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollController.hasClients) return;
+      // The list is reversed: its start is the latest message
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
       );
@@ -707,11 +708,15 @@ final class _ChatScreenState extends State<ChatScreen> {
     }
 
     final rows = _threadRows(state.messages);
+    final count = rows.length + (state.sending ? 1 : 0) + (state.error != null ? 1 : 0);
     return ListView.builder(
       controller: _scrollController,
+      // Opens on the latest message, however long the thread
+      reverse: true,
       padding: const EdgeInsets.symmetric(vertical: 6),
-      itemCount: rows.length + (state.sending ? 1 : 0) + (state.error != null ? 1 : 0),
-      itemBuilder: (context, row) {
+      itemCount: count,
+      itemBuilder: (context, fromEnd) {
+        final row = count - 1 - fromEnd;
         if (row < rows.length && rows[row].day != null) {
           return _DayLabel(day: rows[row].day!);
         }

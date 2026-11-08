@@ -70,6 +70,25 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   bool _loading = true;
   bool _deleting = false;
   _DetailTab _tab = _DetailTab.summary;
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// The transcript opens on its last line. The list lays out lazily, so the end moves
+  /// as lines are laid out: jumped to again until it stays.
+  void _showLatest([int tries = 10]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scroll.hasClients) return;
+      final position = _scroll.position;
+      if (position.pixels >= position.maxScrollExtent) return;
+      _scroll.jumpTo(position.maxScrollExtent);
+      if (tries > 0) _showLatest(tries - 1);
+    });
+  }
 
   /// The user's language: lines heard in another one can be translated.
   String? _userLanguage;
@@ -345,6 +364,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
       onRefresh: _load,
       child: ListView(
         key: const Key('conversation-detail'),
+        controller: _scroll,
         padding: const EdgeInsets.only(bottom: 48),
         children: [
           _Header(card: detail.card, people: _people(detail), now: widget.clock()),
@@ -374,7 +394,10 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
                 ButtonSegment(value: _DetailTab.transcript, label: Text('Transcript')),
               ],
               selected: {_tab},
-              onSelectionChanged: (selection) => setState(() => _tab = selection.single),
+              onSelectionChanged: (selection) {
+                setState(() => _tab = selection.single);
+                if (_tab == _DetailTab.transcript) _showLatest();
+              },
             ),
           ),
           if (_tab == _DetailTab.summary)
