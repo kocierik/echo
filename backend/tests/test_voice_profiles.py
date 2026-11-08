@@ -126,6 +126,38 @@ async def test_enrolling_the_own_voice(db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
+async def test_enrollment_takes_a_long_segment_that_began_before_the_reading(
+    db_session: AsyncSession,
+):
+    """Firmware 0.8.2 on: a 25 s segment starts before Start is tapped."""
+    start = datetime.now(timezone.utc) - timedelta(minutes=5)
+    _, [before, _] = await _segments(
+        db_session, start, ("[Others] Leggo.", "[Others] Altro."),
+        [near(ME, STRANGER, 0.95), near(ME, MARCO, 0.95)],
+    )
+    before.duration_ms = 25000  # start .. start+25 s; the second one at start+10 s, 5 s
+    await db_session.commit()
+
+    # Reading from start+16 s to start+30 s: 9 s of the first, nothing of the second
+    result = await voices.enroll_self(
+        db_session, TEST_USER_ID, start + timedelta(seconds=16), start + timedelta(seconds=30)
+    )
+
+    assert result.status == "done" and result.segments == 1
+
+
+@pytest.mark.asyncio
+async def test_enrollment_waits_for_a_segment_still_on_its_way(db_session: AsyncSession):
+    start = datetime.now(timezone.utc)
+
+    result = await voices.enroll_self(
+        db_session, TEST_USER_ID, start - timedelta(seconds=20), start
+    )
+
+    assert result.status == "waiting"
+
+
+@pytest.mark.asyncio
 async def test_enrollment_waits_for_transcription_or_finds_no_speech(db_session: AsyncSession):
     start = datetime.now(timezone.utc)
     await make_conversation(db_session, started_at=start, texts=(None,))

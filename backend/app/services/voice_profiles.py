@@ -32,6 +32,16 @@ logger = logging.getLogger(__name__)
 SELF_NAME = "You"
 # Segments still being transcribed delay an enrollment this long at most
 ENROLL_GRACE = timedelta(seconds=90)
+# A segment is at most this long (firmware SEGMENT_DURATION_MS is 25 s)
+SEGMENT_REACH = timedelta(seconds=60)
+
+
+def _read_during(segment: Segment, started_at: datetime, ended_at: datetime) -> bool:
+    """Half of the segment, or 5 s of it, recorded while the text was read: a 25 s
+    segment starts before the reading or ends after it."""
+    length = timedelta(milliseconds=segment.duration_ms)
+    overlap = min(segment.recorded_at + length, ended_at) - max(segment.recorded_at, started_at)
+    return overlap >= min(length / 2, timedelta(seconds=5))
 _TAG = re.compile(r"^\s*\[(?:you|others|tu|altri)\]\s*", re.IGNORECASE)
 
 
@@ -166,13 +176,16 @@ async def enroll_self(
             select(Segment)
             .options(undefer(Segment.voice_embedding))
             .where(Segment.user_id == user_id)
-            .where(Segment.recorded_at >= started_at, Segment.recorded_at <= ended_at)
+            .where(Segment.recorded_at >= started_at - SEGMENT_REACH)
+            .where(Segment.recorded_at <= ended_at)
         )
     ).scalars().all()
+    rows = [s for s in rows if _read_during(s, started_at, ended_at)]
     pending = [s for s in rows if s.transcription_status in ("pending", "processing")]
-    if pending and now < ended_at + ENROLL_GRACE:
-        return Enrollment("waiting")
     samples = [s for s in rows if s.voice_embedding is not None]
+    # The wearable sends a segment once it ends, up to 25 s after its first word
+    if (pending or not samples) and now < ended_at + ENROLL_GRACE:
+        return Enrollment("waiting")
     if not samples:
         return Enrollment("no_speech")
 
