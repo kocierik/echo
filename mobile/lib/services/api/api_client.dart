@@ -47,8 +47,11 @@ abstract class ApiClient {
   /// the stored one (a request sent before signing in again says nothing).
   @protected
   Future<void> reportUnauthorized(String? sentKey) async {
+    // Sent without a key: the phone could not read it (the Keychain with the screen
+    // locked), which says nothing about the key the server holds
+    if (sentKey == null || sentKey.isEmpty) return;
     final current = (await credentials.headers)['X-API-Key'];
-    if (sentKey == null || sentKey == current) _unauthorized.add(null);
+    if (sentKey == current) _unauthorized.add(null);
   }
 
   @protected

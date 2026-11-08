@@ -188,6 +188,21 @@ void main() {
     expect(store.saved?.$2, 'new');
   });
 
+  test('a 401 for a request sent without a key is not a revoked key', () async {
+    // The Keychain cannot be read with the screen locked: the key goes out empty, and the
+    // phone read as revoked signed itself out
+    final events = <void>[];
+    final subscription = ApiClient.unauthorized.listen(events.add);
+    addTearDown(subscription.cancel);
+    final api = _api(_Store(server: 'https://echo.test'),
+        (_) async => http.Response('{"detail":"Invalid API key"}', 401));
+
+    await expectLater(api.listDevices(), throwsA(anything));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(events, isEmpty);
+  });
+
   test('a 401 for a key already replaced is not reported', () async {
     final events = <void>[];
     final subscription = ApiClient.unauthorized.listen(events.add);

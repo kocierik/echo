@@ -21,6 +21,12 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
   static const serverKey = 'echo_server_url';
   static const apiKeyKey = 'echo_api_key';
 
+  /// Readable with the screen locked, once the phone was unlocked after starting: the
+  /// wearable's speech is uploaded from the background. The default (only while
+  /// unlocked) sent the key empty from a locked phone, and its 401 signed the phone out.
+  static const _keychain =
+      IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device);
+
   final FlutterSecureStorage _secureStorage;
   final Future<SharedPreferences> Function() _preferences;
 
@@ -59,7 +65,7 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
     final normalizedKey = apiKey.trim();
     await preferences.setString(serverKey, normalizedServer);
     try {
-      await _secureStorage.write(key: apiKeyKey, value: normalizedKey);
+      await _secureStorage.write(key: apiKeyKey, value: normalizedKey, iOptions: _keychain);
     } catch (_) {
       await preferences.setString(apiKeyKey, normalizedKey);
       return;
@@ -99,8 +105,20 @@ final class SharedPreferencesApiCredentialStore implements ApiCredentialStore {
 
   Future<String?> _readApiKey(SharedPreferences preferences) async {
     try {
-      final key = await _secureStorage.read(key: apiKeyKey);
+      final key = await _secureStorage.read(key: apiKeyKey, iOptions: _keychain);
       if (key != null && key.isNotEmpty) return key;
+      // Saved before with the default accessibility, which reads only while unlocked
+      // (the query filters on it): moved over once, so no phone is signed out by the update
+      final earlier = await _secureStorage.read(key: apiKeyKey);
+      if (earlier != null && earlier.isNotEmpty) {
+        await _secureStorage.delete(key: apiKeyKey);
+        try {
+          await _secureStorage.write(key: apiKeyKey, value: earlier, iOptions: _keychain);
+        } catch (_) {
+          await preferences.setString(apiKeyKey, earlier); // never lost on the way
+        }
+        return earlier;
+      }
     } catch (_) {}
     return preferences.getString(apiKeyKey);
   }
