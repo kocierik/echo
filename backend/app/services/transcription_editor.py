@@ -109,6 +109,7 @@ async def edit_transcription(
             )
         )
         if transcription.text != normalized_text:
+            transcription.turns = None  # who said what in the old words
             # A translation of the old words would be wrong now
             await db.execute(
                 delete(TranscriptionTranslation).where(

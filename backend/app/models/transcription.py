@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UUIDPrimaryKey
@@ -25,6 +25,9 @@ class Transcription(UUIDPrimaryKey, Base):
     )
     stt_provider: Mapped[str] = mapped_column(String(50), nullable=False)
     stt_model: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Several voices in the segment (told apart once the conversation closed):
+    # [{"speaker": "self"|"other", "profile_id": str|None, "group": int|None, "text": str}]
+    turns: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     segment: Mapped["Segment"] = relationship(back_populates="transcription")

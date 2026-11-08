@@ -33,7 +33,6 @@ from app.services.retranscription import (
 )
 from app.services.stt_openai import get_stt_service
 from app.services.usage import usage_owner
-from app.services.voice_profiles import number_unknown_voices
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
@@ -149,8 +148,6 @@ async def retranscribe_closed_conversations(
                     if await retranscribe(db, conversation, stt):
                         conversation.analysis_status = "reprocessing"
                         changed.append(conversation.id)
-                    # Three people were "Others" alike: told apart, "Person 2", "Person 3"
-                    await number_unknown_voices(db, conversation.id)
             except Exception:
                 logger.warning("[Summaries] Not transcribed again: %s", conversation.id,
                                exc_info=True)

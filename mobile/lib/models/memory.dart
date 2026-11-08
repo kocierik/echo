@@ -77,6 +77,27 @@ final class ConversationCard {
       !isOpen && (analysisStatus == 'pending' || analysisStatus == 'processing');
 }
 
+/// Who said what, in a segment where several voices spoke.
+@immutable
+final class Turn {
+  const Turn({required this.text, this.speaker, this.speakerName});
+
+  factory Turn.fromJson(Map<String, dynamic> json) => Turn(
+        speaker: json['speaker_label'] as String?,
+        speakerName: json['speaker_name'] as String?,
+        text: json['text'] as String? ?? '',
+      );
+
+  final String? speaker;
+
+  /// "Marco", or "Person 2" for an unknown voice told apart from the others.
+  final String? speakerName;
+  final String text;
+
+  /// "You", the person's name, or "Other".
+  String get speakerLabel => speaker == 'self' ? 'You' : speakerName ?? _speakerWord(speaker);
+}
+
 /// One Segment of a conversation's transcript.
 @immutable
 final class TranscriptLine {
@@ -89,6 +110,7 @@ final class TranscriptLine {
     this.speakerName,
     this.voiceMatch,
     this.language,
+    this.turns = const [],
   });
 
   factory TranscriptLine.fromJson(Map<String, dynamic> json) {
@@ -101,6 +123,10 @@ final class TranscriptLine {
       speakerName: json['speaker_name'] as String?,
       voiceMatch: json['voice_match'] as String?,
       language: json['language'] as String?,
+      turns: [
+        for (final turn in json['turns'] as List<dynamic>? ?? const [])
+          Turn.fromJson(turn as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -117,6 +143,9 @@ final class TranscriptLine {
   final String? voiceMatch;
 
   final String? language;
+
+  /// Several voices in the segment: each one's turn, in order; empty with one voice.
+  final List<Turn> turns;
 
   bool get isSuggestion => voiceMatch == 'suggested' && speakerName != null;
 

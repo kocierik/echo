@@ -79,6 +79,14 @@ class EntityOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TurnOut(BaseModel):
+    """Who said what, in a segment where several voices spoke."""
+
+    speaker_label: str
+    speaker_name: str | None = None
+    text: str
+
+
 class TranscriptionOut(BaseModel):
     segment_id: uuid.UUID
     # None while the segment is still pending or failed
@@ -91,6 +99,8 @@ class TranscriptionOut(BaseModel):
     voice_match: str | None = None
     # The language it was heard in ("en"); None while pending
     language: str | None = None
+    # Several voices in the segment: each one's turn, in order; None with one voice
+    turns: list[TurnOut] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -328,12 +338,22 @@ async def get_conversation(
             Segment.voice_match,
             Segment.voice_group,
             VoiceProfile.name.label("speaker_name"),
+            Transcription.turns,
         )
         .outerjoin(Transcription, Transcription.segment_id == Segment.id)
         .outerjoin(VoiceProfile, VoiceProfile.id == Segment.voice_profile_id)
         .where(Segment.conversation_id == conversation_id)
         .order_by(Segment.recorded_at)
     )
+    rows = segment_rows.all()
+    names = {}
+    if any(row.turns for row in rows):
+        names = {
+            str(profile_id): name
+            for profile_id, name in await db.execute(
+                select(VoiceProfile.id, VoiceProfile.name).where(VoiceProfile.user_id == user_id)
+            )
+        }
     transcriptions = [
         TranscriptionOut(
             segment_id=row.id,
@@ -346,8 +366,17 @@ async def get_conversation(
             or (f"Person {row.voice_group}" if row.voice_group else None),
             voice_match=row.voice_match if row.speaker_name else None,
             language=row.language,
+            turns=[
+                TurnOut(
+                    speaker_label=turn["speaker"],
+                    speaker_name=names.get(turn["profile_id"])
+                    or (f"Person {turn['group']}" if turn["group"] else None),
+                    text=turn["text"],
+                )
+                for turn in row.turns
+            ] if row.turns else None,
         )
-        for row in segment_rows.all()
+        for row in rows
     ]
 
     entity_rows = await db.execute(conversation_entities(conversation_id))

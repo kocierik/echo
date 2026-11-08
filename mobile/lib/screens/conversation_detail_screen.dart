@@ -514,15 +514,16 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           languageTag: _isForeign(line) ? line.language!.toUpperCase() : null,
           translation: _showTranslation ? (_translations ?? const {})[line.segmentId] : null,
           onTap: line.text == null ? null : () => unawaited(_openLine(line)),
-          onSpeakerTap: _voices == null || line.text == null
+          // Several voices: naming the segment's voice would name a mix of them
+          onSpeakerTap: _voices == null || line.text == null || line.turns.isNotEmpty
               ? null
               : () => unawaited(_nameVoice(line)),
-          onConfirmVoice: _voices == null || !line.isSuggestion
+          onConfirmVoice: _voices == null || !line.isSuggestion || line.turns.isNotEmpty
               ? null
               : () => unawaited(_voiceAction(
                     () => _voices!.nameVoice(line.segmentId, name: line.speakerName),
                   )),
-          onRejectVoice: _voices == null || !line.isSuggestion
+          onRejectVoice: _voices == null || !line.isSuggestion || line.turns.isNotEmpty
               ? null
               : () => unawaited(_voiceAction(() async {
                     await _voices!.rejectVoice(line.segmentId);
@@ -653,12 +654,22 @@ final class _LineTile extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     final text = line.text;
-    final speaker = line.speakerLabel;
-    final body = text != null
-        ? cleanTranscript(text)
-        : line.isFailed
-            ? 'Transcription failed'
-            : 'Transcribing…';
+    final turns = line.turns;
+    final speaker = turns.isEmpty ? line.speakerLabel : turns.first.speakerLabel;
+    final body = turns.isNotEmpty
+        // Read aloud after the first speaker's name (the label below says it)
+        ? [for (final (i, t) in turns.indexed) i == 0 ? t.text : '${t.speakerLabel}: ${t.text}']
+            .join('. ')
+        : text != null
+            ? cleanTranscript(text)
+            : line.isFailed
+                ? 'Transcription failed'
+                : 'Transcribing…';
+    Color speakerColor(String? who, String? name) => who == 'self'
+        ? palette.accent
+        : name != null
+            ? palette.green
+            : palette.text2;
     return Semantics(
       button: onTap != null,
       label: '${formatTime(line.recordedAt)}, $speaker: '
@@ -698,11 +709,9 @@ final class _LineTile extends StatelessWidget {
                                 speaker,
                                 style: textTheme.labelSmall?.copyWith(
                                   fontSize: 12,
-                                  color: line.speaker == 'self'
-                                      ? palette.accent
-                                      : line.speakerName != null
-                                          ? palette.green
-                                          : palette.text2,
+                                  color: turns.isEmpty
+                                      ? speakerColor(line.speaker, line.speakerName)
+                                      : speakerColor(turns.first.speaker, turns.first.speakerName),
                                   decoration: onSpeakerTap == null
                                       ? null
                                       : TextDecoration.underline,
@@ -743,6 +752,22 @@ final class _LineTile extends StatelessWidget {
                           ),
                       ],
                     ),
+                    if (turns.isNotEmpty)
+                      for (final (i, turn) in turns.indexed) ...[
+                        if (i > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              turn.speakerLabel,
+                              style: textTheme.labelSmall?.copyWith(
+                                fontSize: 12,
+                                color: speakerColor(turn.speaker, turn.speakerName),
+                              ),
+                            ),
+                          ),
+                        Text(turn.text, style: textTheme.bodyMedium),
+                      ]
+                    else
                     Text(
                       body,
                       style: text == null

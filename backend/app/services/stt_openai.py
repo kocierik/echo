@@ -29,6 +29,7 @@ class OpenAISTTService(STTService):
         prompt: str | None = None,
         keyterms: list[str] | None = None,
         also: list[str] | None = None,
+        diarize: bool = False,
     ) -> STTResult:
         """Transcribe PCM audio via OpenAI Whisper API.
 

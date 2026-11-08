@@ -9,6 +9,8 @@ class Word:
     text: str
     start: float
     end: float
+    # Who said it (0, 1, ...), when asked to tell the voices apart (Deepgram diarize)
+    speaker: int | None = None
 
 
 @dataclass
@@ -44,6 +46,7 @@ class STTService(ABC):
         prompt: str | None = None,
         keyterms: list[str] | None = None,
         also: list[str] | None = None,
+        diarize: bool = False,
     ) -> STTResult:
         """Transcribe audio data to text.
 
@@ -56,6 +59,8 @@ class STTService(ABC):
                     rather than a prompt. A provider uses what it supports.
             also: Other languages the user hears; with any, the provider recognises
                     which of [language, *also] is spoken where it can.
+            diarize: Tell the voices apart: each word with its speaker, where the
+                    provider can (Deepgram).
 
         Returns:
             STTResult with transcribed text.

@@ -14,6 +14,7 @@ void main() {
     String? summary = 'Ada proposes Atlas.',
     bool isOpen = false,
     ConversationPlace? place,
+    List<TranscriptLine>? lines,
   }) {
     return ConversationDetail(
       card: card(
@@ -24,7 +25,7 @@ void main() {
         duration: const Duration(minutes: 45),
         place: place,
       ),
-      lines: [
+      lines: lines ?? [
         TranscriptLine(
           segmentId: 's1',
           recordedAt: DateTime(2026, 10, 14, 12, 30),
@@ -204,6 +205,50 @@ void main() {
     expect(find.text('You'), findsOneWidget);
     expect(find.text('Transcribing…'), findsOneWidget);
     expect(find.text('Unknown'), findsOneWidget);
+  });
+
+  testWidgets('a segment where several spoke shows who said what', (tester) async {
+    final api = FakeMemoryApi(details: {
+      'c1': detail(lines: [
+        TranscriptLine(
+          segmentId: 's1',
+          recordedAt: DateTime(2026, 10, 14, 12, 30),
+          status: 'completed',
+          text: '[You] Ciao, come stai? Bene, grazie.',
+          speaker: 'self',
+          turns: const [
+            Turn(speaker: 'self', text: 'Ciao, come stai?'),
+            Turn(speaker: 'other', speakerName: 'Person 2', text: 'Bene, grazie.'),
+          ],
+        ),
+      ]),
+    });
+    await pump(tester, api);
+
+    await tester.tap(find.text('Transcript'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('You'), findsOneWidget);
+    expect(find.text('Ciao, come stai?'), findsOneWidget);
+    expect(find.text('Person 2'), findsOneWidget);
+    expect(find.text('Bene, grazie.'), findsOneWidget);
+  });
+
+  test('a line reads its turns from the server', () {
+    final line = TranscriptLine.fromJson(const {
+      'segment_id': 's1',
+      'recorded_at': '2026-10-14T12:30:00Z',
+      'status': 'completed',
+      'text': '[You] Ciao. Bene.',
+      'speaker_label': 'self',
+      'turns': [
+        {'speaker_label': 'self', 'speaker_name': 'You', 'text': 'Ciao.'},
+        {'speaker_label': 'other', 'speaker_name': null, 'text': 'Bene.'},
+      ],
+    });
+
+    expect(line.turns.map((t) => t.speakerLabel), ['You', 'Other']);
+    expect(line.turns.last.text, 'Bene.');
   });
 
   testWidgets('a live conversation says the summary comes later', (tester) async {

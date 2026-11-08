@@ -38,6 +38,7 @@ class DeepgramSTTService(STTService):
         prompt: str | None = None,
         keyterms: list[str] | None = None,
         also: list[str] | None = None,
+        diarize: bool = False,
     ) -> STTResult:
         """Transcribe audio via Deepgram REST API.
 
@@ -48,6 +49,7 @@ class DeepgramSTTService(STTService):
             keyterms: Sent as Nova-3 keyterm prompting (one `keyterm` parameter each).
             also: Other languages heard: Deepgram then detects among [language, *also]
                 (one `detect_language` each) instead of being told the language.
+            diarize: Each word with its speaker (0, 1, ...).
         """
         detecting = bool(also)
         params: list[tuple[str, str]] = [("model", self.model)]
@@ -59,6 +61,8 @@ class DeepgramSTTService(STTService):
         else:
             params.append(("language", language))
         params += [("punctuate", "true"), ("smart_format", "true")]
+        if diarize:
+            params.append(("diarize", "true"))
         terms: list[tuple[str, str]] = []
         if self.model.startswith("nova-3"):
             terms = [("keyterm", term) for term in (keyterms or [])[:MAX_KEYTERMS]]
@@ -108,7 +112,10 @@ class DeepgramSTTService(STTService):
             language=heard,
             confidence=best.get("confidence"),
             words=[
-                Word(w.get("punctuated_word") or w["word"], float(w["start"]), float(w["end"]))
+                Word(
+                    w.get("punctuated_word") or w["word"], float(w["start"]), float(w["end"]),
+                    w.get("speaker"),
+                )
                 for w in best.get("words", [])
                 if w.get("word") is not None and "start" in w and "end" in w
             ],
