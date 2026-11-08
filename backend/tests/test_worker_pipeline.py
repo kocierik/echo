@@ -333,6 +333,7 @@ async def test_extract_entities_returns_entity_list():
         user_id,
         transcription_id,
         conversation_id,
+        known_people=["Marco"],
     )
 
     assert isinstance(entities, list)

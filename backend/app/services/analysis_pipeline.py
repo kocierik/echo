@@ -132,8 +132,9 @@ async def assistant_names(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
     return [row[0] for row in result.all()]
 
 
-async def known_people_names(db: AsyncSession, user_id: uuid.UUID, limit: int = 20) -> list[str]:
-    """The people the user mentioned most recently, for extraction to name them alike."""
+async def known_people_names(db: AsyncSession, user_id: uuid.UUID, limit: int = 100) -> list[str]:
+    """The people the user saved, the most recently mentioned first: extraction names
+    them alike, and keeps no one else."""
     result = await db.execute(
         select(Entity.name)
         .where(Entity.user_id == user_id)
@@ -384,13 +385,17 @@ async def extract_entities(
     entities_data = result.get("entities", [])
 
     assistants = {name.casefold() for name in not_people}
+    # Only the user adds people (People): a name heard is kept only for someone saved
+    people = {name.casefold() for name in known_people or []}
     entities = []
     for entity_data in entities_data:
         # Skip entities with empty names
         name = entity_data.get("name", "").strip()
         if not name:
             continue
-        if entity_data.get("type") == "person" and name.casefold() in assistants:
+        if entity_data.get("type") == "person" and (
+            name.casefold() in assistants or name.casefold() not in people
+        ):
             continue
         metadata = entity_data.get("metadata") or {}
         # To-dos are asked of Echo ("Echo, segnami..."); from a conversation only the

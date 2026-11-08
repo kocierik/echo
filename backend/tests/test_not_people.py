@@ -30,7 +30,7 @@ async def test_echo_and_the_assistants_are_not_people():
 
     entities = await extract_entities(
         llm, "[Tu] Coach Fit, domani corro con Luca.", uuid.uuid4(), uuid.uuid4(),
-        uuid.uuid4(), not_people=["Coach Fit"],
+        uuid.uuid4(), not_people=["Coach Fit"], known_people=["Luca", "Coach Fit"],
     )
 
     assert [(e.entity_type, e.name) for e in entities] == [
@@ -58,3 +58,18 @@ async def test_the_users_assistant_names(db_session):
     await db_session.commit()
 
     assert sorted(await assistant_names(db_session, TEST_USER_ID)) == ["Coach Fit", "Dieta"]
+
+
+async def test_a_name_heard_is_not_a_new_person():
+    """Only the user adds people: a name heard counts only for someone saved."""
+    llm = _LLM([
+        {"type": "person", "name": "Luca", "content": "Corre domani"},
+        {"type": "person", "name": "Sconosciuto", "content": "Un collega"},
+    ])
+
+    entities = await extract_entities(
+        llm, "[Tu] Domani corro con Luca e un collega.", uuid.uuid4(), uuid.uuid4(),
+        uuid.uuid4(), known_people=["luca"],
+    )
+
+    assert [e.name for e in entities] == ["Luca"]

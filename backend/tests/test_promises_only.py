@@ -29,7 +29,7 @@ _ENTITIES = [
 async def test_by_default_a_conversation_makes_no_to_do():
     entities = await extract_entities(
         _LLM(_ENTITIES), "[Tu] Ok Luca, ti giro le slide stasera.",
-        uuid.uuid4(), uuid.uuid4(), uuid.uuid4(),
+        uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), known_people=["Luca"],
     )
 
     # The person stays; the promise is not a to-do unless the user asks Echo
@@ -49,7 +49,8 @@ async def test_only_promises_and_expected_things_become_tasks(monkeypatch):
     ])
 
     entities = await extract_entities(
-        llm, "[Tu] Ok Luca, ti giro le slide stasera.", uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        llm, "[Tu] Ok Luca, ti giro le slide stasera.", uuid.uuid4(), uuid.uuid4(), uuid.uuid4(),
+        known_people=["Luca"],
     )
 
     assert [(e.entity_type, e.name) for e in entities] == [

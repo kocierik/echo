@@ -17,6 +17,7 @@ from app.services.analysis_pipeline import (
     assistant_names,
     extract_entities,
     generate_conversation_summary,
+    known_people_names,
 )
 from app.services.chunking import chunk_text
 from app.services.embedding_base import EmbeddingService
@@ -101,14 +102,7 @@ async def reanalyse_conversation(
             await db.commit()
             return ConversationReanalysisResult(found=True)
 
-        people_result = await db.execute(
-            select(Entity.name)
-            .where(Entity.user_id == conversation.user_id)
-            .where(Entity.entity_type == "person")
-            .order_by(Entity.updated_at.desc())
-            .limit(20)
-        )
-        known_people = [row[0] for row in people_result.all()]
+        known_people = await known_people_names(db, conversation.user_id)
         assistants = await assistant_names(db, conversation.user_id)
 
         fresh_entities: list[Entity] = []
