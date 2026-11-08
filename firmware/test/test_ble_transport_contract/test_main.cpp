@@ -55,7 +55,8 @@ void test_firmware_uses_approved_latency_constants() {
     const std::string configSource = readSource("src/config.h");
     const std::string stateSource = readSource("src/ble_transfer_state.h");
 
-    TEST_ASSERT_TRUE(configSource.find("SEGMENT_DURATION_MS 6000") != std::string::npos);
+    // 25 s since 0.8.2: 6 s cut long sentences into pieces the transcription heard alone
+    TEST_ASSERT_TRUE(configSource.find("SEGMENT_DURATION_MS 25000") != std::string::npos);
     // 45 (~1.4 s) since 0.8.1: at 25 (~0.8 s) a pause between sentences split them
     TEST_ASSERT_TRUE(configSource.find("VAD_SPEECH_END_FRAMES 45") != std::string::npos);
     // 250 on the offset-free RMS (audio_level.h), since 0.5.1; 500 was on the raw RMS

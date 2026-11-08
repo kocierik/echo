@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 8
-#define FIRMWARE_VERSION_PATCH 1
+#define FIRMWARE_VERSION_PATCH 2
 
 // ============================================================
 // Audio Configuration
@@ -20,7 +20,9 @@
 
 // Audio buffer sizes
 #define PCM_BUFFER_SIZE 512      // Samples per I2S read (32ms at 16kHz)
-#define SEGMENT_DURATION_MS 6000  // Send segment every 6 seconds of speech max
+// A segment ends at a pause (VAD_SPEECH_END_FRAMES), at the latest after this much speech:
+// 25 s rather than 6, so a long sentence reaches the transcription whole
+#define SEGMENT_DURATION_MS 25000
 
 // ============================================================
 // VAD (Voice Activity Detection)
@@ -60,7 +62,7 @@
 // holds the segment being recorded, the photo slot and the camera's frame buffer.
 #define PSRAM_BUFFER_SIZE (6 * 1024 * 1024)
 #define PSRAM_RESERVE (768 * 1024)         // left free for the camera at each photo
-#define SEGMENT_MAX_SIZE (120 * 1024)  // Max 120KB per segment (~15s ADPCM)
+#define SEGMENT_MAX_SIZE (256 * 1024)  // Max 256KB per segment (~32s ADPCM): SEGMENT_DURATION_MS fits
 
 // ============================================================
 // BLE Relay
