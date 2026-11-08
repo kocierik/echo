@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// The question box: the text, the wearable's camera, and Send once there is
-/// something to send. Dictation is the navigation's Ask button, held.
+/// The question box: the text, a document to add, the wearable's camera, and Send once
+/// there is something to send. Dictation is the navigation's Ask button, held.
 final class ChatComposer extends StatelessWidget {
   const ChatComposer({
     required this.controller,
@@ -11,6 +11,7 @@ final class ChatComposer extends StatelessWidget {
     required this.onChanged,
     required this.onSend,
     this.onCamera,
+    this.onDocument,
     this.enabled = true,
     this.hintText = 'Ask about your day',
     this.focusNode,
@@ -25,6 +26,9 @@ final class ChatComposer extends StatelessWidget {
   /// The wearable takes a photo; the text typed, if any, is the question about it.
   /// No button without it.
   final VoidCallback? onCamera;
+
+  /// A document from the phone for Echo to read (Memory → Documents). No button without it.
+  final VoidCallback? onDocument;
   final bool enabled;
 
   /// "Ask about this photo" after "Ask more" under one.
@@ -65,6 +69,16 @@ final class ChatComposer extends StatelessWidget {
               ),
             ),
           ),
+          if (onDocument != null) ...[
+            const SizedBox(width: 8),
+            _RoundButton(
+              key: const Key('chat-document'),
+              tooltip: 'Add a document',
+              onPressed: enabled && !sending ? onDocument : null,
+              color: palette.surface,
+              child: Icon(Icons.attach_file_rounded, size: 22, color: palette.text),
+            ),
+          ],
           if (onCamera != null) ...[
             const SizedBox(width: 8),
             _RoundButton(

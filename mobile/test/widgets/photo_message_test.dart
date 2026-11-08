@@ -126,4 +126,23 @@ void main() {
     await tester.tap(find.byKey(const Key('chat-camera')));
     expect(taken, 1); // disabled while Echo is answering
   });
+
+  testWidgets('a document can be added beside the camera', (tester) async {
+    var added = 0;
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_app(ChatComposer(
+      controller: controller,
+      sending: false,
+      onChanged: (_) {},
+      onSend: () {},
+      onCamera: () {},
+      onDocument: () => added++,
+    )));
+    await tester.tap(find.byKey(const Key('chat-document')));
+
+    expect(added, 1);
+    expect(find.byKey(const Key('chat-camera')), findsOneWidget);
+  });
 }

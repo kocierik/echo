@@ -10,7 +10,9 @@ import '../models/chat_message.dart';
 import '../models/routine_run.dart';
 import '../models/today_insights.dart';
 import '../models/saved.dart';
+import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
+import 'settings/documents_screen.dart';
 import '../services/app/app_controller.dart';
 import '../services/app/spoken_language.dart';
 import '../services/chat/chat_controller.dart';
@@ -352,6 +354,32 @@ final class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// A document picked here goes to Memory → Documents: Echo reads it, then answers
+  /// from it (the same as adding it in Profile).
+  Future<void> _addDocument(DocumentsApi api) async {
+    void say(String text) => ScaffoldMessenger.maybeOf(context)
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+    final PickedDocument? picked;
+    try {
+      picked = await pickDocument();
+    } on DocumentTooLarge {
+      if (mounted) say('At most 10 MB per document.');
+      return;
+    } catch (_) {
+      if (mounted) say('Could not open the file.');
+      return;
+    }
+    if (picked == null || !mounted) return;
+    say('Adding ${picked.name}…');
+    try {
+      await api.uploadDocument(picked.name, picked.bytes);
+      if (mounted) say('${picked.name} added. Ask about it once Echo has read it.');
+    } catch (error) {
+      if (mounted) say(userMessage(error, 'Could not add it.'));
+    }
+  }
+
   /// A thing an answer saved, on its page.
   void _openSaved(SavedChip chip) {
     unawaited(Navigator.of(context).push<void>(MaterialPageRoute(
@@ -594,6 +622,10 @@ final class _ChatScreenState extends State<ChatScreen> {
                   onSend: _send,
                   onCamera:
                       _controller.canTakePhotos ? () => unawaited(_controller.takePhoto()) : null,
+                  onDocument: switch (_api) {
+                    final DocumentsApi documents => () => unawaited(_addDocument(documents)),
+                    _ => null,
+                  },
                 ),
             ],
           ),

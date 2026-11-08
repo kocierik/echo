@@ -111,7 +111,20 @@ async def record_visits(
         existing.updated_at = now
         kept += 1
     await db.flush()
+    await _close_left_stays(db, user_id)
     return kept, dropped
+
+
+async def _close_left_stays(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """iOS often sends the arrival and never the departure: a stay with a later arrival
+    ended there, else it reads as going on until now and claims what happened since."""
+    stays = list(await db.scalars(
+        select(PlaceVisit).where(PlaceVisit.user_id == user_id).order_by(PlaceVisit.arrived_at)
+    ))
+    for stay, after in zip(stays, stays[1:]):
+        if stay.left_at is None:
+            stay.left_at = after.arrived_at
+    await db.flush()
 
 
 def _end(visit: PlaceVisit, now: datetime) -> datetime:

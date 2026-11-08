@@ -127,6 +127,20 @@ void main() {
     expect(find.text('Since Oct 25'), findsOneWidget);
   });
 
+  testWidgets('only the last three stays; See all has the rest', (tester) async {
+    await pump(tester, [
+      for (var hour = 8; hour < 13; hour++)
+        _visit('v$hour', DateTime(2026, 10, 28, hour), left: DateTime(2026, 10, 28, hour, 30),
+            name: 'Place $hour'),
+    ], now: DateTime(2026, 10, 28, 21));
+
+    expect(find.text('Place 8'), findsNothing);
+    expect(find.text('Place 9'), findsNothing);
+    expect(find.text('Place 10'), findsOneWidget);
+    expect(find.text('Place 12'), findsOneWidget);
+    expect(find.byKey(const Key('places-see-all')), findsOneWidget);
+  });
+
   testWidgets('no stays, no panel', (tester) async {
     await pump(tester, const []);
 

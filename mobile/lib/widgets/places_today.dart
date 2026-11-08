@@ -16,8 +16,8 @@ List<PlaceVisit> visitsOn(List<PlaceVisit> visits, DateTime day) {
   ]..sort((a, b) => a.arrivedAt.compareTo(b.arrivedAt));
 }
 
-/// "Where you've been": today's stays with their times; a tap opens one in the phone's
-/// maps, See all opens Places visited. Nothing without stays.
+/// "Where you've been": today's last [shown] stays with their times; a tap opens one in
+/// the phone's maps, See all opens Places visited (the rest). Nothing without stays.
 final class PlacesTodayPanel extends StatelessWidget {
   const PlacesTodayPanel({
     required this.visits,
@@ -26,6 +26,9 @@ final class PlacesTodayPanel extends StatelessWidget {
     this.now,
     super.key,
   });
+
+  /// A day of errands is a long list: the latest ones, the others in See all.
+  static const shown = 3;
 
   final List<PlaceVisit> visits;
   final void Function(PlaceVisit visit) onOpen;
@@ -69,7 +72,7 @@ final class PlacesTodayPanel extends StatelessWidget {
               onAction: onSeeAll,
               actionKey: const Key('places-see-all'),
             ),
-            for (final visit in visits)
+            for (final visit in visits.skip(visits.length > shown ? visits.length - shown : 0))
               InkWell(
                 key: Key('place-${visit.id}'),
                 onTap: () => onOpen(visit),

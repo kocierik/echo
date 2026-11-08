@@ -878,6 +878,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
               loadingMore: memory.loadingMore,
               onMore: () => unawaited(_memories.loadMore()),
             ),
+          // Its gap like every other section's: Where you've been may come after it
+          if (_week != null || earlier.isNotEmpty) const SizedBox(height: 12),
         ],
     };
   }

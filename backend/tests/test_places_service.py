@@ -138,6 +138,32 @@ async def test_the_place_of_a_conversation_is_the_visit_it_mostly_happened_in(db
     assert found[short].key == "dinner"
 
 
+async def test_a_later_arrival_closes_a_stay_whose_departure_never_came(db_session):
+    """iOS often sends the arrival and never the departure: the stay looked open until
+    now, and a conversation hours later was placed there (28 bis rue Trachel)."""
+    morning = NOW.replace(hour=8)
+    await places.record_visits(
+        db_session, TEST_USER_ID, [_visit(key="trachel", arrived=morning, minutes=None)],
+        source="ios", now=NOW,
+    )
+    await places.record_visits(
+        db_session, TEST_USER_ID,
+        [_visit(key="pin", arrived=NOW.replace(hour=11), minutes=None, name="Place du Pin")],
+        source="ios", now=NOW,
+    )
+    await db_session.commit()
+    talk = uuid.uuid4()
+
+    found = await places.places_of(
+        db_session, TEST_USER_ID, [(talk, NOW - timedelta(minutes=20), NOW)], now=NOW
+    )
+
+    visits = {v.key: v for v in await _all(db_session)}
+    assert visits["trachel"].left_at == NOW.replace(hour=11)
+    assert visits["pin"].left_at is None
+    assert found[talk].key == "pin"
+
+
 async def test_a_conversation_mostly_on_the_way_has_no_place(db_session):
     await places.record_visits(
         db_session, TEST_USER_ID, [_visit(arrived=NOW.replace(hour=9), minutes=30)],
