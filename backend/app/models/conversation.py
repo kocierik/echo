@@ -19,6 +19,11 @@ class Conversation(UUIDPrimaryKey, TimestampMixin, Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     analysis_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    # When the closed conversation was transcribed again whole (workers/summaries.py);
+    # None: still to do
+    retranscribed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     segments: Mapped[list["Segment"]] = relationship(

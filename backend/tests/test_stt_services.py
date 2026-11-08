@@ -47,6 +47,26 @@ async def test_deepgram_nova3_sends_one_keyterm_parameter_per_term(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_deepgram_gives_each_word_its_time():
+    body = {"results": {"channels": [{"alternatives": [{
+        "transcript": "ciao marco",
+        "words": [
+            {"word": "ciao", "punctuated_word": "Ciao", "start": 0.1, "end": 0.4},
+            {"word": "marco", "punctuated_word": "Marco.", "start": 0.5, "end": 0.9},
+        ],
+    }]}]}}
+    service = DeepgramSTTService(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body))
+    )
+
+    result = await service.transcribe(b"wav", language="it")
+
+    assert [(w.text, w.start, w.end) for w in result.words] == [
+        ("Ciao", 0.1, 0.4), ("Marco.", 0.5, 0.9),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_deepgram_caps_keyterms_and_skips_them_before_nova3(monkeypatch):
     seen: list[httpx.Request] = []
     nova3 = _deepgram(monkeypatch, "nova-3", seen)

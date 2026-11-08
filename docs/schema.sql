@@ -95,7 +95,8 @@ CREATE TABLE conversations (
     started_at TIMESTAMPTZ NOT NULL,
     ended_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    analysis_status TEXT NOT NULL DEFAULT 'pending'
+    analysis_status TEXT NOT NULL DEFAULT 'pending',
+    retranscribed_at TIMESTAMPTZ             -- Migration 036
 );
 
 CREATE INDEX idx_conversations_user_time ON conversations (user_id, started_at DESC);

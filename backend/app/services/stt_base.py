@@ -1,5 +1,14 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True)
+class Word:
+    """A word heard, with when it was said (seconds from the start of the audio)."""
+
+    text: str
+    start: float
+    end: float
 
 
 @dataclass
@@ -8,6 +17,9 @@ class STTResult:
     # The language heard: one of the languages asked for, else the main one
     language: str
     confidence: float | None = None
+    # Each word with its time, when the service gives them (Deepgram): a conversation
+    # transcribed whole is split back into its segments by them
+    words: list[Word] = field(default_factory=list)
 
 
 def heard_language(detected: str | None, language: str, also: list[str] | None) -> str:

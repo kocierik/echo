@@ -49,6 +49,8 @@ async def _conversation(db):
     for line, speaker in zip(lines, ("self", "other", "self")):
         segment = await db.get(Segment, line.segment_id)
         segment.speaker = speaker
+    # Transcribed again whole already: the summary waits for that (workers/summaries.py)
+    conversation.retranscribed_at = STARTED
     await db.commit()
     return conversation
 

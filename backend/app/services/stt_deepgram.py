@@ -9,7 +9,7 @@ Requires: DEEPGRAM_API_KEY env var.
 import httpx
 
 from app.core.config import settings
-from app.services.stt_base import STTResult, STTService, heard_language
+from app.services.stt_base import STTResult, STTService, Word, heard_language
 from app.services.usage import record_usage, wav_seconds
 
 DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
@@ -98,4 +98,9 @@ class DeepgramSTTService(STTService):
             text=best.get("transcript", ""),
             language=heard,
             confidence=best.get("confidence"),
+            words=[
+                Word(w.get("punctuated_word") or w["word"], float(w["start"]), float(w["end"]))
+                for w in best.get("words", [])
+                if w.get("word") is not None and "start" in w and "end" in w
+            ],
         )

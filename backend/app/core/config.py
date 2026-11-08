@@ -143,6 +143,10 @@ class Settings(BaseSettings):
     # The shortest password registration takes; 1 for now (any password), 10 before
     min_password_length: int = 1
 
+    # A closed conversation transcribed again whole, for the context its segments lack
+    # (services/retranscription.py): a second speech-to-text pass on its minutes
+    conversation_retranscription: bool = True
+
     # The website's beta form (routers/beta.py) mails each address here; off without a host
     beta_notify_email: str = "erik@man.ovh"
     smtp_host: str = ""

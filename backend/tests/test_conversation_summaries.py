@@ -151,6 +151,8 @@ def test_query_selects_only_unsummarized_closed_completed_conversations():
     assert "coalesce(conversations.ended_at, conversations.started_at) <" in sql
     cutoff = NOW - timedelta(milliseconds=summaries.settings.silence_timeout_ms)
     assert cutoff.strftime("%Y-%m-%d %H:%M:%S") in sql
+    # Transcribed again whole first (services/retranscription.py)
+    assert "conversations.retranscribed_at IS NOT NULL" in sql
     assert "FOR UPDATE SKIP LOCKED" in sql
 
 
