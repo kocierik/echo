@@ -112,9 +112,15 @@ private:
         config.fb_location = CAMERA_FB_IN_PSRAM;
         config.grab_mode = CAMERA_GRAB_LATEST;
         if (esp_camera_init(&config) != ESP_OK) return false;
-        // The Sense board's sensor reads left and right swapped: photos came mirrored
         sensor_t* sensor = esp_camera_sensor_get();
-        if (sensor != nullptr) sensor->set_hmirror(sensor, 1);
+        if (sensor != nullptr) {
+            // The Sense board's sensor reads left and right swapped: photos came mirrored
+            sensor->set_hmirror(sensor, 1);
+            // In dim light, more gain rather than a longer exposure (less blur), and the
+            // exposure a step brighter: photos came dark
+            sensor->set_gainceiling(sensor, GAINCEILING_16X);
+            sensor->set_ae_level(sensor, 1);
+        }
         return true;
     }
 
