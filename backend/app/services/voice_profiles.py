@@ -85,7 +85,8 @@ def retag(text: str | None, speaker: str) -> str | None:
     return f"{speaker_prefix(speaker)}{_TAG.sub('', text)}"
 
 
-def _label(segment: Segment, speaker: str) -> None:
+def label_speaker(segment: Segment, speaker: str) -> None:
+    """The segment and its transcript said by `speaker` ("self"/"other")."""
     segment.speaker = speaker
     transcription = segment.transcription
     if transcription is not None:
@@ -205,7 +206,7 @@ async def enroll_self(
     for segment in samples:
         segment.voice_profile_id = profile.id
         segment.voice_match = "confirmed"
-        _label(segment, "self")
+        label_speaker(segment, "self")
     await db.commit()
     return Enrollment("done", profile, len(samples))
 
@@ -313,7 +314,7 @@ async def assign_voice(
     segment.voice_profile_id = profile.id
     segment.voice_match = "confirmed"
     segment.voice_similarity = None
-    _label(segment, "self" if is_self else "other")
+    label_speaker(segment, "self" if is_self else "other")
 
     relabelled = 0
     if segment.conversation_id is not None:
@@ -342,7 +343,7 @@ async def _relabel_conversation(
             segment.voice_profile_id = profile.id
             segment.voice_match = "auto"
             segment.voice_similarity = round(similarity, 4)
-            _label(segment, "self" if profile.is_self else "other")
+            label_speaker(segment, "self" if profile.is_self else "other")
             count += 1
     return count
 

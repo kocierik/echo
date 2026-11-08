@@ -36,8 +36,8 @@ from app.services.transcription_enhancer import (
     clean_transcription,
     speaker_prefix,
 )
-from app.services.voice_embedding import embed_voice
-from app.services.voice_profiles import best_match, list_profiles, number_unknown_voices
+from app.services.voice_embedding import cosine, embed_voice
+from app.services.voice_profiles import label_speaker, list_profiles, number_unknown_voices
 
 logger = logging.getLogger(__name__)
 
@@ -93,16 +93,37 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
     profiles = await list_profiles(db, conversation.user_id)
     has_self = any(p.is_self for p in profiles)
     words = [w for part in parts for w in part]
+    speakers = list(dict.fromkeys(w.speaker for w in words))  # in the order they spoke
+    embeddings = {}
+    for speaker in speakers:
+        audio = b"".join(pcm[_at(w.start):_at(w.end)] for w in words if w.speaker == speaker)
+        embeddings[speaker] = await embed_voice(pcm_to_wav(audio))
+    # Through the pendant's microphone everyone sounds much alike (~0.8 to the user's
+    # own voice): each profile goes to one voice only, the closest first
+    pairs = sorted(
+        (
+            (cosine(profile.embedding, embedding), index, profile)
+            for index, embedding in enumerate(embeddings.values())
+            if embedding is not None
+            for profile in profiles
+        ),
+        key=lambda pair: -pair[0],
+    )
+    matched: dict = {}
+    for similarity, index, profile in pairs:
+        if similarity < settings.voice_match_threshold:
+            break
+        if index not in matched and profile not in matched.values():
+            matched[index] = profile
+
     voices: dict = {}
     unknown: list = []
-    for speaker in dict.fromkeys(w.speaker for w in words):  # in the order they spoke
-        audio = b"".join(pcm[_at(w.start):_at(w.end)] for w in words if w.speaker == speaker)
-        embedding = await embed_voice(pcm_to_wav(audio))
-        match = best_match(profiles, embedding) if embedding is not None else None
+    for index, speaker in enumerate(speakers):
+        profile = matched.get(index)
         voice = {"speaker": "other", "profile_id": None, "group": None}
-        if match is not None and match.similarity >= settings.voice_match_threshold:
-            voice["speaker"] = "self" if match.profile.is_self else "other"
-            voice["profile_id"] = str(match.profile.id)
+        if profile is not None:
+            voice["speaker"] = "self" if profile.is_self else "other"
+            voice["profile_id"] = str(profile.id)
         elif not has_self and _mostly_self(speaker, segments, parts):
             voice["speaker"] = "self"  # no own voice yet: as the loudness rule said
         else:
@@ -196,8 +217,16 @@ async def _transcribe_again(db, conversation, stt) -> tuple[bool, bool]:
             segment.transcription.turns = turns
             continue
         segment.transcription.turns = None
-        if turns and segment.speaker == "other" and segment.voice_profile_id is None:
-            segment.voice_group = turns[0]["group"]  # numbered as in the turns
+        if not turns or segment.voice_match == "confirmed":
+            continue  # the user said who it is
+        # One voice: recognised from all it said, surer than from this segment alone
+        voice = turns[0]
+        segment.voice_profile_id = uuid.UUID(voice["profile_id"]) if voice["profile_id"] else None
+        segment.voice_match = "auto" if voice["profile_id"] else None
+        segment.voice_group = voice["group"]
+        if segment.speaker != voice["speaker"]:
+            label_speaker(segment, voice["speaker"])
+            changed = True
     return changed, True
 
 

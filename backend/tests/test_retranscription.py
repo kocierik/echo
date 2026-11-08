@@ -219,3 +219,48 @@ async def test_several_voices_in_a_segment_are_its_turns(
     ]
     assert turns[0]["text"].startswith("Ciao") and "Bene" in turns[1]["text"]
     assert body["transcriptions"][1]["speaker_name"] == "Person 3"
+
+
+async def test_only_the_closest_voice_is_the_user(tmp_path, monkeypatch):
+    """Through the pendant everyone sounds ~0.85 like the user: of two voices in a
+    conversation only the closer is "You", though live both segments said "You"."""
+    import math
+
+    from app.models.voice_profile import VoiceProfile
+    from app.services import retranscription
+
+    conversation_id = await _conversation(tmp_path, ["[You] Ciao.", "[You] Ciao a te."])
+    async with test_session() as db:
+        db.add(VoiceProfile(user_id=TEST_USER_ID, name="You", is_self=True,
+                            embedding=_axis(0), sample_count=3))
+        await db.commit()
+
+    alike = _axis(0)
+    alike[0], alike[1] = 0.85, math.sqrt(1 - 0.85**2)
+    voices = iter([_axis(0), alike])
+
+    async def embed(_wav):
+        return next(voices)
+
+    monkeypatch.setattr(retranscription, "embed_voice", embed)
+    second_start = 1.0 + GAP_SECONDS
+
+    class _Two(_Stt):
+        async def transcribe(self, audio, **kwargs):
+            return STTResult(text="", language="it", words=[
+                Word("Ciao.", 0.1, 0.5, 0),
+                Word("Ciao", second_start + 0.1, second_start + 0.3, 1),
+                Word("a", second_start + 0.3, second_start + 0.4, 1),
+                Word("te.", second_start + 0.4, second_start + 0.6, 1),
+            ])
+
+    await summaries.retranscribe_closed_conversations(
+        _Redis(), now=NOW, session_factory=test_session, stt=_Two()
+    )
+
+    async with test_session() as db:
+        rows = (await db.execute(
+            select(Segment.speaker, Transcription.text).join(Transcription)
+            .where(Segment.conversation_id == conversation_id).order_by(Segment.recorded_at)
+        )).all()
+    assert [tuple(r) for r in rows] == [("self", "[You] Ciao."), ("other", "[Others] Ciao a te.")]
