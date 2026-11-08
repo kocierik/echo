@@ -100,6 +100,48 @@ def recognize(segment: Segment, embedding, profiles: list[VoiceProfile]) -> str 
     return "other" if has_self else None
 
 
+def group_voices(embeddings: list, threshold: float) -> list[int]:
+    """Each fingerprint's group, in order: it joins the most similar group so far when
+    at least `threshold` alike, else starts one (groups numbered from 0)."""
+    centroids: list[list[float]] = []
+    sizes: list[int] = []
+    groups: list[int] = []
+    for embedding in embeddings:
+        scores = [cosine(centroid, embedding) for centroid in centroids]
+        best = max(range(len(scores)), key=scores.__getitem__, default=None)
+        if best is not None and scores[best] >= threshold:
+            n = sizes[best]
+            centroids[best] = normalize([
+                (float(c) * n + float(e)) / (n + 1) for c, e in zip(centroids[best], embedding)
+            ])
+            sizes[best] = n + 1
+            groups.append(best)
+        else:
+            centroids.append(normalize([float(e) for e in embedding]))
+            sizes.append(1)
+            groups.append(len(centroids) - 1)
+    return groups
+
+
+async def number_unknown_voices(db: AsyncSession, conversation_id: uuid.UUID) -> int:
+    """A closed conversation's unknown voices told apart: with two or more, each gets its
+    number ("Person 2", "Person 3"; the user is the first). How many there were."""
+    unknown = list(await db.scalars(
+        select(Segment)
+        .options(undefer(Segment.voice_embedding))
+        .where(Segment.conversation_id == conversation_id)
+        .where(Segment.speaker == "other", Segment.voice_profile_id.is_(None))
+        .where(Segment.voice_embedding.is_not(None))
+        .order_by(Segment.recorded_at)
+    ))
+    groups = group_voices([s.voice_embedding for s in unknown], settings.voice_match_threshold)
+    count = len(set(groups))
+    if count >= 2:
+        for segment, group in zip(unknown, groups):
+            segment.voice_group = group + 2
+    return count
+
+
 @dataclass
 class Enrollment:
     status: str  # "done", "waiting" (segments still being transcribed) or "no_speech"

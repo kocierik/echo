@@ -326,6 +326,7 @@ async def get_conversation(
             Transcription.speaker_label,
             Transcription.language,
             Segment.voice_match,
+            Segment.voice_group,
             VoiceProfile.name.label("speaker_name"),
         )
         .outerjoin(Transcription, Transcription.segment_id == Segment.id)
@@ -340,7 +341,9 @@ async def get_conversation(
             speaker_label=row.speaker_label,
             status=row.transcription_status,
             recorded_at=row.recorded_at,
-            speaker_name=row.speaker_name,
+            # A named voice, else an unknown one told apart from the others ("Person 2")
+            speaker_name=row.speaker_name
+            or (f"Person {row.voice_group}" if row.voice_group else None),
             voice_match=row.voice_match if row.speaker_name else None,
             language=row.language,
         )

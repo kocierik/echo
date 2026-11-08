@@ -332,6 +332,7 @@ ALTER TABLE segments ADD COLUMN voice_embedding vector(256);
 ALTER TABLE segments ADD COLUMN voice_profile_id UUID REFERENCES voice_profiles(id) ON DELETE SET NULL;
 ALTER TABLE segments ADD COLUMN voice_similarity FLOAT;
 ALTER TABLE segments ADD COLUMN voice_match VARCHAR(10);      -- auto | suggested | confirmed
+ALTER TABLE segments ADD COLUMN voice_group INTEGER;          -- Migration 037: "Person 2"
 
 -- ============================================================
 -- FIRMWARE RELEASES: wearable firmware for updates over BLE (Migration 014)

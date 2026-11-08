@@ -45,6 +45,9 @@ class Segment(UUIDPrimaryKey, Base):
     )
     voice_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     voice_match: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # An unknown voice told apart from the conversation's others: 2 is "Person 2"
+    # (services/voice_profiles.py number_unknown_voices); None when there was one at most
+    voice_group: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     transcription: Mapped["Transcription | None"] = relationship(

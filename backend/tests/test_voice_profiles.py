@@ -262,3 +262,43 @@ async def test_a_correction_to_you_teaches_the_own_voice(
     ).scalar_one()
     assert profile.sample_count == 1
     assert cosine(profile.embedding, axis(ME)) > 0.98
+
+
+def test_unknown_voices_are_grouped_by_their_fingerprints():
+    marco, anna, luca = axis(MARCO), axis(STRANGER), axis(3)
+
+    groups = voices.group_voices(
+        [marco, anna, near(MARCO, STRANGER, 0.95), luca, anna], threshold=0.6
+    )
+
+    assert groups == [0, 1, 0, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_three_people_are_three_voices_not_one(
+    client, auth_headers, db_session: AsyncSession
+):
+    """Every unknown voice was "Others": told apart as Person 2, Person 3."""
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    conversation, _ = await _segments(
+        db_session,
+        start,
+        ("[Others] Ciao.", "[Others] Io sono Anna.", "[Others] Sì, ciao Anna."),
+        [axis(MARCO), axis(STRANGER), near(MARCO, ME, 0.95)],
+    )
+    alone, _ = await _segments(
+        db_session, start + timedelta(minutes=30), ("[Others] Pronto?",), [axis(3)]
+    )
+
+    assert await voices.number_unknown_voices(db_session, conversation.id) == 2
+    assert await voices.number_unknown_voices(db_session, alone.id) == 1
+    await db_session.commit()
+
+    detail = (
+        await client.get(f"/api/conversations/{conversation.id}", headers=auth_headers)
+    ).json()
+    assert [t["speaker_name"] for t in detail["transcriptions"]] == [
+        "Person 2", "Person 3", "Person 2",
+    ]
+    single = (await client.get(f"/api/conversations/{alone.id}", headers=auth_headers)).json()
+    assert single["transcriptions"][0]["speaker_name"] is None
