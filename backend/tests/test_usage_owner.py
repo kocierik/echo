@@ -101,7 +101,7 @@ async def test_the_stt_job_runs_as_the_segment_owner(monkeypatch):
     )
     monkeypatch.setattr(stt_worker, "async_session", lambda: _Factory())
     monkeypatch.setattr(stt_worker, "_claim_stt_audio", claim)
-    monkeypatch.setattr(stt_worker, "adpcm_to_wav", lambda data: data)
+    monkeypatch.setattr(stt_worker, "segment_to_wav", lambda data: data)
     monkeypatch.setattr(stt_worker, "build_stt_context", context)
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)

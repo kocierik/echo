@@ -25,8 +25,9 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.models.conversation import Conversation
 from app.models.segment import Segment
-from app.services.adpcm_decoder import CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH, decode_adpcm
+from app.services.adpcm_decoder import CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH
 from app.services.language import account_languages
+from app.services.segment_audio import decode_segment
 from app.services.stt_base import STTService, Word
 from app.services.transcription_enhancer import (
     build_stt_context,
@@ -94,7 +95,7 @@ async def retranscribe(db: AsyncSession, conversation: Conversation, stt: STTSer
     if len(segments) < 2:
         return False
 
-    wav, spans = _joined_wav([decode_adpcm(Path(s.audio_path).read_bytes()) for s in segments])
+    wav, spans = _joined_wav([decode_segment(Path(s.audio_path).read_bytes()) for s in segments])
     stt_context = await build_stt_context(db, conversation.user_id)
     language, others = await account_languages(db, conversation.user_id)
     result = await stt.transcribe(

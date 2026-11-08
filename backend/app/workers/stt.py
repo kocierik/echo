@@ -26,10 +26,10 @@ from app.core.database import async_session
 from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.models.transcription import Transcription
-from app.services.adpcm_decoder import adpcm_to_wav
 from app.services.language import account_languages
 from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
+from app.services.segment_audio import segment_to_wav
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
@@ -157,8 +157,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 segment, audio_data = claimed_audio
                 usage_owner.set(segment.user_id)
 
-                # Decode ADPCM to WAV for STT
-                wav_data = adpcm_to_wav(audio_data)
+                # The wearable's ADPCM or Opus as WAV for STT
+                wav_data = segment_to_wav(audio_data)
 
                 # The voice fingerprint, beside the transcription (adds no delay)
                 fingerprint = asyncio.create_task(embed_voice(wav_data))
