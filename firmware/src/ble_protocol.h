@@ -25,6 +25,10 @@ constexpr uint8_t FRAME_TAKE_PHOTO = 0x18;   // v3, app -> wearable
 // release key's ECDSA P-256 over the SHA-256, raw r||s (ota_signature.h); v4 had none
 constexpr uint8_t FRAME_OTA_BEGIN = 0x19;
 constexpr uint8_t FRAME_OTA_ABORT = 0x1A;    // v4, app -> wearable
+// app -> wearable, firmware 0.9.3 on: [type, gain 1..MAX_MIC_GAIN]. No protocol bump: the
+// app sends it only to a firmware that knows it (DEVICE_INFO's version)
+constexpr uint8_t FRAME_SET_MIC_GAIN = 0x1B;
+constexpr uint8_t MAX_MIC_GAIN = 8;
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
 constexpr uint8_t FRAME_DEVICE_INFO = 0x21;
 constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reason]
@@ -71,6 +75,7 @@ constexpr size_t ACK_WINDOW_SIZE = 7;
 constexpr size_t SEGMENT_COMMAND_SIZE = 5;
 constexpr size_t SET_TIME_SIZE = 11;
 constexpr size_t SET_MUTED_SIZE = 2;
+constexpr size_t SET_MIC_GAIN_SIZE = 2;
 constexpr size_t FORGET_BOND_SIZE = 1;
 constexpr size_t FORGET_BOND_OK_SIZE = 1;
 constexpr size_t TAKE_PHOTO_SIZE = 1;
@@ -236,6 +241,7 @@ struct ControlFrame {
     uint64_t unixMilliseconds;
     int16_t timezoneOffsetMinutes;
     bool muted;
+    uint8_t micGain;
     uint32_t otaSize;
     uint8_t otaSha256[SHA256_SIZE];
     uint8_t otaSignature[OTA_SIGNATURE_SIZE];
@@ -425,6 +431,10 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
         case FRAME_SET_MUTED:
             if (length != SET_MUTED_SIZE || input[1] > 1) return false;
             frame.muted = input[1] == 1;
+            return true;
+        case FRAME_SET_MIC_GAIN:
+            if (length != SET_MIC_GAIN_SIZE || input[1] < 1 || input[1] > MAX_MIC_GAIN) return false;
+            frame.micGain = input[1];
             return true;
         case FRAME_FORGET_BOND:
             return length == FORGET_BOND_SIZE;

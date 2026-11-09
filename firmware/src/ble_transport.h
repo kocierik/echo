@@ -23,6 +23,12 @@ using SegmentQueue = TieredQueue<PSRAMBuffer>;
 class BleTransport {
 public:
     typedef void (*MuteCommandCallback)(bool muted, void* context);
+    typedef void (*MicGainCallback)(uint8_t gain, void* context);
+
+    void setMicGainCallback(MicGainCallback callback, void* context) {
+        _micGainCallback = callback;
+        _micGainContext = context;
+    }
     typedef void (*TakePhotoCallback)(void* context);
 
     BleTransport()
@@ -708,6 +714,10 @@ private:
                     _muteCommandCallback(frame.muted, _muteCommandContext);
                 }
                 break;
+            case EchoBleProtocol::FRAME_SET_MIC_GAIN:
+                Serial.printf("[BLE] control FRAME_SET_MIC_GAIN gain=%u\n", frame.micGain);
+                if (_micGainCallback != nullptr) _micGainCallback(frame.micGain, _micGainContext);
+                break;
             case EchoBleProtocol::FRAME_READY:
                 Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
@@ -833,6 +843,8 @@ private:
     int _lastDisconnectReason = 0;
     MuteCommandCallback _muteCommandCallback = nullptr;
     void* _muteCommandContext = nullptr;
+    MicGainCallback _micGainCallback = nullptr;
+    void* _micGainContext = nullptr;
     portMUX_TYPE _eventMux = portMUX_INITIALIZER_UNLOCKED;
     EchoBleProtocol::TimeAnchor _timeAnchor;
 };

@@ -192,6 +192,20 @@ void test_status_and_info_encoders_reject_invalid_values_and_short_buffers() {
         0, encodeDeviceInfo(info, infoBytes, sizeof(infoBytes) - 1));
 }
 
+void test_mic_gain_frame_takes_1_to_8() {
+    const uint8_t five[] = {FRAME_SET_MIC_GAIN, 5};
+    const uint8_t zero[] = {FRAME_SET_MIC_GAIN, 0};
+    const uint8_t nine[] = {FRAME_SET_MIC_GAIN, MAX_MIC_GAIN + 1};
+    const uint8_t shortGain[] = {FRAME_SET_MIC_GAIN};
+    ControlFrame decoded = {};
+
+    TEST_ASSERT_TRUE(decodeControlFrame(five, sizeof(five), decoded));
+    TEST_ASSERT_EQUAL_UINT8(5, decoded.micGain);
+    TEST_ASSERT_FALSE(decodeControlFrame(zero, sizeof(zero), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(nine, sizeof(nine), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(shortGain, sizeof(shortGain), decoded));
+}
+
 void test_privacy_control_frames_decode_exact_lengths_and_values() {
     const uint8_t muted[] = {FRAME_SET_MUTED, 1};
     const uint8_t listening[] = {FRAME_SET_MUTED, 0};
@@ -399,6 +413,7 @@ void test_ota_frames() {
 
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_mic_gain_frame_takes_1_to_8);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_incremental_crc32_matches_one_shot_crc32);
     RUN_TEST(test_buffered_segment_header_round_trips_stored_crc);

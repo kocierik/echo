@@ -75,6 +75,40 @@ void main() {
     expect(find.text('73%'), findsOneWidget);
   });
 
+  testWidgets('the microphone gain is set from the phone, with firmware 0.9.3 on', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.9.3',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    final slider = find.byKey(const Key('device-mic-gain'));
+    await tester.ensureVisible(slider);
+    await tester.pumpAndSettle();
+    await tester.drag(slider, const Offset(600, 0));
+    await tester.pumpAndSettle();
+
+    expect(fixture.ble.micGains, [8]);
+    expect((await SharedPreferences.getInstance()).getInt('echo_mic_gain'), 8);
+  });
+
+  testWidgets('older firmware has no microphone gain', (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.9.2',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.byKey(const Key('device-mic-gain')), findsNothing);
+  });
+
   testWidgets('shows buffer loss firmware and protocol from status',
       (tester) async {
     final fixture = await _Fixture.create(
@@ -428,6 +462,11 @@ final class _FakeBlePort implements DeviceBlePort {
 
   @override
   Future<void> setMuted(bool muted) async => mutes.add(muted);
+
+  final micGains = <int>[];
+
+  @override
+  Future<void> setMicGain(int gain) async => micGains.add(gain);
 }
 
 final class _FakeIdentityStore implements DeviceIdentityStorePort {

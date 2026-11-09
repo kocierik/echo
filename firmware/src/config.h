@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 9
-#define FIRMWARE_VERSION_PATCH 2
+#define FIRMWARE_VERSION_PATCH 3
 
 // ============================================================
 // Audio Configuration
@@ -39,6 +39,7 @@
 // The microphone's samples MIC_GAIN times louder (audio_level.h amplify): speech a metre
 // away measured 45 to 250, under the threshold; three times that clears it, while
 // silence (~30) stays well below
+// The default: the app can set 1..8 (FRAME_SET_MIC_GAIN), kept across restarts
 #define MIC_GAIN 3
 #define VAD_SPEECH_START_FRAMES 3      // Consecutive frames above threshold to start
 #define VAD_SPEECH_END_FRAMES 45       // Consecutive frames below threshold to stop (~1.4s: a pause between sentences no longer splits them)

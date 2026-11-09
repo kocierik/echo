@@ -6,8 +6,8 @@
 
 /**
  * libopus on the wearable (sh123/esp32_opus: fixed point, its scratch on the stack, so
- * the loop task runs with a larger stack, main.ino). Speech at 16 kHz, 16 kbit/s: plenty
- * for the transcription, which is what the audio is for (deleted a day after).
+ * the loop task runs with a larger stack, main.ino). Speech at 16 kHz, 32 kbit/s as Omi:
+ * 16 kbit/s kept the words but less of the voice's timbre, which tells speakers apart.
  */
 class OpusCodec {
 public:
@@ -18,7 +18,7 @@ public:
             _encoder = nullptr;
             return false;
         }
-        opus_encoder_ctl(_encoder, OPUS_SET_BITRATE(16000));
+        opus_encoder_ctl(_encoder, OPUS_SET_BITRATE(32000));
         opus_encoder_ctl(_encoder, OPUS_SET_COMPLEXITY(3));
         opus_encoder_ctl(_encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
         return true;

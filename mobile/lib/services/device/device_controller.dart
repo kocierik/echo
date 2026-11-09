@@ -133,6 +133,12 @@ final class DeviceController {
     await _ble.setMuted(muted);
   }
 
+  /// The microphone's gain (1..8); Echo keeps it across restarts.
+  Future<void> setMicGain(int gain) async {
+    _ensureActive();
+    await _ble.setMicGain(gain);
+  }
+
   Future<void> forget() async {
     _ensureActive();
     if (_remoteId == null) {

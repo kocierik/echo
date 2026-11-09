@@ -133,7 +133,7 @@ private:
     }
 
     // A typical segment (~8 s of Opus speech, ~16 KB), for the count of those on the card
-    static constexpr uint64_t ESTIMATED_SEGMENT_BYTES = 16 * 1024;
+    static constexpr uint64_t ESTIMATED_SEGMENT_BYTES = 32 * 1024;  // Opus 32 kbit/s
 
     Hot& _hot;
     SegmentLog* _card = nullptr;

@@ -76,6 +76,12 @@ abstract final class DeviceProtocol {
   static const int microSdVersion = 5;
   static const int signedOtaVersion = 6;
   static const int _frameSetMuted = 0x15;
+  static const int _frameSetMicGain = 0x1B;
+
+  /// The microphone's gain the app can set (firmware 0.9.3 on), and its default.
+  static const int maxMicGain = 8;
+  static const int defaultMicGain = 3;
+  static const String micGainFirmware = '0.9.3';
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
   static const int _frameTakePhoto = 0x18;
@@ -158,6 +164,11 @@ abstract final class DeviceProtocol {
   static Uint8List setMuted(bool muted) => Uint8List.fromList([
     _frameSetMuted,
     muted ? 1 : 0,
+  ]);
+
+  static Uint8List setMicGain(int gain) => Uint8List.fromList([
+    _frameSetMicGain,
+    gain.clamp(1, maxMicGain),
   ]);
 
   static Uint8List forgetBond() => Uint8List.fromList([_frameForgetBond]);

@@ -598,6 +598,10 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
       _writeControl(DeviceProtocol.setMuted(muted));
 
   @override
+  Future<void> setMicGain(int gain) =>
+      _writeControl(DeviceProtocol.setMicGain(gain));
+
+  @override
   Future<void> forgetBond() async {
     if (_disposed) throw StateError('BleService is disposed');
     if (_phase != DeviceBlePhase.ready || _controlChar == null) {

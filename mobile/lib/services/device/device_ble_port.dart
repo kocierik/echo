@@ -22,6 +22,7 @@ abstract interface class DeviceBlePort {
   Future<String> pair();
   Future<void> connectSaved(String remoteId);
   Future<void> setMuted(bool muted);
+  Future<void> setMicGain(int gain);
   Future<void> forgetBond();
   Future<void> disconnect();
   Future<void> dispose();

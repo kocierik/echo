@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,6 +8,7 @@ import '../services/app/app_controller.dart';
 import '../services/app/app_runtime.dart';
 import '../services/onboarding/onboarding_controller.dart';
 import '../services/device/device_controller.dart';
+import '../services/device/device_protocol.dart';
 import '../services/device/firmware_update.dart';
 import '../widgets/device_instrument.dart';
 import '../widgets/device_readings.dart' show microSdLabel;
@@ -79,6 +82,40 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
   bool _forgetting = false;
   bool _muteBusy = false;
   String? _error;
+
+  /// The microphone's gain last set from this phone (Echo does not report it).
+  int _micGain = DeviceProtocol.defaultMicGain;
+  static const _micGainKey = 'echo_mic_gain';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadMicGain());
+  }
+
+  Future<void> _loadMicGain() async {
+    try {
+      final saved = (await SharedPreferences.getInstance()).getInt(_micGainKey);
+      if (saved != null && mounted) setState(() => _micGain = saved);
+    } catch (_) {
+      // No saved gain: the default, as on Echo
+    }
+  }
+
+  /// Louder or quieter: Echo applies it at once and keeps it across restarts.
+  Future<void> _setMicGain(int gain) async {
+    try {
+      await widget.deviceController.setMicGain(gain);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Echo could not update the microphone.');
+      return;
+    }
+    try {
+      await (await SharedPreferences.getInstance()).setInt(_micGainKey, gain);
+    } catch (_) {
+      // Not remembered on this phone: Echo still has it
+    }
+  }
 
   /// Mute Echo or let it listen again; the instrument changes once Echo confirms.
   Future<void> _setMuted(bool muted) async {
@@ -206,6 +243,33 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
               ),
             if (widget.firmwareUpdate != null)
               FirmwareUpdateSection(controller: widget.firmwareUpdate!),
+            if (status.firmwareVersion != null &&
+                !isNewerFirmware(DeviceProtocol.micGainFirmware, status.firmwareVersion)) ...[
+              const SettingsSection('MICROPHONE'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    const Icon(Icons.mic_none_rounded),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Slider(
+                        key: const Key('device-mic-gain'),
+                        value: _micGain.toDouble(),
+                        min: 1,
+                        max: DeviceProtocol.maxMicGain.toDouble(),
+                        divisions: DeviceProtocol.maxMicGain - 1,
+                        label: '×$_micGain',
+                        semanticFormatterCallback: (value) => 'Microphone gain ${value.round()}',
+                        onChanged: (value) => setState(() => _micGain = value.round()),
+                        onChangeEnd: (value) => unawaited(_setMicGain(value.round())),
+                      ),
+                    ),
+                    Text('×$_micGain'),
+                  ],
+                ),
+              ),
+            ],
             const SettingsSection('BUFFER'),
             SettingsRow(
               icon: Icons.inventory_2_outlined,

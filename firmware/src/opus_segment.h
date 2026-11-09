@@ -5,8 +5,9 @@
 #include <string.h>
 
 /**
- * A segment's speech as Opus (firmware 0.9 on), in place of IMA-ADPCM: about 2 KB a
- * second instead of 8, so the Bluetooth, the buffer and the card carry a quarter.
+ * A segment's speech as Opus (firmware 0.9 on), in place of IMA-ADPCM: about 4 KB a
+ * second instead of 8 (32 kbit/s from 0.9.3), so the Bluetooth, the buffer and the card
+ * carry half.
  *
  * The segment starts with MAGIC, then each 20 ms frame as one byte of length and its
  * packet. The server tells it from ADPCM by MAGIC (backend/app/services/segment_audio.py);

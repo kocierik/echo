@@ -135,6 +135,14 @@ void handleTakePhoto(void*) {
     }
 }
 
+// The microphone's gain: MIC_GAIN until the app sets another (saved in Preferences)
+uint8_t micGain = MIC_GAIN;
+
+void handleMicGain(uint8_t gain, void*) {
+    micGain = gain;
+    if (!devicePreferences.saveMicGain(gain)) Serial.println("[Audio] Failed to persist mic gain");
+}
+
 void handleMuteCommand(bool muted, void*) {
     const bool changed = muteState.isMuted() != muted;
     const bool persisted = muteState.setMuted(muted);
@@ -173,10 +181,13 @@ void setup() {
     indicators.setBlinking(true);
 
     bleTransport.setMuteCommandCallback(handleMuteCommand, nullptr);
+    bleTransport.setMicGainCallback(handleMicGain, nullptr);
 
     if (!devicePreferences.begin()) {
         Serial.println("[Privacy] Preferences init failed; defaulting to listening");
     }
+    micGain = devicePreferences.loadMicGain(MIC_GAIN);
+    if (micGain < 1 || micGain > EchoBleProtocol::MAX_MIC_GAIN) micGain = MIC_GAIN;
     if (!muteState.begin()) {
         Serial.println("[Privacy] Mute state load failed; defaulting to listening");
     }
@@ -305,7 +316,7 @@ void loop() {
     // Read audio frame from microphone
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
-    amplify(pcmBuffer, samplesRead, MIC_GAIN);
+    amplify(pcmBuffer, samplesRead, micGain);
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);

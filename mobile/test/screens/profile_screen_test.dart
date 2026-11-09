@@ -590,4 +590,9 @@ final class _FakeBlePort implements DeviceBlePort {
 
   @override
   Future<void> setMuted(bool muted) async => mutes.add(muted);
+
+  final micGains = <int>[];
+
+  @override
+  Future<void> setMicGain(int gain) async => micGains.add(gain);
 }
