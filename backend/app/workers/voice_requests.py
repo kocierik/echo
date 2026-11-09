@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import undefer
 
 from app.actions.agent import NO_APPS, run_action_agent
 from app.actions.audit import AuditRecorder, restore_audit
@@ -253,14 +254,18 @@ async def _answer(
 async def _process(
     db: AsyncSession, redis_client, segment_id: uuid.UUID, claim: _Claim
 ) -> bool:
-    segment = await db.get(Segment, segment_id)
+    segment = await db.get(Segment, segment_id, options=[undefer(Segment.voice_embedding)])
     usage_owner.set(segment.user_id if segment is not None else None)
     if segment is None or segment.transcription is None:
         logger.warning(f"[Voice] Segment {segment_id} not found or not transcribed")
         return True
-    # Only the wearer may address Echo: a request said by someone else (the voice
-    # fingerprint or the energy rule tagged it) is never acted on as the wearer
-    if getattr(segment, "speaker", None) == "other":
+    # Only the wearer may address Echo: a request whose voice fingerprint is someone
+    # else's is never acted on as the wearer. Without a fingerprint (too short) the
+    # loudness rule alone is no proof: a quiet "Echo, mi senti?" is the wearer's too
+    if (
+        getattr(segment, "speaker", None) == "other"
+        and getattr(segment, "voice_embedding", None) is not None
+    ):
         logger.info(f"[Voice] Segment {segment_id}: said by someone else, ignored")
         return True
 

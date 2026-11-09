@@ -205,7 +205,7 @@ class _Db:
             return _Result(self.sessions)
         raise AssertionError(f"unexpected query on {entity}")
 
-    async def get(self, model, ident):
+    async def get(self, model, ident, **_options):
         if model is Segment:
             return next((s for s in self.segments if s.id == ident), None)
         return None
@@ -679,6 +679,7 @@ async def test_worker_memory_fallback_without_results(worker):
 async def test_worker_ignores_a_request_said_by_someone_else(worker):
     # Security audit 29/10: a bystander's "Echo, ..." never acts as the wearer
     wake = _seg("[Others] Echo, metti in calendario DUMMY domani alle 9", speaker="other")
+    wake.voice_embedding = [0.1] * 256  # the fingerprint says: not the wearer
     _ready(worker, wake)
 
     assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
@@ -686,6 +687,17 @@ async def test_worker_ignores_a_request_said_by_someone_else(worker):
     assert worker.agent_calls == [] and worker.rag_calls == []
     assert worker.llm.json_calls == 0
     assert worker.db.sessions == []
+
+
+@pytest.mark.asyncio
+async def test_a_command_too_short_for_a_fingerprint_is_the_wearers(worker):
+    """The loudness rule alone said "other" for a quiet "Echo, mi senti?" of the wearer."""
+    wake = _seg("[Others] Echo, mi senti?", speaker="other")
+    _ready(worker, wake)
+
+    assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
+
+    assert worker.llm.json_calls >= 1  # it went on: checked as a request, then answered
 
 
 @pytest.mark.asyncio

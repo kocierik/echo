@@ -20,11 +20,11 @@ final class CapabilitiesScreen extends StatelessWidget {
   ];
 
   static const _voiceExamples = [
-    'Echo, remind me to call Giulia on Friday',
-    'Echo, every morning at 7 tell me the weather in Milan',
-    'Echo, what is this?',
-    'Echo, remember where I parked',
-    'Echo, send Marco a message on Slack',
+    'Hey Echo, remind me to call Giulia on Friday',
+    'Hey Echo, every morning at 7 tell me the weather in Milan',
+    'Hey Echo, what is this?',
+    'Hey Echo, remember where I parked',
+    'Hey Echo, send Marco a message on Slack',
   ];
 
   @override

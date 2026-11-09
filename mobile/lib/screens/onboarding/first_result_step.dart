@@ -6,6 +6,15 @@ import '../../services/onboarding/first_result_watcher.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/panel.dart';
 
+/// The first request to say, in the phone's language: Echo transcribes in the user's,
+/// and an Italian saying "Echo" alone is heard "Ecco", a word; after "Ehi" it is the name.
+const firstRequests = {
+  'en': 'Hey Echo, remind me to call Giulia on Friday at six.',
+  'it': 'Ehi Echo, ricordami di chiamare Giulia venerdì alle sei.',
+};
+
+String firstRequestFor(String? language) => firstRequests[language] ?? firstRequests['en']!;
+
 /// The end of the first run: the user asks Echo something out loud and sees it
 /// heard and understood. Without a watcher (no server to ask) it only explains.
 final class FirstResultStep extends StatefulWidget {
@@ -60,7 +69,7 @@ final class _FirstResultStepState extends State<FirstResultStep> {
             text: 'Say, out loud: ',
             children: [
               TextSpan(
-                text: '"Echo, remind me to call Giulia on Friday at six."',
+                text: '"${firstRequestFor(WidgetsBinding.instance.platformDispatcher.locale.languageCode)}"',
                 style:
                     TextStyle(color: palette.text, fontWeight: FontWeight.w600),
               ),

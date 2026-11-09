@@ -10,8 +10,15 @@ import 'package:echo_app/services/onboarding/onboarding_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:echo_app/screens/onboarding/first_result_step.dart';
 
 void main() {
+  test('the first request is said with "Hey/Ehi Echo", in the phone\'s language', () {
+    expect(firstRequestFor('it'), startsWith('Ehi Echo,'));
+    expect(firstRequestFor('en'), startsWith('Hey Echo,'));
+    expect(firstRequestFor('ja'), startsWith('Hey Echo,'));
+  });
+
   group('OnboardingController', () {
     test('a fresh install starts on the welcome', () async {
       final fixture = _Fixture();

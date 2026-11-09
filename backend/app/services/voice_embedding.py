@@ -77,14 +77,16 @@ def get_voice_embedder() -> VoiceEmbedder | None:
 
 # 20 ms at 16 kHz, 16-bit
 _FRAME_BYTES = 640
-# The share of a segment's 20 ms frames kept for its fingerprint, the loudest
-SPEECH_SHARE = 0.4
+# A frame is speech within this much of the segment's loud speech (its 95th percentile)
+SPEECH_WITHIN_DB = 12
 
 
 def loudest_frames(pcm: bytes) -> bytes:
-    """The segment's loudest frames, where someone speaks: a fingerprint of the whole
-    segment is mostly its silence and the microphone's noise, alike for every voice
-    (pairwise ~0.91 on the pendant's segments; ~0.86 on these frames)."""
+    """The segment's frames where someone speaks (within SPEECH_WITHIN_DB of its loud
+    speech): a fingerprint of the whole segment is mostly its silence and the
+    microphone's noise, alike for every voice (pairwise ~0.91 on the pendant's
+    segments; 10th percentile 0.84, here 0.69). A short command, all speech, is kept
+    nearly whole."""
     frames = [pcm[i:i + _FRAME_BYTES] for i in range(0, len(pcm) - _FRAME_BYTES + 1, _FRAME_BYTES)]
     if not frames:
         return b""
@@ -93,7 +95,7 @@ def loudest_frames(pcm: bytes) -> bytes:
         samples = array("h")
         samples.frombytes(frame)
         energy.append(sum(s * s for s in samples))
-    cut = sorted(energy)[int(len(energy) * (1 - SPEECH_SHARE))]
+    cut = sorted(energy)[int(len(energy) * 0.95)] / 10 ** (SPEECH_WITHIN_DB / 10)
     return b"".join(f for f, e in zip(frames, energy) if e >= cut)
 
 
