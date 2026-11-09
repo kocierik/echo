@@ -251,12 +251,41 @@ void main() {
     expect(line.turns.last.text, 'Bene.');
   });
 
-  testWidgets('a live conversation says the summary comes later', (tester) async {
+  testWidgets('a live conversation opens on its transcript; the summary comes later',
+      (tester) async {
     final api = FakeMemoryApi(details: {'c1': detail(summary: null, isOpen: true)});
     await pump(tester, api);
 
-    expect(find.textContaining('Echo is still listening'), findsOneWidget);
+    // What is being said first
+    expect(find.text('Domani chiamo Ada per Atlas.'), findsOneWidget);
     expect(find.text('Live · still listening'), findsOneWidget);
+
+    await tester.tap(find.text('Summary'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Echo is still listening'), findsOneWidget);
+  });
+
+  testWidgets('a live conversation follows what is said, without a refresh', (tester) async {
+    final api = FakeMemoryApi(details: {'c1': detail(summary: null, isOpen: true)});
+    await pump(tester, api);
+    expect(find.text('Lo mando stasera.'), findsNothing);
+
+    final live = detail(summary: null, isOpen: true);
+    api.details['c1'] = ConversationDetail(
+      card: live.card,
+      lines: [
+        ...live.lines,
+        TranscriptLine(
+          segmentId: 's3', recordedAt: DateTime(2026, 10, 14, 12, 32), status: 'completed',
+          text: '[You] Lo mando stasera.', speaker: 'self',
+        ),
+      ],
+      entities: live.entities,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Lo mando stasera.'), findsOneWidget);
   });
 
   testWidgets('delete asks first, then deletes and closes', (tester) async {

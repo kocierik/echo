@@ -67,17 +67,22 @@ class _DeviceMessagesScreenState extends State<DeviceMessagesScreen> {
                     style: TextStyle(color: palette.text2),
                   ),
                 )
+              // Reversed: it opens on the latest message, the oldest above it
               : ListView.builder(
+                  reverse: true,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: _messages.length,
-                  itemBuilder: (context, i) => PanelListRow(
-                    index: i,
-                    count: _messages.length,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Text(_messages[i], style: TextStyle(color: palette.text)),
-                    ),
-                  ),
+                  itemBuilder: (context, fromEnd) {
+                    final i = _messages.length - 1 - fromEnd;
+                    return PanelListRow(
+                      index: i,
+                      count: _messages.length,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Text(_messages[i], style: TextStyle(color: palette.text)),
+                      ),
+                    );
+                  },
                 ),
         ),
       ),

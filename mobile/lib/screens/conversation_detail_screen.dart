@@ -72,10 +72,47 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   _DetailTab _tab = _DetailTab.summary;
   final _scroll = ScrollController();
 
+  /// While the conversation goes on (or a line is still being transcribed): it again
+  /// every few seconds, without a pull to refresh.
+  Timer? _liveTimer;
+  static const _livePoll = Duration(seconds: 5);
+
+  /// The user picked a tab: a live conversation no longer opens it on the transcript.
+  bool _tabChosen = false;
+
   @override
   void dispose() {
+    _liveTimer?.cancel();
     _scroll.dispose();
     super.dispose();
+  }
+
+  bool _isLive(ConversationDetail detail) =>
+      detail.card.isOpen || detail.lines.any((line) => line.isPending);
+
+  void _followLive(ConversationDetail detail) {
+    if (_isLive(detail)) {
+      _liveTimer ??= Timer.periodic(_livePoll, (_) => unawaited(_refreshLive()));
+    } else {
+      _liveTimer?.cancel();
+      _liveTimer = null;
+    }
+  }
+
+  /// The latest lines, quietly: no spinner, no error, edits kept; at the end of the
+  /// transcript it stays at the end.
+  Future<void> _refreshLive() async {
+    try {
+      final detail = await widget.api.getConversation(widget.conversationId);
+      if (!mounted) return;
+      final atEnd = _scroll.hasClients &&
+          _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+      setState(() => _detail = detail);
+      _followLive(detail);
+      if (atEnd && _tab == _DetailTab.transcript) _showLatest();
+    } catch (_) {
+      // The next tick tries again
+    }
   }
 
   /// The transcript opens on its last line. The list lays out lazily, so the end moves
@@ -170,7 +207,11 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         _detail = detail;
         _loading = false;
         resetTaskEdits();
+        // Going on: what is being said, the latest line first in view
+        if (!_tabChosen && detail.card.isOpen) _tab = _DetailTab.transcript;
       });
+      _followLive(detail);
+      if (_tab == _DetailTab.transcript && !_tabChosen) _showLatest();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -395,6 +436,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
               ],
               selected: {_tab},
               onSelectionChanged: (selection) {
+                _tabChosen = true;
                 setState(() => _tab = selection.single);
                 if (_tab == _DetailTab.transcript) _showLatest();
               },
