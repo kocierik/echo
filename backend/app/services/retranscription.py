@@ -109,11 +109,19 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
         ),
         key=lambda pair: -pair[0],
     )
+    # A voice too close to two profiles is neither's (Omi's margin)
+    ranked: dict = {}
+    for similarity, index, _ in pairs:
+        ranked.setdefault(index, []).append(similarity)
+    ambiguous = {
+        index for index, sims in ranked.items()
+        if len(sims) > 1 and sims[0] - sims[1] < settings.voice_match_margin
+    }
     matched: dict = {}
     for similarity, index, profile in pairs:
         if similarity < settings.voice_match_threshold:
             break
-        if index not in matched and profile not in matched.values():
+        if index not in ambiguous and index not in matched and profile not in matched.values():
             matched[index] = profile
 
     voices: dict = {}

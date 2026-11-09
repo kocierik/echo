@@ -75,6 +75,28 @@ def get_voice_embedder() -> VoiceEmbedder | None:
         return None
 
 
+# 20 ms at 16 kHz, 16-bit
+_FRAME_BYTES = 640
+# The share of a segment's 20 ms frames kept for its fingerprint, the loudest
+SPEECH_SHARE = 0.4
+
+
+def loudest_frames(pcm: bytes) -> bytes:
+    """The segment's loudest frames, where someone speaks: a fingerprint of the whole
+    segment is mostly its silence and the microphone's noise, alike for every voice
+    (pairwise ~0.91 on the pendant's segments; ~0.86 on these frames)."""
+    frames = [pcm[i:i + _FRAME_BYTES] for i in range(0, len(pcm) - _FRAME_BYTES + 1, _FRAME_BYTES)]
+    if not frames:
+        return b""
+    energy = []
+    for frame in frames:
+        samples = array("h")
+        samples.frombytes(frame)
+        energy.append(sum(s * s for s in samples))
+    cut = sorted(energy)[int(len(energy) * (1 - SPEECH_SHARE))]
+    return b"".join(f for f, e in zip(frames, energy) if e >= cut)
+
+
 async def embed_voice(wav_bytes: bytes) -> list[float] | None:
     """The fingerprint, computed off the event loop; None when off, too short or failing."""
     embedder = get_voice_embedder()

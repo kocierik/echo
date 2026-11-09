@@ -210,7 +210,10 @@ class _LoopRedis:
         self.pushes.append((queue, payload))
 
 
-async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=None):
+async def _run_stt(
+    monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=None,
+    heard="Ciao, come va il preventivo?",
+):
     """One segment through the STT worker, its voice matching Marco's profile (or not)."""
     segment = SimpleNamespace(
         id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=10, speaker=None,
@@ -242,7 +245,7 @@ async def _run_stt(monkeypatch, *, queue=b"queue:stt", voice=(1.0, 0.0), brief=N
         return STTContext(prompt="", keyterms=[])
 
     async def retry(func, *args, **kwargs):
-        return SimpleNamespace(text="Ciao, come va il preventivo?", language="it", confidence=0.9)
+        return SimpleNamespace(text=heard, language="it", confidence=0.9)
 
     async def language(_db, _user_id):
         return ("it", [])
@@ -288,6 +291,14 @@ async def test_the_worker_briefs_a_known_voice(monkeypatch):
 
     # A voice that is nobody known: no brief
     _, _, briefed, _ = await _run_stt(monkeypatch, voice=(0.0, 1.0))
+    assert briefed == []
+
+
+async def test_a_segment_with_nothing_said_has_no_voice(monkeypatch):
+    """Noise: its fingerprint would match anyone, so it is neither kept nor recognised."""
+    segment, _, briefed, _ = await _run_stt(monkeypatch, heard="")
+
+    assert segment.voice_embedding is None and segment.voice_profile_id is None
     assert briefed == []
 
 

@@ -125,8 +125,11 @@ class Settings(BaseSettings):
     voice_match_threshold: float = 0.6
     # ...from this (below the match), the transcript asks "Marco?"
     voice_suggest_threshold: float = 0.45
-    # Shorter audio gives an unreliable fingerprint
-    voice_min_seconds: float = 1.5
+    # ...and only this far ahead of the next closest voice: one between two is no one's
+    # (Omi's margin, the same WeSpeaker model)
+    voice_match_margin: float = 0.10
+    # Less speech than this gives an unreliable fingerprint
+    voice_min_seconds: float = 3.0
 
     # Web search while answering (services/web_search.py): "openai" or "none"
     web_search_provider: str = "openai"

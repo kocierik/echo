@@ -29,7 +29,7 @@ from app.models.transcription import Transcription
 from app.services.language import account_languages
 from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
-from app.services.segment_audio import segment_to_wav
+from app.services.segment_audio import decode_segment, pcm_to_wav, segment_to_wav
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
 from app.services.transcription_enhancer import (
@@ -39,7 +39,7 @@ from app.services.transcription_enhancer import (
     speaker_prefix,
 )
 from app.services.usage import usage_owner
-from app.services.voice_embedding import embed_voice
+from app.services.voice_embedding import embed_voice, loudest_frames
 from app.services.voice_profiles import list_profiles, recognize
 from app.workers.dead_letter import push_to_dead_letter
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
@@ -160,8 +160,11 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 # The wearable's ADPCM or Opus as WAV for STT
                 wav_data = segment_to_wav(audio_data)
 
-                # The voice fingerprint, beside the transcription (adds no delay)
-                fingerprint = asyncio.create_task(embed_voice(wav_data))
+                # The voice fingerprint of where someone speaks, beside the transcription
+                # (adds no delay)
+                fingerprint = asyncio.create_task(
+                    embed_voice(pcm_to_wav(loudest_frames(decode_segment(audio_data))))
+                )
 
                 # Known names and topics, as a prompt or keyterms depending on the provider
                 stt_context = await build_stt_context(db, segment.user_id)
@@ -189,7 +192,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 speaker = None
                 known = None
                 embedding = await fingerprint
-                if embedding is not None:
+                # Nothing said: noise, whose fingerprint would match anyone
+                if embedding is not None and cleaned_text:
                     segment.voice_embedding = embedding
                     profiles = await list_profiles(db, segment.user_id)
                     speaker = recognize(segment, embedding, profiles)

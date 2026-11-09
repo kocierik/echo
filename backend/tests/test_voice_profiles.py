@@ -77,6 +77,27 @@ def test_recognition_by_similarity():
     assert voices.recognize(Segment(), near(MARCO, STRANGER, 0.9), [marco]) == "other"
 
 
+def test_a_voice_between_two_profiles_is_neither():
+    me, marco = _profile(ME, is_self=True), _profile(MARCO)
+    between = normalize([0.8, 0.75] + [0.0] * (DIM - 2))  # ~0.73 to me, ~0.68 to Marco
+
+    segment = Segment()
+    assert voices.recognize(segment, between, [me, marco]) == "other"
+    assert segment.voice_profile_id is None and segment.voice_match is None
+
+
+def test_a_fingerprint_is_taken_where_someone_speaks():
+    from array import array
+
+    from app.services.voice_embedding import loudest_frames
+
+    quiet, loud = array("h", [10] * 320).tobytes(), array("h", [8000] * 320).tobytes()
+    pcm = quiet * 6 + loud * 4
+
+    assert loudest_frames(pcm) == loud * 4
+    assert loudest_frames(b"") == b""
+
+
 def test_retag_replaces_the_speaker_tag():
     assert voices.retag("[Others] ciao", "self") == "[You] ciao"
     assert voices.retag("[Tu] ciao", "other") == "[Others] ciao"

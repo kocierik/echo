@@ -49,6 +49,8 @@ _TAG = re.compile(r"^\s*\[(?:you|others|tu|altri)\]\s*", re.IGNORECASE)
 class Match:
     profile: VoiceProfile
     similarity: float
+    # Ahead of the next closest profile (1 with none)
+    lead: float = 1.0
 
 
 def _now() -> datetime:
@@ -65,8 +67,15 @@ async def list_profiles(db: AsyncSession, user_id: uuid.UUID) -> list[VoiceProfi
 
 
 def best_match(profiles: list[VoiceProfile], embedding) -> Match | None:
-    scored = [Match(p, cosine(p.embedding, embedding)) for p in profiles]
-    return max(scored, key=lambda m: m.similarity, default=None)
+    scored = sorted(
+        (Match(p, cosine(p.embedding, embedding)) for p in profiles),
+        key=lambda m: -m.similarity,
+    )
+    if not scored:
+        return None
+    if len(scored) > 1:
+        scored[0].lead = scored[0].similarity - scored[1].similarity
+    return scored[0]
 
 
 def add_sample(profile: VoiceProfile, embedding) -> None:
@@ -101,7 +110,10 @@ def recognize(segment: Segment, embedding, profiles: list[VoiceProfile]) -> str 
     match = best_match(profiles, embedding)
     if match is not None and match.similarity >= settings.voice_suggest_threshold:
         segment.voice_similarity = round(match.similarity, 4)
-        if match.similarity >= settings.voice_match_threshold:
+        if (
+            match.similarity >= settings.voice_match_threshold
+            and match.lead >= settings.voice_match_margin
+        ):
             segment.voice_profile_id = match.profile.id
             segment.voice_match = "auto"
             return "self" if match.profile.is_self else "other"
