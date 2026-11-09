@@ -495,3 +495,33 @@ async def find_relevant_entities(
         lines.append(line)
 
     return "\n".join(lines)
+
+
+# Where a word was said: the latest lines first, at most this many
+MAX_SAID = 20
+
+
+async def where_said(db: AsyncSession, user_id: uuid.UUID, words: str) -> str:
+    """The transcript lines with `words` exactly (any case), newest first, each with its
+    time and conversation: "did anyone say 'fattura'?" is a literal question, which
+    the search by meaning can miss."""
+    from app.core.timezone import user_zone
+    from app.models.segment import Segment
+    from app.models.transcription import Transcription
+
+    pattern = "%" + words.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    rows = (
+        await db.execute(
+            select(Segment.recorded_at, Conversation.title, Transcription.text)
+            .join(Transcription, Transcription.segment_id == Segment.id)
+            .outerjoin(Conversation, Conversation.id == Segment.conversation_id)
+            .where(Segment.user_id == user_id)
+            .where(Transcription.text.ilike(pattern, escape="\\"))
+            .order_by(Segment.recorded_at.desc())
+            .limit(MAX_SAID)
+        )
+    ).all()
+    return "\n".join(
+        f"- {at.astimezone(user_zone()):%Y-%m-%d %H:%M} ({title or 'untitled'}): {text[:300]}"
+        for at, title, text in rows
+    )

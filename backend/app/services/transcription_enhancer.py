@@ -69,11 +69,51 @@ async def build_stt_context(db: "AsyncSession", user_id: uuid.UUID) -> STTContex
         ).scalars()
     )
     places = await place_terms(db, user_id)
+    learned = await corrected_terms(db, user_id)
     return STTContext(
         prompt=_prompt(people_names, topic_names),
         # Places before topics: a city said once is a request ("che tempo fa a Nizza")
-        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *places, *topic_names]),
+        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *learned, *places, *topic_names]),
     )
+
+
+# The words the user put into transcripts by hand: what the service keeps mishearing
+MAX_LEARNED = 15
+_LEARNED_FROM_EDITS = 200
+_WORD = re.compile(r"[^\W\d_][\w'’-]*")
+
+
+def learned_words(edits: list[tuple[str, str]]) -> list[str]:
+    """The words a correction added (in the new text, not in the old), the most often
+    corrected first: once per correction, at least 3 letters."""
+    counts: dict[str, int] = {}
+    spelling: dict[str, str] = {}
+    for old, new in edits:
+        before = {w.casefold() for w in _WORD.findall(old or "")}
+        added = {w.casefold(): w for w in _WORD.findall(new or "") if len(w) >= 3}
+        for key, word in added.items():
+            if key not in before:
+                counts[key] = counts.get(key, 0) + 1
+                spelling.setdefault(key, word)
+    ranked = sorted(counts, key=lambda k: -counts[k])
+    return [spelling[k] for k in ranked[:MAX_LEARNED]]
+
+
+async def corrected_terms(db: "AsyncSession", user_id: uuid.UUID) -> list[str]:
+    """The words learned from the user's latest transcript corrections."""
+    from sqlalchemy import select
+
+    from app.models.transcription_edit import TranscriptionEdit
+
+    rows = (
+        await db.execute(
+            select(TranscriptionEdit.old_text, TranscriptionEdit.new_text)
+            .where(TranscriptionEdit.user_id == user_id)
+            .order_by(TranscriptionEdit.created_at.desc())
+            .limit(_LEARNED_FROM_EDITS)
+        )
+    ).all()
+    return learned_words([tuple(row) for row in rows])
 
 
 # The Italian names of cities the phone's addresses give in their own language: an

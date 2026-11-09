@@ -435,6 +435,25 @@ async def test_search_memory_with_no_results_says_so(monkeypatch):
     assert "nothing found" in tool_msg.content.lower()
 
 
+async def test_search_memory_finds_the_exact_words(monkeypatch):
+    async def fake_retrieve(db, user_id, question, **kwargs):
+        return MemoryContext(context="", sources=[])
+
+    async def fake_said(db, user_id, words):
+        return f"- 2026-11-08 18:03 (Cena): [Others] Mi mandi la {words}?"
+
+    monkeypatch.setattr(agent_module, "retrieve_memory_context", fake_retrieve)
+    monkeypatch.setattr(agent_module, "where_said", fake_said)
+    llm = RecordingLLM([
+        _calls(("search_memory", {"query": "fattura", "exact": "fattura"})), _text("Ieri."),
+    ])
+
+    await _run(FakeSession(), "Chi ha detto fattura?", _provider([]), llm)
+
+    (tool_msg,) = _tool_messages(llm.call_log[1])
+    assert "Mi mandi la fattura?" in tool_msg.content
+
+
 async def test_step_limit_stops_the_loop():
     db = FakeSession()
     provider = _provider(["GMAIL_FETCH_EMAILS"])

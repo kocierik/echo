@@ -54,7 +54,7 @@ from app.models.pending_action import PendingAction
 from app.services.assistants import assistant_prompt
 from app.services.language import detect_language
 from app.services.llm_base import LLMMessage, LLMService, LLMToolCall
-from app.services.memory_retrieval import retrieve_memory_context
+from app.services.memory_retrieval import retrieve_memory_context, where_said
 from app.services.personal import personal_context
 from app.services.visuals import VISUALS_RULES
 from app.services.web_search import search_options, search_tool_for
@@ -76,6 +76,13 @@ SEARCH_MEMORY_TOOL = {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "What to look for in memory."},
+                "exact": {
+                    "type": "string",
+                    "description": (
+                        "A word or short phrase to find exactly as said (a name, a code, "
+                        "\"fattura\"), when the user asks whether, when or by whom it was said."
+                    ),
+                },
             },
             "required": ["query"],
         },
@@ -600,7 +607,11 @@ async def _run_tool(
             db, user_id, query,
             document_ids=(assistant.document_ids or None) if assistant is not None else None,
         )
-        return serialize_tool_result({"context": memory.context or _NOTHING_FOUND})
+        result = {"context": memory.context or _NOTHING_FOUND}
+        exact = str(call.arguments.get("exact") or "").strip()
+        if exact:
+            result["said_exactly"] = await where_said(db, user_id, exact) or _NOTHING_FOUND
+        return serialize_tool_result(result)
 
     if call.name == READ_DOCUMENT:
         # Read only, and not an action in the user's apps: not in Activity
