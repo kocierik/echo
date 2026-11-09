@@ -11,11 +11,14 @@ conversation when none was going on.
 """
 
 import hashlib
+import io
 import logging
+import math
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 
+from PIL import Image, ImageStat
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
@@ -221,9 +224,37 @@ def accepts_image(photo: Photo) -> bool:
     return photo.image_sha256 is None and photo.status in ("requested", "failed")
 
 
+# A photo darker than this on average (0-255) has its shadows raised to about TARGET
+DARK_MEAN = 90
+TARGET_MEAN = 115
+
+
+def brighten(jpeg: bytes) -> bytes:
+    """A dark photo (a room at night, lit by a screen) with its shadows raised by a gamma
+    curve, the light parts nearly as they were; any other photo as it is. The pendant's
+    small sensor cannot expose longer without blurring."""
+    try:
+        image = Image.open(io.BytesIO(jpeg))
+        image.load()
+        mean = ImageStat.Stat(image.convert("L")).mean[0]
+        if mean >= DARK_MEAN or mean < 1:
+            return jpeg
+        # The gamma that takes the mean to TARGET_MEAN; at most a strong lift
+        gamma = max(math.log(TARGET_MEAN / 255) / math.log(mean / 255), 0.4)
+        curve = [round(255 * (i / 255) ** gamma) for i in range(256)]
+        out = io.BytesIO()
+        image.point(curve * len(image.getbands())).save(out, "JPEG", quality=90)
+        return out.getvalue()
+    except Exception:
+        logger.warning("Could not brighten a photo; kept as it is", exc_info=True)
+        return jpeg
+
+
 def store_image(photo: Photo, image: bytes, captured_at: datetime) -> None:
-    photo.image = image
+    # The hash is the upload's: the same upload again is recognised (idempotent)
     photo.image_sha256 = hashlib.sha256(image).hexdigest()
+    image = brighten(image)
+    photo.image = image
     photo.size_bytes = len(image)
     photo.captured_at = captured_at
     photo.status = "received"

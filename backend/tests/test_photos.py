@@ -1,5 +1,6 @@
 """Wearable camera: requests, upload, failures, the wearable's commands and analysis."""
 
+import hashlib
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -729,3 +730,40 @@ async def test_a_follow_up_needs_an_image_of_ones_own(client, auth_headers, db_s
     )
     assert empty.status_code == 422
 
+
+
+def _jpeg(level: int) -> bytes:
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (64, 48), (level, level, level)).save(out, "JPEG")
+    return out.getvalue()
+
+
+def _mean(jpeg: bytes) -> float:
+    import io
+
+    from PIL import Image, ImageStat
+
+    return ImageStat.Stat(Image.open(io.BytesIO(jpeg)).convert("L")).mean[0]
+
+
+def test_a_dark_photo_is_brightened_and_a_bright_one_kept():
+    dark, bright = _jpeg(25), _jpeg(140)
+
+    assert _mean(photo_service.brighten(dark)) > 90
+    assert photo_service.brighten(bright) == bright
+    # Not a picture Pillow reads: kept as it is
+    assert photo_service.brighten(b"\xff\xd8\xff garbage") == b"\xff\xd8\xff garbage"
+
+
+def test_a_brightened_upload_is_still_recognised_when_sent_again():
+    photo = Photo(user_id=TEST_USER_ID, source="voice", status="requested")
+    dark = _jpeg(25)
+
+    photo_service.store_image(photo, dark, datetime.now(timezone.utc))
+
+    assert photo.image != dark and photo.size_bytes == len(photo.image)
+    assert photo.image_sha256 == hashlib.sha256(dark).hexdigest()
