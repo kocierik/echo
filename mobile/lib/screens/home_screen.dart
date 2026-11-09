@@ -195,8 +195,13 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   /// A rebuild a minute: the live conversation's time, an appointment that ends.
   Timer? _minuteTimer;
 
-  /// The last line heard in the conversation going on.
-  String? _lastLine;
+  /// The last lines heard in the conversation going on, (who, what), oldest first.
+  List<(String, String)> _liveLines = const [];
+
+  /// While a conversation goes on: its last lines again every few seconds.
+  Timer? _liveTimer;
+  static const _livePoll = Duration(seconds: 5);
+  static const _liveLineCount = 3;
 
   /// Saved: how many things, and the list one was last saved in (no row without any).
   int _savedTotal = 0;
@@ -292,6 +297,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (_ownsMemories) _memories.dispose();
     _tasksGeneration++;
     _workingTimer?.cancel();
+    _liveTimer?.cancel();
     unawaited(_uploadSubscription?.cancel());
     _ownedApi?.dispose();
     super.dispose();
@@ -330,6 +336,10 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (open != _openId) {
       _openId = open;
       unawaited(_loadLastLine(_today));
+      _liveTimer?.cancel();
+      _liveTimer = open == null
+          ? null
+          : Timer.periodic(_livePoll, (_) => unawaited(_loadLastLine(_today)));
     }
   }
 
@@ -482,19 +492,25 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     } catch (_) {}
   }
 
-  /// The last line heard in the conversation going on, for Your day's live row.
+  /// The last lines heard in the conversation going on, for Your day's live row: who
+  /// said each (a segment where several spoke, turn by turn).
   Future<void> _loadLastLine(List<ConversationCard> today) async {
     final open = today.where((c) => c.isOpen).firstOrNull;
     if (open == null) {
-      if (_lastLine != null && mounted) setState(() => _lastLine = null);
+      if (_liveLines.isNotEmpty && mounted) setState(() => _liveLines = const []);
       return;
     }
     try {
       final detail = await _api.getConversation(open.id);
-      final said = detail.lines.reversed
-          .map((line) => line.text == null ? '' : cleanTranscript(line.text!))
-          .firstWhere((text) => text.isNotEmpty, orElse: () => '');
-      if (mounted) setState(() => _lastLine = said.isEmpty ? null : said);
+      final said = <(String, String)>[
+        for (final line in detail.lines)
+          if (line.turns.isNotEmpty)
+            for (final turn in line.turns) (turn.speakerLabel, turn.text)
+          else if (line.text != null)
+            (line.speakerLabel, cleanTranscript(line.text!)),
+      ].where((entry) => entry.$2.isNotEmpty).toList();
+      final last = said.sublist(said.length > _liveLineCount ? said.length - _liveLineCount : 0);
+      if (mounted) setState(() => _liveLines = last);
     } catch (_) {}
   }
 
@@ -825,7 +841,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
               onSeeAll: () => unawaited(_openDay(today)),
               loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
               now: now,
-              lastLine: _lastLine,
+              liveLines: _liveLines,
             ),
             const SizedBox(height: 12),
           ],

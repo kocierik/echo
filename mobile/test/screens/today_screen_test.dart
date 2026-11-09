@@ -251,14 +251,55 @@ void main() {
       expect(find.byKey(const Key('today-top-card')), findsNothing);
       final live = find.byKey(const Key('day-now'));
       await tester.ensureVisible(live);
-      for (final text in [
-        'Now · 12 min',
-        'Call about Atlas',
-        'with Marco',
-        '"…so we move the demo to November…"',
-      ]) {
+      for (final text in ['Now · 12 min', 'Call about Atlas', 'with Marco']) {
         expect(find.descendant(of: live, matching: find.text(text)), findsOneWidget, reason: text);
       }
+      expect(
+        find.descendant(
+          of: live,
+          matching: find.textContaining('so we move the demo to November', findRichText: true),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the live transcript follows the conversation, turn by turn', (tester) async {
+      ConversationDetail detail(List<TranscriptLine> lines) => ConversationDetail(
+            card: card('live', startedAt: DateTime(2026, 10, 14, 17, 48), isOpen: true),
+            lines: lines,
+            entities: const [],
+          );
+      final api = FakeTodayApi(conversations: [
+        card('live', startedAt: DateTime(2026, 10, 14, 17, 48), isOpen: true),
+      ])
+        ..details['live'] = detail([
+          TranscriptLine(segmentId: 's1', recordedAt: DateTime(2026, 10, 14, 17, 59),
+              status: 'completed', text: '[You] Ciao.', speaker: 'self'),
+        ]);
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('day-now-line-0')), findsOneWidget);
+      expect(find.byKey(const Key('day-now-line-1')), findsNothing);
+
+      // A segment where two spoke arrives: each turn its line, the last three shown
+      api.details['live'] = detail([
+        TranscriptLine(segmentId: 's1', recordedAt: DateTime(2026, 10, 14, 17, 59),
+            status: 'completed', text: '[You] Ciao.', speaker: 'self'),
+        TranscriptLine(
+          segmentId: 's2', recordedAt: DateTime(2026, 10, 14, 18), status: 'completed',
+          text: '[You] Hai i numeri? Sì, eccoli.', speaker: 'self',
+          turns: const [
+            Turn(speaker: 'self', text: 'Hai i numeri?'),
+            Turn(speaker: 'other', speakerName: 'Person 2', text: 'Sì, eccoli.'),
+          ],
+        ),
+      ]);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('day-now-line-2')), findsOneWidget);
+      expect(find.byKey(const Key('day-now-line-3')), findsNothing);
+      expect(find.textContaining('Person 2', findRichText: true), findsOneWidget);
     });
   });
 

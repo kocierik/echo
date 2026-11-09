@@ -424,7 +424,7 @@ final class YourDayPanel extends StatelessWidget {
     this.maxVisible = 4,
     this.loadPhoto,
     this.now,
-    this.lastLine,
+    this.liveLines = const [],
     super.key,
   });
 
@@ -433,8 +433,8 @@ final class YourDayPanel extends StatelessWidget {
   /// For how long the conversation going on has lasted.
   final DateTime? now;
 
-  /// The last line heard in the conversation going on.
-  final String? lastLine;
+  /// The last lines heard in the conversation going on, (who, what), oldest first.
+  final List<(String, String)> liveLines;
 
   /// The image of a photo row (no thumbnail without it).
   final PhotoSourceLoader? loadPhoto;
@@ -518,7 +518,7 @@ final class YourDayPanel extends StatelessWidget {
                 conversation: conversation,
                 recording: recording,
                 now: now,
-                lastLine: lastLine,
+                liveLines: liveLines,
                 onTap: () => onOpen(conversation),
               ),
           ],
@@ -760,14 +760,14 @@ final class _NowRow extends StatelessWidget {
     required this.conversation,
     required this.recording,
     required this.now,
-    required this.lastLine,
+    required this.liveLines,
     required this.onTap,
   });
 
   final ConversationCard conversation;
   final bool recording;
   final DateTime? now;
-  final String? lastLine;
+  final List<(String, String)> liveLines;
   final VoidCallback onTap;
 
   @override
@@ -816,16 +816,24 @@ final class _NowRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text('with ${people.join(', ')}', style: textTheme.bodySmall),
               ],
-              if (lastLine case final line?) ...[
-                const SizedBox(height: 4),
-                Text(
-                  '"…$line…"',
-                  style: textTheme.bodyMedium?.copyWith(
-                    color: palette.text2,
-                    fontStyle: FontStyle.italic,
+              // The live transcript: the last lines, one each, who said it first
+              if (liveLines.isNotEmpty) const SizedBox(height: 4),
+              for (final (i, (who, what)) in liveLines.indexed)
+                Text.rich(
+                  key: Key('day-now-line-$i'),
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$who  ',
+                        style: textTheme.labelSmall?.copyWith(color: palette.text2),
+                      ),
+                      TextSpan(text: what),
+                    ],
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: textTheme.bodySmall,
                 ),
-              ],
             ],
           ),
         ),
