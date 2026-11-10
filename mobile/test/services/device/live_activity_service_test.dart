@@ -44,6 +44,17 @@ void main() {
           .status,
       'offline',
     );
+    expect(
+      LiveActivityState.from(const DeviceStatus(connectionState: DeviceConnectionState.off)),
+      isNull,
+    );
+    expect(
+      LiveActivityState.from(
+        const DeviceStatus(connectionState: DeviceConnectionState.turningOff),
+      )!
+          .status,
+      'muted',
+    );
   });
 
   test('updates only on a change, ends when unpaired or switched off',

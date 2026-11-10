@@ -14,12 +14,13 @@ final class LiveActivityState {
     required this.pendingMinutes,
   });
 
-  /// "listening", "muted" or "offline"; null: no Live Activity (nothing paired).
+  /// "listening", "muted" or "offline"; null: no Live Activity (nothing paired, or Echo off).
   static LiveActivityState? from(DeviceStatus device) {
     final status = switch (device.connectionState) {
-      DeviceConnectionState.unpaired => null,
+      DeviceConnectionState.unpaired || DeviceConnectionState.off => null,
       DeviceConnectionState.listening => 'listening',
       DeviceConnectionState.muted => 'muted',
+      DeviceConnectionState.turningOff => 'muted',
       _ => 'offline',
     };
     if (status == null) return null;

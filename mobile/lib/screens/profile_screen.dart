@@ -577,6 +577,8 @@ final class _EchoCard extends StatelessWidget {
   static String stateLabel(DeviceConnectionState state) => switch (state) {
         DeviceConnectionState.listening => 'Listening',
         DeviceConnectionState.muted => 'Muted',
+        DeviceConnectionState.turningOff => 'Turning off',
+        DeviceConnectionState.off => 'Off',
         DeviceConnectionState.scanning ||
         DeviceConnectionState.connecting ||
         DeviceConnectionState.bonding ||

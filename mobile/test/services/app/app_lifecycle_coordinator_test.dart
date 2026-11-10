@@ -73,6 +73,18 @@ void main() {
     expect(notificationPort.cancelledIds, [NotificationService.disconnectId]);
   });
 
+  test('turned off on purpose: no disconnected notification', () async {
+    states.add(const DeviceStatus(connectionState: DeviceConnectionState.turningOff));
+    states.add(const DeviceStatus(connectionState: DeviceConnectionState.off));
+    await Future<void>.delayed(Duration.zero);
+    expect(notificationPort.scheduledIds, isEmpty);
+
+    states.add(const DeviceStatus(connectionState: DeviceConnectionState.reconnecting));
+    states.add(const DeviceStatus(connectionState: DeviceConnectionState.off));
+    await Future<void>.delayed(Duration.zero);
+    expect(notificationPort.cancelledIds, [NotificationService.disconnectId]);
+  });
+
   test('notifies only when the dropped segment count increases', () async {
     states.add(const DeviceStatus(
       connectionState: DeviceConnectionState.listening,

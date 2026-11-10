@@ -46,10 +46,16 @@ final class DeviceController {
   StreamSubscription<DeviceBlePhase>? _phaseSubscription;
   StreamSubscription<DeviceTelemetry>? _telemetrySubscription;
   StreamSubscription<DeviceInfo>? _infoSubscription;
+  StreamSubscription<DevicePowerState>? _powerSubscription;
   DeviceRetryHandle? _retry;
   String? _remoteId;
   DeviceTelemetry? _telemetry;
   DeviceInfo? _info;
+  DevicePowerState _power = DevicePowerState.on;
+  Completer<void>? _turnOffReply;
+
+  static const refusedUpdatingMessage =
+      'Echo is updating; turn it off when the update is done.';
   int _retryIndex = 0;
   int _generation = 0;
   bool _started = false;
@@ -73,6 +79,7 @@ final class DeviceController {
     _phaseSubscription = _ble.phaseStream.listen(_onPhase);
     _telemetrySubscription = _ble.telemetryStream.listen(_onTelemetry);
     _infoSubscription = _ble.deviceInfoStream.listen(_onDeviceInfo);
+    _powerSubscription = _ble.powerStateStream.listen(_onPowerState);
 
     final generation = _generation;
     final remoteId = await _identityStore.loadRemoteId();
@@ -117,6 +124,7 @@ final class DeviceController {
       await _identityStore.saveRemoteId(remoteId);
       if (!_isCurrent(generation)) return;
       _remoteId = remoteId;
+      _power = DevicePowerState.on;
       _ready = true;
       _retryIndex = 0;
       _setConnectedState();
@@ -139,6 +147,28 @@ final class DeviceController {
     await _ble.setMicGain(gain);
   }
 
+  /// Echo finishes syncing, then turns off; its button turns it on. Completes once Echo
+  /// has started, and throws a [StateError] it refused with ([refusedUpdatingMessage]).
+  Future<void> turnOff() async {
+    _ensureActive();
+    final reply = Completer<void>();
+    _turnOffReply = reply;
+    final answered = reply.future.timeout(const Duration(seconds: 5));
+    answered.ignore();
+    try {
+      await _ble.powerOff();
+      await answered;
+    } finally {
+      if (identical(_turnOffReply, reply)) _turnOffReply = null;
+    }
+  }
+
+  /// Keeps Echo on while it is still syncing.
+  Future<void> cancelTurnOff() async {
+    _ensureActive();
+    await _ble.cancelPowerOff();
+  }
+
   Future<void> forget() async {
     _ensureActive();
     if (_remoteId == null) {
@@ -158,6 +188,7 @@ final class DeviceController {
       _remoteId = null;
       _telemetry = null;
       _info = null;
+      _power = DevicePowerState.on;
       _retryIndex = 0;
       _setState(const DeviceStatus(
         connectionState: DeviceConnectionState.unpaired,
@@ -214,6 +245,7 @@ final class DeviceController {
     await _phaseSubscription?.cancel();
     await _telemetrySubscription?.cancel();
     await _infoSubscription?.cancel();
+    await _powerSubscription?.cancel();
     await _ble.dispose();
     await _stateController.close();
   }
@@ -261,6 +293,7 @@ final class DeviceController {
       case DeviceBlePhase.bonding:
         if (_pairing) _setConnectionState(DeviceConnectionState.bonding);
       case DeviceBlePhase.ready:
+        _power = DevicePowerState.on;
         _ready = true;
         _retryIndex = 0;
         _cancelRetry();
@@ -282,6 +315,29 @@ final class DeviceController {
     if (_disposed) return;
     _info = info;
     if (_remoteId != null && _ready) _setConnectedState();
+  }
+
+  void _onPowerState(DevicePowerState power) {
+    if (_disposed) return;
+    final reply = _turnOffReply;
+    if (power == DevicePowerState.refused) {
+      if (reply != null && !reply.isCompleted) {
+        reply.completeError(StateError(refusedUpdatingMessage));
+      }
+      return;
+    }
+    if (reply != null && !reply.isCompleted) reply.complete();
+    _power = power;
+    switch (power) {
+      case DevicePowerState.on:
+        if (_ready) _setConnectedState();
+      case DevicePowerState.turningOff:
+        _setConnectedState();
+      case DevicePowerState.off:
+        _setConnectionState(DeviceConnectionState.off);
+      case DevicePowerState.refused:
+        break;
+    }
   }
 
   void _beginReconnectCycle() {
@@ -327,6 +383,7 @@ final class DeviceController {
     try {
       await _ble.connectSaved(remoteId);
       if (!_isCurrent(generation)) return;
+      _power = DevicePowerState.on;
       _ready = true;
       _retryIndex = 0;
       _setConnectedState();
@@ -351,11 +408,17 @@ final class DeviceController {
   }
 
   void _setConnectedState() {
+    DeviceConnectionState connected(bool muted) => switch (_power) {
+          DevicePowerState.turningOff => DeviceConnectionState.turningOff,
+          DevicePowerState.off => DeviceConnectionState.off,
+          DevicePowerState.on || DevicePowerState.refused =>
+            muted ? DeviceConnectionState.muted : DeviceConnectionState.listening,
+        };
     final telemetry = _telemetry;
     final info = _info;
     if (telemetry == null) {
       _setState(_state.copyWith(
-        connectionState: DeviceConnectionState.listening,
+        connectionState: connected(false),
         protocolVersion: info?.protocolVersion,
         firmwareVersion: info == null
             ? null
@@ -365,9 +428,7 @@ final class DeviceController {
       return;
     }
     _setState(DeviceStatus(
-      connectionState: telemetry.muted
-          ? DeviceConnectionState.muted
-          : DeviceConnectionState.listening,
+      connectionState: connected(telemetry.muted),
       batteryPercent: telemetry.batteryPercent,
         protocolVersion: info?.protocolVersion,
         firmwareVersion: info == null
@@ -382,7 +443,13 @@ final class DeviceController {
   }
 
   void _setConnectionState(DeviceConnectionState connectionState) {
-    _setState(_state.copyWith(connectionState: connectionState, error: null));
+    // Off, Echo is out of reach on purpose: not "reconnecting" or "offline"
+    final shown = _power == DevicePowerState.off &&
+            (connectionState == DeviceConnectionState.reconnecting ||
+                connectionState == DeviceConnectionState.offline)
+        ? DeviceConnectionState.off
+        : connectionState;
+    _setState(_state.copyWith(connectionState: shown, error: null));
   }
 
   void _setError(Object error) {

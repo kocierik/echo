@@ -309,6 +309,66 @@ void main() {
       expect(states, isEmpty);
       await subscription.cancel();
     });
+
+    test('turning off is kept over telemetry; off is kept through the disconnect', () async {
+      final fixture = _Fixture(savedId: 'saved-echo');
+      await fixture.controller.start();
+      fixture.scheduler.fire(0);
+      await _flush();
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
+      fixture.ble.emitTelemetry(_telemetry(bufferCount: 2));
+
+      final turningOff = fixture.controller.turnOff();
+      await _flush();
+      expect(fixture.ble.powerOffWrites, 1);
+      fixture.ble.emitPower(DevicePowerState.turningOff);
+      await turningOff;
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.turningOff);
+
+      fixture.ble.emitTelemetry(_telemetry(bufferCount: 1));
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.turningOff);
+      expect(fixture.controller.state.bufferCount, 1);
+
+      fixture.ble.emitPower(DevicePowerState.off);
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.off);
+      fixture.ble.emitPhase(DeviceBlePhase.disconnected);
+      await _flush();
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.off);
+
+      // Turned on again: it reconnects and listens
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.listening);
+    });
+
+    test('a cancelled turn-off listens again, or stays muted', () async {
+      final fixture = _Fixture(savedId: 'saved-echo');
+      await fixture.controller.start();
+      fixture.ble.emitTelemetry(_telemetry(muted: true));
+      final turningOff = fixture.controller.turnOff();
+      fixture.ble.emitPower(DevicePowerState.turningOff);
+      await turningOff;
+
+      await fixture.controller.cancelTurnOff();
+      expect(fixture.ble.cancelPowerOffWrites, 1);
+      fixture.ble.emitPower(DevicePowerState.on);
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.muted);
+    });
+
+    test('Echo refuses to turn off while updating', () async {
+      final fixture = _Fixture(savedId: 'saved-echo');
+      await fixture.controller.start();
+      fixture.ble.emitTelemetry(_telemetry());
+
+      final turningOff = fixture.controller.turnOff();
+      fixture.ble.emitPower(DevicePowerState.refused);
+
+      await expectLater(
+        turningOff,
+        throwsA(isA<StateError>().having(
+            (error) => error.message, 'message', DeviceController.refusedUpdatingMessage)),
+      );
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.listening);
+    });
   });
 }
 

@@ -6,6 +6,8 @@ enum DeviceConnectionState {
   bonding,
   listening,
   muted,
+  turningOff,
+  off,
   reconnecting,
   offline,
   error,

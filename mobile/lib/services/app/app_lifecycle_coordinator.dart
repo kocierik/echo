@@ -469,6 +469,8 @@ final class AppLifecycleBinding with WidgetsBindingObserver {
     switch (status.connectionState) {
       case DeviceConnectionState.listening:
       case DeviceConnectionState.muted:
+      case DeviceConnectionState.turningOff:
+      case DeviceConnectionState.off:
         unawaited(_notifications.cancelDisconnected());
       case DeviceConnectionState.reconnecting:
       case DeviceConnectionState.offline:

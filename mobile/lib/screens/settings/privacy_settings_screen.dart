@@ -52,6 +52,7 @@ class PrivacySettingsScreen extends StatelessWidget {
         final microphoneStatus = switch (connectionState) {
           DeviceConnectionState.muted => 'Muted',
           DeviceConnectionState.listening => 'Listening',
+          DeviceConnectionState.turningOff || DeviceConnectionState.off => 'Off',
           _ => 'Unavailable',
         };
         return SettingsPageScaffold(

@@ -94,6 +94,16 @@ final class DevicePill extends StatelessWidget {
           dot: palette.onChromeMuted,
           hollow: true,
         ),
+      DeviceConnectionState.turningOff => _PillLook(
+          label: 'Turning off',
+          spoken: 'Echo is turning off',
+          dot: palette.amber),
+      DeviceConnectionState.off => _PillLook(
+          label: 'Off',
+          spoken: 'Echo is off',
+          dot: palette.onChromeMuted,
+          hollow: true,
+        ),
       DeviceConnectionState.scanning ||
       DeviceConnectionState.connecting ||
       DeviceConnectionState.bonding ||

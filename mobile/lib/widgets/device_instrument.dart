@@ -14,6 +14,7 @@ final class DeviceInstrumentPanel extends StatelessWidget {
     this.onMute,
     this.onReconnect,
     this.onPair,
+    this.onKeepOn,
     this.busy = false,
     this.firmwareLine,
     super.key,
@@ -28,6 +29,9 @@ final class DeviceInstrumentPanel extends StatelessWidget {
   final ValueChanged<bool>? onMute;
   final VoidCallback? onReconnect;
   final VoidCallback? onPair;
+
+  /// Keeps Echo on while it is still syncing.
+  final VoidCallback? onKeepOn;
   final bool busy;
 
   /// "Firmware 0.5.0", or that a new one is ready.
@@ -43,6 +47,8 @@ final class DeviceInstrumentPanel extends StatelessWidget {
     final (label, led) = switch (state) {
       DeviceConnectionState.listening => ('Listening', palette.live),
       DeviceConnectionState.muted => ('Muted', null),
+      DeviceConnectionState.turningOff => ('Turning off', palette.amber),
+      DeviceConnectionState.off => ('Off', null),
       DeviceConnectionState.scanning ||
       DeviceConnectionState.connecting ||
       DeviceConnectionState.bonding ||
@@ -57,6 +63,7 @@ final class DeviceInstrumentPanel extends StatelessWidget {
         ('Mute Echo', () => onMute!(true)),
       DeviceConnectionState.muted when onMute != null =>
         ('Listen again', () => onMute!(false)),
+      DeviceConnectionState.turningOff when onKeepOn != null => ('Keep Echo on', onKeepOn!),
       DeviceConnectionState.offline || DeviceConnectionState.error when onReconnect != null =>
         ('Reconnect', onReconnect!),
       DeviceConnectionState.unpaired when onPair != null => ('Pair Echo', onPair!),
@@ -94,6 +101,11 @@ final class DeviceInstrumentPanel extends StatelessWidget {
                     if (waiting != null) ...[
                       const SizedBox(height: 8),
                       Text(waiting, style: textTheme.bodySmall),
+                    ],
+                    if (state == DeviceConnectionState.off) ...[
+                      const SizedBox(height: 8),
+                      Text("Hold Echo's button for 2 seconds to turn it on.",
+                          style: textTheme.bodySmall),
                     ],
                   ],
                 ),
