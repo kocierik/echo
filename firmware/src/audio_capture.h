@@ -20,6 +20,9 @@ public:
     bool begin();
     void end();
 
+    /** The I2S driver is installed: off while muted or turning off, to save power. */
+    bool isRunning() const { return _initialized; }
+
     /**
      * Read PCM samples from microphone
      *

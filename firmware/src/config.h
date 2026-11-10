@@ -3,8 +3,8 @@
 // The firmware version the app sees (DEVICE_INFO) and `make firmware-release` publishes:
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
-#define FIRMWARE_VERSION_MINOR 9
-#define FIRMWARE_VERSION_PATCH 3
+#define FIRMWARE_VERSION_MINOR 10
+#define FIRMWARE_VERSION_PATCH 0
 
 // ============================================================
 // Audio Configuration
@@ -148,10 +148,16 @@
 // The card's speech, encrypted (0.6.0 kept it in clear in /echo/q)
 #define SD_SEALED_FOLDER "/echo/s"
 // The button, between D1 (GPIO2) and GND (internal pull-up): a short press takes a photo,
-// a long press mutes or resumes listening
+// a long press (released after 1.5 s) mutes or resumes listening, a 5 s hold turns Echo
+// off. Off, a 1.5 s hold turns it on (GPIO2 is an RTC pin: it can wake the chip)
 #define BUTTON_PIN 2
 #define BUTTON_DEBOUNCE_MS 50
 #define BUTTON_LONG_PRESS_MS 1500
+#define BUTTON_POWER_OFF_MS 5000
+#define BUTTON_WAKE_HOLD_MS 1500
+
+// 80 MHz is enough for Opus at 16 kHz mono and keeps BLE working; 240 MHz only ran hotter
+#define CPU_FREQ_MHZ 80
 
 static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,
               "A segment must fit in the PSRAM buffer");

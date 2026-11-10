@@ -254,7 +254,7 @@ void test_vad_trigger_frame_is_not_encoded_after_prebuffer_replay() {
 
 void test_muted_gate_discards_capture_before_reading_audio() {
     const std::string source = readMainSource();
-    const size_t muteBlockStart = source.find("if (muteState.isMuted())");
+    const size_t muteBlockStart = source.find("if (muteState.isMuted() || micFailed)");
     const size_t audioRead = source.find("audio.readSamples", muteBlockStart);
 
     TEST_ASSERT_TRUE(muteBlockStart != std::string::npos);

@@ -13,9 +13,14 @@
  *    before the audio; it stays in RAM only until the app confirms the upload
  * 8. On OTA_BEGIN, pause capture and write the new firmware to the other app slot;
  *    after the restart it is kept only once the app talks to it (ota_health.h)
+ * 9. Muted, the microphone's driver is stopped. Turned off (app or a 5 s hold), Echo keeps
+ *    what it was hearing, moves PSRAM to the card or waits for the phone, then deep-sleeps;
+ *    a 1.5 s hold turns it on (power_off_policy.h, wake_gate.h)
  */
 
 #include <esp_ota_ops.h>
+#include <esp_sleep.h>
+#include <driver/rtc_io.h>
 
 #include "config.h"
 #include "audio_capture.h"
@@ -35,6 +40,8 @@
 #include "battery_monitor.h"
 #include "button_gesture.h"
 #include "ota_health.h"
+#include "power_off_policy.h"
+#include "wake_gate.h"
 
 // ============================================================
 // Global instances
@@ -60,7 +67,8 @@ DevicePreferences devicePreferences;
 PhotoSlot photoSlot;
 CameraCapture camera;
 BatteryMonitor battery;
-ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS);
+ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS, BUTTON_POWER_OFF_MS);
+PowerOffPolicy powerOff;
 OtaHealthCheck otaHealth(OTA_CONFIRM_TIMEOUT_MS);
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
@@ -96,7 +104,21 @@ uint16_t energyFrameCount = 0;
 uint32_t nextSegmentId = 1;
 uint32_t segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
 
+// The microphone did not restart after a standby: Echo reports itself muted
+bool micFailed = false;
+
+// What the app asked over BLE: acted on by the loop, outside the transport's update
+enum PowerRequest : uint8_t { POWER_REQUEST_NONE, POWER_REQUEST_OFF, POWER_REQUEST_CANCEL };
+volatile PowerRequest powerRequest = POWER_REQUEST_NONE;
+
+// How long a VAD frame takes to process: checks 80 MHz keeps up (32 ms of audio a frame)
+uint32_t frameUsMax = 0;
+uint64_t frameUsTotal = 0;
+uint32_t frameCount = 0;
+
 void discardInProgressCapture();
+void finalizeSegment();
+void handlePowerOff(bool turnOff);
 void appendEncoded(size_t bytes);
 void dropPhotoForPrivacy();
 
@@ -120,8 +142,77 @@ void fatal(const char* message) {
     while (true) { delay(1000); }
 }
 
+/** Deep sleep until the button is pressed. The LED pin is held high: the LED stays dark
+ *  and, with a card, its chip select stays deselected. */
+[[noreturn]] void sleepNow() {
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);
+    gpio_hold_en(static_cast<gpio_num_t>(LED_PIN));
+    gpio_deep_sleep_hold_en();
+    rtc_gpio_pullup_en(static_cast<gpio_num_t>(BUTTON_PIN));
+    rtc_gpio_pulldown_dis(static_cast<gpio_num_t>(BUTTON_PIN));
+    esp_sleep_enable_ext0_wakeup(static_cast<gpio_num_t>(BUTTON_PIN), 0);
+    esp_deep_sleep_start();
+}
+
+/** Woken by the button: only a hold turns Echo on; the LED says so, then the button is
+ *  released before anything reads it, or the hold would count as a press. */
+void checkButtonWake() {
+    if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) return;
+    gpio_deep_sleep_hold_dis();
+    gpio_hold_dis(static_cast<gpio_num_t>(LED_PIN));
+    rtc_gpio_deinit(static_cast<gpio_num_t>(BUTTON_PIN));
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);
+
+    WakeGate gate(BUTTON_WAKE_HOLD_MS, BUTTON_DEBOUNCE_MS);
+    const uint32_t wokeAtMs = millis();
+    while (true) {
+        switch (gate.update(digitalRead(BUTTON_PIN) == LOW, millis() - wokeAtMs)) {
+            case WakeGate::Decision::BOOT: {
+                digitalWrite(LED_PIN, LOW);
+                uint32_t releasedAtMs = millis();
+                while (millis() - releasedAtMs < BUTTON_DEBOUNCE_MS) {
+                    if (digitalRead(BUTTON_PIN) == LOW) releasedAtMs = millis();
+                    delay(5);
+                }
+                digitalWrite(LED_PIN, HIGH);
+                return;
+            }
+            case WakeGate::Decision::SLEEP:
+                sleepNow();
+            case WakeGate::Decision::WAIT:
+                delay(10);
+                break;
+        }
+    }
+}
+
+/** The I2S driver runs only while Echo listens: muted, failed or turning off, it is
+ *  uninstalled, which is what makes standby cheap. */
+void syncMicrophone() {
+    const bool wanted = !muteState.isMuted() && !micFailed &&
+                        powerOff.state() == PowerOffPolicy::State::ON;
+    if (wanted == audio.isRunning()) return;
+    if (!wanted) {
+        audio.end();
+        return;
+    }
+    if (audio.begin()) {
+        vad.reset();
+        return;
+    }
+    micFailed = true;
+    indicators.setMuted(true);
+    bleTransport.setMuted(true);
+    Serial.println("[Audio] microphone did not restart: reported as muted");
+}
+
 void handleTakePhoto(void*) {
     if (bleTransport.otaInProgress()) {
+        bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_BUSY);
+    } else if (powerOff.state() != PowerOffPolicy::State::ON) {
         bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_BUSY);
     } else if (muteState.isMuted()) {
         bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_MUTED);
@@ -144,6 +235,7 @@ void handleMicGain(uint8_t gain, void*) {
 }
 
 void handleMuteCommand(bool muted, void*) {
+    micFailed = false;
     const bool changed = muteState.isMuted() != muted;
     const bool persisted = muteState.setMuted(muted);
 
@@ -152,6 +244,7 @@ void handleMuteCommand(bool muted, void*) {
 
     indicators.setMuted(muteState.isMuted());
     bleTransport.setMuted(muteState.isMuted());
+    syncMicrophone();
 
     if (!persisted) {
         Serial.println("[Privacy] Failed to persist mute state");
@@ -159,10 +252,92 @@ void handleMuteCommand(bool muted, void*) {
     Serial.printf("[Privacy] Mute: %s\n", muteState.isMuted() ? "ON" : "OFF");
 }
 
+void handlePowerOffCommand(bool turnOff, void*) {
+    powerRequest = turnOff ? POWER_REQUEST_OFF : POWER_REQUEST_CANCEL;
+}
+
+void cancelPowerOff() {
+    if (!powerOff.cancel()) return;
+    indicators.setBlinking(false);
+    syncMicrophone();
+    bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_ON);
+    Serial.println("[Power] turn-off cancelled");
+}
+
+/** Stop listening, keep what was being said, then empty PSRAM before sleeping. */
+void handlePowerOff(bool turnOff) {
+    if (!turnOff) {
+        cancelPowerOff();
+        return;
+    }
+    switch (powerOff.request(bleTransport.otaInProgress() || otaHealth.onTrial())) {
+        case PowerOffPolicy::Request::REFUSED_UPDATING:
+            bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_REFUSED,
+                                       EchoBleProtocol::POWER_REASON_UPDATING);
+            Serial.println("[Power] turn-off refused: updating");
+            return;
+        case PowerOffPolicy::Request::ALREADY_TURNING_OFF:
+            bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_TURNING_OFF);
+            return;
+        case PowerOffPolicy::Request::ACCEPTED:
+            break;
+    }
+    if (state == STATE_RECORDING) finalizeSegment();
+    else discardInProgressCapture();
+    bleTransport.cancelPhoto();
+    if (photoSlot.discard()) bleTransport.reportPhotoFailed(EchoBleProtocol::PHOTO_FAILED_BUSY);
+    syncMicrophone();
+    indicators.setBlinking(true);
+    bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_TURNING_OFF);
+    Serial.printf("[Power] turning off: %u segments in PSRAM\n", buffer.memoryCount());
+}
+
+[[noreturn]] void turnOffNow() {
+    Serial.println("[Power] off");
+    bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_OFF);
+    const uint32_t startedMs = millis();
+    while (bleTransport.powerStatePending() && millis() - startedMs < 300) {
+        bleTransport.update(buffer);
+        delay(5);
+    }
+    bleTransport.shutdown();
+    delay(100);
+    audio.end();
+    indicators.setBlinking(false);
+    // A 5 s hold turned it off: sleeping with the button down would wake it at once
+    uint32_t releasedAtMs = millis();
+    while (millis() - releasedAtMs < BUTTON_DEBOUNCE_MS) {
+        if (digitalRead(BUTTON_PIN) == LOW) releasedAtMs = millis();
+        delay(5);
+    }
+    Serial.flush();
+    sleepNow();
+}
+
+/** One step a loop: BLE keeps running, so the phone can collect PSRAM meanwhile. */
+void continueTurningOff() {
+    if (photoSlot.isReady()) {
+        bleTransport.cancelPhoto();
+        photoSlot.discard();
+    }
+    if (powerOff.shouldSpill(buffer.hasCard())) {
+        if (buffer.spillOldestToCard() == SegmentQueue::Spill::REFUSED) {
+            powerOff.onCardRefused();
+            Serial.println("[Power] the card took no more: waiting for the phone");
+        } else {
+            bleTransport.requestBufferStatus();
+        }
+    }
+    if (powerOff.update(buffer.memoryCount()) == PowerOffPolicy::State::OFF_NOW) turnOffNow();
+    delay(5);
+}
+
 // ============================================================
 // Setup
 // ============================================================
 void setup() {
+    checkButtonWake();
+    setCpuFrequencyMhz(CPU_FREQ_MHZ);
     Serial.begin(115200);
     delay(1000);
     Serial.printf("\n=== Echo — Second Brain Wearable %d.%d.%d ===\n",
@@ -182,6 +357,7 @@ void setup() {
 
     bleTransport.setMuteCommandCallback(handleMuteCommand, nullptr);
     bleTransport.setMicGainCallback(handleMicGain, nullptr);
+    bleTransport.setPowerOffCallback(handlePowerOffCommand, nullptr);
 
     if (!devicePreferences.begin()) {
         Serial.println("[Privacy] Preferences init failed; defaulting to listening");
@@ -241,13 +417,14 @@ void setup() {
     }
 
     // Initialize audio capture
-    if (!audio.begin()) fatal("[FATAL] Audio capture init failed");
+    // Muted, the microphone stays off until listening resumes (syncMicrophone)
+    if (!muteState.isMuted() && !audio.begin()) fatal("[FATAL] Audio capture init failed");
 
     if (!opusCodec.begin()) fatal("[FATAL] Opus encoder init failed");
     vad.reset();
 
     indicators.setBlinking(false);
-    Serial.println("[OK] System ready — listening for speech\n");
+    Serial.printf("[OK] System ready at %lu MHz\n", static_cast<unsigned long>(getCpuFrequencyMhz()));
 }
 
 // ============================================================
@@ -256,6 +433,9 @@ void setup() {
 void loop() {
     indicators.update();
     bleTransport.update(buffer);
+    const PowerRequest request = powerRequest;
+    powerRequest = POWER_REQUEST_NONE;
+    if (request != POWER_REQUEST_NONE) handlePowerOff(request == POWER_REQUEST_OFF);
 
     switch (otaHealth.update(bleTransport.appTalking(), millis())) {
         case OtaHealthCheck::Decision::KEEP:
@@ -286,8 +466,17 @@ void loop() {
             handleTakePhoto(nullptr);
             break;
         case ButtonGesture::LONG_PRESS:
-            Serial.println("[Button] long press: mute toggle");
-            handleMuteCommand(!muteState.isMuted(), nullptr);
+            if (powerOff.state() == PowerOffPolicy::State::TURNING_OFF) {
+                Serial.println("[Button] long press: keep Echo on");
+                cancelPowerOff();
+            } else {
+                Serial.println("[Button] long press: mute toggle");
+                handleMuteCommand(!muteState.isMuted(), nullptr);
+            }
+            break;
+        case ButtonGesture::VERY_LONG_PRESS:
+            Serial.println("[Button] very long press: turn off");
+            handlePowerOff(true);
             break;
         case ButtonGesture::NONE:
             break;
@@ -302,12 +491,17 @@ void loop() {
         return;
     }
 
-    if (muteState.isMuted()) {
+    if (powerOff.state() != PowerOffPolicy::State::ON) {
+        continueTurningOff();
+        return;
+    }
+
+    if (muteState.isMuted() || micFailed) {
         if (state != STATE_IDLE || segmentPos != 0 || preBufferCount != 0) {
             discardInProgressCapture();
         }
         // A photo that finished after muting is dropped too
-        if (photoSlot.isReady()) dropPhotoForPrivacy();
+        if (muteState.isMuted() && photoSlot.isReady()) dropPhotoForPrivacy();
 
         delay(50);
         return;
@@ -316,6 +510,7 @@ void loop() {
     // Read audio frame from microphone
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
+    const uint32_t frameStartedUs = micros();
     amplify(pcmBuffer, samplesRead, micGain);
 
     // Run VAD on the frame
@@ -376,6 +571,11 @@ void loop() {
             break;
 
     }
+
+    const uint32_t frameUs = micros() - frameStartedUs;
+    if (frameUs > frameUsMax) frameUsMax = frameUs;
+    frameUsTotal += frameUs;
+    ++frameCount;
 }
 
 // ============================================================
@@ -434,6 +634,15 @@ void finalizeSegment() {
 
     const uint32_t durationMs = millis() - segmentStartMs;
     Serial.printf("[Main] Segment ready: %u bytes, %ums\n", (unsigned)segmentPos, durationMs);
+    if (frameCount > 0) {
+        Serial.printf("[Main] frame time avg=%lu us max=%lu us at %lu MHz\n",
+                      static_cast<unsigned long>(frameUsTotal / frameCount),
+                      static_cast<unsigned long>(frameUsMax),
+                      static_cast<unsigned long>(getCpuFrequencyMhz()));
+    }
+    frameUsMax = 0;
+    frameUsTotal = 0;
+    frameCount = 0;
 
     const uint16_t avgEnergy =
         energyFrameCount > 0 ? static_cast<uint16_t>(energySum / energyFrameCount) : 0;
