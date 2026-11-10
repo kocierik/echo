@@ -340,6 +340,25 @@ void main() {
       expect(fixture.controller.state.connectionState, DeviceConnectionState.listening);
     });
 
+    test('a disconnect while turning off shows off, even if OFF was lost', () async {
+      final fixture = _Fixture(savedId: 'saved-echo');
+      await fixture.controller.start();
+      fixture.scheduler.fire(0);
+      await _flush();
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
+      fixture.ble.emitTelemetry(_telemetry());
+
+      final turningOff = fixture.controller.turnOff();
+      fixture.ble.emitPower(DevicePowerState.turningOff);
+      await turningOff;
+      fixture.ble.emitPhase(DeviceBlePhase.disconnected);
+      await _flush();
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.off);
+
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
+      expect(fixture.controller.state.connectionState, DeviceConnectionState.listening);
+    });
+
     test('a cancelled turn-off listens again, or stays muted', () async {
       final fixture = _Fixture(savedId: 'saved-echo');
       await fixture.controller.start();

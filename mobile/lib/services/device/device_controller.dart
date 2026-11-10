@@ -148,7 +148,8 @@ final class DeviceController {
   }
 
   /// Echo finishes syncing, then turns off; its button turns it on. Completes once Echo
-  /// has started, and throws a [StateError] it refused with ([refusedUpdatingMessage]).
+  /// has started; throws a [StateError] if it refused ([refusedUpdatingMessage]), or a
+  /// [TimeoutException] if it did not answer.
   Future<void> turnOff() async {
     _ensureActive();
     final reply = Completer<void>();
@@ -443,8 +444,10 @@ final class DeviceController {
   }
 
   void _setConnectionState(DeviceConnectionState connectionState) {
-    // Off, Echo is out of reach on purpose: not "reconnecting" or "offline"
-    final shown = _power == DevicePowerState.off &&
+    // Off, Echo is out of reach on purpose: not "reconnecting" or "offline".
+    // Turning off counts too: Echo may sleep before its OFF frame arrives.
+    final shown = (_power == DevicePowerState.off ||
+                _power == DevicePowerState.turningOff) &&
             (connectionState == DeviceConnectionState.reconnecting ||
                 connectionState == DeviceConnectionState.offline)
         ? DeviceConnectionState.off
