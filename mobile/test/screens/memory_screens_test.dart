@@ -1,11 +1,15 @@
 import 'package:echo_app/models/memory_items.dart';
 import 'package:echo_app/screens/settings/about_you_screen.dart';
 import 'package:echo_app/screens/settings/documents_screen.dart';
+import 'package:echo_app/screens/people_screen.dart';
 import 'package:echo_app/services/api/api_exception.dart';
 import 'package:echo_app/services/api/memory_items_api.dart';
+import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/fake_memory_api.dart';
 
 final class _Memory implements AboutYouApi, DocumentsApi {
   List<UserFact> kept = [
@@ -98,6 +102,28 @@ Future<void> _pump(WidgetTester tester, Widget screen) async {
 }
 
 void main() {
+  testWidgets('People has a Map action that opens the map', (tester) async {
+    final controller = MemoriesController(api: FakeMemoryApi());
+    addTearDown(controller.dispose);
+    var opened = false;
+
+    await _pump(tester, PeopleScreen(
+      controller: controller,
+      onOpenPerson: (_) async {},
+      onOpenMap: () async {
+        opened = true;
+      },
+      now: DateTime(2026, 11, 10),
+    ));
+
+    final mapAction = find.byKey(const Key('people-map'));
+    expect(mapAction, findsOneWidget);
+    expect(find.descendant(of: mapAction, matching: find.text('Map')), findsOneWidget);
+    await tester.tap(mapAction);
+    await tester.pumpAndSettle();
+    expect(opened, isTrue);
+  });
+
   group('About you', () {
     testWidgets('the kept facts and what Echo noticed, kept with a tap', (tester) async {
       final api = _Memory();

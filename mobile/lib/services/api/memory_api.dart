@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/action_models.dart';
 import '../../models/memory.dart';
+import '../../models/memory_graph.dart';
 import '../../models/person.dart';
 import '../../models/segment.dart';
 import '../../models/task_item.dart';
@@ -11,7 +12,12 @@ import 'api_exception.dart';
 
 /// What the Memories and Tasks screens read and change.
 abstract interface class MemoryApi {
-  Future<List<ConversationCard>> listConversations({int limit = 30, int offset = 0});
+  Future<List<ConversationCard>> listConversations({
+    int limit = 30,
+    int offset = 0,
+    String? topic,
+  });
+  Future<MemoryGraph> getMemoryGraph({int days = 90});
   Future<ConversationDetail> getConversation(String id);
   Future<MemorySearchResults> search(String query);
   Future<List<TaskItem>> listTasks({required bool done, int limit = 200});
@@ -117,9 +123,13 @@ mixin MemoryEndpoints on ApiClient
   Future<List<ConversationCard>> listConversations({
     int limit = 30,
     int offset = 0,
+    String? topic,
   }) async {
-    final response =
-        await getCached('/api/conversations?limit=$limit&offset=$offset');
+    final topicQuery =
+        topic == null ? '' : '&topic=${Uri.encodeQueryComponent(topic)}';
+    final response = await getCached(
+      '/api/conversations?limit=$limit&offset=$offset$topicQuery',
+    );
     return parse(response.data, (data) {
       final items =
           (data as Map<String, dynamic>)['conversations'] as List<dynamic>;
@@ -127,6 +137,15 @@ mixin MemoryEndpoints on ApiClient
           .map((item) => ConversationCard.fromJson(item as Map<String, dynamic>))
           .toList();
     });
+  }
+
+  @override
+  Future<MemoryGraph> getMemoryGraph({int days = 90}) async {
+    final response = await getCached('/api/memory-graph?days=$days');
+    return parse(
+      response.data,
+      (data) => MemoryGraph.fromJson(data as Map<String, dynamic>),
+    );
   }
 
   @override

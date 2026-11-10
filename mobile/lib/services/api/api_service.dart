@@ -41,7 +41,8 @@ export 'voice_api.dart';
 
 /// The Echo server: every screen's interface, from the endpoint groups in this folder
 /// (one file each), over the shared transport of [ApiClient].
-/// Person facts and their rejections are exposed through [MemoryEndpoints].
+/// Person facts, the memory graph and their related reads are exposed through
+/// [MemoryEndpoints].
 class ApiService extends ApiClient
     with
         ChatEndpoints,

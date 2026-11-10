@@ -12,6 +12,7 @@ final class PeopleScreen extends StatefulWidget {
   const PeopleScreen({
     required this.controller,
     required this.onOpenPerson,
+    required this.onOpenMap,
     required this.now,
     super.key,
   });
@@ -19,6 +20,7 @@ final class PeopleScreen extends StatefulWidget {
   /// Memories' controller: the same people, loaded once.
   final MemoriesController controller;
   final Future<void> Function(String id) onOpenPerson;
+  final Future<void> Function() onOpenMap;
   final DateTime now;
 
   @override
@@ -52,7 +54,17 @@ final class _PeopleScreenState extends State<PeopleScreen> {
     final state = widget.controller.state;
     return Scaffold(
       backgroundColor: palette.background,
-      appBar: AppBar(title: const Text('People')),
+      appBar: AppBar(
+        title: const Text('People'),
+        actions: [
+          TextButton.icon(
+            key: const Key('people-map'),
+            onPressed: () => unawaited(widget.onOpenMap()),
+            icon: const Icon(Icons.hub_outlined),
+            label: const Text('Map'),
+          ),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: Column(

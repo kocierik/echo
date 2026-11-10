@@ -756,6 +756,57 @@ void main() {
   });
 
   group('Today insights', () {
+    test('loads the memory graph for a time window', () async {
+      final requests = <http.BaseRequest>[];
+      final service = _service((request) {
+        requests.add(request);
+        return _jsonResponse(request, 200, {
+          'nodes': [
+            {'id': 'you', 'kind': 'you', 'label': 'You', 'weight': 12},
+            {'id': 'p1', 'kind': 'person', 'label': 'Marco', 'weight': 7},
+            {'id': 't1', 'kind': 'topic', 'label': 'Atlas', 'weight': 3},
+          ],
+          'edges': [
+            {'a': 'p1', 'b': 't1', 'weight': 3},
+          ],
+        });
+      });
+
+      final graph = await service.getMemoryGraph();
+      await service.getMemoryGraph(days: 30);
+
+      expect(requests.map((request) => request.url.path),
+          ['/api/memory-graph', '/api/memory-graph']);
+      expect(requests.map((request) => request.url.queryParameters['days']),
+          ['90', '30']);
+      expect(graph.nodes.map((node) => node.id), ['you', 'p1', 't1']);
+      expect(graph.nodes[1].label, 'Marco');
+      expect(graph.nodes[1].weight, 7);
+      expect(graph.edges.single.a, 'p1');
+      expect(graph.edges.single.b, 't1');
+      expect(graph.edges.single.weight, 3);
+    });
+
+    test('filters conversations by an encoded topic', () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _jsonResponse(request, 200, {'conversations': []});
+      });
+
+      final conversations = await service.listConversations(
+        topic: 'Atlas & design',
+      );
+
+      expect(captured.url.path, '/api/conversations');
+      expect(captured.url.queryParameters, {
+        'limit': '30',
+        'offset': '0',
+        'topic': 'Atlas & design',
+      });
+      expect(conversations, isEmpty);
+    });
+
     test('latest digest is the newest non-empty summary of the last two days',
         () async {
       late http.BaseRequest captured;

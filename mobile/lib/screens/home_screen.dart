@@ -38,6 +38,7 @@ import '../widgets/saved_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
 import 'edit_today_screen.dart';
+import 'memory_graph_screen.dart';
 import 'memory_search_screen.dart';
 import 'people_screen.dart';
 import 'person_screen.dart';
@@ -728,7 +729,18 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       builder: (_) => PeopleScreen(
         controller: _memories,
         onOpenPerson: _openPerson,
+        onOpenMap: _openMemoryGraph,
         now: widget.clock(),
+      ),
+    ));
+  }
+
+  Future<void> _openMemoryGraph() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => MemoryGraphScreen(
+        api: _api,
+        onOpenPerson: _openPerson,
+        onOpenConversation: _openById,
       ),
     ));
   }

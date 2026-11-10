@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/memory.dart';
+import 'package:echo_app/models/memory_graph.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/segment.dart';
@@ -25,6 +26,8 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
         doneTasks = doneTasks ?? [];
 
   List<ConversationCard> conversations;
+  Map<String, List<ConversationCard>> topicConversations = {};
+  MemoryGraph memoryGraph = const MemoryGraph(nodes: [], edges: []);
   Map<String, ConversationDetail> details;
   List<TaskItem> openTasks;
   List<TaskItem> doneTasks;
@@ -39,6 +42,7 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   Object? detailError;
   Object? searchError;
   Object? taskError;
+  Object? graphError;
 
   /// Completes a call only when the test says so.
   Completer<void>? gate;
@@ -51,12 +55,26 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   }
 
   @override
-  Future<List<ConversationCard>> listConversations(
-      {int limit = 30, int offset = 0}) async {
-    calls.add('list $limit $offset');
+  Future<List<ConversationCard>> listConversations({
+    int limit = 30,
+    int offset = 0,
+    String? topic,
+  }) async {
+    calls.add('list $limit $offset${topic == null ? '' : ' topic=$topic'}');
     await _wait();
     if (listError case final error?) throw error;
-    return conversations.skip(offset).take(limit).toList();
+    final source = topic == null
+        ? conversations
+        : topicConversations[topic] ?? const <ConversationCard>[];
+    return source.skip(offset).take(limit).toList();
+  }
+
+  @override
+  Future<MemoryGraph> getMemoryGraph({int days = 90}) async {
+    calls.add('graph $days');
+    await _wait();
+    if (graphError case final error?) throw error;
+    return memoryGraph;
   }
 
   @override
