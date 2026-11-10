@@ -26,6 +26,7 @@ from app.models.conversation import Conversation
 from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
 from app.services import places
+from app.services.person_facts import current_facts
 from app.services.people import in_person_conversations, names_person
 from app.services.saved import find_items, item_line
 from app.services.temporal import DateRange, conversation_overlaps
@@ -403,6 +404,11 @@ async def describe_people(
             )
             line += f". Mentioned in: {listed}"
         lines.append(line)
+        facts = await current_facts(db, user_id, person.id)
+        lines.extend(
+            f"{person.name}: {fact.text} (from {fact.created_at:%Y-%m-%d})"
+            for fact in facts[:8]
+        )
     return "\n".join(lines)
 
 

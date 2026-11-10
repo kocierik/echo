@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Chunk
+from app.models.person_fact import PersonFact
 from app.services.entity_mentions import record_mentions
 from app.services.memory_retrieval import people_named_in, retrieve_memory_context
 from app.services.people import names_person
@@ -69,6 +70,56 @@ async def test_the_named_person_s_conversations_come_first(db_session: AsyncSess
     assert "Preventivo" in memory.context
     # The best other passage still follows
     assert [s["conversation_id"] for s in memory.sources] == [with_marco.id, elsewhere.id]
+
+
+@pytest.mark.asyncio
+async def test_a_named_persons_facts_come_first(db_session: AsyncSession):
+    started_at = datetime(2026, 11, 3, tzinfo=timezone.utc)
+    conversation, _ = await make_conversation(
+        db_session, started_at=started_at, title="Acme", texts=()
+    )
+    marco = make_entity(conversation, "person", "Marco")
+    db_session.add(marco)
+    await db_session.flush()
+    await record_mentions(db_session, [marco])
+    db_session.add_all(
+        [
+            PersonFact(
+                user_id=TEST_USER_ID,
+                person_id=marco.id,
+                text="Works at Acme",
+                category="work",
+                quote="I work at Acme.",
+                status="current",
+                created_at=started_at,
+            ),
+            PersonFact(
+                user_id=TEST_USER_ID,
+                person_id=marco.id,
+                text="Worked at Contoso",
+                category="work",
+                quote="I used to work at Contoso.",
+                status="superseded",
+                created_at=started_at - timedelta(days=1),
+            ),
+        ]
+    )
+    await _chunk(db_session, conversation, "Marco said the meeting is tomorrow.")
+    await db_session.commit()
+
+    memory = await retrieve_memory_context(
+        db_session,
+        TEST_USER_ID,
+        "Cosa ha detto Marco?",
+        embedding_service=MockEmbeddingService(),
+    )
+
+    fact_line = "Marco: Works at Acme (from 2026-11-03)"
+    assert fact_line in memory.context
+    assert memory.context.index(fact_line) < memory.context.index(
+        "Marco said the meeting is tomorrow."
+    )
+    assert "Worked at Contoso" not in memory.context
 
 
 @pytest.mark.asyncio
