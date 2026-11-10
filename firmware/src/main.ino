@@ -160,11 +160,11 @@ void fatal(const char* message) {
 void checkButtonWake() {
     if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_EXT0) return;
     gpio_deep_sleep_hold_dis();
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, HIGH);
     gpio_hold_dis(static_cast<gpio_num_t>(LED_PIN));
     rtc_gpio_deinit(static_cast<gpio_num_t>(BUTTON_PIN));
     pinMode(BUTTON_PIN, INPUT_PULLUP);
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, HIGH);
 
     WakeGate gate(BUTTON_WAKE_HOLD_MS, BUTTON_DEBOUNCE_MS);
     const uint32_t wokeAtMs = millis();
@@ -471,7 +471,7 @@ void loop() {
                 cancelPowerOff();
             } else {
                 Serial.println("[Button] long press: mute toggle");
-                handleMuteCommand(!muteState.isMuted(), nullptr);
+                handleMuteCommand(!(muteState.isMuted() || micFailed), nullptr);
             }
             break;
         case ButtonGesture::VERY_LONG_PRESS:
