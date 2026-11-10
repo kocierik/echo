@@ -48,7 +48,7 @@ wiki page, which would accumulate the model's mistakes.
 
 ## Constraints
 
-- Backend: FastAPI and SQLAlchemy async; Alembic migration 039. `docs/schema.sql` and
+- Backend: FastAPI and SQLAlchemy async; Alembic migration 040. `docs/schema.sql` and
   `test_migrations` range updated.
 - App: Flutter. No new dependency; the graph is a `CustomPainter`.
 - The user starts iOS builds; never trigger them.
@@ -69,9 +69,14 @@ wiki page, which would accumulate the model's mistakes.
 
 The user picked 1.
 
+On 2026-11-10 the user confirmed the full end-to-end scope and approved the
+backend-authoritative architecture: the backend owns extraction, persistence, validation and
+graph aggregation; Flutter renders and navigates the resulting data without a new dependency.
+The graph work follows the STT recovery migration 039, so its migration is 040.
+
 ## Design
 
-### Data (migration 039)
+### Data (migration 040)
 
 `person_facts`:
 
@@ -136,6 +141,9 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
    the new one.
 
 ### API
+
+- All endpoints retain the existing authentication and scope reads and writes to the
+  authenticated user; supplied person, fact and conversation IDs must belong to that user.
 
 - `GET /api/people/{id}` (existing) adds `facts` (current, newest first: id, text,
   category, quote, conversation_id, created_at) and `earlier_facts` (superseded, same

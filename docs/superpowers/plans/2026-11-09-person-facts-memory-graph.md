@@ -5,7 +5,7 @@
 **Goal:** Echo keeps cited, superseding facts about the people the user saved, shows them on each person's page and in Ask, and draws a radial map of people and topics.
 
 **Architecture:**
-- **Backend:** a `person_facts` table and `conversations.topics` (migration 039). Topics
+- **Backend:** a `person_facts` table and `conversations.topics` (migration 040). Topics
   come from the existing summary call. Facts come from one best-effort LLM call after
   each summary, grounded by quote. A graph service builds nodes and edges from
   `entity_mentions` and topics.
@@ -52,20 +52,20 @@
 
 ---
 
-### Task 1: Migration 039, models, schema
+### Task 1: Migration 040, models, schema
 
 **Files:**
-- Create: `backend/alembic/versions/039_person_facts_topics.py`
+- Create: `backend/alembic/versions/040_person_facts_topics.py`
 - Create: `backend/app/models/person_fact.py`
 - Modify: `backend/app/models/__init__.py` (export `PersonFact`), `backend/app/models/conversation.py` (`topics`)
-- Modify: `docs/schema.sql`, `backend/tests/test_migrations.py` (`range(1, 40)`)
+- Modify: `docs/schema.sql`, `backend/tests/test_migrations.py` (`range(1, 41)`)
 
 **Interfaces:**
 - Produces: `PersonFact`, with columns exactly as in the spec's table and `__tablename__ = "person_facts"`. Statuses: `"current"`, `"superseded"`, `"rejected"`. `Conversation.topics: Mapped[list[str] | None]` (`ARRAY(String(40))`).
 
-- [ ] **Step 1:** In `test_migrations.py`, change the expected revisions to `range(1, 40)`.
-- [ ] **Step 2:** Run `tests/test_migrations.py`. Expected: FAIL (no 039).
-- [ ] **Step 3:** Write migration 039, following 037 and 038: the inspector guards so that
+- [ ] **Step 1:** In `test_migrations.py`, change the expected revisions to `range(1, 41)`.
+- [ ] **Step 2:** Run `tests/test_migrations.py`. Expected: FAIL (no 040).
+- [ ] **Step 3:** Write migration 040, following 037 and 038: the inspector guards so that
   existing objects are skipped. It creates `person_facts` with its foreign keys
   (`person_id` cascade; `segment_id`, `conversation_id` and `superseded_by` set null) and
   an index on `(person_id, status)`, then adds `conversations.topics`. Write the model,
@@ -73,7 +73,7 @@
   line.
 - [ ] **Step 4:** `ALTER` echo_test: create the table and the column. Run
   `tests/test_migrations.py` and `tests/test_retranscription.py`. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(memory): person facts and conversation topics (migration 039)`.
+- [ ] **Step 5:** Commit `feat(memory): person facts and conversation topics (migration 040)`.
 
 ### Task 2: Topics from the summary call, and the backfill
 
@@ -262,6 +262,6 @@
 
 - [ ] **Step 1:** Run the full backend suite (deselect `test_record_step_p95_stays_under_50_ms`), `ruff check app/ tests/ evals/`, and the full Flutter suite. Expected: all PASS.
 - [ ] **Step 2:** Push. Tell the user:
-  - `make deploy` (migration 039);
+  - `make deploy` (migration 040);
   - then `docker compose exec api python -m app.cli.backfill_topics --days 90`;
   - then the iOS build, which they start.
