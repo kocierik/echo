@@ -157,6 +157,8 @@
   - `test_a_newer_fact_supersedes`: a current fact "Lives in Turin"; the new fact has `replaces` = its id. The old one becomes `status == "superseded"` with `superseded_by == new.id`.
   - `test_replaces_a_fact_that_is_not_current_or_not_theirs`: `replaces` names a random uuid, then another person's fact. The new fact is kept and nothing changes status.
   - `test_rejected_facts_are_told_as_never_again`: a rejected fact's text appears in the prompt sent to the fake LLM.
+  - a rejected fact older than 30 days and one outside the newest-eight prompt context
+    are not recreated; both texts are absent from prompt context.
   - `test_invalid_fact_log_has_reason_but_no_personal_text`: rejected candidate logs
     include a reason code and conversation ID but not the candidate text or quote.
   - `test_person_fact_failure_does_not_roll_back_summary`: make the extractor exhaust
@@ -172,7 +174,8 @@
   - Load transcriptions through their segments, ordered by `Segment.recorded_at`; retain the
     segment ID and speaker-tagged line for each quote candidate. Send each matching line
     with one neighboring line on either side, capped at 40 lines total.
-  - Send current facts and the newest 8 rejected facts per person from the last 30 days.
+  - Send current facts and the newest 8 rejected facts per person from the last 30 days;
+    keep this prompt context limit and window unchanged.
     Call `complete_json` through `retry_with_backoff` with the schema and prompt rules in
     the spec. Catch exhausted retries at the worker boundary, log conversation ID and
     exception (not transcript text), and let summary processing continue.
@@ -181,8 +184,11 @@
     NFKC + casefold + whitespace collapse and edge-punctuation stripping. Persist the
     matched source sentence exactly, without its speaker tag, rather than the model's
     reformatted quote. Require non-empty fact text of <=200 characters, reject a
-    case-insensitive duplicate of that person's current fact, and call the existing
-    `is_sensitive` helper on both text and quote. Map unknown categories to `other`.
+    case-insensitive exact-text duplicate of that person's current facts or any
+    historical rejections scoped to the same user and person (trim candidate text as
+    for current-fact duplicate detection), and call the existing `is_sensitive` helper
+    on both text and quote. The all-history check is independent of the bounded prompt
+    context. Map unknown categories to `other`.
   - Accept `replaces` only when it parses as a UUID and names a current fact belonging to
     the same user and person. Add the new fact and mark the replaced fact superseded in
     the same transaction. For rejected candidates, log only reason codes; never log fact

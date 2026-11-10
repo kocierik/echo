@@ -140,6 +140,21 @@ async def _recently_rejected(
     )
 
 
+async def _rejected_texts(
+    db: AsyncSession, user_id: uuid.UUID, person_id: uuid.UUID
+) -> set[str]:
+    return {
+        text.casefold()
+        for text in await db.scalars(
+            select(PersonFact.text).where(
+                PersonFact.user_id == user_id,
+                PersonFact.person_id == person_id,
+                PersonFact.status == "rejected",
+            )
+        )
+    }
+
+
 async def extract_person_facts(
     db: AsyncSession, llm: LLMService, conversation: Conversation
 ) -> list[PersonFact]:
@@ -196,12 +211,16 @@ async def extract_person_facts(
     now = datetime.now(timezone.utc)
     current_by_person: dict[uuid.UUID, list[PersonFact]] = {}
     rejected_by_person: dict[uuid.UUID, list[PersonFact]] = {}
+    rejected_texts_by_person: dict[uuid.UUID, set[str]] = {}
     for person in people:
         current_by_person[person.id] = await current_facts(
             db, conversation.user_id, person.id
         )
         rejected_by_person[person.id] = await _recently_rejected(
             db, conversation.user_id, person.id, now
+        )
+        rejected_texts_by_person[person.id] = await _rejected_texts(
+            db, conversation.user_id, person.id
         )
 
     person_context = []
@@ -317,7 +336,10 @@ async def extract_person_facts(
         if is_sensitive(text) or is_sensitive(quote) or is_sensitive(matched_sentence):
             reject("sensitive")
             continue
-        if text.casefold() in current_texts[person.id]:
+        if (
+            text.casefold() in current_texts[person.id]
+            or text.casefold() in rejected_texts_by_person[person.id]
+        ):
             reject("duplicate")
             continue
 

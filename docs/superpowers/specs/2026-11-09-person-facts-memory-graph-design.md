@@ -120,7 +120,8 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
    for it. None means no call.
 2. The transcript lines naming each (`names_person`), with their speaker label and one
    line of context before and after, at most 40 lines.
-3. The current facts of those people, with their ids.
+3. The current facts of those people, with their ids, plus the newest 8 rejected
+   facts per person from the last 30 days as prompt context.
 4. One `complete_json` call returns
    `{"facts": [{"person": "<name>", "text": "...", "category": "...", "quote": "...",
    "replaces": "<fact id>|null"}]}`. The prompt rules:
@@ -130,17 +131,21 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
    - the quote verbatim;
    - `replaces` only when the new fact contradicts or updates a listed current fact;
    - at most 5 facts per conversation;
-   - the person's rejected facts listed as "never again" (Omi's negative feedback, the
-     newest 8 of 30 days).
+   - rejected facts listed as "never again" (the newest 8 from the last 30 days).
 5. Each fact is checked before it is kept:
    - its person is one of those listed;
    - its quote is found in the lines given, normalized for case and whitespace;
    - store the matching source sentence verbatim (without its speaker tag), not the
      model's reformatted quote;
-   - it is not a near-duplicate of a current fact (same text, case-insensitive);
+   - it is not a duplicate of a current fact or any historical rejection for the
+     same user and person (exact text, case-insensitive; candidate text is trimmed
+     before comparison);
    - it passes the sensitive-words check of `fact_suggestions.py`;
    - its category is one of the six, else `other`.
    A failing fact is rejected and its reason is logged without the quote or fact text.
+   The prompt context stays bounded to the newest 8 rejected facts from the last 30 days,
+   but validation checks every historical rejection for that person so an older or
+   out-of-context rejection cannot resurface.
 6. A kept fact with `replaces` marks that fact `superseded`, with `superseded_by` set to
    the new one.
 

@@ -408,6 +408,55 @@ async def test_rejected_facts_are_told_as_never_again():
     assert "Marco owns a red bicycle" in llm.person_prompts[0]
 
 
+async def test_old_rejected_fact_is_not_recreated_outside_context_window():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        db.add(
+            PersonFact(
+                user_id=conversation.user_id,
+                person_id=person.id,
+                text="Works at Acme",
+                category="work",
+                quote="Marco lavora in Acme.",
+                status="rejected",
+                created_at=STARTED - timedelta(days=31),
+            )
+        )
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([_candidate("  works at acme  ")])
+
+    await _run_summary(llm)
+
+    assert "Works at Acme" not in llm.person_prompts[0]
+    assert await _conversation_person_facts(conversation_id) == []
+
+
+async def test_rejected_fact_outside_newest_eight_is_not_recreated():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        for index in range(9):
+            db.add(
+                PersonFact(
+                    user_id=conversation.user_id,
+                    person_id=person.id,
+                    text="Works at Acme" if index == 0 else f"Rejected fact {index}",
+                    category="work",
+                    quote="Marco lavora in Acme.",
+                    status="rejected",
+                    created_at=STARTED - timedelta(days=9 - index),
+                )
+            )
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([_candidate("works at acme")])
+
+    await _run_summary(llm)
+
+    assert "Works at Acme" not in llm.person_prompts[0]
+    assert await _conversation_person_facts(conversation_id) == []
+
+
 async def test_invalid_fact_log_has_reason_but_no_personal_text(caplog):
     async with test_session() as db:
         conversation, _, _ = await _person_conversation(db)
