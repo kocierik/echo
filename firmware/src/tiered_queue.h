@@ -66,6 +66,25 @@ public:
         return false;
     }
 
+    enum class Spill : uint8_t { MOVED, EMPTY, REFUSED };
+
+    /** Turning off: PSRAM's oldest segment to the card, which keeps it through deep sleep.
+     *  EMPTY once PSRAM holds nothing; REFUSED without a card, or when it is full or
+     *  failing (the segment stays in PSRAM, for the phone). */
+    Spill spillOldestToCard() {
+        BufferedSegment oldest = {};
+        const uint8_t* oldestData = nullptr;
+        if (!_hot.peek(oldest, &oldestData)) return Spill::EMPTY;
+        if (_card == nullptr) return Spill::REFUSED;
+        if (_onMove != nullptr) _onMove(oldest.segmentId);
+        if (!_card->append(oldest, oldestData)) return Spill::REFUSED;
+        _hot.dequeue();
+        return Spill::MOVED;
+    }
+
+    /** Segments only in PSRAM: lost if Echo sleeps now. */
+    uint16_t memoryCount() const { return _hot.count(); }
+
     /** The oldest segment: the card's first, then PSRAM's. `data` stays valid until the
      *  next peek or dequeue. */
     bool peek(BufferedSegment& header, const uint8_t** data) {

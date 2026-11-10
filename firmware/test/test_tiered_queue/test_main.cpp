@@ -206,6 +206,53 @@ void test_a_segment_peeked_again_is_the_same_one() {
     TEST_ASSERT_EQUAL_UINT32(2, again.segmentId);
 }
 
+void test_spilling_moves_psram_to_the_card_oldest_first() {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    moved.clear();
+    queue.attachCard(&log, staging, sizeof(staging), [](uint32_t id) { moved.push_back(id); });
+    for (uint32_t id = 1; id <= 3; ++id) TEST_ASSERT_TRUE(storeSegment(queue, id));
+    TEST_ASSERT_EQUAL_UINT16(3, queue.memoryCount());
+
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::EMPTY);
+
+    TEST_ASSERT_EQUAL_UINT16(0, queue.memoryCount());
+    TEST_ASSERT_EQUAL_UINT32(3, moved.size());  // each announced before moving
+    std::vector<uint32_t> order = drain(queue);
+    std::vector<uint32_t> expected = {1, 2, 3};
+    TEST_ASSERT_EQUAL_UINT32(expected.size(), order.size());
+    for (size_t i = 0; i < expected.size(); ++i) TEST_ASSERT_EQUAL_UINT32(expected[i], order[i]);
+}
+
+void test_without_a_card_spilling_is_refused_unless_empty() {
+    FakeHot hot(300);
+    TieredQueue<FakeHot> queue(hot);
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::EMPTY);
+    TEST_ASSERT_TRUE(storeSegment(queue, 1));
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::REFUSED);
+    TEST_ASSERT_EQUAL_UINT16(1, queue.memoryCount());
+}
+
+void test_a_failing_card_refuses_and_psram_keeps_the_segment() {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    queue.attachCard(&log, staging, sizeof(staging), nullptr);
+    TEST_ASSERT_TRUE(storeSegment(queue, 1));
+    card.failWrites = true;
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::REFUSED);
+    TEST_ASSERT_EQUAL_UINT16(1, queue.memoryCount());
+    TEST_ASSERT_EQUAL_UINT32(0, queue.droppedSegmentCount());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_without_a_card_a_full_queue_refuses_as_today);
@@ -213,5 +260,8 @@ int main(int, char**) {
     RUN_TEST(test_a_failing_card_falls_back_to_dropping);
     RUN_TEST(test_the_card_status_says_its_size_room_and_the_speech_on_it);
     RUN_TEST(test_a_segment_peeked_again_is_the_same_one);
+    RUN_TEST(test_spilling_moves_psram_to_the_card_oldest_first);
+    RUN_TEST(test_without_a_card_spilling_is_refused_unless_empty);
+    RUN_TEST(test_a_failing_card_refuses_and_psram_keeps_the_segment);
     return UNITY_END();
 }
