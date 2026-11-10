@@ -4,6 +4,7 @@ import 'package:echo_app/screens/memory_graph_screen.dart';
 import 'package:echo_app/screens/person_screen.dart';
 import 'package:echo_app/screens/topic_conversations_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/radial_graph.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -171,5 +172,45 @@ void main() {
       find.bySemanticsLabel('$fullLabel, 4 conversations'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('horizontal edge labels stay inside the map viewport',
+      (tester) async {
+    const rightLabel = 'B very long topic label near the right edge';
+    const leftLabel = 'D very long topic label near the left edge';
+    const edgeGraph = MemoryGraph(nodes: [
+      GraphNode(id: 'you', kind: 'you', label: 'You', weight: 12),
+      GraphNode(id: 'p1', kind: 'person', label: 'Marco', weight: 12),
+      GraphNode(id: 'top', kind: 'topic', label: 'A top', weight: 4),
+      GraphNode(id: 'right', kind: 'topic', label: rightLabel, weight: 4),
+      GraphNode(id: 'bottom', kind: 'topic', label: 'C bottom', weight: 4),
+      GraphNode(id: 'left', kind: 'topic', label: leftLabel, weight: 4),
+    ], edges: []);
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    await pump(tester, FakeMemoryApi()..memoryGraph = edgeGraph);
+
+    final viewport = tester.getRect(find.byType(InteractiveViewer));
+    final positions = radialLayout(edgeGraph, viewport.size);
+    for (final entry in {'right': rightLabel, 'left': leftLabel}.entries) {
+      expect(
+        find.bySemanticsLabel('${entry.value}, 4 conversations'),
+        findsOneWidget,
+      );
+      final target = tester.getRect(
+        find.byKey(Key('graph-node-topic:${entry.key}')),
+      );
+      expect(target.width, 112);
+      expect(
+        target.topLeft + Offset(56, graphNodeSize(4) / 2),
+        viewport.topLeft + positions[entry.key]!,
+      );
+      final label = tester.widget<Text>(find.text(entry.value));
+      expect(label.maxLines, 1);
+      expect(label.overflow, TextOverflow.ellipsis);
+      final bounds = tester.getRect(find.text(entry.value));
+      expect(bounds.left, greaterThanOrEqualTo(viewport.left));
+      expect(bounds.right, lessThanOrEqualTo(viewport.right));
+    }
   });
 }

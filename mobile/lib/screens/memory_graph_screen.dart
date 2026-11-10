@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -197,7 +198,7 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
                 ),
                 for (final node in graph.nodes)
                   if (positions[node.id] case final position?)
-                    _positionedNode(node, position, palette),
+                    _positionedNode(node, position, size, palette),
               ],
             ),
           ),
@@ -206,8 +207,16 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
     );
   }
 
-  Widget _positionedNode(GraphNode node, Offset position, EchoPalette palette) {
+  Widget _positionedNode(
+    GraphNode node,
+    Offset position,
+    Size size,
+    EchoPalette palette,
+  ) {
     final diameter = graphNodeSize(node.weight);
+    final labelWidth = (2 * math.min(position.dx, size.width - position.dx))
+        .clamp(0.0, 112.0)
+        .toDouble();
     return Positioned(
       left: position.dx - 56,
       top: position.dy - diameter / 2,
@@ -252,15 +261,18 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  node.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: palette.text,
-                        fontWeight: FontWeight.w600,
-                      ),
+                SizedBox(
+                  width: labelWidth,
+                  child: Text(
+                    node.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: palette.text,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
                 ),
               ],
             ),
