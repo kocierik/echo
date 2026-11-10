@@ -17,10 +17,12 @@ MAX_TOPICS = 20
 
 async def memory_graph(db: AsyncSession, user_id: uuid.UUID, days: int) -> dict:
     """Build a weighted graph from a user's person mentions and conversation topics."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days > 0 else None
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=days) if days > 0 else None
     in_window = [Conversation.user_id == user_id]
     if cutoff is not None:
         in_window.append(Conversation.started_at >= cutoff)
+        in_window.append(Conversation.started_at <= now)
 
     person_rows = await db.execute(
         select(

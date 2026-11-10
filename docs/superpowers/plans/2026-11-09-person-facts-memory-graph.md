@@ -26,7 +26,7 @@
 - At most 5 facts per conversation; categories `work`, `family`, `home`, `interests`, `plans`, `other` (unknown → `other`).
 - Fact `text` at most 200 characters, in English; `quote` verbatim, in the language heard.
 - Topics: at most 3 per conversation, 1–3 words, lowercased, trimmed, at most 40 characters, never a person's name.
-- Graph: topics need ≥ 2 conversations in the window; at most 30 people and 20 topics (heaviest); `days` default 90, `0` = all, else 1..3650.
+- Graph: topics need ≥ 2 conversations in the window; at most 30 people and 20 topics (heaviest); `days` default 90, `0` = unbounded all-time, else 1..3650 with inclusive `started_at` bounds from one captured `now - days` through `now`.
 - No extra LLM call for a conversation naming no saved person.
 - App: no new dependency; never trigger iOS builds (the user does).
 - Backend integration tests run from the repository root with `make test-all`; it creates
@@ -162,7 +162,9 @@
   - `test_invalid_fact_log_has_reason_but_no_personal_text`: rejected candidate logs
     include a reason code and conversation ID but not the candidate text or quote.
   - `test_person_fact_failure_does_not_roll_back_summary`: make the extractor exhaust
-    retries; the summary remains committed and the worker logs the failure.
+    retries with a private sentinel in the exception message; the summary remains
+    committed, the worker logs the conversation ID and exception type, and neither the
+    sentinel nor transcript text appears in logs.
   - `test_no_saved_person_no_call`: a conversation with no mentions makes zero LLM calls.
   - `test_at_most_five`: 7 grounded facts give 5 kept.
   - `test_unknown_category_is_other`.
@@ -218,7 +220,9 @@
   - `test_deleting_a_fact_rejects_it`: 204, then `status == "rejected"`, gone from `facts`; another user's fact is 404;
   - `test_conversations_by_topic`: `?topic=Atlas` finds a conversation with `topics=["atlas"]`;
   - `test_graph_weights_and_edges`: 3 conversations; Marco in 3, Ada in 2 (both together in 1), the topic "atlas" in 2 with Marco. Expect `you–person:Marco` weight 3, `person:Marco–person:Ada` 1, `person:Marco–topic:atlas` 2, and node weights 3 / 2 / 2;
-  - `test_graph_window_and_thresholds`: a conversation older than `days` is not counted; a topic in 1 conversation is not a node; `days=0` counts all;
+  - `test_graph_window_and_thresholds`: conversations older than `now - days` and later
+    than `now` are not counted for positive `days`; a topic in 1 conversation is not a
+    node; `days=0` remains unbounded and counts both historical and future conversations;
   - `test_graph_limits`: only the 30 heaviest people and 20 heaviest topics are returned;
   - `test_graph_days_validation`: `days < 0` and `days > 3650` return 422;
   - `test_graph_with_no_people_is_only_you`: `nodes == [{"id": "you", "kind": "you", "label": "You", "weight": 0}]`, `edges == []`;

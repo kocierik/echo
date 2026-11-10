@@ -114,7 +114,10 @@ text alone (not the transcript). Without it the graph starts empty of topics.
 ### Extracting person facts
 
 This runs after a conversation's summary, in `workers/summaries.py` next to
-`suggest_facts`, best effort: a failure is logged and the summary stands.
+`suggest_facts`, best effort: a failure is logged and the summary stands. On an
+extraction failure, the worker logs only the conversation ID and exception type; it
+does not log the exception message or traceback, which may contain prompt or response
+content.
 
 1. The saved people named in the conversation: person entities with an `EntityMention`
    for it. None means no call.
@@ -160,6 +163,9 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
 - `DELETE /api/people/{id}/facts/{fact_id}` sets status `rejected`, never a hard delete,
   so it is not proposed again. A superseded fact that pointed at it stays superseded.
 - `GET /api/memory-graph?days=90` (1 to 3650; 0 means all) returns:
+  - For positive `days`, the window includes `started_at` from one captured `now - days`
+    through `now`, inclusive; future-dated conversations are excluded. `days=0` is
+    unbounded all-time behavior.
   - `nodes`: `{id, kind: "you"|"person"|"topic", label, weight}`, where weight is the
     number of conversations in the window; for `you`, count distinct conversations
     represented by the retained people (zero if there are no people);

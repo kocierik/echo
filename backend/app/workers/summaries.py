@@ -138,9 +138,9 @@ async def summarize_closed_conversations(
                     await extract_person_facts(db, llm, conversation)
             except Exception as exc:
                 logger.warning(
-                    "[Summaries] No person facts for %s: %s",
+                    "[Summaries] No person facts for %s (%s)",
                     conversation.id,
-                    exc,
+                    type(exc).__name__,
                 )
 
         await db.commit()

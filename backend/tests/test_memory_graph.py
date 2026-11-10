@@ -96,7 +96,10 @@ async def test_graph_window_and_thresholds(client, auth_headers, db_session: Asy
     recent = await _conversation(
         db_session, topics=["single topic"], started_at=NOW - timedelta(days=1)
     )
-    for conversation in (old_one, old_two, recent):
+    future = await _conversation(
+        db_session, topics=["future topic"], started_at=NOW + timedelta(days=1)
+    )
+    for conversation in (old_one, old_two, recent, future):
         await _mention(db_session, conversation, marco)
     await db_session.commit()
 
@@ -110,8 +113,12 @@ async def test_graph_window_and_thresholds(client, auth_headers, db_session: Asy
         f"person:{marco.id}",
     }
     assert next(node for node in windowed_body["nodes"] if node["id"] == "you")["weight"] == 1
+    assert next(
+        node for node in windowed_body["nodes"] if node["id"] == f"person:{marco.id}"
+    )["weight"] == 1
     all_time_nodes = {node["id"]: node for node in all_time_body["nodes"]}
-    assert all_time_nodes["you"]["weight"] == 3
+    assert all_time_nodes["you"]["weight"] == 4
+    assert all_time_nodes[f"person:{marco.id}"]["weight"] == 4
     assert all_time_nodes["topic:old topic"]["weight"] == 2
     assert "topic:single topic" not in all_time_nodes
 

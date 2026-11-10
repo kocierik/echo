@@ -482,8 +482,10 @@ async def test_person_fact_failure_does_not_roll_back_summary(monkeypatch, caplo
     import app.services.person_facts as person_facts
     from app.workers.retry import RetryExhaustedError
 
+    private_sentinel = "PRIVATE_PROMPT_RESPONSE_SENTINEL"
+
     async def exhausted(*args, **kwargs):
-        raise RetryExhaustedError(ValueError("extractor unavailable"), 3)
+        raise RetryExhaustedError(ValueError(private_sentinel), 3)
 
     monkeypatch.setattr(person_facts, "retry_with_backoff", exhausted)
     async with test_session() as db:
@@ -497,7 +499,8 @@ async def test_person_fact_failure_does_not_roll_back_summary(monkeypatch, caplo
         saved = await db.get(type(conversation), conversation_id)
     assert saved.summary == "Marco lavora in Acme."
     assert str(conversation_id) in caplog.text
-    assert "extractor unavailable" in caplog.text
+    assert "RetryExhaustedError" in caplog.text
+    assert private_sentinel not in caplog.text
     assert "Marco lavora in Acme." not in caplog.text
 
 
