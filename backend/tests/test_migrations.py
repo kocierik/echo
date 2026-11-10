@@ -45,6 +45,7 @@ class _State:
 
     def __init__(self):
         self.tables: dict[str, dict] = {}
+        self.column_types: dict[str, dict] = {}
         self.extensions: set[str] = set()
 
     def add_table(self, name, columns):
@@ -53,10 +54,12 @@ class _State:
         for column, nullable in columns:
             self.add_column(name, column, nullable)
 
-    def add_column(self, table, column, nullable=True):
+    def add_column(self, table, column, nullable=True, column_type=None):
         columns = self.tables[table]["columns"]
         assert column not in columns, f"{table}.{column} added twice"
         columns[column] = nullable
+        if column_type is not None:
+            self.column_types.setdefault(table, {})[column] = column_type
 
 
 class _Inspector:
@@ -161,7 +164,7 @@ class _Op:
 
     def add_column(self, table, column, **kw):
         self.calls.append(("add_column", table, column.name))
-        self.state.add_column(table, column.name, column.nullable)
+        self.state.add_column(table, column.name, column.nullable, column.type)
 
     def alter_column(self, table, column, nullable=None, **kw):
         self.calls.append(("alter_column", table, column))
@@ -545,6 +548,10 @@ def test_migration_040_creates_person_facts_and_topics(monkeypatch):
     assert facts["columns"]["conversation_id"] is True
     assert facts["columns"]["superseded_by"] is True
     assert state.tables["conversations"]["columns"]["topics"] is True
+    topics_type = state.column_types["conversations"]["topics"]
+    assert isinstance(topics_type, ARRAY)
+    assert isinstance(topics_type.item_type, sa.String)
+    assert topics_type.item_type.length == 40
     assert {
         (fk["constrained_columns"][0], fk["referred_table"], fk["options"].get("ondelete"))
         for fk in facts["fks"]
