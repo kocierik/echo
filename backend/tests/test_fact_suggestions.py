@@ -2,12 +2,14 @@
 are suggested, never kept until the user keeps them; nothing sensitive, nothing known."""
 
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
 from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
+from app.models.person_fact import PersonFact
 from app.models.segment import Segment
 from app.models.user_fact import UserFact
 from app.services.fact_suggestions import suggest_facts
@@ -193,3 +195,300 @@ async def test_summarizing_stores_normalized_topics_without_saved_person_names()
     async with test_session() as db:
         saved = await db.get(type(conversation), conversation.id)
         assert saved.topics == ["atlas"]
+
+
+class _PeopleLLM:
+    def __init__(self, person_facts=()):
+        self.person_facts = list(person_facts)
+        self.person_prompts: list[str] = []
+
+    async def complete_json(self, messages, temperature=0.1):
+        system = messages[0].content
+        if "You organize the user's conversations." in system:
+            return {"title": "Marco", "summary": "Marco lavora in Acme.", "emoji": "💼"}
+        if "From the user's own words" in system:
+            return {"facts": []}
+        if "saved people" in system.lower():
+            self.person_prompts.append(messages[-1].content)
+            return {"facts": self.person_facts}
+        raise AssertionError(f"Unexpected LLM prompt: {system}")
+
+
+PERSON_LINES = (
+    "[You] Oggi ho incontrato Marco.",
+    "[Others] Marco lavora in Acme.",
+)
+
+
+async def _person_conversation(db, *, lines=PERSON_LINES, mention=True):
+    conversation, transcriptions = await make_conversation(
+        db, started_at=STARTED, texts=lines, summary=None, title=None
+    )
+    for transcription, line in zip(transcriptions, lines):
+        segment = await db.get(Segment, transcription.segment_id)
+        segment.speaker = "self" if line.startswith("[You]") else "other"
+    conversation.retranscribed_at = STARTED
+    person = Entity(
+        user_id=conversation.user_id,
+        entity_type="person",
+        name="Marco",
+        metadata_={},
+    )
+    db.add(person)
+    await db.flush()
+    if mention:
+        db.add(EntityMention(entity_id=person.id, conversation_id=conversation.id))
+    return conversation, person, transcriptions
+
+
+async def _run_summary(llm):
+    return await summarize_closed_conversations(
+        now=STARTED + timedelta(hours=3),
+        session_factory=test_session,
+        llm_service=llm,
+    )
+
+
+async def _conversation_person_facts(conversation_id):
+    async with test_session() as db:
+        return list(
+            await db.scalars(
+                select(PersonFact)
+                .where(PersonFact.conversation_id == conversation_id)
+                .order_by(PersonFact.created_at, PersonFact.id)
+            )
+        )
+
+
+def _candidate(text, *, quote="Marco lavora in Acme.", person="Marco", category="work",
+               replaces=None):
+    return {
+        "person": person,
+        "text": text,
+        "category": category,
+        "quote": quote,
+        "replaces": replaces,
+    }
+
+
+async def test_a_grounded_fact_is_kept():
+    async with test_session() as db:
+        conversation, _, transcriptions = await _person_conversation(db)
+        await db.commit()
+        conversation_id = conversation.id
+        source_segment_id = transcriptions[1].segment_id
+    llm = _PeopleLLM([
+        _candidate(
+            "Works at Acme",
+            quote="marco lavora in acme",
+        )
+    ])
+
+    await _run_summary(llm)
+
+    [fact] = await _conversation_person_facts(conversation_id)
+    assert fact.text == "Works at Acme"
+    assert fact.category == "work"
+    assert fact.quote == "Marco lavora in Acme."
+    assert fact.segment_id == source_segment_id
+
+
+async def test_ungrounded_unlisted_sensitive_and_duplicate_facts_are_dropped():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        db.add(
+            PersonFact(
+                user_id=conversation.user_id,
+                person_id=person.id,
+                text="Works at Acme",
+                category="work",
+                quote="Marco lavora in Acme.",
+                status="current",
+            )
+        )
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([
+        _candidate("Uncited fact", quote="Unrelated sentence."),
+        _candidate("Lives in Rome", person="Luca"),
+        _candidate("Marco is depressed"),
+        _candidate("works at acme"),
+    ])
+
+    await _run_summary(llm)
+
+    assert await _conversation_person_facts(conversation_id) == []
+    assert "Works at Acme" in llm.person_prompts[0]
+
+
+async def test_a_newer_fact_supersedes():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        old_fact = PersonFact(
+            user_id=conversation.user_id,
+            person_id=person.id,
+            text="Lives in Turin",
+            category="home",
+            quote="Marco vive a Torino.",
+            status="current",
+        )
+        db.add(old_fact)
+        await db.flush()
+        conversation_id, old_fact_id = conversation.id, old_fact.id
+        await db.commit()
+    llm = _PeopleLLM([
+        _candidate("Lives in Bologna", replaces=str(old_fact_id))
+    ])
+
+    await _run_summary(llm)
+
+    [new_fact] = await _conversation_person_facts(conversation_id)
+    async with test_session() as db:
+        replaced = await db.get(PersonFact, old_fact_id)
+    assert replaced.status == "superseded"
+    assert replaced.superseded_by == new_fact.id
+
+
+async def test_replaces_a_fact_that_is_not_current_or_not_theirs():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        another_person = Entity(
+            user_id=conversation.user_id,
+            entity_type="person",
+            name="Luca",
+            metadata_={},
+        )
+        db.add(another_person)
+        await db.flush()
+        other_fact = PersonFact(
+            user_id=conversation.user_id,
+            person_id=another_person.id,
+            text="Lives in Turin",
+            category="home",
+            quote="Luca vive a Torino.",
+            status="current",
+        )
+        db.add(other_fact)
+        conversation_id, other_fact_id = conversation.id, other_fact.id
+        await db.commit()
+    llm = _PeopleLLM([
+        _candidate("Likes jazz", replaces=str(uuid.uuid4())),
+        _candidate("Works at Acme", replaces=str(other_fact_id)),
+    ])
+
+    await _run_summary(llm)
+
+    assert len(await _conversation_person_facts(conversation_id)) == 2
+    async with test_session() as db:
+        other_fact = await db.get(PersonFact, other_fact_id)
+    assert other_fact.status == "current"
+    assert other_fact.superseded_by is None
+
+
+async def test_rejected_facts_are_told_as_never_again():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        db.add(
+            PersonFact(
+                user_id=conversation.user_id,
+                person_id=person.id,
+                text="Marco owns a red bicycle",
+                category="interests",
+                quote="Marco ha una bicicletta rossa.",
+                status="rejected",
+                created_at=STARTED - timedelta(days=2),
+            )
+        )
+        await db.commit()
+    llm = _PeopleLLM([])
+
+    await _run_summary(llm)
+
+    assert len(llm.person_prompts) == 1
+    assert "Marco owns a red bicycle" in llm.person_prompts[0]
+
+
+async def test_invalid_fact_log_has_reason_but_no_personal_text(caplog):
+    async with test_session() as db:
+        conversation, _, _ = await _person_conversation(db)
+        await db.commit()
+        conversation_id = conversation.id
+    private_text = "Marco shared a deeply private detail"
+    private_quote = "una citazione strettamente personale"
+    llm = _PeopleLLM([
+        _candidate(private_text, quote=private_quote)
+    ])
+
+    with caplog.at_level("INFO"):
+        await _run_summary(llm)
+
+    output = caplog.text
+    assert str(conversation_id) in output
+    assert "quote_not_grounded" in output
+    assert private_text not in output
+    assert private_quote not in output
+
+
+async def test_person_fact_failure_does_not_roll_back_summary(monkeypatch, caplog):
+    import app.services.person_facts as person_facts
+    from app.workers.retry import RetryExhaustedError
+
+    async def exhausted(*args, **kwargs):
+        raise RetryExhaustedError(ValueError("extractor unavailable"), 3)
+
+    monkeypatch.setattr(person_facts, "retry_with_backoff", exhausted)
+    async with test_session() as db:
+        conversation, _, _ = await _person_conversation(db)
+        await db.commit()
+        conversation_id = conversation.id
+
+    await _run_summary(_PeopleLLM([]))
+
+    async with test_session() as db:
+        saved = await db.get(type(conversation), conversation_id)
+    assert saved.summary == "Marco lavora in Acme."
+    assert str(conversation_id) in caplog.text
+    assert "extractor unavailable" in caplog.text
+    assert "Marco lavora in Acme." not in caplog.text
+
+
+async def test_no_saved_person_no_call():
+    async with test_session() as db:
+        conversation, _, _ = await _person_conversation(db, mention=False)
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([])
+
+    await _run_summary(llm)
+
+    assert llm.person_prompts == []
+    assert await _conversation_person_facts(conversation_id) == []
+
+
+async def test_at_most_five():
+    async with test_session() as db:
+        conversation, _, _ = await _person_conversation(db)
+        await db.commit()
+        conversation_id = conversation.id
+    candidates = [_candidate(f"Fact {index}") for index in range(7)]
+
+    await _run_summary(_PeopleLLM(candidates))
+
+    assert [fact.text for fact in await _conversation_person_facts(conversation_id)] == [
+        f"Fact {index}" for index in range(5)
+    ]
+
+
+async def test_unknown_category_is_other():
+    async with test_session() as db:
+        conversation, _, _ = await _person_conversation(db)
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([
+        _candidate("Collects old maps", category="geography")
+    ])
+
+    await _run_summary(llm)
+
+    [fact] = await _conversation_person_facts(conversation_id)
+    assert fact.category == "other"

@@ -28,6 +28,7 @@ from app.models.transcription import Transcription
 from app.services.analysis_pipeline import generate_conversation_summary
 from app.services.fact_suggestions import suggest_facts
 from app.services.llm_openai import get_llm_analysis_service
+from app.services.person_facts import extract_person_facts
 from app.services.retranscription import (
     conversations_to_retranscribe,
     mark_reanalysis,
@@ -132,6 +133,15 @@ async def summarize_closed_conversations(
             except Exception:
                 logger.warning("[Summaries] No fact suggestions for %s", conversation.id,
                                exc_info=True)
+            try:
+                async with db.begin_nested():
+                    await extract_person_facts(db, llm, conversation)
+            except Exception as exc:
+                logger.warning(
+                    "[Summaries] No person facts for %s: %s",
+                    conversation.id,
+                    exc,
+                )
 
         await db.commit()
 
