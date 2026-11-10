@@ -73,6 +73,8 @@ On 2026-11-10 the user confirmed the full end-to-end scope and approved the
 backend-authoritative architecture: the backend owns extraction, persistence, validation and
 graph aggregation; Flutter renders and navigates the resulting data without a new dependency.
 The graph work follows the STT recovery migration 039, so its migration is 040.
+The user also confirmed that graph topics must connect to at least one retained person and
+that the `you` node's weight counts only distinct conversations represented by those people.
 
 ## Design
 
@@ -154,12 +156,14 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
   so it is not proposed again. A superseded fact that pointed at it stays superseded.
 - `GET /api/memory-graph?days=90` (1 to 3650; 0 means all) returns:
   - `nodes`: `{id, kind: "you"|"person"|"topic", label, weight}`, where weight is the
-    number of conversations in the window;
+    number of conversations in the window; for `you`, count distinct conversations
+    represented by the retained people (zero if there are no people);
   - `edges`: `{a, b, weight}` for you–person (conversations with them), person–person
     (conversations naming both) and person–topic (conversations naming the person with
     that topic).
-  - Topics need at least 2 conversations in the window. At most 30 people and 20 topics,
-    the heaviest. People come from `entity_mentions`, topics from `conversations.topics`.
+  - Topics need at least 2 conversations in the window and must connect to at least one
+    retained person. At most 30 people and 20 topics, the heaviest. People come from
+    `entity_mentions`, topics from `conversations.topics`.
 - `GET /api/conversations?topic=<label>` filters by topic, for the topic node.
 
 ### Ask
