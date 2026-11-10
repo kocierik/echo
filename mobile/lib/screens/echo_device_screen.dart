@@ -81,6 +81,7 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
   bool _reconnecting = false;
   bool _forgetting = false;
   bool _muteBusy = false;
+  bool _turningOff = false;
   String? _error;
 
   /// The microphone's gain last set from this phone (Echo does not report it).
@@ -126,6 +127,63 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
       if (mounted) setState(() => _error = 'Echo could not update the microphone.');
     } finally {
       if (mounted) setState(() => _muteBusy = false);
+    }
+  }
+
+  /// Echo finishes syncing, then turns off; the instrument follows what Echo reports.
+  Future<void> _turnOff() async {
+    if (_turningOff) return;
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Turn off Echo?'),
+            content: const Text(
+              'Echo will finish syncing, then turn off. '
+              'Hold its button for 2 seconds to turn it on again.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Turn off'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || _turningOff || !mounted) return;
+    setState(() {
+      _turningOff = true;
+      _error = null;
+    });
+    try {
+      await widget.deviceController.turnOff();
+    } on StateError catch (error) {
+      // Echo refused (it is updating); any other StateError is a failure like the rest
+      final refused = error.message == DeviceController.refusedUpdatingMessage;
+      if (mounted) {
+        setState(() => _error = refused
+            ? error.message
+            : 'Echo could not be turned off. Keep it nearby and try again.');
+      }
+    } catch (_) {
+      // No answer in time (TimeoutException), or the link failed
+      if (mounted) {
+        setState(() => _error = 'Echo could not be turned off. Keep it nearby and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _turningOff = false);
+    }
+  }
+
+  Future<void> _keepOn() async {
+    try {
+      await widget.deviceController.cancelTurnOff();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Echo could not be kept on. Try again.');
     }
   }
 
@@ -220,6 +278,7 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
                 status: status,
                 busy: _muteBusy,
                 onMute: (muted) => _setMuted(muted),
+                onKeepOn: _keepOn,
               ),
             ),
             const SettingsSection('STATUS'),
@@ -332,6 +391,16 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
               ),
             ],
             const SettingsSection('DEVICE'),
+            if (status.firmwareVersion != null &&
+                !isNewerFirmware(DeviceProtocol.powerOffFirmware, status.firmwareVersion) &&
+                (status.connectionState == DeviceConnectionState.listening ||
+                    status.connectionState == DeviceConnectionState.muted))
+              SettingsRow(
+                key: const Key('device-turn-off'),
+                icon: Icons.power_settings_new_rounded,
+                title: _turningOff ? 'Turning off...' : 'Turn off Echo',
+                onTap: _turningOff ? null : _turnOff,
+              ),
             SettingsRow(
               icon: Icons.link_off_rounded,
               title: _forgetting ? 'Forgetting device...' : 'Forget device',

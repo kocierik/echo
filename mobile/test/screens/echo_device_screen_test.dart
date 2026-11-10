@@ -109,6 +109,122 @@ void main() {
     expect(find.byKey(const Key('device-mic-gain')), findsNothing);
   });
 
+  testWidgets('Turn off Echo asks first, from firmware 0.10.0', (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.10.0',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    final row = find.byKey(const Key('device-turn-off'));
+    await tester.ensureVisible(row);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.text('Turn off Echo?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(fixture.ble.powerOffs, 0);
+
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Turn off'));
+    await tester.pumpAndSettle();
+    expect(fixture.ble.powerOffs, 1);
+    expect(find.byKey(const Key('device-action-error')), findsNothing);
+  });
+
+  testWidgets('Echo refusing to turn off says why', (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.10.0',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    fixture.ble.powerOffAnswer = DevicePowerState.refused;
+    await fixture.pump(tester);
+
+    final row = find.byKey(const Key('device-turn-off'));
+    await tester.ensureVisible(row);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Turn off'));
+    await tester.pumpAndSettle();
+
+    expect(find.text(DeviceController.refusedUpdatingMessage), findsOneWidget);
+    expect(find.text('Turn off Echo'), findsOneWidget);
+  });
+
+  testWidgets('Echo not answering a turn off is an error, and the row comes back',
+      (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.10.0',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    fixture.ble.powerOffAnswer = null;
+    await fixture.pump(tester);
+
+    final row = find.byKey(const Key('device-turn-off'));
+    await tester.ensureVisible(row);
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Turn off'));
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Turning off...'), findsOneWidget);
+    // Busy: a second tap does not ask again
+    await tester.tap(row);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Turn off Echo?'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('device-action-error')), findsOneWidget);
+    expect(find.text('Turn off Echo'), findsOneWidget);
+    expect(fixture.ble.powerOffs, 1);
+  });
+
+  testWidgets('older firmware cannot be turned off from the app', (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.listening,
+        firmwareVersion: '0.9.3',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.byKey(const Key('device-turn-off')), findsNothing);
+  });
+
+  testWidgets('turning off: Keep Echo on cancels; off says how to turn it on', (tester) async {
+    final fixture = await _Fixture.create(
+      initialStatus: const DeviceStatus(
+        connectionState: DeviceConnectionState.turningOff,
+        firmwareVersion: '0.10.0',
+      ),
+    );
+    addTearDown(fixture.dispose);
+    await fixture.pump(tester);
+
+    expect(find.byKey(const Key('device-turn-off')), findsNothing);
+    await tester.tap(find.widgetWithText(FilledButton, 'Keep Echo on'));
+    await tester.pumpAndSettle();
+    expect(fixture.ble.cancelPowerOffs, 1);
+
+    fixture.emit(const DeviceStatus(
+      connectionState: DeviceConnectionState.off,
+      firmwareVersion: '0.10.0',
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text("Hold Echo's button for 2 seconds to turn it on."), findsOneWidget);
+  });
+
   testWidgets('shows buffer loss firmware and protocol from status',
       (tester) async {
     final fixture = await _Fixture.create(
@@ -447,7 +563,7 @@ final class _FakeBlePort implements DeviceBlePort {
   @override
   Future<void> disconnect() async {}
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async => _power.close();
   @override
   Future<void> forgetBond() async {
     if (forgetFailures > 0) {
@@ -472,13 +588,17 @@ final class _FakeBlePort implements DeviceBlePort {
   int powerOffs = 0;
   int cancelPowerOffs = 0;
 
+  /// What Echo answers a power off with; null: no answer.
+  DevicePowerState? powerOffAnswer = DevicePowerState.turningOff;
+
   @override
   Stream<DevicePowerState> get powerStateStream => _power.stream;
 
   @override
   Future<void> powerOff() async {
     powerOffs++;
-    _power.add(DevicePowerState.turningOff);
+    final answer = powerOffAnswer;
+    if (answer != null) _power.add(answer);
   }
 
   @override
