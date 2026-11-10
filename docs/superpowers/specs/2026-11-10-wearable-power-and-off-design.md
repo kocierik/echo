@@ -95,7 +95,8 @@ States: `ON` → `TURNING_OFF` → `OFF_NOW`.
     off is not a privacy action, unlike mute). A photo being taken or waiting is dropped.
 - **Making speech safe** while `TURNING_OFF`:
   - with the microSD card in use: the segments in PSRAM move to the card (a new
-    `TieredQueue::spillToCard()`, oldest first, the same loop `store()` uses on overflow, with
+    `TieredQueue::spillOldestToCard()`, one segment per call so the loop keeps serving BLE,
+    oldest first, the same move as `store()` on overflow, with
     the same move callback), then `OFF_NOW`. The
     card keeps them through deep sleep and the phone gets them after the next wake, oldest first;
   - if the card refuses (full or failing), or without a card: Echo waits until the PSRAM queue is
@@ -129,7 +130,7 @@ Today a long press fires at 1.5 s while held. With power-off at 5 s that would m
 - release between 1.5 s and 5 s → mute toggle, **on release**, instead of while held;
 - held 5 s → power-off request, while held (fires once; releasing does nothing more).
 
-`ButtonGesture` gains `VERY_LONG_PRESS` and an `extraLongPressMs`; `LONG_PRESS` moves to the
+`ButtonGesture` gains `VERY_LONG_PRESS` and a `veryLongPressMs`; `LONG_PRESS` moves to the
 release. `BUTTON_POWER_OFF_MS 5000` in `config.h`. The trade-off: the user no longer feels the mute
 happen while holding; it happens when they let go.
 
@@ -180,7 +181,8 @@ protocol stays at 6 and the app looks at the firmware version.
     stays `TURNING_OFF`; cancel → `ON`; the saved mute state is never changed by a power-off;
   - `ButtonGesture`: photo before 1.5 s; mute on release between 1.5 and 5 s; power-off at 5 s
     while held and nothing on release; debounce unchanged;
-  - `TieredQueue::spillToCard()`: oldest first, PSRAM empty afterwards, stops and reports when
+  - `TieredQueue::spillOldestToCard()` (one segment per call): oldest first, PSRAM empty after
+    repeated calls, stops and reports when
     the card refuses, the move callback called for the segment being sent;
   - the wake decision (held 1.5 s → boot; released earlier → sleep), as a pure function;
   - protocol: POWER_OFF and POWER_STATE encode/decode; protocol version still 6.
