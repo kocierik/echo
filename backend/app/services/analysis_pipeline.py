@@ -1,7 +1,7 @@
 """Shared orchestration for segment analysis."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -20,6 +20,7 @@ from app.services.embedding_base import EmbeddingService
 from app.services.entity_consolidation import consolidate_entities
 from app.services.entity_mentions import record_mentions
 from app.services.llm_base import LLMMessage, LLMService
+from app.services.topics import normalize_topics
 from app.services.usage import usage_owner
 from app.workers.retry import retry_with_backoff
 
@@ -428,6 +429,7 @@ class ConversationSummary:
     title: str
     summary: str
     emoji: str | None  # None when the model gave none or something that is not one emoji
+    topics: list[str] = field(default_factory=list)
 
 
 # An emoji is at most a few code points (flags, skin tones, ZWJ sequences); words are not
@@ -462,11 +464,13 @@ async def generate_conversation_summary(llm_service, full_text: str) -> Conversa
                 "Given the transcript of a conversation (often in Italian), write:\n"
                 "1. A short title (max 60 characters) naming the main topic\n"
                 "2. A 2-3 sentence summary of the key points\n"
-                "3. One emoji for the topic (e.g. 💼 work, 🍝 food, 🏥 health)\n\n"
+                "3. One emoji for the topic (e.g. 💼 work, 🍝 food, 🏥 health)\n"
+                "4. Up to 3 short topics (1-3 words each, in the conversation's language) "
+                "naming what it is about; never a person's name\n\n"
                 "Write the title and summary in English. Keep names of people and places as "
                 "spoken.\n"
                 "Answer in JSON with the format:\n"
-                '{"title": "...", "summary": "...", "emoji": "..."}'
+                '{"title": "...", "summary": "...", "emoji": "...", "topics": ["..."]}'
             ),
         ),
         LLMMessage(role="user", content=f"Conversation:\n\n{text_for_summary}"),
@@ -477,4 +481,5 @@ async def generate_conversation_summary(llm_service, full_text: str) -> Conversa
         title=result.get("title") or UNTITLED_CONVERSATION,
         summary=result.get("summary", ""),
         emoji=_clean_emoji(result.get("emoji")),
+        topics=normalize_topics(result.get("topics"), []),
     )

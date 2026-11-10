@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
+from app.models.entity import Entity
+from app.models.entity_mention import EntityMention
 from app.models.segment import Segment
 from app.models.user_fact import UserFact
 from app.services.fact_suggestions import suggest_facts
@@ -157,3 +159,37 @@ async def test_summarizing_a_closed_conversation_suggests_its_facts():
     assert [f.text for f in await _facts("suggested")] == ["Lavora come sviluppatore a Milano"]
     assert json.dumps(llm.asked)  # the facts call was made once
     assert len(llm.asked) == 1
+
+
+async def test_summarizing_stores_normalized_topics_without_saved_person_names():
+    async with test_session() as db:
+        conversation = await _conversation(db)
+        person = Entity(
+            user_id=TEST_USER_ID,
+            entity_type="person",
+            name="Marco",
+            metadata_={},
+        )
+        db.add(person)
+        await db.flush()
+        db.add(EntityMention(entity_id=person.id, conversation_id=conversation.id))
+        await db.commit()
+
+    class _TopicLLM(_LLM):
+        async def complete_json(self, messages, temperature=0.1):
+            return {
+                "title": "Pranzo",
+                "summary": "Si parla di lavoro.",
+                "emoji": "🍝",
+                "topics": ["Atlas", " atlas ", "Marco"],
+            }
+
+    await summarize_closed_conversations(
+        now=STARTED + timedelta(hours=3),
+        session_factory=test_session,
+        llm_service=_TopicLLM([]),
+    )
+
+    async with test_session() as db:
+        saved = await db.get(type(conversation), conversation.id)
+        assert saved.topics == ["atlas"]

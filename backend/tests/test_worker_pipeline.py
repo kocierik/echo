@@ -377,6 +377,22 @@ async def test_generate_conversation_summary():
 
 
 @pytest.mark.asyncio
+async def test_generate_conversation_summary_normalizes_topics():
+    class _TopicsLLM(MockLLMService):
+        async def complete_json(self, messages, **kwargs):
+            return {
+                "title": "T",
+                "summary": "S",
+                "emoji": "ðŸ’¼",
+                "topics": ["Atlas"],
+            }
+
+    result = await generate_conversation_summary(_TopicsLLM(), "A conversation.")
+
+    assert getattr(result, "topics", None) == ["atlas"]
+
+
+@pytest.mark.asyncio
 async def test_generate_conversation_summary_truncates_long_text():
     """Test that very long texts are handled without error."""
     llm = MockLLMService()

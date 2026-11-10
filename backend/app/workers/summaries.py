@@ -21,6 +21,8 @@ from sqlalchemy import func, select, true
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.conversation import Conversation
+from app.models.entity import Entity
+from app.models.entity_mention import EntityMention
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import generate_conversation_summary
@@ -32,6 +34,7 @@ from app.services.retranscription import (
     retranscribe,
 )
 from app.services.stt_openai import get_stt_service
+from app.services.topics import normalize_topics
 from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
@@ -110,6 +113,16 @@ async def summarize_closed_conversations(
             conversation.title = result.title
             conversation.summary = result.summary
             conversation.emoji = result.emoji
+            person_names = (
+                await db.scalars(
+                    select(Entity.name)
+                    .join(EntityMention, EntityMention.entity_id == Entity.id)
+                    .where(EntityMention.conversation_id == conversation.id)
+                    .where(Entity.user_id == conversation.user_id)
+                    .where(Entity.entity_type == "person")
+                )
+            ).all()
+            conversation.topics = normalize_topics(result.topics, person_names) or None
             summarized += 1
             # What the user said about themselves: suggestions for About you. A failure
             # here never costs the summary
