@@ -133,10 +133,12 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
 5. Each fact is checked before it is kept:
    - its person is one of those listed;
    - its quote is found in the lines given, normalized for case and whitespace;
+   - store the matching source sentence verbatim (without its speaker tag), not the
+     model's reformatted quote;
    - it is not a near-duplicate of a current fact (same text, case-insensitive);
    - it passes the sensitive-words check of `fact_suggestions.py`;
    - its category is one of the six, else `other`.
-   A failing fact is dropped silently.
+   A failing fact is rejected and its reason is logged without the quote or fact text.
 6. A kept fact with `replaces` marks that fact `superseded`, with `superseded_by` set to
    the new one.
 
