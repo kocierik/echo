@@ -13,11 +13,11 @@ import '../support/fake_memory_api.dart';
 void main() {
   const graph = MemoryGraph(nodes: [
     GraphNode(id: 'you', kind: 'you', label: 'You', weight: 12),
-    GraphNode(id: 'p1', kind: 'person', label: 'Marco', weight: 12),
+    GraphNode(id: 'person:p1', kind: 'person', label: 'Marco', weight: 12),
     GraphNode(id: 't1', kind: 'topic', label: 'Atlas', weight: 4),
   ], edges: [
-    GraphEdge(a: 'you', b: 'p1', weight: 12),
-    GraphEdge(a: 'p1', b: 't1', weight: 4),
+    GraphEdge(a: 'you', b: 'person:p1', weight: 12),
+    GraphEdge(a: 'person:p1', b: 't1', weight: 4),
   ]);
 
   PersonDetail marco() => const PersonDetail(
@@ -52,6 +52,7 @@ void main() {
     final api = FakeMemoryApi()
       ..memoryGraph = graph
       ..personDetails = {'p1': marco()};
+    final openedPeople = <String>[];
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(400, 900);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -61,11 +62,14 @@ void main() {
       home: Builder(
         builder: (context) => MemoryGraphScreen(
           api: api,
-          onOpenPerson: (id) => Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (_) => PersonScreen(personId: id, api: api),
-            ),
-          ),
+          onOpenPerson: (id) {
+            openedPeople.add(id);
+            return Navigator.of(context).push<void>(
+              MaterialPageRoute<void>(
+                builder: (_) => PersonScreen(personId: id, api: api),
+              ),
+            );
+          },
           onOpenConversation: (_) async {},
         ),
       ),
@@ -74,9 +78,13 @@ void main() {
 
     expect(find.text('Marco'), findsOneWidget);
     expect(find.text('Atlas'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('graph-node-person:p1')));
+    await tester.tap(find.byKey(const Key('graph-node-person:person:p1')));
     await tester.pumpAndSettle();
+    expect(openedPeople, ['p1']);
     expect(find.byType(PersonScreen), findsOneWidget);
+    expect(tester.widget<PersonScreen>(find.byType(PersonScreen)).personId, 'p1');
+    expect(api.calls, contains('person p1'));
+    expect(find.text('Person not found'), findsNothing);
   });
 
   testWidgets('a topic opens its filtered conversations', (tester) async {
@@ -156,10 +164,10 @@ void main() {
     final api = FakeMemoryApi()
       ..memoryGraph = const MemoryGraph(nodes: [
         GraphNode(id: 'you', kind: 'you', label: 'You', weight: 12),
-        GraphNode(id: 'p1', kind: 'person', label: 'Marco', weight: 12),
+        GraphNode(id: 'person:p1', kind: 'person', label: 'Marco', weight: 12),
         GraphNode(id: 't1', kind: 'topic', label: fullLabel, weight: 4),
       ], edges: [
-        GraphEdge(a: 'p1', b: 't1', weight: 4),
+        GraphEdge(a: 'person:p1', b: 't1', weight: 4),
       ]);
     await pump(tester, api);
 
@@ -180,7 +188,7 @@ void main() {
     const leftLabel = 'D very long topic label near the left edge';
     const edgeGraph = MemoryGraph(nodes: [
       GraphNode(id: 'you', kind: 'you', label: 'You', weight: 12),
-      GraphNode(id: 'p1', kind: 'person', label: 'Marco', weight: 12),
+      GraphNode(id: 'person:p1', kind: 'person', label: 'Marco', weight: 12),
       GraphNode(id: 'top', kind: 'topic', label: 'A top', weight: 4),
       GraphNode(id: 'right', kind: 'topic', label: rightLabel, weight: 4),
       GraphNode(id: 'bottom', kind: 'topic', label: 'C bottom', weight: 4),

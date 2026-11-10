@@ -65,7 +65,9 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
 
   void _openNode(GraphNode node) {
     if (node.kind == 'person') {
-      unawaited(widget.onOpenPerson(node.id));
+      final personId =
+          node.id.startsWith('person:') ? node.id.substring(7) : node.id;
+      unawaited(widget.onOpenPerson(personId));
       return;
     }
     if (node.kind != 'topic') return;
