@@ -467,6 +467,22 @@ final class _FakeBlePort implements DeviceBlePort {
 
   @override
   Future<void> setMicGain(int gain) async => micGains.add(gain);
+
+  final _power = StreamController<DevicePowerState>.broadcast(sync: true);
+  int powerOffs = 0;
+  int cancelPowerOffs = 0;
+
+  @override
+  Stream<DevicePowerState> get powerStateStream => _power.stream;
+
+  @override
+  Future<void> powerOff() async {
+    powerOffs++;
+    _power.add(DevicePowerState.turningOff);
+  }
+
+  @override
+  Future<void> cancelPowerOff() async => cancelPowerOffs++;
 }
 
 final class _FakeIdentityStore implements DeviceIdentityStorePort {

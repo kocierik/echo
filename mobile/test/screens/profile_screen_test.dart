@@ -595,4 +595,13 @@ final class _FakeBlePort implements DeviceBlePort {
 
   @override
   Future<void> setMicGain(int gain) async => micGains.add(gain);
+
+  @override
+  Stream<DevicePowerState> get powerStateStream => const Stream.empty();
+
+  @override
+  Future<void> powerOff() async {}
+
+  @override
+  Future<void> cancelPowerOff() async {}
 }

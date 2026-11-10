@@ -198,6 +198,11 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   @override
   Stream<DeviceInfo> get deviceInfoStream => _deviceInfoController.stream;
 
+  final _powerStateController = StreamController<DevicePowerState>.broadcast();
+
+  @override
+  Stream<DevicePowerState> get powerStateStream => _powerStateController.stream;
+
   final _messageController = StreamController<String>.broadcast();
   Stream<String> get messageStream => _messageController.stream;
 
@@ -517,6 +522,12 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
       return;
     }
 
+    final powerState = DeviceProtocol.parsePowerState(value);
+    if (powerState != null) {
+      _powerStateController.add(powerState);
+      return;
+    }
+
     final photoFailure = DeviceProtocol.parsePhotoFailed(value);
     if (photoFailure != null) {
       _publishMessage('Photo not taken: $photoFailure', BleMessageKind.error);
@@ -600,6 +611,12 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   @override
   Future<void> setMicGain(int gain) =>
       _writeControl(DeviceProtocol.setMicGain(gain));
+
+  @override
+  Future<void> powerOff() => _writeControl(DeviceProtocol.powerOff());
+
+  @override
+  Future<void> cancelPowerOff() => _writeControl(DeviceProtocol.cancelPowerOff());
 
   @override
   Future<void> forgetBond() async {
@@ -821,6 +838,7 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
     await _telemetryController.close();
     await _deviceInfoController.close();
     await _otaStatusController.close();
+    await _powerStateController.close();
     await _messageController.close();
     await _uiMessageController.close();
     await _segmentUploadedController.close();

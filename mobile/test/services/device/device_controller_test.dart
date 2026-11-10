@@ -361,6 +361,7 @@ class _FakeDeviceBlePort implements DeviceBlePort {
   final _telemetryController =
       StreamController<DeviceTelemetry>.broadcast(sync: true);
   final _infoController = StreamController<DeviceInfo>.broadcast(sync: true);
+  final _powerController = StreamController<DevicePowerState>.broadcast(sync: true);
 
   Completer<String>? pairing;
   Completer<void>? savedConnection;
@@ -372,6 +373,8 @@ class _FakeDeviceBlePort implements DeviceBlePort {
   int pairCalls = 0;
   int disconnectCalls = 0;
   int disposeCalls = 0;
+  int powerOffWrites = 0;
+  int cancelPowerOffWrites = 0;
 
   @override
   DeviceAdapterState get adapterState => _adapterState;
@@ -413,6 +416,17 @@ class _FakeDeviceBlePort implements DeviceBlePort {
 
   @override
   Future<void> setMicGain(int gain) async => micGains.add(gain);
+
+  @override
+  Stream<DevicePowerState> get powerStateStream => _powerController.stream;
+
+  @override
+  Future<void> powerOff() async => powerOffWrites++;
+
+  @override
+  Future<void> cancelPowerOff() async => cancelPowerOffWrites++;
+
+  void emitPower(DevicePowerState state) => _powerController.add(state);
 
   @override
   Future<void> forgetBond() => forgetResult;

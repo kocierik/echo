@@ -116,6 +116,20 @@ void main() {
       );
     });
 
+    test('turning off: POWER_OFF out, POWER_STATE in, from firmware 0.10.0', () {
+      expect(DeviceProtocol.powerOff(), [0x1C, 1]);
+      expect(DeviceProtocol.cancelPowerOff(), [0x1C, 0]);
+      expect(DeviceProtocol.powerOffFirmware, '0.10.0');
+      expect(DeviceProtocol.parsePowerState([0x24, 0, 0]), DevicePowerState.on);
+      expect(DeviceProtocol.parsePowerState([0x24, 1, 0]), DevicePowerState.turningOff);
+      expect(DeviceProtocol.parsePowerState([0x24, 2, 0]), DevicePowerState.off);
+      expect(DeviceProtocol.parsePowerState([0x24, 3, 1]), DevicePowerState.refused);
+      expect(DeviceProtocol.parsePowerState([0x24, 4, 0]), isNull);
+      expect(DeviceProtocol.parsePowerState([0x24, 1]), isNull);
+      expect(DeviceProtocol.parsePowerState([0x23, 1, 0]), isNull);
+      expect(DeviceProtocol.supportedVersions, {2, 3, 4, 5, 6});
+    });
+
     test('encodes TAKE_PHOTO and decodes PHOTO_FAILED reasons', () {
       expect(DeviceProtocol.takePhoto(), orderedEquals([0x18]));
       expect(DeviceProtocol.parsePhotoFailed([0x22, 1]), 'muted');

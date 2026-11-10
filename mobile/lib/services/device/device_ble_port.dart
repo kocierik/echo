@@ -18,11 +18,14 @@ abstract interface class DeviceBlePort {
   Stream<DeviceBlePhase> get phaseStream;
   Stream<DeviceTelemetry> get telemetryStream;
   Stream<DeviceInfo> get deviceInfoStream;
+  Stream<DevicePowerState> get powerStateStream;
 
   Future<String> pair();
   Future<void> connectSaved(String remoteId);
   Future<void> setMuted(bool muted);
   Future<void> setMicGain(int gain);
+  Future<void> powerOff();
+  Future<void> cancelPowerOff();
   Future<void> forgetBond();
   Future<void> disconnect();
   Future<void> dispose();

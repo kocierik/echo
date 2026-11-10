@@ -54,6 +54,10 @@ final class DeviceProtocolException implements Exception {
 /// Where a firmware update stands on the wearable (OTA_STATUS).
 enum OtaState { receiving, done, failed }
 
+/// Where turning Echo off stands (POWER_STATE, firmware 0.10.0 on). Refused: Echo stays on
+/// because it is updating.
+enum DevicePowerState { on, turningOff, off, refused }
+
 final class OtaStatus {
   const OtaStatus(this.state, this.error, this.received);
 
@@ -82,6 +86,11 @@ abstract final class DeviceProtocol {
   static const int maxMicGain = 8;
   static const int defaultMicGain = 3;
   static const String micGainFirmware = '0.9.3';
+
+  /// Turning Echo off from the app (firmware 0.10.0 on; no protocol bump).
+  static const String powerOffFirmware = '0.10.0';
+  static const int _framePowerOff = 0x1C;
+  static const int framePowerState = 0x24;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
   static const int _frameTakePhoto = 0x18;
@@ -174,6 +183,22 @@ abstract final class DeviceProtocol {
   static Uint8List forgetBond() => Uint8List.fromList([_frameForgetBond]);
 
   static Uint8List takePhoto() => Uint8List.fromList([_frameTakePhoto]);
+
+  static Uint8List powerOff() => Uint8List.fromList([_framePowerOff, 1]);
+
+  static Uint8List cancelPowerOff() => Uint8List.fromList([_framePowerOff, 0]);
+
+  /// POWER_STATE, or null for any other frame.
+  static DevicePowerState? parsePowerState(List<int> bytes) {
+    if (bytes.length != 3 || bytes.first != framePowerState) return null;
+    return switch (bytes[1]) {
+      0 => DevicePowerState.on,
+      1 => DevicePowerState.turningOff,
+      2 => DevicePowerState.off,
+      3 => DevicePowerState.refused,
+      _ => null,
+    };
+  }
 
   /// Why the wearable took no photo, as the backend names it; null when the frame
   /// is not a PHOTO_FAILED.
