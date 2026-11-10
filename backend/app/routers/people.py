@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +12,11 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.conversation import Conversation
 from app.models.entity import Entity
+from app.models.person_fact import PersonFact
 from app.models.transcription import Transcription
 from app.routers.conversations import ConversationListItem, list_items, with_segment_counts
 from app.services.people import in_person_conversations, naming
+from app.services.person_facts import current_facts, earlier_facts
 
 router = APIRouter(prefix="/people", tags=["people"])
 
@@ -46,10 +48,21 @@ class PersonItem(BaseModel):
     source_text: str | None
 
 
+class FactOut(BaseModel):
+    id: uuid.UUID
+    text: str
+    category: str
+    quote: str
+    conversation_id: uuid.UUID | None
+    created_at: datetime
+
+
 class PersonDetail(PersonSummary):
     conversations: list[ConversationListItem]
     tasks: list[PersonItem]
     events: list[PersonItem]
+    facts: list[FactOut]
+    earlier_facts: list[FactOut]
 
 
 def _role(person: Entity) -> str | None:
@@ -115,6 +128,17 @@ def _item(entity: Entity, source_text: str | None) -> PersonItem:
         conversation_id=entity.conversation_id,
         created_at=entity.created_at,
         source_text=source_text,
+    )
+
+
+def _fact(fact: PersonFact) -> FactOut:
+    return FactOut(
+        id=fact.id,
+        text=fact.text,
+        category=fact.category,
+        quote=fact.quote,
+        conversation_id=fact.conversation_id,
+        created_at=fact.created_at,
     )
 
 
@@ -184,4 +208,33 @@ async def get_person(
         conversations=await list_items(db, conversation_rows),
         tasks=[_item(e, text) for e, text in task_rows.all()],
         events=[_item(e, text) for e, text in event_rows.all()],
+        facts=[_fact(fact) for fact in await current_facts(db, user_id, person.id)],
+        earlier_facts=[_fact(fact) for fact in await earlier_facts(db, user_id, person.id)],
     )
+
+
+@router.delete(
+    "/{person_id}/facts/{fact_id}",
+    status_code=204,
+)
+async def reject_person_fact(
+    person_id: uuid.UUID,
+    fact_id: uuid.UUID,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a fact about an owned person without deleting its history."""
+    await _owned_person(db, person_id, user_id)
+    fact = (
+        await db.execute(
+            select(PersonFact)
+            .where(PersonFact.id == fact_id)
+            .where(PersonFact.person_id == person_id)
+            .where(PersonFact.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if fact is None:
+        raise HTTPException(status_code=404, detail="Fact not found")
+    fact.status = "rejected"
+    await db.commit()
+    return Response(status_code=204)

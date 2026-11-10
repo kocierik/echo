@@ -39,6 +39,7 @@ from app.routers import (
     facts,
     feedback,
     firmware,
+    memory_graph,
     notifications,
     people,
     photos,
@@ -148,6 +149,7 @@ app.include_router(notifications.router, prefix=settings.api_prefix)
 app.include_router(actions.router, prefix=settings.api_prefix)
 app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(people.router, prefix=settings.api_prefix)
+app.include_router(memory_graph.router, prefix=settings.api_prefix)
 app.include_router(photos.router, prefix=settings.api_prefix)
 app.include_router(voices.router, prefix=settings.api_prefix)
 app.include_router(firmware.router, prefix=settings.api_prefix)

@@ -1,5 +1,6 @@
 """Entity mentions keep every conversation an entity came up in; People reads them."""
 
+import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -7,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Entity, EntityMention
+from app.models.person_fact import PersonFact
 from app.services.conversation_deleter import delete_conversation
 from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.deduplication import merge_entities
@@ -243,3 +245,115 @@ async def test_a_missing_or_non_person_entity_is_404(
 
     assert not_a_person.status_code == 404
     assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_person_detail_lists_current_and_earlier_facts(
+    client, auth_headers, db_session: AsyncSession
+):
+    conversation, _ = await make_conversation(db_session, started_at=NOW)
+    marco = make_entity(conversation, "person", "Marco")
+    db_session.add(marco)
+    await db_session.flush()
+    current = PersonFact(
+        user_id=marco.user_id,
+        person_id=marco.id,
+        text="Works in design",
+        category="work",
+        quote="Marco lavora nel design.",
+        conversation_id=conversation.id,
+        status="current",
+    )
+    earlier = PersonFact(
+        user_id=marco.user_id,
+        person_id=marco.id,
+        text="Worked in design",
+        category="work",
+        quote="Marco lavorava nel design.",
+        conversation_id=conversation.id,
+        status="superseded",
+    )
+    db_session.add_all([current, earlier])
+    await db_session.commit()
+
+    response = await client.get(f"/api/people/{marco.id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [fact["id"] for fact in body["facts"]] == [str(current.id)]
+    assert [fact["id"] for fact in body["earlier_facts"]] == [str(earlier.id)]
+    assert body["facts"][0] == {
+        "id": str(current.id),
+        "text": "Works in design",
+        "category": "work",
+        "quote": "Marco lavora nel design.",
+        "conversation_id": str(conversation.id),
+        "created_at": current.created_at.isoformat(),
+    }
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_fact_rejects_it_and_hides_other_users_facts(
+    client, auth_headers, db_session: AsyncSession
+):
+    conversation, _ = await make_conversation(db_session, started_at=NOW)
+    marco = make_entity(conversation, "person", "Marco")
+    db_session.add(marco)
+    await db_session.flush()
+    fact = PersonFact(
+        user_id=marco.user_id,
+        person_id=marco.id,
+        text="Works in design",
+        category="work",
+        quote="Marco lavora nel design.",
+        conversation_id=conversation.id,
+        status="current",
+    )
+    other_conversation, _ = await make_conversation(
+        db_session, started_at=NOW, user_id=uuid.UUID("b0000000-0000-4000-8000-000000000002")
+    )
+    other_person = make_entity(other_conversation, "person", "Ada")
+    db_session.add_all([fact, other_person])
+    await db_session.flush()
+    other_fact = PersonFact(
+        user_id=other_person.user_id,
+        person_id=marco.id,
+        text="Studies biology",
+        category="interests",
+        quote="Ada studia biologia.",
+        conversation_id=other_conversation.id,
+        status="current",
+    )
+    db_session.add(other_fact)
+    await db_session.commit()
+
+    deleted = await client.delete(
+        f"/api/people/{marco.id}/facts/{fact.id}", headers=auth_headers
+    )
+    db_session.expire_all()
+    saved_fact = await db_session.get(PersonFact, fact.id)
+    detail = await client.get(f"/api/people/{marco.id}", headers=auth_headers)
+    foreign_fact = await client.delete(
+        f"/api/people/{marco.id}/facts/{other_fact.id}", headers=auth_headers
+    )
+
+    assert deleted.status_code == 204
+    assert saved_fact.status == "rejected"
+    assert detail.json()["facts"] == []
+    assert foreign_fact.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_conversations_by_topic(client, auth_headers, db_session: AsyncSession):
+    matching, _ = await make_conversation(db_session, started_at=NOW, title="Atlas")
+    matching.topics = ["atlas"]
+    other, _ = await make_conversation(db_session, started_at=NOW - timedelta(days=1))
+    other.topics = ["planning"]
+    await db_session.commit()
+
+    response = await client.get("/api/conversations?topic=Atlas", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert [conversation["id"] for conversation in response.json()["conversations"]] == [
+        str(matching.id)
+    ]

@@ -30,6 +30,7 @@ from app.services.conversation_deleter import (
 from app.services.llm_openai import get_llm_query_service
 from app.services.places import place_out, places_of
 from app.services.temporal import conversation_overlaps
+from app.services.topics import normalize_topics
 from app.services.transcript_translation import translate_conversation
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
@@ -293,6 +294,7 @@ async def list_conversations(
     offset: int = Query(0, ge=0),
     date_from: datetime | None = None,
     date_to: datetime | None = None,
+    topic: str | None = None,
     user_id: uuid.UUID = Depends(get_current_user_id),
     db: AsyncSession = Depends(get_db),
 ):
@@ -301,6 +303,9 @@ async def list_conversations(
         Conversation.user_id == user_id,
         *conversation_overlaps(date_from, date_to),
     ]
+    if topic is not None:
+        normalized = normalize_topics([topic], [])
+        conditions.append(Conversation.topics.any(normalized[0] if normalized else ""))
     total = (
         await db.execute(select(func.count(Conversation.id)).where(*conditions))
     ).scalar() or 0
