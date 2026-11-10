@@ -57,13 +57,14 @@ async def test_graph_weights_and_edges(client, auth_headers, db_session: AsyncSe
     marco = await _person(db_session, TEST_USER_ID, "Marco")
     ada = await _person(db_session, TEST_USER_ID, "Ada")
     first = await _conversation(db_session, topics=["atlas"])
-    second = await _conversation(db_session, topics=["atlas"])
-    third = await _conversation(db_session, topics=[])
+    second = await _conversation(db_session, topics=[])
+    third = await _conversation(db_session, topics=["atlas"])
+    fourth = await _conversation(db_session, topics=[])
     await _mention(db_session, first, marco)
     await _mention(db_session, first, ada)
-    await _mention(db_session, second, marco)
+    await _mention(db_session, second, ada)
     await _mention(db_session, third, marco)
-    await _mention(db_session, third, ada)
+    await _mention(db_session, fourth, marco)
     await db_session.commit()
 
     response = await client.get("/api/memory-graph", headers=auth_headers)
@@ -74,7 +75,7 @@ async def test_graph_weights_and_edges(client, auth_headers, db_session: AsyncSe
     edges = {(edge["a"], edge["b"]): edge["weight"] for edge in body["edges"]}
     marco_id = f"person:{marco.id}"
     ada_id = f"person:{ada.id}"
-    assert nodes["you"]["weight"] == 3
+    assert nodes["you"]["weight"] == 4
     assert nodes[marco_id]["weight"] == 3
     assert nodes[ada_id]["weight"] == 2
     assert nodes["topic:atlas"]["weight"] == 2
