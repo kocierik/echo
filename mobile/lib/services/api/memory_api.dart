@@ -20,6 +20,7 @@ abstract interface class MemoryApi {
   Future<void> deleteConversation(String conversationId);
   Future<List<PersonSummary>> listPeople();
   Future<PersonDetail> getPerson(String id);
+  Future<void> deletePersonFact(String personId, String factId);
 }
 
 /// Actions waiting for the user's Confirm (actions_api.dart).
@@ -225,6 +226,11 @@ mixin MemoryEndpoints on ApiClient
       (data) => PersonDetail.fromJson(data as Map<String, dynamic>),
     );
   }
+
+  @override
+  Future<void> deletePersonFact(String personId, String factId) => delete(
+        '/api/people/${Uri.encodeComponent(personId)}/facts/${Uri.encodeComponent(factId)}',
+      );
 
   /// The most recent daily digest of the last two days, or null if none exists.
   Future<DailySummary?> getLatestDigest() async {

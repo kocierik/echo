@@ -88,6 +88,87 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
     if (mounted) await _load();
   }
 
+  Future<void> _rejectFact(PersonFact fact) async {
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListTile(
+          leading: const Icon(Icons.close_rounded),
+          title: const Text('Not true'),
+          onTap: () => Navigator.pop(context, true),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await widget.api.deletePersonFact(widget.personId, fact.id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(userMessage(error, 'Could not reject this fact.')),
+        ));
+      return;
+    }
+    if (mounted) await _load();
+  }
+
+  Widget _facts(PersonDetail detail) {
+    const categories = {
+      'work': 'Work',
+      'family': 'Family',
+      'home': 'Home',
+      'interests': 'Interests',
+      'plans': 'Plans',
+      'other': 'Other',
+    };
+    final facts = List.of(detail.facts)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final earlier = List.of(detail.earlierFacts)
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    Widget row(PersonFact fact, {bool superseded = false}) => _FactRow(
+          fact: fact,
+          superseded: superseded,
+          onTap: fact.conversationId == null
+              ? null
+              : () => unawaited(_openConversation(fact.conversationId!)),
+          onLongPress: () => unawaited(_rejectFact(fact)),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+          child: PanelHeader(title: 'What Echo knows'),
+        ),
+        for (final category in categories.entries)
+          if (facts.any((fact) => fact.category == category.key))
+            PanelSection(
+              title: category.value,
+              children: [
+                for (final fact in facts.where((fact) => fact.category == category.key))
+                  row(fact),
+              ],
+            ),
+        if (earlier.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Panel(
+              padding: EdgeInsets.zero,
+              child: ExpansionTile(
+                title: const Text('Before'),
+                children: [
+                  for (final fact in earlier) row(fact, superseded: true),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// A person Echo got wrong (a misheard word, someone else's name) goes, with what
   /// was said about them; their conversations stay.
   Future<void> _delete() async {
@@ -176,6 +257,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
         padding: const EdgeInsets.only(bottom: 48),
         children: [
           _Header(person: person, now: now),
+          if (detail.facts.isNotEmpty || detail.earlierFacts.isNotEmpty) _facts(detail),
           if (ask != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
@@ -242,6 +324,53 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+final class _FactRow extends StatelessWidget {
+  const _FactRow({
+    required this.fact,
+    required this.onTap,
+    required this.onLongPress,
+    this.superseded = false,
+  });
+
+  final PersonFact fact;
+  final VoidCallback? onTap;
+  final VoidCallback onLongPress;
+  final bool superseded;
+
+  String formatDate(DateTime value) {
+    final local = value.toLocal();
+    return '${shortDate(local)}, ${local.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return InkWell(
+      key: Key('person-fact-${fact.id}'),
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              fact.text,
+              style: textTheme.bodyMedium?.copyWith(
+                decoration: superseded ? TextDecoration.lineThrough : null,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(fact.quote, style: textTheme.bodySmall),
+            const SizedBox(height: 2),
+            Text(formatDate(fact.createdAt), style: textTheme.bodySmall),
+          ],
+        ),
       ),
     );
   }

@@ -51,6 +51,35 @@ final class PersonSummary {
   }
 }
 
+/// What Echo learned about a person, with the original evidence.
+@immutable
+final class PersonFact {
+  const PersonFact({
+    required this.id,
+    required this.text,
+    required this.category,
+    required this.quote,
+    required this.conversationId,
+    required this.createdAt,
+  });
+
+  factory PersonFact.fromJson(Map<String, dynamic> json) => PersonFact(
+        id: json['id'] as String,
+        text: json['text'] as String,
+        category: json['category'] as String,
+        quote: json['quote'] as String,
+        conversationId: json['conversation_id'] as String?,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  final String id;
+  final String text;
+  final String category;
+  final String quote;
+  final String? conversationId;
+  final DateTime createdAt;
+}
+
 /// `GET /api/people/{id}`: the person and what is linked to them.
 @immutable
 final class PersonDetail {
@@ -59,6 +88,8 @@ final class PersonDetail {
     required this.conversations,
     required this.tasks,
     required this.events,
+    this.facts = const [],
+    this.earlierFacts = const [],
   });
 
   factory PersonDetail.fromJson(Map<String, dynamic> json) {
@@ -78,6 +109,14 @@ final class PersonDetail {
             .map((item) => MemoryEntity.fromJson(item as Map<String, dynamic>))
             .where((event) => event.name.isNotEmpty),
       ),
+      facts: List.unmodifiable(
+        (json['facts'] as List<dynamic>? ?? const [])
+            .map((item) => PersonFact.fromJson(item as Map<String, dynamic>)),
+      ),
+      earlierFacts: List.unmodifiable(
+        (json['earlier_facts'] as List<dynamic>? ?? const [])
+            .map((item) => PersonFact.fromJson(item as Map<String, dynamic>)),
+      ),
     );
   }
 
@@ -85,6 +124,8 @@ final class PersonDetail {
   final List<ConversationCard> conversations;
   final List<TaskItem> tasks;
   final List<MemoryEntity> events;
+  final List<PersonFact> facts;
+  final List<PersonFact> earlierFacts;
 }
 
 String? _text(Object? value) {

@@ -14,6 +14,89 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
+  group('Person facts', () {
+    test('reads typed current and earlier facts with exact evidence', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+        'id': 'p1',
+        'name': 'Marco',
+        'facts': [
+          {
+            'id': 'f1',
+            'text': 'Leads Atlas',
+            'category': 'work',
+            'quote': '  [Marco] Lavoro ad Atlas.  ',
+            'conversation_id': 'c1',
+            'created_at': '2026-10-13T09:00:00Z',
+          },
+        ],
+        'earlier_facts': [
+          {
+            'id': 'f0',
+            'text': 'Worked in Rome',
+            'category': 'home',
+            'quote': '[Marco] Vivevo a Roma.',
+            'conversation_id': null,
+            'created_at': '2026-10-10T09:00:00Z',
+          },
+        ],
+      }));
+
+      final person = await service.getPerson('p1');
+      final fact = person.facts.single;
+      expect(fact.id, 'f1');
+      expect(fact.text, 'Leads Atlas');
+      expect(fact.category, 'work');
+      expect(fact.quote, '  [Marco] Lavoro ad Atlas.  ');
+      expect(fact.conversationId, 'c1');
+      expect(fact.createdAt, DateTime.utc(2026, 10, 13, 9));
+      final earlier = person.earlierFacts.single;
+      expect(earlier.id, 'f0');
+      expect(earlier.text, 'Worked in Rome');
+      expect(earlier.category, 'home');
+      expect(earlier.quote, '[Marco] Vivevo a Roma.');
+      expect(earlier.conversationId, isNull);
+      expect(earlier.createdAt, DateTime.utc(2026, 10, 10, 9));
+    });
+
+    test('older person responses default to no facts', () async {
+      final service = _service((request) => _jsonResponse(request, 200, {
+        'id': 'p1', 'name': 'Marco',
+      }));
+      final person = await service.getPerson('p1');
+      expect(person.facts, isEmpty);
+      expect(person.earlierFacts, isEmpty);
+    });
+
+    test('rejects a person fact through its encoded DELETE endpoint', () async {
+      late http.BaseRequest captured;
+      final service = _service((request) {
+        captured = request;
+        return _response(request, 204);
+      });
+
+      await service.deletePersonFact('person/1', 'fact/1');
+
+      expect(captured.method, 'DELETE');
+      expect(captured.url.toString(),
+          'https://echo.test/api/people/person%2F1/facts/fact%2F1');
+    });
+
+    test('rejection preserves the server error for userMessage', () async {
+      final service = _service((request) => _jsonResponse(request, 500, {
+        'detail': 'The server could not reject this fact.',
+      }));
+
+      await expectLater(
+        service.deletePersonFact('p1', 'f1'),
+        throwsA(isA<ApiException>().having(
+          (error) => userMessage(error, 'Could not reject this fact.'),
+          'userMessage',
+          'The server could not reject this fact.',
+        )),
+      );
+    });
+  });
+
   group('Places visited', () {
     test('sends stays, reads a page and deletes one, a day and all', () async {
       final calls = <String>[];

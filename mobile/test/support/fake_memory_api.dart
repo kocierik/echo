@@ -139,6 +139,23 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   }
 
   @override
+  Future<void> deletePersonFact(String personId, String factId) async {
+    calls.add('delete person fact $personId $factId');
+    await _wait();
+    if (taskError case final error?) throw error;
+    final detail = personDetails[personId];
+    if (detail == null) return;
+    personDetails[personId] = PersonDetail(
+      person: detail.person,
+      conversations: detail.conversations,
+      tasks: detail.tasks,
+      events: detail.events,
+      facts: detail.facts.where((fact) => fact.id != factId).toList(),
+      earlierFacts: detail.earlierFacts.where((fact) => fact.id != factId).toList(),
+    );
+  }
+
+  @override
   Future<TranscriptionCorrectionResult> correctTranscription(
     String segmentId,
     String text,
