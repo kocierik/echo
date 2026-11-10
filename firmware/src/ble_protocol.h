@@ -29,11 +29,16 @@ constexpr uint8_t FRAME_OTA_ABORT = 0x1A;    // v4, app -> wearable
 // app sends it only to a firmware that knows it (DEVICE_INFO's version)
 constexpr uint8_t FRAME_SET_MIC_GAIN = 0x1B;
 constexpr uint8_t MAX_MIC_GAIN = 8;
+// app -> wearable, firmware 0.10.0 on: [type, 1 = turn off | 0 = cancel]. No protocol bump,
+// as SET_MIC_GAIN: the app sends it only to a firmware that knows it
+constexpr uint8_t FRAME_POWER_OFF = 0x1C;
 constexpr uint8_t FRAME_DEVICE_STATUS = 0x20;
 constexpr uint8_t FRAME_DEVICE_INFO = 0x21;
 constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reason]
 // v4, wearable -> app: [type, state, error, bytes received u32]
 constexpr uint8_t FRAME_OTA_STATUS = 0x23;
+// wearable -> app, firmware 0.10.0 on: [type, state, reason]. Older apps ignore it
+constexpr uint8_t FRAME_POWER_STATE = 0x24;
 // 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
 // 4: firmware updates over BLE (OTA_*), DEVICE_INFO sent after READY
 // 5: the microSD in DEVICE_STATUS (in use, size, free space, speech waiting on it)
@@ -60,6 +65,13 @@ constexpr uint8_t OTA_ERROR_NOT_STARTED = 8;
 constexpr uint8_t OTA_ERROR_TIMEOUT = 9;
 constexpr uint8_t OTA_ERROR_BAD_SIGNATURE = 10;  // v6: not signed with the release key
 
+constexpr uint8_t POWER_STATE_ON = 0;           // a turn-off was cancelled
+constexpr uint8_t POWER_STATE_TURNING_OFF = 1;  // making its speech safe, then off
+constexpr uint8_t POWER_STATE_OFF = 2;          // about to sleep; its button wakes it
+constexpr uint8_t POWER_STATE_REFUSED = 3;      // stays on: see the reason
+constexpr uint8_t POWER_REASON_NONE = 0;
+constexpr uint8_t POWER_REASON_UPDATING = 1;    // a firmware update, or one not yet confirmed
+
 constexpr size_t SHA256_SIZE = 32;
 constexpr size_t OTA_SIGNATURE_SIZE = 64;
 constexpr size_t OTA_PUBLIC_KEY_SIZE = 64;
@@ -76,6 +88,8 @@ constexpr size_t SEGMENT_COMMAND_SIZE = 5;
 constexpr size_t SET_TIME_SIZE = 11;
 constexpr size_t SET_MUTED_SIZE = 2;
 constexpr size_t SET_MIC_GAIN_SIZE = 2;
+constexpr size_t POWER_OFF_SIZE = 2;
+constexpr size_t POWER_STATE_SIZE = 3;
 constexpr size_t FORGET_BOND_SIZE = 1;
 constexpr size_t FORGET_BOND_OK_SIZE = 1;
 constexpr size_t TAKE_PHOTO_SIZE = 1;
@@ -242,6 +256,7 @@ struct ControlFrame {
     int16_t timezoneOffsetMinutes;
     bool muted;
     uint8_t micGain;
+    bool turnOff;
     uint32_t otaSize;
     uint8_t otaSha256[SHA256_SIZE];
     uint8_t otaSignature[OTA_SIGNATURE_SIZE];
@@ -385,6 +400,14 @@ inline size_t encodePhotoFailed(uint8_t reason, uint8_t* output, size_t capacity
     return PHOTO_FAILED_SIZE;
 }
 
+inline size_t encodePowerState(uint8_t state, uint8_t reason, uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < POWER_STATE_SIZE || state > POWER_STATE_REFUSED) return 0;
+    output[0] = FRAME_POWER_STATE;
+    output[1] = state;
+    output[2] = reason;
+    return POWER_STATE_SIZE;
+}
+
 inline size_t encodeOtaStatus(uint8_t state, uint8_t error, uint32_t received,
                               uint8_t* output, size_t capacity) {
     if (output == nullptr || capacity < OTA_STATUS_SIZE ||
@@ -435,6 +458,10 @@ inline bool decodeControlFrame(const uint8_t* input, size_t length, ControlFrame
         case FRAME_SET_MIC_GAIN:
             if (length != SET_MIC_GAIN_SIZE || input[1] < 1 || input[1] > MAX_MIC_GAIN) return false;
             frame.micGain = input[1];
+            return true;
+        case FRAME_POWER_OFF:
+            if (length != POWER_OFF_SIZE || input[1] > 1) return false;
+            frame.turnOff = input[1] == 1;
             return true;
         case FRAME_FORGET_BOND:
             return length == FORGET_BOND_SIZE;

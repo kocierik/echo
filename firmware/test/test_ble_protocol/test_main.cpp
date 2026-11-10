@@ -206,6 +206,44 @@ void test_mic_gain_frame_takes_1_to_8() {
     TEST_ASSERT_FALSE(decodeControlFrame(shortGain, sizeof(shortGain), decoded));
 }
 
+void test_power_off_frame_turns_off_or_cancels() {
+    const uint8_t off[] = {FRAME_POWER_OFF, 1};
+    const uint8_t cancel[] = {FRAME_POWER_OFF, 0};
+    const uint8_t invalid[] = {FRAME_POWER_OFF, 2};
+    const uint8_t shortFrame[] = {FRAME_POWER_OFF};
+    const uint8_t longFrame[] = {FRAME_POWER_OFF, 1, 0};
+    ControlFrame decoded = {};
+
+    TEST_ASSERT_EQUAL_HEX8(0x1C, FRAME_POWER_OFF);
+    TEST_ASSERT_TRUE(decodeControlFrame(off, sizeof(off), decoded));
+    TEST_ASSERT_EQUAL_UINT8(FRAME_POWER_OFF, decoded.type);
+    TEST_ASSERT_TRUE(decoded.turnOff);
+    TEST_ASSERT_TRUE(decodeControlFrame(cancel, sizeof(cancel), decoded));
+    TEST_ASSERT_FALSE(decoded.turnOff);
+    TEST_ASSERT_FALSE(decodeControlFrame(invalid, sizeof(invalid), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(shortFrame, sizeof(shortFrame), decoded));
+    TEST_ASSERT_FALSE(decodeControlFrame(longFrame, sizeof(longFrame), decoded));
+}
+
+void test_power_state_exact_bytes_and_protocol_unchanged() {
+    uint8_t frame[POWER_STATE_SIZE] = {};
+    TEST_ASSERT_EQUAL_UINT32(POWER_STATE_SIZE,
+        encodePowerState(POWER_STATE_REFUSED, POWER_REASON_UPDATING, frame, sizeof(frame)));
+    const uint8_t refused[] = {0x24, 3, 1};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(refused, frame, sizeof(refused));
+
+    TEST_ASSERT_EQUAL_UINT32(POWER_STATE_SIZE,
+        encodePowerState(POWER_STATE_ON, POWER_REASON_NONE, frame, sizeof(frame)));
+    const uint8_t on[] = {0x24, 0, 0};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(on, frame, sizeof(on));
+
+    TEST_ASSERT_EQUAL_UINT32(0, encodePowerState(POWER_STATE_REFUSED + 1, 0, frame, sizeof(frame)));
+    TEST_ASSERT_EQUAL_UINT32(0, encodePowerState(POWER_STATE_OFF, 0, frame, POWER_STATE_SIZE - 1));
+    TEST_ASSERT_EQUAL_UINT32(0, encodePowerState(POWER_STATE_OFF, 0, nullptr, POWER_STATE_SIZE));
+    // New frames are gated on the firmware version, as SET_MIC_GAIN: no protocol bump
+    TEST_ASSERT_EQUAL_UINT8(6, PROTOCOL_VERSION);
+}
+
 void test_privacy_control_frames_decode_exact_lengths_and_values() {
     const uint8_t muted[] = {FRAME_SET_MUTED, 1};
     const uint8_t listening[] = {FRAME_SET_MUTED, 0};
@@ -414,6 +452,8 @@ void test_ota_frames() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_mic_gain_frame_takes_1_to_8);
+    RUN_TEST(test_power_off_frame_turns_off_or_cancels);
+    RUN_TEST(test_power_state_exact_bytes_and_protocol_unchanged);
     RUN_TEST(test_crc32_known_vector);
     RUN_TEST(test_incremental_crc32_matches_one_shot_crc32);
     RUN_TEST(test_buffered_segment_header_round_trips_stored_crc);
