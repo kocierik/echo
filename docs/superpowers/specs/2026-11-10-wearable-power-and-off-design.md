@@ -27,8 +27,9 @@ phone yet.
   to sleep, so it does not turn on in a pocket.
 - **No false alarm.** The app shows Echo as "Off", not "disconnected", and reconnects by itself
   when Echo wakes.
-- Firmware 0.10.0, protocol 7. Older apps keep working with the new firmware (they never send the
-  new frame); the app hides "Turn off Echo" for firmware below protocol 7.
+- Firmware 0.10.0, still protocol 6. Older apps keep working with the new firmware (they never
+  send the new frame and ignore the new notification); the app shows "Turn off Echo" only for
+  firmware 0.10.0 on, as it does for the microphone gain (0.9.3).
 
 ## Non-goals
 
@@ -55,8 +56,9 @@ phone yet.
 
 ### 1. CPU frequency
 
-- `CPU_FREQ_MHZ` in `config.h`, default 80. `setCpuFrequencyMhz(CPU_FREQ_MHZ)` at the end of
-  `setup()`, once everything is initialized. On the S3 the APB clock stays at 80 MHz for any CPU
+- `CPU_FREQ_MHZ` in `config.h`, default 80. `setCpuFrequencyMhz(CPU_FREQ_MHZ)` at the start of
+  `setup()` (after the wake check, before anything is initialized), so every driver starts at
+  the final frequency. On the S3 the APB clock stays at 80 MHz for any CPU
   frequency ≥ 80 MHz, so I2S, BLE and SPI timing do not change.
 - The firmware measures the processing time of each 32 ms microphone frame (VAD + up to two 20 ms
   Opus frames + appending) and logs the maximum and the average once per segment. The criterion
@@ -88,8 +90,9 @@ States: `ON` → `TURNING_OFF` → `OFF_NOW`.
 - **Request** (POWER_OFF from the app, or the 5 s button hold):
   - refused while a firmware update is in progress or the running firmware is on trial (not yet
     confirmed by the app): Echo replies `REFUSED_UPDATING` and stays on;
-  - otherwise the microphone stops (as for mute, without changing the saved mute state) and the
-    state becomes `TURNING_OFF`. A photo being taken or waiting is dropped, as on mute.
+  - otherwise the microphone stops (without changing the saved mute state) and the state
+    becomes `TURNING_OFF`. A segment being recorded is closed and stored, not discarded (turning
+    off is not a privacy action, unlike mute). A photo being taken or waiting is dropped.
 - **Making speech safe** while `TURNING_OFF`:
   - with the microSD card in use: the segments in PSRAM move to the card (a new
     `TieredQueue::spillToCard()`, oldest first, the same loop `store()` uses on overflow, with
@@ -132,29 +135,40 @@ happen while holding; it happens when they let go.
 
 While `TURNING_OFF`, a 1.5 s hold cancels the power-off (section 3) instead of toggling mute.
 
-### 6. Protocol 7
+### 6. Two new frames, protocol unchanged
+
+Bumping the protocol would make every installed app reject the new firmware's frames (the app
+checks the version in DEVICE_STATUS and DEVICE_INFO), so, as for SET_MIC_GAIN in 0.9.3, the
+protocol stays at 6 and the app looks at the firmware version.
 
 - `FRAME_POWER_OFF = 0x1C`, app → wearable, `[0x1C, action]`: `1` turn off, `0` cancel.
-  Encrypted write, like every control frame.
+  Encrypted write, like every control frame. A firmware before 0.10.0 ignores it (unknown type).
 - `FRAME_POWER_STATE = 0x24`, wearable → app, `[0x24, state, reason]`:
-  - state `1` TURNING_OFF (reason 0), `2` OFF (Echo is about to sleep), `3` REFUSED;
+  - state `1` TURNING_OFF (reason 0), `2` OFF (Echo is about to sleep), `3` REFUSED, `0` ON
+    (a power-off was cancelled);
   - reason for REFUSED: `1` updating firmware.
   Sent after every POWER_OFF and whenever the state changes, including a power-off started from
-  the button.
-- `PROTOCOL_VERSION = 7`. The app accepts 2 to 7.
+  the button. Apps before this change ignore it (unknown type on the control characteristic).
 
 ### 7. App
 
-- `DeviceProtocol`: `powerOff()`, `cancelPowerOff()`, parsing of POWER_STATE; version 7 in
-  `supportedVersions`.
-- `DeviceController`: `turnOff()`, `cancelTurnOff()`; `DeviceStatus` gains a power state
-  (`on`, `turningOff`, `off`). `off` is set from POWER_STATE `OFF` and kept until Echo reconnects.
-- Profile → Echo (`echo_device_screen.dart`): a "Turn off Echo" row (protocol ≥ 7, connected)
-  with a confirmation: "Echo will finish syncing, then turn off. Hold its button for 2 seconds to
-  turn it on again." (2 s told to the user, 1.5 s in the firmware: a margin.) While turning off: "Turning off · syncing N min" with Cancel. When off:
-  "Off · hold the button to turn it on".
-- The device pill in the headers and the Live Activity show "Off" instead of "Offline".
-- `notification_service.dart`: no "disconnected" notification while the power state is `off`.
+- `DeviceProtocol`: `powerOff()`, `cancelPowerOff()`, `parsePowerState()`;
+  `powerOffFirmware = '0.10.0'`.
+- `DeviceBlePort` / `BleService`: `powerOff()`, `cancelPowerOff()`, `powerStateStream`.
+- `DeviceController`: `turnOff()`, `cancelTurnOff()`. Two new `DeviceConnectionState` values:
+  `turningOff` (from POWER_STATE TURNING_OFF, kept over telemetry until ON or OFF) and `off`
+  (from POWER_STATE OFF, kept through the disconnect and the reconnection attempts until Echo
+  connects again).
+- Profile → Echo (`echo_device_screen.dart`): a "Turn off Echo" row (firmware ≥ 0.10.0, listening
+  or muted) with a confirmation: "Echo will finish syncing, then turn off. Hold its button for
+  2 seconds to turn it on again." (2 s told to the user, 1.5 s in the firmware: a margin.) While
+  turning off, the instrument says "Turning off" with a "Keep Echo on" action (cancel). When off:
+  "Off", and "Hold Echo's button to turn it on".
+- The device pill, the profile row and the privacy screen say "Off" / "Turning off". The Live
+  Activity ends while Echo is off (as when nothing is paired) and shows "muted" while it is
+  turning off: no change to the iOS widget.
+- `app_lifecycle_coordinator.dart`: `off` and `turningOff` cancel the "disconnected" notification
+  instead of scheduling it.
 - `REFUSED` (updating firmware): "Echo is updating; turn it off when the update is done."
 - Reconnection after a wake uses the existing auto-connect; nothing new.
 
@@ -169,10 +183,10 @@ While `TURNING_OFF`, a 1.5 s hold cancels the power-off (section 3) instead of t
   - `TieredQueue::spillToCard()`: oldest first, PSRAM empty afterwards, stops and reports when
     the card refuses, the move callback called for the segment being sent;
   - the wake decision (held 1.5 s → boot; released earlier → sleep), as a pure function;
-  - protocol: POWER_OFF and POWER_STATE encode/decode, version 7.
-- App (flutter test): the "Turn off Echo" flow and its confirmation, the turning-off row and
-  Cancel, "Off" in the device pill, no disconnect notification while off, the row hidden below
-  protocol 7, POWER_STATE parsing.
+  - protocol: POWER_OFF and POWER_STATE encode/decode; protocol version still 6.
+- App (flutter test): the "Turn off Echo" flow and its confirmation, turning off and
+  "Keep Echo on", "Off" in the device pill, no disconnect notification while off, the row hidden
+  before firmware 0.10.0, POWER_STATE parsing.
 - On the device (the user, with the hardware):
   1. before/after: chip temperature after 15 min of silence, at 240 and at 80 MHz (touch or a
      thermometer on the shield), and the encode-time log during speech;
@@ -268,3 +282,7 @@ bigger device. That choice waits for the measurements above.
 - Mute moves to the button's release (the price of a 5 s power-off on the same button).
 - 1.5 s to wake, 5 s to turn off; turning off is refused only during a firmware update or trial.
 - A muted Echo stays muted across off and on.
+- Protocol unchanged (6): the new frames are gated on firmware 0.10.0, as the microphone gain was.
+- After a button wake, Echo waits for the button to be released before starting, so the release
+  is not read as a short press (a photo). The LED lights while it waits, to say "let go".
+- The LED pin is held high (off) through deep sleep, so it does not glow or float.
