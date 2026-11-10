@@ -25,12 +25,13 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Pulsante fisico (D1/GPIO2 → GND): pressione breve = foto con notifica, lunga = muto/riattiva
 - [ ] Tarature sui dati reali: tempi dei comandi vocali (scatto anticipato se serve), soglie delle voci,
       risoluzione delle foto
-- [ ] Consumi e spegnimento (10/11, [spec](superpowers/specs/2026-11-10-wearable-power-and-off-design.md)):
+- [ ] Consumi e spegnimento (10/11, [spec](superpowers/specs/2026-11-10-wearable-power-and-off-design.md), [piano](superpowers/plans/2026-11-10-wearable-power-and-off.md)):
       CPU a 80 MHz (il chip scalda sempre, anche in silenzio), muto che spegne davvero il microfono,
       "Turn off Echo" dall'app e pulsante tenuto 5 s (prima sincronizza o sposta sulla microSD, poi deep
       sleep), riaccensione tenendo il pulsante 1,5 s. Poi misure prima/dopo (temperatura, ore con la
       1200 mAh, con e senza fotocamera): decidono batteria più piccola, case nuovo o un pendente
       solo-audio su Nordic come Omi (confronto nella spec)
+      Codice pronto (firmware 0.10.0): da misurare sul dispositivo (checklist nella spec, "On the device").
 
 ### Fase 2 — Fotocamera più utile
 - [x] Le foto generano task ed eventi (estrazione delle entità sulla descrizione)

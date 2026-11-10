@@ -66,7 +66,8 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
   ([ADR 0008](docs/adr/0008-voice-fingerprints.md)).
 - **Sees, when asked.** "Echo, che pianta è questa?", the camera button in Ask, or a short press of the
-  wearable's button (a long press mutes): the wearable's camera
+  wearable's button (released after a long press it mutes; held 5 s it turns Echo off, after
+  syncing; held 2 s it turns it on again): the wearable's camera
   takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
   the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
 - **Updates itself.** A firmware version published to the server is offered in Settings → Device
