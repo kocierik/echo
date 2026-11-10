@@ -227,10 +227,12 @@ async def extract_person_facts(
         )
     transcript_context = "\n".join(
         f"[{index + 1}] {lines[index]['display']} "
-        f"(context for: {', '.join(
+        + "(context for: "
+        + ", ".join(
             people_by_id[person_id].name
             for person_id in sorted(context_people_by_index[index], key=str)
-        )})"
+        )
+        + ")"
         for index in included_indexes
     )
     messages = [

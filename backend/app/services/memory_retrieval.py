@@ -26,8 +26,8 @@ from app.models.conversation import Conversation
 from app.models.document import Document, DocumentChunk
 from app.models.entity import Entity
 from app.services import places
-from app.services.person_facts import current_facts
 from app.services.people import in_person_conversations, names_person
+from app.services.person_facts import current_facts
 from app.services.saved import find_items, item_line
 from app.services.temporal import DateRange, conversation_overlaps
 
