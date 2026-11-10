@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from app.models import Base
 
@@ -199,7 +200,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 39)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 41)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -512,6 +513,65 @@ def test_migration_029_adds_assistants(monkeypatch):
         assert state.tables[table]["columns"]["assistant_id"] is True
         fk = next(f for f in state.tables[table]["fks"] if f["referred_table"] == "assistants")
         assert fk["options"].get("ondelete") == "SET NULL"
+
+
+def test_migration_040_creates_person_facts_and_topics(monkeypatch):
+    modules = _migrations()
+    state = _State()
+    for module in modules:
+        if module.revision == "040":
+            break
+        _run(module, state, monkeypatch)
+    migration_040 = next(m for m in modules if m.revision == "040")
+
+    _run(migration_040, state, monkeypatch)
+
+    facts = state.tables["person_facts"]
+    assert set(facts["columns"]) == {
+        "id",
+        "user_id",
+        "person_id",
+        "text",
+        "category",
+        "quote",
+        "segment_id",
+        "conversation_id",
+        "status",
+        "superseded_by",
+        "created_at",
+    }
+    assert facts["columns"]["person_id"] is False
+    assert facts["columns"]["segment_id"] is True
+    assert facts["columns"]["conversation_id"] is True
+    assert facts["columns"]["superseded_by"] is True
+    assert state.tables["conversations"]["columns"]["topics"] is True
+    assert {
+        (fk["constrained_columns"][0], fk["referred_table"], fk["options"].get("ondelete"))
+        for fk in facts["fks"]
+    } == {
+        ("person_id", "entities", "CASCADE"),
+        ("segment_id", "segments", "SET NULL"),
+        ("conversation_id", "conversations", "SET NULL"),
+        ("superseded_by", "person_facts", "SET NULL"),
+    }
+    assert {
+        (index["name"], tuple(index["column_names"]))
+        for index in facts["indexes"]
+    } == {("idx_person_facts_person_status", ("person_id", "status"))}
+    fact_model = Base.metadata.tables["person_facts"]
+    assert fact_model.columns["text"].type.length == 200
+    assert fact_model.columns["category"].type.length == 20
+    assert isinstance(fact_model.columns["quote"].type, sa.Text)
+    assert fact_model.columns["status"].type.length == 12
+    topics = Base.metadata.tables["conversations"].columns["topics"]
+    assert isinstance(topics.type, ARRAY)
+    assert isinstance(topics.type.item_type, sa.String)
+    assert topics.type.item_type.length == 40
+
+    before = copy.deepcopy(state.tables)
+    again = _run(migration_040, state, monkeypatch)
+    assert again.calls == []
+    assert state.tables == before
 
 
 def test_migration_003_is_defined_once():

@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (025) for reading.
+-- Do not apply this file: it shows the schema at the head revision (040) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -96,7 +96,8 @@ CREATE TABLE conversations (
     ended_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     analysis_status TEXT NOT NULL DEFAULT 'pending',
-    retranscribed_at TIMESTAMPTZ             -- Migration 036
+    retranscribed_at TIMESTAMPTZ,            -- Migration 036
+    topics VARCHAR(40)[]                      -- Migration 040
 );
 
 CREATE INDEX idx_conversations_user_time ON conversations (user_id, started_at DESC);
@@ -604,3 +605,19 @@ CREATE TABLE health_days (
     updated_at TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (user_id, day)
 );
+
+-- Transcript-grounded facts about saved people (Migration 040)
+CREATE TABLE person_facts (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    person_id UUID NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+    text VARCHAR(200) NOT NULL,
+    category VARCHAR(20) NOT NULL,       -- work | family | home | interests | plans | other
+    quote TEXT NOT NULL,
+    segment_id UUID REFERENCES segments(id) ON DELETE SET NULL,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    status VARCHAR(12) NOT NULL,         -- current | superseded | rejected
+    superseded_by UUID REFERENCES person_facts(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX idx_person_facts_person_status ON person_facts (person_id, status);
