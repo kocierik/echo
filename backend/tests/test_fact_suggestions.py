@@ -4,7 +4,9 @@ are suggested, never kept until the user keeps them; nothing sensitive, nothing 
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from functools import partial
 
+import pytest
 from sqlalchemy import select
 
 from app.models.entity import Entity
@@ -476,6 +478,47 @@ async def test_invalid_fact_log_has_reason_but_no_personal_text(caplog):
     assert "quote_not_grounded" in output
     assert private_text not in output
     assert private_quote not in output
+
+
+async def test_person_fact_retry_logs_omit_provider_error_messages(
+    db_session, monkeypatch, caplog
+):
+    import app.services.person_facts as person_facts
+    from app.workers.retry import RetryExhaustedError, retry_with_backoff
+
+    private_sentinel = "PRIVATE_PERSON_FACT_RETRY_PROVIDER_SENTINEL"
+
+    class _FailingLLM:
+        calls = 0
+
+        async def complete_json(self, messages):
+            self.calls += 1
+            raise RuntimeError(private_sentinel)
+
+    monkeypatch.setattr(
+        person_facts,
+        "retry_with_backoff",
+        partial(
+            retry_with_backoff,
+            max_attempts=1,
+            base_delay=0,
+            use_circuit_breaker=False,
+        ),
+    )
+    conversation, _, _ = await _person_conversation(db_session)
+    llm = _FailingLLM()
+
+    with pytest.raises(RetryExhaustedError) as caught:
+        await person_facts.extract_person_facts(db_session, llm, conversation)
+
+    assert llm.calls == 1
+    assert caught.value.attempts == 1
+    assert f"Person facts conversation {conversation.id}" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert private_sentinel not in caplog.text
+    assert str(caught.value.last_error) == "RuntimeError"
+    assert caught.value.last_error.__cause__ is None
+    assert caught.value.last_error.__suppress_context__
 
 
 async def test_person_fact_failure_does_not_roll_back_summary(monkeypatch, caplog):

@@ -165,6 +165,11 @@
     retries with a private sentinel in the exception message; the summary remains
     committed, the worker logs the conversation ID and exception type, and neither the
     sentinel nor transcript text appears in logs.
+  - `test_person_fact_retry_logs_omit_provider_error_messages`: use the real retry
+    helper configured with `max_attempts=1`, `base_delay=0`, and
+    `use_circuit_breaker=False`, and a fake LLM raising `RuntimeError` with a
+    private sentinel. Assert retry output omits the sentinel and the exhausted
+    error contains only the original exception type, with chaining suppressed.
   - `test_no_saved_person_no_call`: a conversation with no mentions makes zero LLM calls.
   - `test_at_most_five`: 7 grounded facts give 5 kept.
   - `test_unknown_category_is_other`.
@@ -179,8 +184,12 @@
   - Send current facts and the newest 8 rejected facts per person from the last 30 days;
     keep this prompt context limit and window unchanged.
     Call `complete_json` through `retry_with_backoff` with the schema and prompt rules in
-    the spec. Catch exhausted retries at the worker boundary, log conversation ID and
-    exception (not transcript text), and let summary processing continue.
+    the spec. Before passing provider failures to the shared retry logger (which
+    logs exception messages), wrap `complete_json`: catch `Exception` and raise a
+    new `RuntimeError` containing only the original exception type `from None`.
+    Preserve the retry policy and conversation-scoped operation name. Catch
+    exhausted retries at the worker boundary, log only conversation ID and safe
+    exception type (no message or traceback), and let summary processing continue.
   - Inspect no more than 5 returned facts. Keep a fact only when its person is in the
     conversation's saved-people list, its quote matches a provided transcript line after
     NFKC + casefold + whitespace collapse and edge-punctuation stripping. Persist the

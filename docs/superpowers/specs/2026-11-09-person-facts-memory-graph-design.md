@@ -118,6 +118,11 @@ This runs after a conversation's summary, in `workers/summaries.py` next to
 extraction failure, the worker logs only the conversation ID and exception type; it
 does not log the exception message or traceback, which may contain prompt or response
 content.
+Provider errors must also be sanitized before reaching the shared retry logger,
+which logs exception messages before the worker catches exhausted retries. Wrap
+`complete_json` so each provider `Exception` becomes a new `RuntimeError` whose
+message is only the original exception type, raised `from None`. Keep the retry
+policy and conversation-scoped operation name unchanged.
 
 1. The saved people named in the conversation: person entities with an `EntityMention`
    for it. None means no call.

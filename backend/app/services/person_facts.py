@@ -267,9 +267,15 @@ async def extract_person_facts(
             ),
         ),
     ]
+    async def complete_json_safely():
+        try:
+            return await llm.complete_json(messages)
+        except Exception as exc:
+            # The retry logger includes exception messages; keep provider content private.
+            raise RuntimeError(type(exc).__name__) from None
+
     answer = await retry_with_backoff(
-        llm.complete_json,
-        messages,
+        complete_json_safely,
         operation_name=f"Person facts conversation {conversation.id}",
     )
     candidates = answer.get("facts") if isinstance(answer, dict) else None
