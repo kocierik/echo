@@ -176,6 +176,13 @@ public:
         if (_infoPending && _connected && _state.isReady()) {
             if (!notifyDeviceInfo(deadlineUs)) return;
         }
+        if (_powerResendPending) {
+            _powerResendPending = false;
+            // An app that reconnects while Echo turns off must not show it listening
+            if (_powerState == EchoBleProtocol::POWER_STATE_TURNING_OFF) {
+                setPowerState(EchoBleProtocol::POWER_STATE_TURNING_OFF);
+            }
+        }
         if (_powerStatePending && _connected && _state.isReady()) {
             if (!notifyPowerState(deadlineUs)) return;
         }
@@ -685,6 +692,8 @@ private:
         _negotiatedMtu = 23;
         _forgetBondPending = false;
         _infoPending = false;
+        _powerStatePending = false;
+        _powerResendPending = false;
         _active = false;
         _activeIsPhoto = false;  // a photo stays in its slot: sent again on reconnect
         lockOta();
@@ -770,10 +779,7 @@ private:
                 Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
                 _infoPending = true;  // the app listens now: tell it which firmware this is
-                // An app that reconnects while Echo turns off must not show it listening
-                if (_powerState == EchoBleProtocol::POWER_STATE_TURNING_OFF) {
-                    setPowerState(EchoBleProtocol::POWER_STATE_TURNING_OFF);
-                }
+                _powerResendPending = true;
                 break;
             case EchoBleProtocol::FRAME_ACK_WINDOW:
                 Serial.printf("[BLE] control FRAME_ACK_WINDOW seg=%u highest=%u\n",
@@ -872,6 +878,7 @@ private:
     uint8_t _pendingPowerState = EchoBleProtocol::POWER_STATE_ON;
     uint8_t _pendingPowerReason = EchoBleProtocol::POWER_REASON_NONE;
     bool _powerStatePending = false;
+    bool _powerResendPending = false;
     BondPolicy _bondPolicy;
     BleTransferState _state;
     BleTransportEventQueue _events;
