@@ -30,6 +30,7 @@ public:
         _micGainContext = context;
     }
     typedef void (*TakePhotoCallback)(void* context);
+    typedef void (*PowerOffCallback)(bool turnOff, void* context);
 
     BleTransport()
         : _serverCallbacks(*this), _controlCallbacks(*this), _otaCallbacks(*this) {}
@@ -60,6 +61,31 @@ public:
     void setTakePhotoCallback(TakePhotoCallback callback, void* context) {
         _takePhotoCallback = callback;
         _takePhotoContext = context;
+    }
+
+    void setPowerOffCallback(PowerOffCallback callback, void* context) {
+        _powerOffCallback = callback;
+        _powerOffContext = context;
+    }
+
+    /** Tell the app (EchoBleProtocol::POWER_STATE_*). A refusal is an answer, not a state:
+     *  it is not repeated on reconnect. */
+    void setPowerState(uint8_t state, uint8_t reason = EchoBleProtocol::POWER_REASON_NONE) {
+        if (state != EchoBleProtocol::POWER_STATE_REFUSED) _powerState = state;
+        _pendingPowerState = state;
+        _pendingPowerReason = reason;
+        _powerStatePending = true;
+    }
+
+    bool powerStatePending() const { return _powerStatePending; }
+
+    /** Just before deep sleep: the phone sees a clean disconnect, not a timeout. */
+    void shutdown() {
+        NimBLEDevice::getAdvertising()->stop();
+        if (_connected && _server != nullptr && _connectionHandle != UINT16_MAX) {
+            _server->disconnect(_connectionHandle);
+        }
+        _connected = false;
     }
 
     /** Tell the app why there is no photo (EchoBleProtocol::PHOTO_FAILED_*). */
@@ -149,6 +175,9 @@ public:
         }
         if (_infoPending && _connected && _state.isReady()) {
             if (!notifyDeviceInfo(deadlineUs)) return;
+        }
+        if (_powerStatePending && _connected && _state.isReady()) {
+            if (!notifyPowerState(deadlineUs)) return;
         }
         // The update has the link to itself: audio and photos wait
         if (updating) return;
@@ -556,6 +585,21 @@ private:
         return true;
     }
 
+    bool notifyPowerState(uint32_t deadlineUs) {
+        if (_controlCharacteristic == nullptr) return false;
+        uint8_t frame[EchoBleProtocol::POWER_STATE_SIZE] = {};
+        if (EchoBleProtocol::encodePowerState(_pendingPowerState, _pendingPowerReason,
+                                              frame, sizeof(frame)) == 0) {
+            _powerStatePending = false;
+            return true;
+        }
+        if (!beforeBurstDeadline(deadlineUs)) return false;
+        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return false;
+        Serial.printf("[BLE] power state=%u reason=%u\n", _pendingPowerState, _pendingPowerReason);
+        _powerStatePending = false;
+        return true;
+    }
+
     bool sendSegmentMetadata(uint32_t deadlineUs) {
         uint64_t recordedAtSeconds = 0;
         if (!resolveUnixSeconds(_segment.capturedAtMs, recordedAtSeconds)) return false;
@@ -718,10 +762,18 @@ private:
                 Serial.printf("[BLE] control FRAME_SET_MIC_GAIN gain=%u\n", frame.micGain);
                 if (_micGainCallback != nullptr) _micGainCallback(frame.micGain, _micGainContext);
                 break;
+            case EchoBleProtocol::FRAME_POWER_OFF:
+                Serial.printf("[BLE] control FRAME_POWER_OFF turnOff=%d\n", frame.turnOff);
+                if (_powerOffCallback != nullptr) _powerOffCallback(frame.turnOff, _powerOffContext);
+                break;
             case EchoBleProtocol::FRAME_READY:
                 Serial.println("[BLE] control FRAME_READY");
                 _state.onReady();
                 _infoPending = true;  // the app listens now: tell it which firmware this is
+                // An app that reconnects while Echo turns off must not show it listening
+                if (_powerState == EchoBleProtocol::POWER_STATE_TURNING_OFF) {
+                    setPowerState(EchoBleProtocol::POWER_STATE_TURNING_OFF);
+                }
                 break;
             case EchoBleProtocol::FRAME_ACK_WINDOW:
                 Serial.printf("[BLE] control FRAME_ACK_WINDOW seg=%u highest=%u\n",
@@ -814,6 +866,12 @@ private:
     uint32_t _otaLastActivityMs = 0;
     uint32_t _otaRestartAtMs = 0;
     bool _infoPending = false;
+    PowerOffCallback _powerOffCallback = nullptr;
+    void* _powerOffContext = nullptr;
+    uint8_t _powerState = EchoBleProtocol::POWER_STATE_ON;
+    uint8_t _pendingPowerState = EchoBleProtocol::POWER_STATE_ON;
+    uint8_t _pendingPowerReason = EchoBleProtocol::POWER_REASON_NONE;
+    bool _powerStatePending = false;
     BondPolicy _bondPolicy;
     BleTransferState _state;
     BleTransportEventQueue _events;
