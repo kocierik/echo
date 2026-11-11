@@ -315,6 +315,7 @@ async def test_deleting_a_fact_rejects_it_and_hides_other_users_facts(
     other_person = make_entity(other_conversation, "person", "Ada")
     db_session.add_all([fact, other_person])
     await db_session.flush()
+    original_created_at = fact.created_at
     other_fact = PersonFact(
         user_id=other_person.user_id,
         person_id=marco.id,
@@ -336,9 +337,14 @@ async def test_deleting_a_fact_rejects_it_and_hides_other_users_facts(
     foreign_fact = await client.delete(
         f"/api/people/{marco.id}/facts/{other_fact.id}", headers=auth_headers
     )
+    rejected_at = datetime.now(timezone.utc)
 
     assert deleted.status_code == 204
     assert saved_fact.status == "rejected"
+    assert saved_fact.rejected_at is not None
+    assert original_created_at == saved_fact.created_at
+    assert saved_fact.rejected_at <= rejected_at
+    assert saved_fact.rejected_at >= rejected_at - timedelta(seconds=5)
     assert detail.json()["facts"] == []
     assert foreign_fact.status_code == 404
 

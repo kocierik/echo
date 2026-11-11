@@ -132,9 +132,10 @@ async def _recently_rejected(
                 PersonFact.user_id == user_id,
                 PersonFact.person_id == person_id,
                 PersonFact.status == "rejected",
-                PersonFact.created_at >= now - timedelta(days=REJECTED_CONTEXT_DAYS),
+                PersonFact.rejected_at
+                >= now - timedelta(days=REJECTED_CONTEXT_DAYS),
             )
-            .order_by(PersonFact.created_at.desc(), PersonFact.id.desc())
+            .order_by(PersonFact.rejected_at.desc(), PersonFact.id.desc())
             .limit(REJECTED_CONTEXT_LIMIT)
         )
     )

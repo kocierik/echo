@@ -48,8 +48,9 @@ wiki page, which would accumulate the model's mistakes.
 
 ## Constraints
 
-- Backend: FastAPI and SQLAlchemy async; Alembic migration 040. `docs/schema.sql` and
-  `test_migrations` range updated.
+- Backend: FastAPI and SQLAlchemy async; migration 040 creates the graph schema and
+  additive migration 041 adds fact-rejection timestamps. `docs/schema.sql` and
+  `test_migrations` range reflect the head.
 - App: Flutter. No new dependency; the graph is a `CustomPainter`.
 - The user starts iOS builds; never trigger them.
 - The facts model is the analysis LLM (`get_llm_analysis_service`), as fact suggestions are.
@@ -75,10 +76,11 @@ graph aggregation; Flutter renders and navigates the resulting data without a ne
 The graph work follows the STT recovery migration 039, so its migration is 040.
 The user also confirmed that graph topics must connect to at least one retained person and
 that the `you` node's weight counts only distinct conversations represented by those people.
+The final review keeps migration 040 unchanged and adds migration 041 for rejection time.
 
 ## Design
 
-### Data (migration 040)
+### Data (migrations 040 and 041)
 
 `person_facts`:
 
@@ -95,6 +97,7 @@ that the `you` node's weight counts only distinct conversations represented by t
 | status | varchar(12): `current`, `superseded`, `rejected` |
 | superseded_by | uuid → `person_facts.id`, nullable |
 | created_at | timestamptz |
+| rejected_at | timestamptz, nullable; set when a fact is rejected, without changing `created_at` |
 
 `conversations.topics`: `ARRAY(varchar(40))`, nullable. Up to 3 short topic labels
 ("Atlas", "the move", "gym"), lowercased and trimmed.
@@ -129,7 +132,7 @@ policy and conversation-scoped operation name unchanged.
 2. The transcript lines naming each (`names_person`), with their speaker label and one
    line of context before and after, at most 40 lines.
 3. The current facts of those people, with their ids, plus the newest 8 rejected
-   facts per person from the last 30 days as prompt context.
+   facts per person whose `rejected_at` is within the last 30 days as prompt context.
 4. One `complete_json` call returns
    `{"facts": [{"person": "<name>", "text": "...", "category": "...", "quote": "...",
    "replaces": "<fact id>|null"}]}`. The prompt rules:
@@ -151,9 +154,10 @@ policy and conversation-scoped operation name unchanged.
    - it passes the sensitive-words check of `fact_suggestions.py`;
    - its category is one of the six, else `other`.
    A failing fact is rejected and its reason is logged without the quote or fact text.
-   The prompt context stays bounded to the newest 8 rejected facts from the last 30 days,
-   but validation checks every historical rejection for that person so an older or
-   out-of-context rejection cannot resurface.
+   The prompt context stays bounded to the newest 8 rejected facts by `rejected_at` from
+   the last 30 days. Rejection time is separate from original `created_at`. Validation
+   checks every historical rejection for that person so an older or out-of-context
+   rejection cannot resurface; this includes pre-041 rows whose `rejected_at` is null.
 6. A kept fact with `replaces` marks that fact `superseded`, with `superseded_by` set to
    the new one.
 
@@ -165,8 +169,9 @@ policy and conversation-scoped operation name unchanged.
 - `GET /api/people/{id}` (existing) adds `facts` (current, newest first: id, text,
   category, quote, conversation_id, created_at) and `earlier_facts` (superseded, same
   fields).
-- `DELETE /api/people/{id}/facts/{fact_id}` sets status `rejected`, never a hard delete,
-  so it is not proposed again. A superseded fact that pointed at it stays superseded.
+- `DELETE /api/people/{id}/facts/{fact_id}` sets status `rejected`, sets `rejected_at`
+  to the current UTC time, and never hard-deletes the fact. Its original `created_at`
+  remains unchanged. A superseded fact that pointed at it stays superseded.
 - `GET /api/memory-graph?days=90` (1 to 3650; 0 means all) returns:
   - For positive `days`, the window includes `started_at` from one captured `now - days`
     through `now`, inclusive; future-dated conversations are excluded. `days=0` is
@@ -215,6 +220,11 @@ person's current facts are added to the context first: "Marco: works at Acme (fr
     one, one about an unlisted person and a duplicate;
   - `replaces` supersedes;
   - a rejected fact is passed back as "never again";
+  - a fact created more than 30 days ago but rejected recently appears in that context,
+    while a rejection older than 30 days does not;
+  - deleting a fact sets nullable `rejected_at` without changing `created_at`; migration
+    041 adds the nullable column idempotently and old null timestamps remain covered by
+    all-history exact-match suppression;
   - no call when no saved person is named;
   - the graph endpoint's nodes, weights, window and thresholds;
   - `topics` stored normalized;

@@ -1,7 +1,7 @@
 """People: everyone Echo heard about, and what is linked to each of them."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
@@ -236,5 +236,6 @@ async def reject_person_fact(
     if fact is None:
         raise HTTPException(status_code=404, detail="Fact not found")
     fact.status = "rejected"
+    fact.rejected_at = datetime.now(timezone.utc)
     await db.commit()
     return Response(status_code=204)

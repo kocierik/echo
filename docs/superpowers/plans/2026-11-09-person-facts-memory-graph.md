@@ -5,10 +5,10 @@
 **Goal:** Echo keeps cited, superseding facts about the people the user saved, shows them on each person's page and in Ask, and draws a radial map of people and topics.
 
 **Architecture:**
-- **Backend:** a `person_facts` table and `conversations.topics` (migration 040). Topics
-  come from the existing summary call. Facts come from one best-effort LLM call after
-  each summary, grounded by quote. A graph service builds nodes and edges from
-  `entity_mentions` and topics.
+- **Backend:** a `person_facts` table and `conversations.topics` (migration 040);
+  migration 041 adds nullable `person_facts.rejected_at`. Topics come from the existing
+  summary call. Facts come from one best-effort LLM call after each summary, grounded by
+  quote. A graph service builds nodes and edges from `entity_mentions` and topics.
 - **App:** a facts panel on `PersonScreen`, and a `MemoryGraphScreen` drawn with a
   `CustomPainter` in a radial, deterministic layout.
 
@@ -27,6 +27,7 @@
 - Fact `text` at most 200 characters, in English; `quote` verbatim, in the language heard.
 - Topics: at most 3 per conversation, 1–3 words, lowercased, trimmed, at most 40 characters, never a person's name.
 - Graph: topics need ≥ 2 conversations in the window; at most 30 people and 20 topics (heaviest); `days` default 90, `0` = unbounded all-time, else 1..3650 with inclusive `started_at` bounds from one captured `now - days` through `now`.
+- Rejection context: deleting a fact sets `status="rejected"` and `rejected_at` to current UTC time; `created_at` remains its original creation time. The prompt includes at most the newest 8 rejections from the last 30 days by `rejected_at`. All-history exact-text suppression remains independent of this prompt window, including old rows with null `rejected_at`.
 - No extra LLM call for a conversation naming no saved person.
 - App: no new dependency; never trigger iOS builds (the user does).
 - Backend integration tests run from the repository root with `make test-all`; it creates
@@ -61,16 +62,16 @@
 - Create: `backend/alembic/versions/040_person_facts_topics.py`
 - Create: `backend/app/models/person_fact.py`
 - Modify: `backend/app/models/__init__.py` (export `PersonFact`), `backend/app/models/conversation.py` (`topics`)
-- Modify: `docs/schema.sql`, `backend/tests/test_migrations.py` (`range(1, 41)`)
+- Modify: `docs/schema.sql`, `backend/tests/test_migrations.py` (`range(1, 42)` at final head)
 
 **Interfaces:**
 - Produces: `PersonFact`, with columns exactly as in the spec's table and `__tablename__ = "person_facts"`. Statuses: `"current"`, `"superseded"`, `"rejected"`. `Conversation.topics: Mapped[list[str] | None]` (`ARRAY(String(40))`).
 
-- [ ] **Step 1:** In `test_migrations.py`, change the expected revisions to `range(1, 41)`;
-  add `test_migration_040_creates_person_facts_and_topics` for the table columns,
+- [ ] **Step 1:** In `test_migrations.py`, assert revisions `range(1, 42)` at the final
+  head (001–041); add `test_migration_040_creates_person_facts_and_topics` for the table columns,
   foreign-key delete actions, index and topics array; add a repeat-upgrade assertion.
 - [ ] **Step 2:** Run `docker compose exec -T api python -m pytest tests/test_migrations.py -q -p no:cacheprovider`.
-  Expected: FAIL because the migration-chain assertion expects revision 040.
+  The migration-040 task's original chain test was extended in Task 8 to include 041.
 - [ ] **Step 3:** Write migration 040, following 037 and 038: the inspector guards so that
   existing objects are skipped. It creates `person_facts` with its foreign keys
   (`person_id` cascade; `segment_id`, `conversation_id` and `superseded_by` set null) and
@@ -392,7 +393,37 @@
   Expected: analyze succeeds and all focused tests pass.
 - [ ] **Step 6:** Commit `feat(app): the memory map, people and topics around you`.
 
-### Task 8: Ship check
+### Task 8: Final review correction — rejection timestamps (migration 041)
+
+Migration 040 remains unchanged. This additive migration makes recent rejection context
+reflect when the user rejected a fact rather than when the fact was originally created.
+
+**Files:**
+- Create: `backend/alembic/versions/041_person_fact_rejected_at.py` (after 040)
+- Modify: `backend/app/models/person_fact.py`, `backend/app/routers/people.py`,
+  `backend/app/services/person_facts.py`
+- Test: `backend/tests/test_migrations.py`,
+  `backend/tests/test_people_and_mentions.py`,
+  `backend/tests/test_fact_suggestions.py`
+- Modify: `docs/schema.sql`, this plan, and the approved design spec
+
+- [x] Add tests first for nullable/idempotent migration 041, timestamping rejection without
+  changing `created_at`, an old fact rejected recently appearing in prompt context, and
+  an expired rejection omitted from context. Verify focused red before production edits.
+- [x] Add nullable `rejected_at TIMESTAMPTZ` and `PersonFact.rejected_at`; set it to
+  `datetime.now(timezone.utc)` on rejection. Query the prompt window and ordering by
+  `rejected_at`, retaining the 30-day cutoff and limit of 8. Keep historical suppression
+  unchanged, including rows with null `rejected_at`.
+- [x] Update schema and design/plan semantics, including final revision range 001–041.
+- [x] Run focused pytest as environment allows, Ruff `--target-version py311` over graph
+  backend modules/tests and migrations 040/041, `compileall`, and diff checks. Record any
+  environment blockers; do not install dependencies, deploy, push, or build iOS.
+- [x] Stage only migration 041 and directly related graph model, route, service, tests,
+  design/plan, and schema files; preserve migration 039 and unrelated work.
+- [x] Commit `feat(memory): timestamp rejected person facts (migration 041)` with the
+  required Copilot co-author trailer.
+
+### Task 9: Ship check
 
 - [ ] **Step 1:** From the repository root, run `make test-all`; if successful, run
   `make lint`. Then run the full Flutter suite:
@@ -406,6 +437,6 @@
   ```
   Expected: all feature tests pass; record any known unrelated baseline failure separately.
 - [ ] **Step 2:** At handoff, tell the user:
-  - `make deploy` (migration 040);
+  - `make deploy` (migrations through 041);
   - then `docker compose exec api python -m app.cli.backfill_topics --days 90`;
   - then the iOS build, which they start.

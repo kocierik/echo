@@ -203,7 +203,7 @@ def _run(module, state: _State, monkeypatch) -> _Op:
 
 def test_every_migration_imports_and_the_chain_is_linear():
     modules = _migrations()
-    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 41)]
+    assert [m.revision for m in modules] == [f"{i:03d}" for i in range(1, 42)]
     assert modules[0].down_revision is None
     for previous, current in zip(modules, modules[1:]):
         assert current.down_revision == previous.revision
@@ -577,6 +577,35 @@ def test_migration_040_creates_person_facts_and_topics(monkeypatch):
 
     before = copy.deepcopy(state.tables)
     again = _run(migration_040, state, monkeypatch)
+    assert again.calls == []
+    assert state.tables == before
+
+
+def test_migration_041_adds_nullable_rejected_at(monkeypatch):
+    modules = _migrations()
+    state = _State()
+    for module in modules:
+        if module.revision == "041":
+            break
+        _run(module, state, monkeypatch)
+    migration_041 = next(m for m in modules if m.revision == "041")
+
+    assert migration_041.down_revision == "040"
+    first = _run(migration_041, state, monkeypatch)
+
+    assert first.calls == [("add_column", "person_facts", "rejected_at")]
+    assert state.tables["person_facts"]["columns"]["rejected_at"] is True
+    assert isinstance(
+        state.column_types["person_facts"]["rejected_at"], sa.DateTime
+    )
+    assert state.column_types["person_facts"]["rejected_at"].timezone is True
+    assert Base.metadata.tables["person_facts"].columns["rejected_at"].nullable is True
+    assert isinstance(
+        Base.metadata.tables["person_facts"].columns["rejected_at"].type, sa.DateTime
+    )
+
+    before = copy.deepcopy(state.tables)
+    again = _run(migration_041, state, monkeypatch)
     assert again.calls == []
     assert state.tables == before
 

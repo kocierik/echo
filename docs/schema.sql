@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (040) for reading.
+-- Do not apply this file: it shows the schema at the head revision (041) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -606,7 +606,7 @@ CREATE TABLE health_days (
     PRIMARY KEY (user_id, day)
 );
 
--- Transcript-grounded facts about saved people (Migration 040)
+-- Transcript-grounded facts about saved people (Migration 040; rejected_at added in 041)
 CREATE TABLE person_facts (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
@@ -618,6 +618,7 @@ CREATE TABLE person_facts (
     conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
     status VARCHAR(12) NOT NULL,         -- current | superseded | rejected
     superseded_by UUID REFERENCES person_facts(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL
+    created_at TIMESTAMPTZ NOT NULL,
+    rejected_at TIMESTAMPTZ
 );
 CREATE INDEX idx_person_facts_person_status ON person_facts (person_id, status);

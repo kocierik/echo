@@ -47,3 +47,7 @@ class PersonFact(UUIDPrimaryKey, Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    rejected_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )

@@ -399,6 +399,7 @@ async def test_rejected_facts_are_told_as_never_again():
                 quote="Marco ha una bicicletta rossa.",
                 status="rejected",
                 created_at=STARTED - timedelta(days=2),
+                rejected_at=datetime.now(timezone.utc) - timedelta(days=2),
             )
         )
         await db.commit()
@@ -410,7 +411,7 @@ async def test_rejected_facts_are_told_as_never_again():
     assert "Marco owns a red bicycle" in llm.person_prompts[0]
 
 
-async def test_old_rejected_fact_is_not_recreated_outside_context_window():
+async def test_old_fact_rejected_recently_is_in_never_again_context():
     async with test_session() as db:
         conversation, person, _ = await _person_conversation(db)
         db.add(
@@ -421,12 +422,60 @@ async def test_old_rejected_fact_is_not_recreated_outside_context_window():
                 category="work",
                 quote="Marco lavora in Acme.",
                 status="rejected",
-                created_at=STARTED - timedelta(days=31),
+                created_at=STARTED - timedelta(days=60),
+                rejected_at=datetime.now(timezone.utc) - timedelta(days=2),
+            )
+        )
+        await db.commit()
+    llm = _PeopleLLM([])
+
+    await _run_summary(llm)
+
+    assert "Works at Acme" in llm.person_prompts[0]
+
+
+async def test_rejection_older_than_context_window_is_not_recreated():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        db.add(
+            PersonFact(
+                user_id=conversation.user_id,
+                person_id=person.id,
+                text="Works at Acme",
+                category="work",
+                quote="Marco lavora in Acme.",
+                status="rejected",
+                created_at=datetime.now(timezone.utc) - timedelta(days=1),
+                rejected_at=datetime.now(timezone.utc) - timedelta(days=31),
             )
         )
         await db.commit()
         conversation_id = conversation.id
     llm = _PeopleLLM([_candidate("  works at acme  ")])
+
+    await _run_summary(llm)
+
+    assert "Works at Acme" not in llm.person_prompts[0]
+    assert await _conversation_person_facts(conversation_id) == []
+
+
+async def test_legacy_rejection_without_timestamp_still_suppresses_duplicate():
+    async with test_session() as db:
+        conversation, person, _ = await _person_conversation(db)
+        db.add(
+            PersonFact(
+                user_id=conversation.user_id,
+                person_id=person.id,
+                text="Works at Acme",
+                category="work",
+                quote="Marco lavora in Acme.",
+                status="rejected",
+                created_at=STARTED - timedelta(days=60),
+            )
+        )
+        await db.commit()
+        conversation_id = conversation.id
+    llm = _PeopleLLM([_candidate("works at acme")])
 
     await _run_summary(llm)
 
@@ -447,6 +496,7 @@ async def test_rejected_fact_outside_newest_eight_is_not_recreated():
                     quote="Marco lavora in Acme.",
                     status="rejected",
                     created_at=STARTED - timedelta(days=9 - index),
+                    rejected_at=STARTED - timedelta(days=9 - index),
                 )
             )
         await db.commit()
