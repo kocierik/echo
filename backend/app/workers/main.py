@@ -30,7 +30,12 @@ from app.workers.analysis import ANALYSIS_QUEUE, process_analysis
 from app.workers.deferred import run_deferred_loop
 from app.workers.digest import run_digest_loop
 from app.workers.documents import run_documents_loop
-from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, sleep_or_shutdown, stop_tasks
+from app.workers.lifecycle import (
+    SHUTDOWN_TIMEOUT_S,
+    sleep_or_shutdown,
+    stop_tasks,
+    wait_for_shutdown_or_failure,
+)
 from app.workers.photos import process_photos
 from app.workers.places import run_places_cleanup_loop
 from app.workers.queue import restore_working
@@ -113,8 +118,15 @@ async def main():
         asyncio.create_task(preload_sdk(), name="composio_preload"),
     ]
 
-    # Wait for shutdown signal
-    await shutdown_event.wait()
+    # Until the shutdown signal, or a loop that dies: the worker then stops and Docker
+    # starts it again whole, instead of staying up without that loop
+    failed = await wait_for_shutdown_or_failure(tasks, shutdown_event)
+    if failed is not None:
+        logger.error(
+            "[Worker] %s died (%r): stopping, to be started again",
+            failed.get_name(), failed.exception(),
+        )
+        shutdown_event.set()
     logger.info(f"[Shutdown] Waiting up to {SHUTDOWN_TIMEOUT_S}s for tasks to finish...")
 
     # Let in-progress items finish (loops exit between items); cancel after the timeout
@@ -125,6 +137,8 @@ async def main():
             logger.error(f"[Shutdown] Task {task.get_name()} ended with error: {result}")
 
     await redis_client.aclose()
+    if failed is not None:
+        raise SystemExit(1)
     logger.info("[Shutdown] Worker stopped cleanly.")
 
 

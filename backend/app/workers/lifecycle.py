@@ -39,3 +39,31 @@ async def stop_tasks(
         logger.warning(f"[Shutdown] Cancelling {task.get_name()} after {timeout}s")
         task.cancel()
     return await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def wait_for_shutdown_or_failure(
+    tasks: list[asyncio.Task], shutdown_event: asyncio.Event
+) -> asyncio.Task | None:
+    """Wait for the shutdown, or for a loop that dies: the task that failed, else None.
+
+    A loop that ends with an error (Redis restarting under its blocking pop) used to leave
+    the process up without it, transcribing nothing and saying nothing. A task that ends
+    without one (a one-shot, like the SDK preload) is not a failure.
+    """
+    shutdown = asyncio.create_task(shutdown_event.wait())
+    watched = set(tasks)
+    try:
+        while watched:
+            finished, _ = await asyncio.wait(
+                {shutdown, *watched}, return_when=asyncio.FIRST_COMPLETED
+            )
+            if shutdown in finished:
+                return None
+            for task in finished:
+                watched.discard(task)
+                if not task.cancelled() and task.exception() is not None:
+                    return task
+        await shutdown
+        return None
+    finally:
+        shutdown.cancel()

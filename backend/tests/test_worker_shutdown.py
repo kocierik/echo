@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from app.workers import lifecycle, retention, summaries
-from app.workers.lifecycle import sleep_or_shutdown, stop_tasks
+from app.workers.lifecycle import sleep_or_shutdown, stop_tasks, wait_for_shutdown_or_failure
 
 
 @pytest.mark.asyncio
@@ -89,3 +89,42 @@ async def test_summary_loop_exits_on_shutdown(monkeypatch):
 
 def test_shutdown_timeout_is_thirty_seconds():
     assert lifecycle.SHUTDOWN_TIMEOUT_S == 30
+
+
+async def test_a_loop_that_dies_is_reported_and_a_one_shot_that_ends_is_not():
+    """Redis restarted under the loops' blocking pops: three of them died and the worker
+    stayed up without them."""
+    shutdown = asyncio.Event()
+
+    async def loop():
+        await asyncio.sleep(60)
+
+    async def one_shot():
+        return None
+
+    async def dies():
+        await asyncio.sleep(0.01)
+        raise ConnectionError("Redis went away")
+
+    alive = asyncio.create_task(loop())
+    broken = asyncio.create_task(dies(), name="stt_worker")
+    tasks = [alive, asyncio.create_task(one_shot()), broken]
+
+    failed = await asyncio.wait_for(wait_for_shutdown_or_failure(tasks, shutdown), timeout=2)
+
+    assert failed is broken and isinstance(failed.exception(), ConnectionError)
+    alive.cancel()
+
+
+async def test_a_shutdown_is_not_a_failure():
+    shutdown = asyncio.Event()
+
+    async def loop():
+        await shutdown.wait()
+
+    tasks = [asyncio.create_task(loop())]
+    waiting = asyncio.create_task(wait_for_shutdown_or_failure(tasks, shutdown))
+    await asyncio.sleep(0.01)
+    shutdown.set()
+
+    assert await asyncio.wait_for(waiting, timeout=2) is None
