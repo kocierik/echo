@@ -29,8 +29,13 @@ use Cloudflare Tunnel ([CLOUDFLARE-TUNNEL.md](CLOUDFLARE-TUNNEL.md)).
 make deploy                   # build, start, migrate, restart api + worker, health check
 ```
 
-Or by hand: `docker compose up --build -d`, `make db-migrate`, `docker compose restart api worker`.
+Or by hand: `docker compose up --build -d`, `make db-migrate`.
 Skipping the migrations leaves the code ahead of the database: see [Troubleshooting](#troubleshooting).
+
+`api` and `worker` run the code built into the image, not the folder: a `git pull` or an edit
+changes nothing that runs until `make deploy`, and `docker compose restart api` starts the
+same code again. Tests and tools (`make test-all`, `make lint`) run on the folder's code, in
+the `dev` service: `docker compose run --rm dev <command>`.
 
 ## Make targets
 

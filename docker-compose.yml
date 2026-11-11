@@ -21,8 +21,9 @@ services:
       # WhatsApp on by default; WHATSAPP_BRIDGE_URL= (empty) in .env turns it off
       - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
       - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
+    # The code is the image's (make deploy), never the folder's: a git pull changes
+    # nothing that runs until the next deploy
     volumes:
-      - ./backend:/app
       - audio_data:/data/audio
       - ./site:/site:ro
     depends_on:
@@ -52,7 +53,6 @@ services:
       - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
       - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
     volumes:
-      - ./backend:/app
       - audio_data:/data/audio
     depends_on:
       postgres:
@@ -60,6 +60,25 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+
+  # The code as it is in the folder, for tests and tools (make test, make lint). Started
+  # only by `docker compose run --rm dev ...`; it serves nothing.
+  dev:
+    extends:
+      service: api
+    profiles: ["dev"]
+    ports: !reset []
+    restart: "no"
+    # As `docker compose exec api` ran them before: root, without the image's entrypoint
+    user: root
+    entrypoint: []
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   postgres:
     image: pgvector/pgvector:pg16
