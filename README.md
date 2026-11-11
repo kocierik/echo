@@ -503,7 +503,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 | `SPEAKER_THRESHOLD_PERCENTILE` | `0.7` | Energy percentile above which a segment is "self" |
 | `SPEAKER_ENERGY_THRESHOLD` | `0` | Fixed energy threshold instead of the percentile (`0` = automatic) |
 | `DEEPGRAM_API_KEY` / `DEEPGRAM_MODEL` | — / `nova-3` | With `STT_PROVIDER=deepgram` |
-| `CORS_ORIGINS` | `*` | Comma-separated origins allowed to call the API from a browser |
+| `CORS_ORIGINS` | (empty) | Comma-separated browser origins allowed to call the API; no browser origins are allowed by default |
 | `CLOUDFLARE_TUNNEL_TOKEN` | — | Starts the tunnel service ([guide](docs/CLOUDFLARE-TUNNEL.md)) |
 | `METRICS_TOKEN` | — | Bearer token for Prometheus on `/metrics` (otherwise an API key is required) |
 | `REGISTRATION_OPEN` | `true` | Anyone with the app can create an account; `false` closes it (accounts then only with `make create-user`) |
