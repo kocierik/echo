@@ -44,7 +44,10 @@ class _FakeSession:
         self.queries.append(query)
         if len(self.queries) == 1:
             return _Rows(self.conversations)
-        conversation = self.conversations[len(self.queries) - 2]
+        if "entity_mentions" in str(query):
+            return _Rows([])  # the conversation's people, kept out of its topics
+        texts_asked = sum("transcriptions" in str(q) for q in self.queries)
+        conversation = self.conversations[texts_asked - 1]
         return _Rows([(text,) for text in self.texts[conversation.id]])
 
     async def commit(self):

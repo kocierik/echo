@@ -282,13 +282,15 @@ async def test_person_detail_lists_current_and_earlier_facts(
     body = response.json()
     assert [fact["id"] for fact in body["facts"]] == [str(current.id)]
     assert [fact["id"] for fact in body["earlier_facts"]] == [str(earlier.id)]
-    assert body["facts"][0] == {
+    fact = body["facts"][0]
+    # The same instant, however it is written ("Z" or "+00:00")
+    assert datetime.fromisoformat(fact.pop("created_at")) == current.created_at
+    assert fact == {
         "id": str(current.id),
         "text": "Works in design",
         "category": "work",
         "quote": "Marco lavora nel design.",
         "conversation_id": str(conversation.id),
-        "created_at": current.created_at.isoformat(),
     }
 
 
@@ -327,15 +329,17 @@ async def test_deleting_a_fact_rejects_it_and_hides_other_users_facts(
     )
     db_session.add(other_fact)
     await db_session.commit()
+    # Read now: expire_all below would reload them outside the event loop
+    marco_id, fact_id, other_fact_id = marco.id, fact.id, other_fact.id
 
     deleted = await client.delete(
-        f"/api/people/{marco.id}/facts/{fact.id}", headers=auth_headers
+        f"/api/people/{marco_id}/facts/{fact_id}", headers=auth_headers
     )
     db_session.expire_all()
-    saved_fact = await db_session.get(PersonFact, fact.id)
-    detail = await client.get(f"/api/people/{marco.id}", headers=auth_headers)
+    saved_fact = await db_session.get(PersonFact, fact_id)
+    detail = await client.get(f"/api/people/{marco_id}", headers=auth_headers)
     foreign_fact = await client.delete(
-        f"/api/people/{marco.id}/facts/{other_fact.id}", headers=auth_headers
+        f"/api/people/{marco_id}/facts/{other_fact_id}", headers=auth_headers
     )
     rejected_at = datetime.now(timezone.utc)
 

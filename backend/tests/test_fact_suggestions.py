@@ -216,9 +216,11 @@ class _PeopleLLM:
         raise AssertionError(f"Unexpected LLM prompt: {system}")
 
 
+# Over summary_min_words (10): a shorter conversation gets no summary, so no facts
 PERSON_LINES = (
     "[You] Oggi ho incontrato Marco.",
     "[Others] Marco lavora in Acme.",
+    "[You] Ci vediamo la settimana prossima per il pranzo.",
 )
 
 
@@ -371,6 +373,7 @@ async def test_replaces_a_fact_that_is_not_current_or_not_theirs():
             status="current",
         )
         db.add(other_fact)
+        await db.flush()  # its id is given on flush
         conversation_id, other_fact_id = conversation.id, other_fact.id
         await db.commit()
     llm = _PeopleLLM([

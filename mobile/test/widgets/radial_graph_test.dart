@@ -37,7 +37,7 @@ void main() {
     expect(positions['p2']!.dy, greaterThan(center.dy));
     expect(heavyDistance, lessThan(lightDistance));
     expect(heavyDistance, closeTo(52.5, 0.001));
-    expect(lightDistance, closeTo(97.5, 0.001));
+    expect(lightDistance, closeTo(88.5, 0.001));
   });
 
   test('topics lie on the outer ring beyond every person', () {

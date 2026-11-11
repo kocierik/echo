@@ -222,6 +222,7 @@ async def test_a_deleted_person_leaves_the_graph_and_their_facts_go(
     )
     db_session.add(fact)
     await db_session.commit()
+    fact_id = fact.id  # read now: expire_all below would reload it outside the loop
 
     deleted = await client.delete(f"/api/entities/{person.id}", headers=auth_headers)
     graph = await client.get("/api/memory-graph", headers=auth_headers)
@@ -232,4 +233,4 @@ async def test_a_deleted_person_leaves_the_graph_and_their_facts_go(
         "nodes": [{"id": "you", "kind": "you", "label": "You", "weight": 0}],
         "edges": [],
     }
-    assert await db_session.get(PersonFact, fact.id) is None
+    assert await db_session.get(PersonFact, fact_id) is None

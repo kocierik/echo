@@ -115,14 +115,14 @@ async def summarize_closed_conversations(
             conversation.summary = result.summary
             conversation.emoji = result.emoji
             person_names = (
-                await db.scalars(
+                await db.execute(
                     select(Entity.name)
                     .join(EntityMention, EntityMention.entity_id == Entity.id)
                     .where(EntityMention.conversation_id == conversation.id)
                     .where(Entity.user_id == conversation.user_id)
                     .where(Entity.entity_type == "person")
                 )
-            ).all()
+            ).scalars().all()
             conversation.topics = normalize_topics(result.topics, person_names) or None
             summarized += 1
             # What the user said about themselves: suggestions for About you. A failure

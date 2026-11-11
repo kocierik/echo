@@ -151,7 +151,7 @@ void main() {
       onOpenPerson: (id) async => openedPeople.add(id),
     );
 
-    await tester.tap(find.byKey(const Key('graph-node-you')));
+    await tester.tap(find.byKey(const Key('graph-node-you:you')));
     await tester.pumpAndSettle();
 
     expect(openedPeople, isEmpty);
@@ -175,11 +175,12 @@ void main() {
     expect(label.maxLines, 1);
     expect(label.overflow, TextOverflow.ellipsis);
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     expect(
       find.bySemanticsLabel('$fullLabel, 4 conversations'),
       findsOneWidget,
     );
+    // Disposed in the test: Flutter checks the handles before the tear-downs run
+    semantics.dispose();
   });
 
   testWidgets('horizontal edge labels stay inside the map viewport',
@@ -195,7 +196,6 @@ void main() {
       GraphNode(id: 'left', kind: 'topic', label: leftLabel, weight: 4),
     ], edges: []);
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     await pump(tester, FakeMemoryApi()..memoryGraph = edgeGraph);
 
     final viewport = tester.getRect(find.byType(InteractiveViewer));
@@ -220,5 +220,6 @@ void main() {
       expect(bounds.left, greaterThanOrEqualTo(viewport.left));
       expect(bounds.right, lessThanOrEqualTo(viewport.right));
     }
+    semantics.dispose();
   });
 }
