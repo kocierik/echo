@@ -35,6 +35,20 @@ log "Building containers..."
 docker compose build --quiet 2>/dev/null || docker compose build
 
 # --- 3. Start the database and cache (api and worker start once, in step 7) ---
+# Redis keeps an append-only file (docker-compose.yml). A Redis started with it over data
+# that has none starts empty, so it is turned on in the running one first: the file exists
+# when the container is made again below.
+if docker compose exec -T redis redis-cli ping > /dev/null 2>&1; then
+    docker compose exec -T redis redis-cli config set appendonly yes > /dev/null
+    for i in $(seq 1 20); do
+        PERSISTENCE=$(docker compose exec -T redis redis-cli info persistence)
+        if echo "$PERSISTENCE" | grep -q "aof_enabled:1" \
+            && echo "$PERSISTENCE" | grep -q "aof_rewrite_in_progress:0"; then
+            break
+        fi
+        sleep 0.5
+    done
+fi
 log "Starting PostgreSQL and Redis..."
 docker compose up -d postgres redis
 

@@ -9,6 +9,7 @@
 - tracked runs left `running` by a stopped process, closed as `interrupted` every minute
   (core/runs.py).
 - pending or stale `processing` speech is restored to the STT queue (stt.py).
+- what a killed worker had in hand in the other queues goes back to them (queue.py).
 
 Items that fail after their retries go to the dead letter queue (dead_letter.py). On
 SIGTERM/SIGINT the loops finish the item in hand (up to SHUTDOWN_TIMEOUT_S), then stop.
@@ -24,20 +25,22 @@ from app.actions.composio_provider import preload_sdk
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.core.runs import close_interrupted, startup_close_interrupted
-from app.workers.analysis import process_analysis
+from app.services.photos import PHOTO_QUEUE
+from app.workers.analysis import ANALYSIS_QUEUE, process_analysis
 from app.workers.deferred import run_deferred_loop
 from app.workers.digest import run_digest_loop
 from app.workers.documents import run_documents_loop
 from app.workers.lifecycle import SHUTDOWN_TIMEOUT_S, sleep_or_shutdown, stop_tasks
 from app.workers.photos import process_photos
 from app.workers.places import run_places_cleanup_loop
-from app.workers.reanalysis import process_reanalysis
+from app.workers.queue import restore_working
+from app.workers.reanalysis import REANALYSIS_QUEUE, process_reanalysis
 from app.workers.retention import run_retention_loop
 from app.workers.routines import run_routines_loop
 from app.workers.saved import run_saved_expiry_loop
 from app.workers.stt import process_stt, run_stt_recovery_loop
 from app.workers.summaries import run_summary_loop
-from app.workers.voice_requests import process_voice_queue
+from app.workers.voice_requests import VOICE_QUEUE, process_voice_queue
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -72,6 +75,9 @@ async def main():
         loop.add_signal_handler(sig, _handle_signal, sig)
 
     redis_client = redis.from_url(settings.redis_url)
+    # What a killed worker had in hand goes back to its queue (workers/queue.py)
+    for queue in (ANALYSIS_QUEUE, REANALYSIS_QUEUE, PHOTO_QUEUE, VOICE_QUEUE):
+        await restore_working(redis_client, queue)
 
     # Create worker tasks
     tasks = [

@@ -30,6 +30,7 @@ from app.services.photos import (
     expire_photo_requests,
     fail_analysis,
 )
+from app.workers.queue import done, take
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 
 logger = logging.getLogger(__name__)
@@ -138,12 +139,15 @@ async def process_photos(
             last_expire = time.monotonic()
             await _expire(session_factory)
         try:
-            result = await redis_client.brpop(PHOTO_QUEUE, timeout=POP_TIMEOUT_S)
+            raw = await take(redis_client, PHOTO_QUEUE, POP_TIMEOUT_S)
         except asyncio.CancelledError:
             raise
         except Exception:
             logger.exception("[Photos] Queue poll failed")
             await asyncio.sleep(POP_TIMEOUT_S)
             continue
-        if result is not None:
-            await handle_photo(result[1], session_factory, redis_client)
+        if raw is not None:
+            try:
+                await handle_photo(raw, session_factory, redis_client)
+            finally:
+                await done(redis_client, PHOTO_QUEUE, raw)

@@ -418,6 +418,16 @@ class _Redis:
     async def llen(self, name):
         return len(self.lists.get(name) or [])
 
+    async def lmove(self, source, destination, src="LEFT", dest="RIGHT"):
+        raw = await self.rpop(source)
+        if raw is not None:
+            self.lists.setdefault(destination, []).insert(0, raw)
+        return raw
+
+    async def lrem(self, name, count, value):
+        if value in self.lists.get(name, []):
+            self.lists[name].remove(value)
+
     async def set(self, key, value, nx=False, ex=None):
         self.set_calls.append((key, value, nx, ex))
         if nx and key in self.keys:

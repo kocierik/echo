@@ -22,6 +22,7 @@ from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_openai import get_llm_analysis_service
 from app.workers.dead_letter import push_reanalysis_to_dead_letter
+from app.workers.queue import done, take
 
 logger = logging.getLogger(__name__)
 
@@ -342,13 +343,15 @@ async def process_reanalysis(redis_client: redis.Redis, shutdown_event: asyncio.
     embedding_service = get_embedding_service()
 
     while not shutdown_event.is_set():
-        result = await redis_client.brpop(REANALYSIS_QUEUE, timeout=2)
-        if result is None:
+        payload = await take(redis_client, REANALYSIS_QUEUE)
+        if payload is None:
             continue
-        _, payload = result
-        await _process_reanalysis_payload(
-            redis_client,
-            payload,
-            llm_service,
-            embedding_service,
-        )
+        try:
+            await _process_reanalysis_payload(
+                redis_client,
+                payload,
+                llm_service,
+                embedding_service,
+            )
+        finally:
+            await done(redis_client, REANALYSIS_QUEUE, payload)

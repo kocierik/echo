@@ -107,6 +107,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Every write on disk within a second: the queues survive a crash or a power cut.
+    # First turned on by scripts/deploy.sh in the running Redis (see there)
+    command: redis-server --appendonly yes
     ports:
       - "127.0.0.1:6379:6379"  # this machine only
     volumes:

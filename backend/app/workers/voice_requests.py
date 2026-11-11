@@ -64,6 +64,7 @@ from app.services.temporal import extract_date_range
 from app.services.usage import usage_owner
 from app.services.web_search import search_tool_for
 from app.workers.lifecycle import sleep_or_shutdown
+from app.workers.queue import done, take_now
 
 logger = logging.getLogger(__name__)
 
@@ -448,12 +449,15 @@ async def process_voice_queue(redis_client, shutdown_event: asyncio.Event) -> No
             for _ in range(queued):
                 if shutdown_event.is_set():
                     break
-                raw = await redis_client.rpop(VOICE_QUEUE)  # producers lpush: oldest first
+                raw = await take_now(redis_client, VOICE_QUEUE)  # the oldest first
                 if raw is None:
                     break
-                if not await handle_voice_item(redis_client, raw):
-                    # Back to the tail: older items keep their turn
-                    await redis_client.lpush(VOICE_QUEUE, raw)
+                try:
+                    if not await handle_voice_item(redis_client, raw):
+                        # Back to the tail: older items keep their turn
+                        await redis_client.lpush(VOICE_QUEUE, raw)
+                finally:
+                    await done(redis_client, VOICE_QUEUE, raw)
         except asyncio.CancelledError:
             raise
         except Exception:

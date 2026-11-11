@@ -18,6 +18,7 @@ from app.services.analysis_pipeline import AnalysisPipeline
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_openai import get_llm_analysis_service
 from app.workers.dead_letter import push_to_dead_letter
+from app.workers.queue import done, take
 from app.workers.retry import RetryExhaustedError
 
 logger = logging.getLogger(__name__)
@@ -32,45 +33,51 @@ async def process_analysis(redis_client: redis.Redis, shutdown_event: asyncio.Ev
     pipeline = AnalysisPipeline(llm_service, embedding_service)
 
     while not shutdown_event.is_set():
-        result = await redis_client.brpop(ANALYSIS_QUEUE, timeout=2)
-        if result is None:
+        raw = await take(redis_client, ANALYSIS_QUEUE)
+        if raw is None:
             continue
+        try:
+            await _analyse(redis_client, pipeline, raw)
+        finally:
+            await done(redis_client, ANALYSIS_QUEUE, raw)
 
-        _, segment_id_bytes = result
-        segment_id = uuid.UUID(segment_id_bytes.decode())
-        await restore_correlation_for(redis_client, "segment", segment_id)
-        logger.info(f"Processing analysis for segment {segment_id}")
 
-        async with async_session() as db:
-            try:
-                # Get segment with transcription
-                segment = await db.get(Segment, segment_id)
-                if segment is None or segment.transcription is None:
-                    continue
+async def _analyse(redis_client: redis.Redis, pipeline: AnalysisPipeline, raw) -> None:
+    """One queued segment: analysed, or sent to the dead letter queue."""
+    segment_id = uuid.UUID(raw.decode())
+    await restore_correlation_for(redis_client, "segment", segment_id)
+    logger.info(f"Processing analysis for segment {segment_id}")
 
-                analysis_result = await pipeline.analyze_segment(db, segment)
-                logger.info(
-                    f"Analysis completed for segment {segment_id}: "
-                    f"{analysis_result.extracted_entity_count} entities, "
-                    f"{analysis_result.chunk_count} chunks"
-                )
+    async with async_session() as db:
+        try:
+            # Get segment with transcription
+            segment = await db.get(Segment, segment_id)
+            if segment is None or segment.transcription is None:
+                return
 
-            except RetryExhaustedError as e:
-                logger.error(f"Analysis failed permanently for segment {segment_id}: {e}")
-                await db.rollback()
-                await push_to_dead_letter(
-                    redis_client, segment_id, "analysis", str(e.last_error), e.attempts
-                )
+            analysis_result = await pipeline.analyze_segment(db, segment)
+            logger.info(
+                f"Analysis completed for segment {segment_id}: "
+                f"{analysis_result.extracted_entity_count} entities, "
+                f"{analysis_result.chunk_count} chunks"
+            )
 
-            except asyncio.CancelledError:
-                logger.info(
-                    f"[Shutdown] Analysis interrupted for segment {segment_id}, requeueing"
-                )
-                await db.rollback()
-                await redis_client.lpush(ANALYSIS_QUEUE, str(segment_id))
-                raise
+        except RetryExhaustedError as e:
+            logger.error(f"Analysis failed permanently for segment {segment_id}: {e}")
+            await db.rollback()
+            await push_to_dead_letter(
+                redis_client, segment_id, "analysis", str(e.last_error), e.attempts
+            )
 
-            except Exception as e:
-                logger.error(f"Analysis unexpected error for segment {segment_id}: {e}")
-                await db.rollback()
-                await push_to_dead_letter(redis_client, segment_id, "analysis", str(e))
+        except asyncio.CancelledError:
+            logger.info(
+                f"[Shutdown] Analysis interrupted for segment {segment_id}, requeueing"
+            )
+            await db.rollback()
+            await redis_client.lpush(ANALYSIS_QUEUE, str(segment_id))
+            raise
+
+        except Exception as e:
+            logger.error(f"Analysis unexpected error for segment {segment_id}: {e}")
+            await db.rollback()
+            await push_to_dead_letter(redis_client, segment_id, "analysis", str(e))
