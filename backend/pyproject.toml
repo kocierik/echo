@@ -27,7 +27,7 @@ dependencies = [
     "pypdf==6.21.4",  # documents: the text of a PDF
     "python-docx==1.2.0",  # documents: the text of a Word file
     "opuslib==3.0.1",  # the wearable's Opus speech (libopus0 from the system)
-    "Pillow==11.3.0",  # dark wearable photos brightened (services/photos.py)
+    "Pillow==13.0.0",  # dark wearable photos brightened (services/photos.py)
 ]
 
 [project.optional-dependencies]
