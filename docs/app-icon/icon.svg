@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect width="1024" height="1024" fill="#0E0F10"/>
+  <g fill="none" stroke="#6CCBF5">
+    <circle cx="512" cy="512" r="128" stroke-width="16"/>
+    <circle cx="512" cy="512" r="262" stroke-width="30" stroke-dasharray="148 34" transform="rotate(-82 512 512)"/>
+    <circle cx="512" cy="512" r="330" stroke-width="7"/>
+  </g>
+  <circle cx="707.0" cy="512.0" r="13" fill="#6CCBF5"/><circle cx="680.9" cy="609.5" r="13" fill="#6CCBF5"/><circle cx="609.5" cy="680.9" r="13" fill="#6CCBF5"/><circle cx="512.0" cy="707.0" r="13" fill="#6CCBF5"/><circle cx="414.5" cy="680.9" r="13" fill="#6CCBF5"/><circle cx="343.1" cy="609.5" r="13" fill="#6CCBF5"/><circle cx="317.0" cy="512.0" r="13" fill="#6CCBF5"/><circle cx="343.1" cy="414.5" r="13" fill="#6CCBF5"/><circle cx="414.5" cy="343.1" r="13" fill="#6CCBF5"/><circle cx="512.0" cy="317.0" r="13" fill="#6CCBF5"/><circle cx="609.5" cy="343.1" r="13" fill="#6CCBF5"/><circle cx="680.9" cy="414.5" r="13" fill="#6CCBF5"/><circle cx="512.0" cy="182.0" r="26" fill="#6CCBF5"/><circle cx="797.8" cy="677.0" r="18" fill="#6CCBF5"/><circle cx="226.2" cy="677.0" r="18" fill="#6CCBF5"/>
+  <circle cx="512" cy="512" r="64" fill="#6CCBF5"/>
+</svg>

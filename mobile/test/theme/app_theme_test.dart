@@ -13,7 +13,7 @@ void main() {
     expect(palette.background, const Color(0xFFE9EAE7));
     expect(palette.surface, const Color(0xFFF7F7F5));
     expect(palette.text, const Color(0xFF1F2326));
-    expect(palette.accent, const Color(0xFF0E6F68));
+    expect(palette.accent, const Color(0xFF0A6A94));
     expect(palette.live, const Color(0xFFE8590C));
     expect(palette.chrome, const Color(0xFF1F2326));
   });
@@ -27,17 +27,32 @@ void main() {
     expect(palette.surface, const Color(0xFF1A1C1E));
     expect(palette.chrome, const Color(0xFF2A2D31));
     expect(palette.text, const Color(0xFFECEDEA));
-    expect(palette.accent, const Color(0xFF6CC4BA));
+    expect(palette.accent, const Color(0xFF6CCBF5));
     expect(palette.live, const Color(0xFFFF7A33));
   });
 
-  test('main buttons are ink on the ground, links are teal', () {
+  test('main buttons are ink on the ground, links are blue', () {
     for (final theme in [AppTheme.dark, AppTheme.light]) {
       final palette = theme.extension<EchoPalette>()!;
       final filled = theme.filledButtonTheme.style!;
       expect(filled.backgroundColor!.resolve({}), palette.text);
       expect(filled.foregroundColor!.resolve({}), palette.background);
       expect(theme.textButtonTheme.style!.foregroundColor!.resolve({}), palette.accent);
+    }
+  });
+
+  test('the blue accent reads on its grounds (4.5:1 and more)', () {
+    double contrast(Color a, Color b) {
+      final (light, dark) = a.computeLuminance() > b.computeLuminance()
+          ? (a.computeLuminance(), b.computeLuminance())
+          : (b.computeLuminance(), a.computeLuminance());
+      return (light + 0.05) / (dark + 0.05);
+    }
+
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      final palette = theme.extension<EchoPalette>()!;
+      expect(contrast(palette.accent, palette.surface), greaterThanOrEqualTo(4.5));
+      expect(contrast(palette.accent, palette.background), greaterThanOrEqualTo(4.5));
     }
   });
 

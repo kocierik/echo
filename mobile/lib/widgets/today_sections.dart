@@ -569,7 +569,7 @@ final class _TimelineRow extends StatelessWidget {
   }
 }
 
-/// A conversation as a block on the timeline: teal when it left something to
+/// A conversation as a block on the timeline: blue when it left something to
 /// do, a single line when it was short and with nobody in particular.
 final class _ConversationBlock extends StatelessWidget {
   const _ConversationBlock({required this.conversation, required this.onTap});

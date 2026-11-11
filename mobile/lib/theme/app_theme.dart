@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Echo's colours. Panels sit on a quiet ground; two accents carry meaning:
-/// [live] (orange, the wearable's LED) for what is happening now, [accent] (teal) for
+/// [live] (orange) for what is happening now, [accent] (sky blue, the icon's) for
 /// what is on, done or can be tapped. [attention] is the "Needs you" panel. The
 /// graphite [chrome] is the hardware: the navigation bar, the device pill and puck.
 @immutable
@@ -40,10 +40,11 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     text: Color(0xFF1F2326),
     text2: Color(0xFF5B6166),
     border: Color(0xFFE0E1DD),
-    accent: Color(0xFF0E6F68),
-    accentSoft: Color(0xFFD6E8E5),
-    onAccentSoft: Color(0xFF2F4A47),
-    tint: Color(0xFFE4EBEC),
+    // Deep enough to read on the light ground (4.5:1 and more)
+    accent: Color(0xFF0A6A94),
+    accentSoft: Color(0xFFD3E7F1),
+    onAccentSoft: Color(0xFF1E4A5F),
+    tint: Color(0xFFE2EAEE),
     live: Color(0xFFE8590C),
     liveText: Color(0xFFAE430A),
     liveGlow: Color(0xFF5A3B2C),
@@ -68,10 +69,11 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     text: Color(0xFFECEDEA),
     text2: Color(0xFFA3A8AC),
     border: Color(0xFF2C2F32),
-    accent: Color(0xFF6CC4BA),
-    accentSoft: Color(0xFF1B3431),
-    onAccentSoft: Color(0xFFA9D3CC),
-    tint: Color(0xFF1D2527),
+    // The icon's blue
+    accent: Color(0xFF6CCBF5),
+    accentSoft: Color(0xFF15303C),
+    onAccentSoft: Color(0xFFA8DDF5),
+    tint: Color(0xFF1B2428),
     live: Color(0xFFFF7A33),
     liveText: Color(0xFFFF9A5C),
     liveGlow: Color(0xFF45291B),
