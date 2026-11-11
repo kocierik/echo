@@ -252,6 +252,17 @@ public:
     /** The app is connected and has set the time: what confirms a new firmware. */
     bool appTalking() const { return _connected && _timeAnchor.isValid(); }
 
+    /** This boot's millis `ms` as unix seconds; false until the app has set the time. */
+    bool unixSecondsAt(uint32_t ms, uint32_t& unixSeconds) const {
+        uint64_t seconds = 0;
+        if (!_timeAnchor.resolveUnixSeconds(ms, seconds) || seconds == 0 ||
+            seconds > UINT32_MAX) {
+            return false;
+        }
+        unixSeconds = static_cast<uint32_t>(seconds);
+        return true;
+    }
+
     /** A new firmware is arriving or about to start: capture and transfers pause. */
     bool otaInProgress() {
         lockOta();
@@ -609,7 +620,7 @@ private:
 
     bool sendSegmentMetadata(uint32_t deadlineUs) {
         uint64_t recordedAtSeconds = 0;
-        if (!resolveUnixSeconds(_segment.capturedAtMs, recordedAtSeconds)) return false;
+        if (!resolveRecordedAt(_segment, _timeAnchor, millis(), recordedAtSeconds)) return false;
         uint8_t frame[EchoBleProtocol::SEGMENT_METADATA_SIZE] = {};
         const EchoBleProtocol::SegmentMetadata metadata = {
             _segment.segmentId,
@@ -641,10 +652,6 @@ private:
         }
         _state.onChunkSent(sequence, millis());
         return true;
-    }
-
-    bool resolveUnixSeconds(uint32_t capturedAtMs, uint64_t& unixSeconds) const {
-        return _timeAnchor.resolveUnixSeconds(capturedAtMs, unixSeconds);
     }
 
     static bool beforeBurstDeadline(uint32_t deadlineUs) {

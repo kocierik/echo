@@ -31,6 +31,9 @@ public:
      *  sending it from PSRAM: it must stop). */
     typedef void (*MoveCallback)(uint32_t segmentId);
 
+    /** This boot's capture millis as unix seconds; false while the time is unknown. */
+    typedef bool (*UnixClock)(uint32_t capturedAtMs, uint32_t& unixSeconds);
+
     explicit TieredQueue(Hot& hot) : _hot(hot) {}
 
     /** Uses the card; `staging` holds one segment read from it (as large as a segment). */
@@ -40,6 +43,10 @@ public:
         _stagingSize = stagingSize;
         _onMove = onMove;
     }
+
+    /** Segments reaching the card carry unix time when this clock knows it: the card keeps
+     *  them through deep sleep, after which this boot's millis mean nothing. */
+    void setClock(UnixClock clock) { _clock = clock; }
 
     bool hasCard() const { return _card != nullptr; }
 
@@ -56,6 +63,9 @@ public:
         const uint8_t* oldestData = nullptr;
         while (_hot.peek(oldest, &oldestData)) {
             if (_onMove != nullptr) _onMove(oldest.segmentId);
+            // Without the time it stays boot-relative: the phone usually connects later in
+            // this boot and resolves it
+            stampTime(oldest);
             if (!_card->append(oldest, oldestData)) return false;  // full or failing
             _hot.dequeue();
             if (_hot.store(segmentId, data, length, durationMs, silenceBeforeMs,
@@ -77,6 +87,11 @@ public:
         if (!_hot.peek(oldest, &oldestData)) return Spill::EMPTY;
         if (_card == nullptr) return Spill::REFUSED;
         if (_onMove != nullptr) _onMove(oldest.segmentId);
+        // Echo is about to sleep: without the time now, it is unknown (0) after the wake
+        if (!stampTime(oldest)) {
+            oldest.unixTime = true;
+            oldest.capturedAtMs = 0;
+        }
         if (!_card->append(oldest, oldestData)) return Spill::REFUSED;
         _hot.dequeue();
         return Spill::MOVED;
@@ -147,6 +162,16 @@ public:
     }
 
 private:
+    /** To unix time when the clock knows it; true once the header carries unix time. */
+    bool stampTime(BufferedSegment& header) const {
+        if (header.unixTime) return true;
+        uint32_t unixSeconds = 0;
+        if (_clock == nullptr || !_clock(header.capturedAtMs, unixSeconds)) return false;
+        header.unixTime = true;
+        header.capturedAtMs = unixSeconds;
+        return true;
+    }
+
     static uint32_t capped(uint64_t value) {
         return value > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(value);
     }
@@ -159,5 +184,6 @@ private:
     uint8_t* _staging = nullptr;
     size_t _stagingSize = 0;
     MoveCallback _onMove = nullptr;
+    UnixClock _clock = nullptr;
     bool _fromCard = false;
 };

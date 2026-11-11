@@ -44,6 +44,9 @@ public:
         return used;
     }
     uint32_t droppedSegmentCount() const { return _dropped; }
+    void storeHeader(const BufferedSegment& header, const std::vector<uint8_t>& data) {
+        _items.push_back({header, data});
+    }
 
 private:
     size_t _capacity;
@@ -253,6 +256,127 @@ void test_a_failing_card_refuses_and_psram_keeps_the_segment() {
     TEST_ASSERT_EQUAL_UINT32(0, queue.droppedSegmentCount());
 }
 
+static const uint32_t UNIX_BASE = 1762800000U;
+
+static bool clockKnowsTheTime(uint32_t capturedAtMs, uint32_t& unixSeconds) {
+    unixSeconds = UNIX_BASE + capturedAtMs;
+    return true;
+}
+
+static bool clockWithoutTheTime(uint32_t, uint32_t&) { return false; }
+
+template <typename Queue>
+static std::vector<BufferedSegment> drainHeaders(Queue& queue) {
+    std::vector<BufferedSegment> headers;
+    BufferedSegment header{};
+    const uint8_t* data = nullptr;
+    while (queue.peek(header, &data)) {
+        headers.push_back(header);
+        queue.dequeue();
+    }
+    return headers;
+}
+
+void test_with_a_clock_overflow_to_the_card_carries_unix_time() {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    queue.attachCard(&log, staging, sizeof(staging), nullptr);
+    queue.setClock(clockKnowsTheTime);
+    for (uint32_t id = 1; id <= 4; ++id) TEST_ASSERT_TRUE(storeSegment(queue, id));
+
+    std::vector<BufferedSegment> headers = drainHeaders(queue);
+    TEST_ASSERT_EQUAL_UINT32(4, headers.size());
+    // 1 went to the card, stamped; PSRAM's stay boot-relative
+    TEST_ASSERT_EQUAL_UINT32(1, headers[0].segmentId);
+    TEST_ASSERT_TRUE(headers[0].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(UNIX_BASE + 10, headers[0].capturedAtMs);
+    TEST_ASSERT_EQUAL_UINT32(1000, headers[0].durationMs);
+    for (size_t i = 1; i < headers.size(); ++i) {
+        TEST_ASSERT_FALSE(headers[i].unixTime);
+        TEST_ASSERT_EQUAL_UINT32(headers[i].segmentId * 10, headers[i].capturedAtMs);
+    }
+}
+
+void test_with_a_clock_spilling_carries_unix_time() {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    queue.attachCard(&log, staging, sizeof(staging), nullptr);
+    queue.setClock(clockKnowsTheTime);
+    TEST_ASSERT_TRUE(storeSegment(queue, 2));
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+
+    std::vector<BufferedSegment> headers = drainHeaders(queue);
+    TEST_ASSERT_EQUAL_UINT32(1, headers.size());
+    TEST_ASSERT_TRUE(headers[0].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(UNIX_BASE + 20, headers[0].capturedAtMs);
+    TEST_ASSERT_EQUAL_UINT32(1000, headers[0].durationMs);
+}
+
+static void checkWithoutTheTime(bool setFailingClock) {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    queue.attachCard(&log, staging, sizeof(staging), nullptr);
+    if (setFailingClock) queue.setClock(clockWithoutTheTime);
+    for (uint32_t id = 1; id <= 4; ++id) TEST_ASSERT_TRUE(storeSegment(queue, id));  // 1 overflows
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);  // 2
+
+    std::vector<BufferedSegment> headers = drainHeaders(queue);
+    TEST_ASSERT_EQUAL_UINT32(4, headers.size());
+    // Overflow: boot-relative, the phone usually connects later in this boot
+    TEST_ASSERT_EQUAL_UINT32(1, headers[0].segmentId);
+    TEST_ASSERT_FALSE(headers[0].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(10, headers[0].capturedAtMs);
+    // Spilled before sleeping: this boot's millis mean nothing after it, time unknown
+    TEST_ASSERT_EQUAL_UINT32(2, headers[1].segmentId);
+    TEST_ASSERT_TRUE(headers[1].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(0, headers[1].capturedAtMs);
+    TEST_ASSERT_EQUAL_UINT32(1000, headers[1].durationMs);
+}
+
+void test_a_clock_without_the_time_leaves_overflow_relative_and_spills_unknown() {
+    checkWithoutTheTime(true);
+}
+
+void test_no_clock_acts_as_a_clock_without_the_time() { checkWithoutTheTime(false); }
+
+void test_unix_records_are_never_restamped() {
+    FakeHot hot(300);
+    MemoryStorage card;
+    SegmentLog log(card, 4096);
+    TEST_ASSERT_TRUE(log.begin());
+    TieredQueue<FakeHot> queue(hot);
+    queue.attachCard(&log, staging, sizeof(staging), nullptr);
+    queue.setClock(clockKnowsTheTime);
+    BufferedSegment header = {1U, 100U, 1000U, 0U, 1700000000U, 5U, 0U};
+    header.unixTime = true;
+    header.crc = EchoBleProtocol::crc32(payload(1).data(), 100);
+    hot.storeHeader(header, payload(1));
+    header.segmentId = 2;
+    header.capturedAtMs = 0;
+    header.crc = EchoBleProtocol::crc32(payload(2).data(), 100);
+    hot.storeHeader(header, payload(2));
+
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+    queue.setClock(nullptr);
+    TEST_ASSERT_TRUE(queue.spillOldestToCard() == TieredQueue<FakeHot>::Spill::MOVED);
+
+    std::vector<BufferedSegment> headers = drainHeaders(queue);
+    TEST_ASSERT_EQUAL_UINT32(2, headers.size());
+    TEST_ASSERT_TRUE(headers[0].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(1700000000U, headers[0].capturedAtMs);
+    TEST_ASSERT_TRUE(headers[1].unixTime);
+    TEST_ASSERT_EQUAL_UINT32(0, headers[1].capturedAtMs);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_without_a_card_a_full_queue_refuses_as_today);
@@ -263,5 +387,10 @@ int main(int, char**) {
     RUN_TEST(test_spilling_moves_psram_to_the_card_oldest_first);
     RUN_TEST(test_without_a_card_spilling_is_refused_unless_empty);
     RUN_TEST(test_a_failing_card_refuses_and_psram_keeps_the_segment);
+    RUN_TEST(test_with_a_clock_overflow_to_the_card_carries_unix_time);
+    RUN_TEST(test_with_a_clock_spilling_carries_unix_time);
+    RUN_TEST(test_a_clock_without_the_time_leaves_overflow_relative_and_spills_unknown);
+    RUN_TEST(test_no_clock_acts_as_a_clock_without_the_time);
+    RUN_TEST(test_unix_records_are_never_restamped);
     return UNITY_END();
 }

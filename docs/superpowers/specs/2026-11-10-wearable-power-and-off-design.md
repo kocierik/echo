@@ -98,7 +98,16 @@ States: `ON` → `TURNING_OFF` → `OFF_NOW`.
     `TieredQueue::spillOldestToCard()`, one segment per call so the loop keeps serving BLE,
     oldest first, the same move as `store()` on overflow, with
     the same move callback), then `OFF_NOW`. The
-    card keeps them through deep sleep and the phone gets them after the next wake, oldest first;
+    card keeps them through deep sleep and the phone gets them after the next wake, oldest first.
+    **Their time survives the sleep:** a record's capture time is otherwise this boot's millis,
+    meaningless after the wake (millis restart from 0). So every segment written to the card
+    (`store()` overflow and the spill) is stamped with unix seconds first, from the time the
+    phone set (`TieredQueue::setClock`, `BleTransport::unixSecondsAt`); the flag rides in the top
+    bit of the header's duration, so the 26-byte record format is unchanged and older records
+    read as before. A spilled segment whose time is unknown (the phone never set it this boot)
+    is marked "unknown" and dated when it is delivered. Remaining edge: segments that reached
+    the card by overflow before the phone ever connected in that boot keep boot-relative time
+    and are misdated if Echo restarts (or sleeps) before sending them — as before this feature;
   - if the card refuses (full or failing), or without a card: Echo waits until the PSRAM queue is
     empty, sending over BLE as usual, then `OFF_NOW`;
   - if the phone disconnects meanwhile, Echo stays in `TURNING_OFF` (microphone off, advertising)
@@ -195,7 +204,8 @@ protocol stays at 6 and the app looks at the firmware version.
   2. a full charge → empty run with the 1200 mAh battery, before and after, noting hours, minutes
      of speech and photos;
   3. if a meter on the battery line is available: current in silence, while speaking, muted, off;
-  4. turn off with speech waiting, with and without a card: nothing lost after the wake;
+  4. turn off with speech waiting, with and without a card: nothing lost after the wake, and their
+     conversation times are right after the wake;
   5. turn off from the button, release, wait 1 min: it stays off; short press: stays off;
      1.5 s hold: on;
   6. the camera board: silence current/temperature with and without it (power off before

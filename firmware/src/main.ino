@@ -133,6 +133,12 @@ void moveToCard(uint32_t segmentId) {
     bleTransport.cancelActiveForOverflow(segmentId);
 }
 
+/** A segment reaching the card: its capture time as unix seconds, once the app has set the
+ *  time (the card keeps it through deep sleep, which restarts millis). */
+bool cardClock(uint32_t capturedAtMs, uint32_t& unixSeconds) {
+    return bleTransport.unixSecondsAt(capturedAtMs, unixSeconds);
+}
+
 void fatal(const char* message) {
     Serial.println(message);
     if (otaHealth.onTrial()) {
@@ -410,6 +416,7 @@ void setup() {
                                           static_cast<unsigned long>(sealed));
         }
         buffer.attachCard(&sdLog, sdStaging, SEGMENT_MAX_SIZE, moveToCard);
+        buffer.setClock(cardClock);
         Serial.printf("[SD] speech overflow on the card, encrypted (%llu KB waiting)\n",
                       static_cast<unsigned long long>(sdLog.pendingBytes() / 1024));
     } else if (sdStaging != nullptr) {

@@ -57,6 +57,83 @@ void test_buffered_segment_header_exact_bytes() {
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected, encoded, sizeof(expected));
 }
 
+void test_buffered_segment_header_round_trips_the_unix_time_flag() {
+    BufferedSegment header = {7U, 4096U, 25000U, 800U, 1762800000U, 321U, 0xCBF43926U};
+    header.unixTime = true;
+    uint8_t encoded[BufferedSegmentCodec::HEADER_SIZE] = {};
+
+    BufferedSegmentCodec::encode(header, encoded);
+    BufferedSegment decoded = BufferedSegmentCodec::decode(encoded);
+
+    TEST_ASSERT_TRUE(decoded.unixTime);
+    TEST_ASSERT_EQUAL_UINT32(25000U, decoded.durationMs);  // the flag stays out of it
+    TEST_ASSERT_EQUAL_UINT32(1762800000U, decoded.capturedAtMs);
+    TEST_ASSERT_EQUAL_HEX32(0x80000000U | 25000U, readU32(encoded + 8));
+
+    header.unixTime = false;
+    BufferedSegmentCodec::encode(header, encoded);
+    decoded = BufferedSegmentCodec::decode(encoded);
+    TEST_ASSERT_FALSE(decoded.unixTime);
+    TEST_ASSERT_EQUAL_UINT32(25000U, decoded.durationMs);
+    TEST_ASSERT_EQUAL_HEX32(25000U, readU32(encoded + 8));
+}
+
+void test_a_legacy_header_decodes_as_boot_relative() {
+    // Written before the flag existed: the top bit of durationMs is clear
+    uint8_t encoded[BufferedSegmentCodec::HEADER_SIZE] = {};
+    writeU32(encoded, 9U);
+    writeU32(encoded + 4, 100U);
+    writeU32(encoded + 8, 0x7FFFFFFFU);
+    writeU32(encoded + 12, 0U);
+    writeU32(encoded + 16, 123456U);
+    writeU16(encoded + 20, 5U);
+    writeU32(encoded + 22, 0xDEADBEEFU);
+
+    const BufferedSegment decoded = BufferedSegmentCodec::decode(encoded);
+
+    TEST_ASSERT_FALSE(decoded.unixTime);
+    TEST_ASSERT_EQUAL_HEX32(0x7FFFFFFFU, decoded.durationMs);
+    TEST_ASSERT_EQUAL_UINT32(123456U, decoded.capturedAtMs);
+    TEST_ASSERT_EQUAL_HEX32(0xDEADBEEFU, decoded.crc);
+}
+
+void test_recorded_at_of_a_boot_relative_segment_uses_the_anchor() {
+    TimeAnchor anchor;
+    anchor.set(1700000000500ULL, 1000U, 0);
+    BufferedSegment segment = {1U, 10U, 1000U, 0U, 1500U, 0U, 0U};
+    uint64_t unixSeconds = 0;
+
+    TEST_ASSERT_TRUE(resolveRecordedAt(segment, anchor, 99999U, unixSeconds));
+    TEST_ASSERT_EQUAL_UINT64(1700000001ULL, unixSeconds);
+
+    TimeAnchor unset;
+    TEST_ASSERT_FALSE(resolveRecordedAt(segment, unset, 99999U, unixSeconds));
+}
+
+void test_recorded_at_of_a_unix_segment_is_its_own_time() {
+    TimeAnchor unset;  // a record from an earlier boot needs no anchor
+    BufferedSegment segment = {1U, 10U, 1000U, 0U, 1762800000U, 0U, 0U};
+    segment.unixTime = true;
+    uint64_t unixSeconds = 0;
+
+    TEST_ASSERT_TRUE(resolveRecordedAt(segment, unset, 5000U, unixSeconds));
+    TEST_ASSERT_EQUAL_UINT64(1762800000ULL, unixSeconds);
+}
+
+void test_recorded_at_of_an_unknown_time_segment_is_the_delivery_time() {
+    TimeAnchor anchor;
+    anchor.set(1700000000000ULL, 1000U, 0);
+    BufferedSegment segment = {1U, 10U, 1000U, 0U, 0U, 0U, 0U};
+    segment.unixTime = true;
+    uint64_t unixSeconds = 0;
+
+    TEST_ASSERT_TRUE(resolveRecordedAt(segment, anchor, 61000U, unixSeconds));
+    TEST_ASSERT_EQUAL_UINT64(1700000060ULL, unixSeconds);
+
+    TimeAnchor unset;
+    TEST_ASSERT_FALSE(resolveRecordedAt(segment, unset, 61000U, unixSeconds));
+}
+
 void test_little_endian_round_trips() {
     uint8_t bytes[8] = {};
     writeU16(bytes, 0xABCDU);
@@ -458,6 +535,11 @@ int main(int, char**) {
     RUN_TEST(test_incremental_crc32_matches_one_shot_crc32);
     RUN_TEST(test_buffered_segment_header_round_trips_stored_crc);
     RUN_TEST(test_buffered_segment_header_exact_bytes);
+    RUN_TEST(test_buffered_segment_header_round_trips_the_unix_time_flag);
+    RUN_TEST(test_a_legacy_header_decodes_as_boot_relative);
+    RUN_TEST(test_recorded_at_of_a_boot_relative_segment_uses_the_anchor);
+    RUN_TEST(test_recorded_at_of_a_unix_segment_is_its_own_time);
+    RUN_TEST(test_recorded_at_of_an_unknown_time_segment_is_the_delivery_time);
     RUN_TEST(test_little_endian_round_trips);
     RUN_TEST(test_segment_start_exact_bytes);
     RUN_TEST(test_device_status_v2_exact_bytes_and_round_trips);
