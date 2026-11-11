@@ -119,6 +119,33 @@ claude.ai and ChatGPT connectors need OAuth, not built yet. The server is `app/m
 - Migration 008 drops the `rules` and `integrations` tables (replaced by Composio). Back them up
   first if they hold data you want: `docker compose exec -T postgres pg_dump -U echo -d echo -t rules -t integrations > backup.sql`.
 
+## Backups
+
+The `backup` service dumps the database once a day into `./backups` (kept 14 days,
+`BACKUP_KEEP_DAYS`). Each dump is restored into a scratch database and its rows counted
+before it is kept: a dump that does not restore is not a backup. `docker compose ps` shows
+the service unhealthy when the newest dump is older than 26 hours. `make backup` takes one
+now.
+
+Everything the user owns is in the database (transcripts, people, photos); the audio is
+deleted after a day and is not backed up. `.env` holds the secrets and is not in the dumps:
+keep a copy of it yourself.
+
+`./backups` is on the same disk as the database: it covers a bad migration or a deleted
+row, not a broken disk. Copy the folder elsewhere (`rclone`, `rsync`) and set
+`BACKUP_PASSPHRASE` in `.env` first: the dumps are then encrypted (gpg, AES-256) and safe
+to keep on someone else's storage. Without the passphrase they cannot be read back.
+
+To restore (stop `api` and `worker` first; this replaces the database):
+
+```bash
+# an encrypted dump first becomes a plain one
+gpg -d backups/echo-<stamp>.dump.gpg > backups/restore.dump
+docker compose exec -T postgres dropdb -U echo echo
+docker compose exec -T postgres createdb -U echo echo
+docker compose exec -T postgres pg_restore -U echo -d echo --no-owner < backups/restore.dump
+```
+
 ## Mobile app
 
 ```bash

@@ -106,6 +106,9 @@ db-reset: ## Drop and recreate database schema (DESTRUCTIVE)
 db-migrate: ## Run pending Alembic migrations (idempotent)
 	docker compose exec api python -m alembic upgrade head
 
+backup: ## Dump the database now into ./backups and prove the dump by restoring it
+	docker compose exec -T backup sh /backup.sh once
+
 db-new-migration: ## Generate a new migration (usage: make db-new-migration MSG="add xyz")
 	docker compose exec api python -m alembic revision --autogenerate -m "$(MSG)"
 
