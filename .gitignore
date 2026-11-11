@@ -88,5 +88,7 @@ aidlc/
 backend/evals/data/
 .cache
 
-# Database dumps (scripts/backup.sh)
-backups/
+# Database dumps (scripts/backup.sh). The folder itself is kept: made by Docker it would
+# be root's, and the backup service (uid 1000) could not write in it
+backups/*
+!backups/.gitkeep
