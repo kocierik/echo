@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 10
-#define FIRMWARE_VERSION_PATCH 0
+#define FIRMWARE_VERSION_PATCH 1
 
 // ============================================================
 // Audio Configuration
@@ -158,6 +158,7 @@
 
 // 80 MHz is enough for Opus at 16 kHz mono and keeps BLE working; 240 MHz only ran hotter
 #define CPU_FREQ_MHZ 80
+#define FATAL_RESTART_DELAY_MS 5000    // a failed start is tried again after this
 
 static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,
               "A segment must fit in the PSRAM buffer");

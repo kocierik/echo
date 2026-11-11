@@ -197,12 +197,13 @@ bool AudioCapture::begin() {
 
     for (int i = 0; i < 5; i++) {
 
+        // Never forever: a microphone that gives nothing must not stop the loop
         i2s_read(
             I2S_PORT,
             discard,
             sizeof(discard),
             &bytes_read,
-            portMAX_DELAY
+            pdMS_TO_TICKS(200)
         );
     }
 

@@ -407,6 +407,27 @@ void test_overflow_cancellation_does_not_dequeue() {
     TEST_ASSERT_TRUE(cancelBody.find("dequeue") == std::string::npos);
 }
 
+/** A stuck loop restarts Echo, and nothing in a start or a microphone restart waits forever. */
+void test_the_loop_is_watched_and_nothing_waits_forever() {
+    const std::string source = readMainSource();
+    const std::string audio = readSource("src/audio_capture.h");
+
+    // Watched once setup is done; not while turning off waits for the button's release
+    const size_t ready = source.find("[OK] System ready");
+    const size_t watched = source.find("enableLoopWDT()");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, watched);
+    TEST_ASSERT_TRUE(watched < ready);
+    const size_t turnOff = source.find("void turnOffNow()");
+    const size_t unwatched = source.find("disableLoopWDT()", turnOff);
+    TEST_ASSERT_TRUE(unwatched < source.find("sleepNow()", turnOff));
+
+    // A failed start is tried again
+    const size_t fatal = source.find("void fatal(");
+    TEST_ASSERT_TRUE(source.find("ESP.restart()", fatal) < source.find("void sleepNow()", fatal));
+
+    TEST_ASSERT_EQUAL(0, countOccurrences(audio, "portMAX_DELAY"));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_main_uses_ble_only_transport);
@@ -431,6 +452,7 @@ int main(int, char**) {
     RUN_TEST(test_main_cancels_active_transfer_before_drop_without_dequeue);
     RUN_TEST(test_overflow_status_serializes_counter_and_retains_flag_until_notify_succeeds);
     RUN_TEST(test_only_accept_upload_dequeues_a_buffered_segment);
+    RUN_TEST(test_the_loop_is_watched_and_nothing_waits_forever);
     RUN_TEST(test_overflow_cancellation_does_not_dequeue);
     return UNITY_END();
 }

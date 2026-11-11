@@ -145,6 +145,9 @@ void fatal(const char* message) {
         Serial.println("[OTA] new firmware failed to start: rolling back");
         esp_ota_mark_app_invalid_rollback_and_reboot();
     }
+    // Not forever: a start that failed once (the radio, the card) often works the next time
+    delay(FATAL_RESTART_DELAY_MS);
+    ESP.restart();
     while (true) { delay(1000); }
 }
 
@@ -300,6 +303,7 @@ void handlePowerOff(bool turnOff) {
 
 [[noreturn]] void turnOffNow() {
     Serial.println("[Power] off");
+    disableLoopWDT();  // it waits below for the button's release, however long
     bleTransport.setPowerState(EchoBleProtocol::POWER_STATE_OFF);
     const uint32_t startedMs = millis();
     while (bleTransport.powerStatePending() && millis() - startedMs < 300) {
@@ -431,6 +435,9 @@ void setup() {
     vad.reset();
 
     indicators.setBlinking(false);
+    // A loop that stops for 5 s (the core's watchdog timeout) restarts Echo: a stuck
+    // driver or a deadlock no longer needs the battery pulled
+    enableLoopWDT();
     Serial.printf("[OK] System ready at %lu MHz\n", static_cast<unsigned long>(getCpuFrequencyMhz()));
 }
 
