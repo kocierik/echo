@@ -16,10 +16,11 @@ a request to Echo said back then is not done now.
 import asyncio
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import redis.asyncio as redis
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.actions.voice import find_wake
 from app.core.database import async_session
@@ -42,6 +43,7 @@ from app.services.usage import usage_owner
 from app.services.voice_embedding import embed_voice, loudest_frames
 from app.services.voice_profiles import list_profiles, recognize
 from app.workers.dead_letter import push_to_dead_letter
+from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
 from app.workers.voice_requests import VOICE_QUEUE
 
@@ -51,6 +53,67 @@ STT_QUEUE = "queue:stt"
 # Deferred speech the budget allows again, oldest first
 DEFERRED_STT_QUEUE = "queue:stt:deferred"
 ANALYSIS_QUEUE = "queue:analysis"
+STT_PROCESSING_TIMEOUT = timedelta(minutes=15)
+STT_RECOVERY_INTERVAL_S = 30
+STT_RECOVERY_BATCH_SIZE = 500
+
+
+async def recover_stt_queue(
+    redis_client: redis.Redis,
+    *,
+    session_factory=async_session,
+    now: datetime | None = None,
+) -> int:
+    """Requeue pending segments and release STT claims left stale by a worker crash."""
+    effective_now = now or datetime.now(timezone.utc)
+    if effective_now.tzinfo is None or effective_now.utcoffset() != timedelta(0):
+        raise ValueError("now must be UTC-aware")
+
+    async with session_factory() as db:
+        await db.execute(
+            update(Segment)
+            .where(
+                Segment.transcription_status == "processing",
+                Segment.transcription_started_at.is_not(None),
+                Segment.transcription_started_at < effective_now - STT_PROCESSING_TIMEOUT,
+            )
+            .values(transcription_status="pending", transcription_started_at=None)
+        )
+        await db.commit()
+        pending_ids = list(
+            await db.scalars(
+                select(Segment.id)
+                .where(Segment.transcription_status == "pending")
+                .order_by(Segment.recorded_at, Segment.id)
+                .limit(STT_RECOVERY_BATCH_SIZE)
+            )
+        )
+
+    # Existing queue entries are consumed first; once empty, the remaining pending
+    # records are restored. Claim-status checks make duplicate IDs safe.
+    if not pending_ids or await redis_client.llen(STT_QUEUE):
+        return 0
+
+    await redis_client.lpush(STT_QUEUE, *(str(segment_id) for segment_id in pending_ids))
+    return len(pending_ids)
+
+
+async def run_stt_recovery_loop(
+    redis_client: redis.Redis, shutdown_event: asyncio.Event | None = None
+) -> None:
+    """Periodically restore pending work when an upload or worker lost its Redis enqueue."""
+    while not (shutdown_event and shutdown_event.is_set()):
+        try:
+            recovered = await recover_stt_queue(redis_client)
+            if recovered:
+                logger.info("[STT recovery] Queued %s pending segments", recovered)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("[STT recovery] Could not restore pending segments")
+
+        if await sleep_or_shutdown(STT_RECOVERY_INTERVAL_S, shutdown_event):
+            return
 
 
 async def _enqueue_voice_request(redis_client: redis.Redis, segment_id: uuid.UUID, text: str):
@@ -79,7 +142,7 @@ async def _claim_stt_audio(
     db, redis_client: redis.Redis, segment_id: uuid.UUID, *, late: bool = False
 ):
     """The segment and its audio, marked processing; None when it is not transcribed now
-    (missing, deferred by the budget, or `late` and no longer waiting)."""
+    (missing, ineligible for this queue, or deferred by the budget)."""
     result = await db.execute(
         select(Segment).where(Segment.id == segment_id).with_for_update()
     )
@@ -87,23 +150,30 @@ async def _claim_stt_audio(
     if segment is None:
         logger.warning(f"Segment {segment_id} not found")
         return None
-    if late and segment.transcription_status != "deferred":
-        # Queued twice (the hourly release and a plan change): done already
-        logger.info(f"Deferred segment {segment_id} is {segment.transcription_status}: skipped")
+    expected_status = "deferred" if late else "pending"
+    if segment.transcription_status != expected_status:
+        # Duplicate queue entries and already-claimed segments are safe to skip.
+        logger.info(
+            f"Segment {segment_id} is {segment.transcription_status}, "
+            f"not {expected_status}: skipped"
+        )
         return None
     if not await may_transcribe(db, segment.user_id, late=late):
         if segment.transcription_status != "deferred":
             logger.info(f"Segment {segment_id} deferred: the plan's budget is used")
         segment.transcription_status = "deferred"
+        segment.transcription_started_at = None
         await db.commit()
         return None
 
     segment.transcription_status = "processing"
+    segment.transcription_started_at = datetime.now(timezone.utc)
     audio_path_value = segment.audio_path
     if not audio_path_value:
         error = "Audio path missing"
         logger.error(f"{error} for segment {segment_id}")
         segment.transcription_status = "failed"
+        segment.transcription_started_at = None
         await db.commit()
         await push_to_dead_letter(redis_client, segment_id, "stt", error)
         return None
@@ -115,12 +185,14 @@ async def _claim_stt_audio(
         error = "Audio file not found"
         logger.error(f"{error}: {audio_path}")
         segment.transcription_status = "failed"
+        segment.transcription_started_at = None
         await db.commit()
         await push_to_dead_letter(redis_client, segment_id, "stt", error)
         return None
     except OSError as exc:
         logger.error(f"Unable to read audio file {audio_path}: {exc}")
         segment.transcription_status = "failed"
+        segment.transcription_started_at = None
         await db.commit()
         await push_to_dead_letter(redis_client, segment_id, "stt", str(exc))
         return None
@@ -220,6 +292,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
 
                 # Update segment status
                 segment.transcription_status = "completed"
+                segment.transcription_started_at = None
                 await db.commit()
 
                 # A late "who is in front of you" is noise: live speech only
@@ -244,6 +317,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 logger.error(f"STT failed permanently for segment {segment_id}: {e}")
                 if segment is not None:
                     segment.transcription_status = "failed"
+                    segment.transcription_started_at = None
                     await db.commit()
                 await push_to_dead_letter(
                     redis_client, segment_id, "stt", str(e.last_error), e.attempts
@@ -252,6 +326,10 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
             except asyncio.CancelledError:
                 # Shutdown in progress — requeue the segment
                 logger.info(f"[Shutdown] STT interrupted for segment {segment_id}, requeueing")
+                if segment is not None:
+                    segment.transcription_status = "deferred" if late else "pending"
+                    segment.transcription_started_at = None
+                    await db.commit()
                 await redis_client.lpush(
                     DEFERRED_STT_QUEUE if late else STT_QUEUE, str(segment_id)
                 )
@@ -261,5 +339,6 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 logger.error(f"STT unexpected error for segment {segment_id}: {e}")
                 if segment is not None:
                     segment.transcription_status = "failed"
+                    segment.transcription_started_at = None
                     await db.commit()
                 await push_to_dead_letter(redis_client, segment_id, "stt", str(e))

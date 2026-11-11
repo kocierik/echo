@@ -187,6 +187,15 @@ class _Op:
         self.calls.append(("create_foreign_key", name))
         self._add_fk(table, name, cols[0], referred, ondelete)
 
+    def drop_index(self, name, table_name=None):
+        self.calls.append(("drop_index", name))
+        for table in self.state.tables.values():
+            table["indexes"] = [index for index in table["indexes"] if index["name"] != name]
+
+    def drop_column(self, table, column):
+        self.calls.append(("drop_column", table, column))
+        del self.state.tables[table]["columns"][column]
+
     def drop_table(self, name):
         self.calls.append(("drop_table", name))
         del self.state.tables[name]
@@ -287,6 +296,13 @@ def test_upgrade_head_from_an_empty_database_matches_the_models(monkeypatch):
         assert set(state.tables[name]["columns"]) == set(table.columns.keys()), name
     segments = state.tables["segments"]["columns"]
     assert segments["audio_path"] is True and segments["audio_size_bytes"] is True
+    assert segments["transcription_started_at"] is True
+    segment_indexes = state.tables["segments"]["indexes"]
+    assert {
+        (index["name"], tuple(index["column_names"]), index["unique"])
+        for index in segment_indexes
+        if "audio_hash" in index["column_names"]
+    } == {("idx_segments_user_audio_hash", ("user_id", "audio_hash"), True)}
     cascade = {
         (t, fk["constrained_columns"][0]): fk["options"].get("ondelete")
         for t in ("segments", "entities")
@@ -629,3 +645,9 @@ def test_schema_sql_is_reference_only_and_reflects_head():
         assert f"CREATE TABLE {gone}" not in sql
     for column in ("speaker_label", "kind VARCHAR(10)", "audio_hash"):
         assert column in sql
+    assert "transcription_started_at TIMESTAMPTZ" in sql
+    assert (
+        "CREATE UNIQUE INDEX idx_segments_user_audio_hash ON segments (user_id, audio_hash)"
+        in sql
+    )
+    assert "idx_segments_audio_hash" not in sql

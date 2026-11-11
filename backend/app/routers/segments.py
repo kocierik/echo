@@ -30,6 +30,26 @@ from app.services.transcription_editor import (
 
 router = APIRouter(prefix="/segments", tags=["segments"])
 logger = logging.getLogger(__name__)
+MAX_AUDIO_BYTES = 5 * 1024 * 1024
+
+
+async def _read_audio_limited(audio: UploadFile) -> bytes:
+    """Read at most the accepted audio size plus one byte, without buffering a larger upload."""
+    audio_data = await audio.read(MAX_AUDIO_BYTES + 1)
+    if not audio_data:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+    if len(audio_data) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large ({len(audio_data)} bytes). Maximum is 5MB.",
+        )
+    return audio_data
+
+
+async def _queue_stt_segment(request: Request, segment_id: uuid.UUID) -> None:
+    redis_client = request.app.state.redis
+    await remember_correlation(redis_client, "segment", segment_id)
+    await redis_client.lpush("queue:stt", str(segment_id))
 
 
 class SegmentResponse(BaseModel):
@@ -174,18 +194,7 @@ async def ingest_segment(
     Idempotent: if the same audio content for the same recorded_at is sent twice
     (e.g., device retry), the duplicate is detected and the original is returned.
     """
-    # Read audio data
-    audio_data = await audio.read()
-    if not audio_data:
-        raise HTTPException(status_code=400, detail="Empty audio file")
-
-    # Reject oversized uploads (max 5MB)
-    max_audio_bytes = 5 * 1024 * 1024
-    if len(audio_data) > max_audio_bytes:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio file too large ({len(audio_data)} bytes). Maximum is 5MB.",
-        )
+    audio_data = await _read_audio_limited(audio)
 
     # --- Idempotency check ---
     # Hash audio content + recorded_at to detect device retries
@@ -201,6 +210,8 @@ async def ingest_segment(
     )
     existing_segment = existing.scalar_one_or_none()
     if existing_segment is not None:
+        if existing_segment.transcription_status == "pending":
+            await _queue_stt_segment(request, existing_segment.id)
         # Return the existing segment — no duplicate processing
         return SegmentResponse(
             id=existing_segment.id,
@@ -235,10 +246,7 @@ async def ingest_segment(
     await db.commit()
 
     # Queue for STT processing via Redis (shared pool)
-    redis_client = request.app.state.redis
-    # The workers log under this request's correlation ID (core/logging.py)
-    await remember_correlation(redis_client, "segment", segment_id)
-    await redis_client.lpush("queue:stt", str(segment_id))
+    await _queue_stt_segment(request, segment_id)
 
     return SegmentResponse(
         id=segment.id,

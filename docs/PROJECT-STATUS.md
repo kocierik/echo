@@ -1,6 +1,12 @@
-# Echo — Stato del progetto (05/11/2026)
+# Echo — Stato del progetto (10/11/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
+Aggiornamento 10/11: il worktree contiene la migrazione 039 per il recovery STT e i relativi fix
+di ingest; la migrazione del grafo di memoria nella specifica del 09/11 è stata spostata alla 040
+per evitare conflitti. Le modifiche locali non equivalgono a un deploy: revisione Alembic e stato
+del server vanno verificati prima del rilascio. In questa sessione sono passati 20 test DB-free
+delle migrazioni, Ruff, `py_compile` e `git diff --check`; i test d'integrazione non sono stati
+eseguiti (manca `.env` e PostgreSQL locale). Il gate reale di due ore su iPhone resta da eseguire.
 Prima analisi su `main` @ `5b235d0`; aggiornato dopo le correzioni del 13/10, le azioni Composio del
 13–14/10 e la verifica completa sul nuovo PC del 14/10 (tutte e tre le suite eseguite, Composio provato
 dal vivo). Aggiornato il 16/10 dopo la nuova interfaccia, il primo avvio con account e registrazione,
@@ -362,8 +368,9 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   comunque con i passaggi corti, ma peggio; pdfminer.six regge spazi un po' più stretti, da provare sul file vero.
 - **Assistenti, "New assistant":** l'app leggeva i modelli come oggetto invece che come lista ("invalid
   response"); corretto il 05/11, serve una nuova build.
-- **Tracciamento delle esecuzioni (U1):** la migrazione 031 non è ancora applicata sul server (che è alla 030):
-  la applica il prossimo `make deploy`, con la 032 e la 033. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
+- **Tracciamento delle esecuzioni (U1):** il documento del 05/11 riportava il server alla migrazione 030
+  e indicava che la 031 non era applicata. Lo stato attuale del server non è verificato; controllarlo
+  con `alembic current` prima del prossimo deploy. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
   sotto misura della copertura, la chiusura delle esecuzioni interrotte all'avvio non ha un timeout, e le
   esecuzioni `interrupted` hanno token e costo a zero.
 - **Speaker (#11):** con il profilo vocale registrato decidono le impronte; senza, la soglia di energia (da calibrare).

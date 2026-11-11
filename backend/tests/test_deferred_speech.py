@@ -6,6 +6,8 @@ import uuid
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from app.models.llm_usage import LlmUsage
 from app.models.segment import Segment
 from app.services import plans
@@ -119,6 +121,18 @@ async def test_a_late_claim_of_a_done_segment_is_skipped(db_session, tmp_path):
 
     assert claimed is None
     assert status == "completed"
+
+
+@pytest.mark.parametrize("status", ["processing", "completed"])
+async def test_live_queue_duplicates_do_not_reclaim_an_active_or_completed_segment(
+    db_session, tmp_path, status
+):
+    segment = await _segment(db_session, tmp_path, status=status)
+
+    claimed, actual_status, _ = await _claim(segment.id)
+
+    assert claimed is None
+    assert actual_status == status
 
 
 async def _run(monkeypatch, queue: bytes, text: str):

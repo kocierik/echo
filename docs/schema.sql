@@ -23,6 +23,8 @@ CREATE TABLE segments (
     -- pending | processing | completed | failed | deferred (past the plan's budget: the
     -- audio is kept until it is transcribed, services/plans.py)
     transcription_status TEXT NOT NULL DEFAULT 'pending',
+    -- Migration 039: worker claim time, used to recover interrupted STT jobs
+    transcription_started_at TIMESTAMPTZ,
     conversation_id UUID,
     -- Migration 002: idempotent ingest
     audio_hash VARCHAR(64),
@@ -34,7 +36,7 @@ CREATE TABLE segments (
 CREATE INDEX idx_segments_user_recorded ON segments (user_id, recorded_at);
 CREATE INDEX idx_segments_status ON segments (transcription_status) WHERE transcription_status != 'completed';
 CREATE INDEX idx_segments_conversation ON segments (conversation_id);
-CREATE UNIQUE INDEX idx_segments_audio_hash ON segments (audio_hash);
+CREATE UNIQUE INDEX idx_segments_user_audio_hash ON segments (user_id, audio_hash);
 
 -- ============================================================
 -- TRANSCRIPTIONS: STT output for each segment

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
@@ -11,6 +11,9 @@ from app.models.base import Base, UUIDPrimaryKey
 
 class Segment(UUIDPrimaryKey, Base):
     __tablename__ = "segments"
+    __table_args__ = (
+        Index("idx_segments_user_audio_hash", "user_id", "audio_hash", unique=True),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -20,7 +23,7 @@ class Segment(UUIDPrimaryKey, Base):
     audio_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     silence_before_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     audio_hash: Mapped[str | None] = mapped_column(
-        String(64), nullable=True, unique=True, index=True,
+        String(64), nullable=True,
         comment="SHA-256 of audio content + recorded_at for idempotency"
     )
     audio_energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -30,6 +33,9 @@ class Segment(UUIDPrimaryKey, Base):
     )
     transcription_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending"
+    )
+    transcription_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

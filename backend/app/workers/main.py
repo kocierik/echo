@@ -8,6 +8,7 @@
 - deferred speech (deferred.py), queued again when the plan's budget allows it;
 - tracked runs left `running` by a stopped process, closed as `interrupted` every minute
   (core/runs.py).
+- pending or stale `processing` speech is restored to the STT queue (stt.py).
 
 Items that fail after their retries go to the dead letter queue (dead_letter.py). On
 SIGTERM/SIGINT the loops finish the item in hand (up to SHUTDOWN_TIMEOUT_S), then stop.
@@ -34,7 +35,7 @@ from app.workers.reanalysis import process_reanalysis
 from app.workers.retention import run_retention_loop
 from app.workers.routines import run_routines_loop
 from app.workers.saved import run_saved_expiry_loop
-from app.workers.stt import process_stt
+from app.workers.stt import process_stt, run_stt_recovery_loop
 from app.workers.summaries import run_summary_loop
 from app.workers.voice_requests import process_voice_queue
 
@@ -75,6 +76,9 @@ async def main():
     # Create worker tasks
     tasks = [
         asyncio.create_task(process_stt(redis_client, shutdown_event), name="stt_worker"),
+        asyncio.create_task(
+            run_stt_recovery_loop(redis_client, shutdown_event), name="stt_recovery_worker"
+        ),
         asyncio.create_task(
             process_analysis(redis_client, shutdown_event), name="analysis_worker"
         ),

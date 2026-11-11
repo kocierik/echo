@@ -4,10 +4,12 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from app.models.segment import Segment
 from app.models.transcription import Transcription
+from app.routers import segments as segments_router
 from tests.conftest import TEST_USER_ID
 
 
@@ -84,6 +86,45 @@ async def test_ingest_segment_empty_audio(client: AsyncClient, auth_headers):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_ingest_segment_rejects_audio_over_five_megabytes(client: AsyncClient, auth_headers):
+    response = await client.post(
+        "/api/segments",
+        headers={
+            **auth_headers,
+            "X-Recorded-At": "2026-07-19T10:30:00Z",
+            "X-Duration-Ms": "5000",
+        },
+        files={
+            "audio": (
+                "segment.adpcm",
+                b"\x00" * (5 * 1024 * 1024 + 1),
+                "application/octet-stream",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_upload_audio_reader_limits_the_bytes_read():
+    class Upload:
+        requested_size = None
+
+        async def read(self, size=-1):
+            self.requested_size = size
+            return b"x" * size
+
+    upload = Upload()
+
+    with pytest.raises(HTTPException) as exc_info:
+        await segments_router._read_audio_limited(upload)
+
+    assert exc_info.value.status_code == 413
+    assert upload.requested_size == 5 * 1024 * 1024 + 1
 
 
 @pytest.mark.asyncio
