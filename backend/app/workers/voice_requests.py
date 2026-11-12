@@ -18,7 +18,7 @@ import logging
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
@@ -321,6 +321,20 @@ async def _unmark_working(redis_client, user_id, segment_id) -> None:
         await redis_client.hdel(WORKING_KEY.format(user_id=user_id), str(segment_id))
 
 
+def _timing(segment) -> str:
+    """Where the seconds went, from the end of the sentence: to measure, not to guess."""
+    try:
+        spoken = segment.recorded_at + timedelta(milliseconds=segment.duration_ms or 0)
+        transcribed = segment.transcription.created_at
+        return (
+            f": {(_utcnow() - spoken).total_seconds():.1f} s after the sentence ended"
+            f" (on the server after {(segment.received_at - spoken).total_seconds():.1f} s,"
+            f" transcribed after {(transcribed - spoken).total_seconds():.1f} s)"
+        )
+    except Exception:
+        return ""
+
+
 async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, command: str) -> bool:
     segment_id = segment.id
     voice_session = await get_or_create_voice_session(db, segment.user_id)
@@ -343,7 +357,7 @@ async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, co
     _append_turn(voice_session, command, asked_at, answer, extra)
     await db.commit()
     await tell_phone_to_check(redis_client, segment.user_id)
-    logger.info(f"[Voice] Answered request from segment {segment_id}")
+    logger.info(f"[Voice] Answered request from segment {segment_id}{_timing(segment)}")
     return True
 
 
