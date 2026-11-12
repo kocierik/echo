@@ -73,3 +73,29 @@ async def test_a_name_heard_is_not_a_new_person():
     )
 
     assert [e.name for e in entities] == ["Luca"]
+
+
+async def test_a_whole_conversation_gives_few_notes_each_with_its_line():
+    """Read whole, numbered: at most five ideas and notes, and each entity's source is
+    the line the model named (none for a line that does not exist)."""
+    first, second = uuid.uuid4(), uuid.uuid4()
+    llm = _LLM([
+        {"type": "event", "name": "Cena", "content": "", "metadata": {}, "line": 2},
+        {"type": "event", "name": "Senza riga", "content": "", "metadata": {}, "line": 9},
+        *[
+            {"type": "note" if i % 2 else "idea", "name": f"N{i}", "content": "", "line": 1}
+            for i in range(8)
+        ],
+    ])
+
+    entities = await extract_entities(
+        llm, "[1] [You] Idee varie.\n[2] [Others] Cena sabato.", uuid.uuid4(), None,
+        uuid.uuid4(), line_ids=[first, second],
+    )
+
+    assert [e.name for e in entities if e.entity_type in ("idea", "note")] == [
+        "N0", "N1", "N2", "N3", "N4",
+    ]
+    sources = {e.name: e.source_transcription_id for e in entities}
+    assert sources["Cena"] == second and sources["N0"] == first
+    assert sources["Senza riga"] is None

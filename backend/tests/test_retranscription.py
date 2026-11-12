@@ -73,7 +73,8 @@ async def _conversation(tmp_path, texts):
             audio.write_bytes(b"\x11" * 8000)  # ~1 s at 16 kHz, 4 bits a sample
             segment = Segment(
                 user_id=TEST_USER_ID, conversation_id=conversation.id,
-                received_at=NOW, recorded_at=NOW - timedelta(minutes=40 - i),
+                received_at=NOW - timedelta(minutes=30),
+                recorded_at=NOW - timedelta(minutes=40 - i),
                 duration_ms=1000, audio_path=str(audio), speaker="self",
                 transcription_status="completed",
             )
@@ -91,7 +92,7 @@ async def test_a_closed_conversation_is_transcribed_again_and_analysed_again(tmp
     conversation_id = await _conversation(tmp_path, ["[You] Siems five years.", "[You] Train."])
     stt, redis = _Stt(), _Redis()
 
-    again = await summaries.retranscribe_closed_conversations(
+    again = await summaries.close_conversations(
         redis, now=NOW, session_factory=test_session, stt=stt
     )
 
@@ -109,25 +110,64 @@ async def test_a_closed_conversation_is_transcribed_again_and_analysed_again(tmp
     assert str(conversation_id) in redis.queued[0][1]
 
     # Done once: the next run leaves it
-    assert await summaries.retranscribe_closed_conversations(
+    assert await summaries.close_conversations(
         redis, now=NOW, session_factory=test_session, stt=stt
     ) == 0
     assert len(stt.calls) == 1
 
 
-async def test_one_segment_is_left_as_it_is_and_marked_done(tmp_path):
+async def test_one_short_segment_is_not_transcribed_again_but_is_analysed(tmp_path):
+    """Nothing to gain from transcribing it again; its entities, summary and facts still
+    come from the analysis of the closed conversation, as for any other."""
     conversation_id = await _conversation(tmp_path, ["[You] Ciao."])
     stt, redis = _Stt(), _Redis()
 
-    again = await summaries.retranscribe_closed_conversations(
+    closed = await summaries.close_conversations(
         redis, now=NOW, session_factory=test_session, stt=stt
     )
 
     async with test_session() as db:
         conversation = await db.get(Conversation, conversation_id)
-    assert again == 0 and stt.calls == [] and redis.queued == []
+    assert closed == 1 and stt.calls == []
     assert conversation.retranscribed_at is not None
-    assert conversation.analysis_status == "completed"
+    assert conversation.analysis_status == "reprocessing"
+    assert str(conversation_id) in redis.queued[0][1]
+
+
+async def test_a_conversation_whose_speech_is_still_arriving_is_not_closed_yet(tmp_path):
+    """The card's backlog: said an hour ago, its segments reach the server only now."""
+    conversation_id = await _conversation(tmp_path, ["[You] Siems five years.", "[You] Train."])
+    async with test_session() as db:
+        latest = (await db.scalars(
+            select(Segment).where(Segment.conversation_id == conversation_id)
+        )).first()
+        latest.received_at = NOW - timedelta(seconds=30)
+        await db.commit()
+    stt, redis = _Stt(), _Redis()
+
+    assert await summaries.close_conversations(
+        redis, now=NOW, session_factory=test_session, stt=stt
+    ) == 0
+    # Quiet for the silence timeout since the last arrival: closed
+    later = NOW + timedelta(minutes=10)
+    assert await summaries.close_conversations(
+        redis, now=later, session_factory=test_session, stt=stt
+    ) == 1
+
+
+async def test_without_retranscription_a_closed_conversation_is_still_analysed(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(summaries.settings, "conversation_retranscription", False)
+    conversation_id = await _conversation(tmp_path, ["[You] Siems five years.", "[You] Train."])
+    stt, redis = _Stt(), _Redis()
+
+    closed = await summaries.close_conversations(
+        redis, now=NOW, session_factory=test_session, stt=stt
+    )
+
+    assert closed == 1 and stt.calls == []
+    assert str(conversation_id) in redis.queued[0][1]
 
 
 async def test_deepgram_asked_who_said_each_word():
@@ -197,7 +237,7 @@ async def test_several_voices_in_a_segment_are_its_turns(
             ])
 
     stt = _Diarized()
-    await summaries.retranscribe_closed_conversations(
+    await summaries.close_conversations(
         _Redis(), now=NOW, session_factory=test_session, stt=stt
     )
 
@@ -254,7 +294,7 @@ async def test_only_the_closest_voice_is_the_user(tmp_path, monkeypatch):
                 Word("te.", second_start + 0.4, second_start + 0.6, 1),
             ])
 
-    await summaries.retranscribe_closed_conversations(
+    await summaries.close_conversations(
         _Redis(), now=NOW, session_factory=test_session, stt=_Two()
     )
 

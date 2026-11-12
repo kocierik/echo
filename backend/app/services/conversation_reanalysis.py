@@ -1,5 +1,6 @@
 """Transactional rebuilding of conversation-derived memory."""
 
+import logging
 import uuid
 from dataclasses import dataclass
 
@@ -14,17 +15,21 @@ from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.services.analysis_pipeline import (
+    CONVERSATION_WINDOW_LINES,
     assistant_names,
     extract_entities,
-    generate_conversation_summary,
     known_people_names,
+    save_entities,
 )
 from app.services.chunking import chunk_text
+from app.services.conversation_close import write_summary
 from app.services.embedding_base import EmbeddingService
 from app.services.entity_mentions import record_mentions, release_conversation
 from app.services.llm_base import LLMService
 from app.services.usage import usage_owner
-from app.workers.retry import retry_with_backoff
+from app.workers.retry import RetryExhaustedError, retry_with_backoff
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -65,10 +70,6 @@ async def reanalyse_conversation(
             if text.strip()
         ]
         transcriptions = [(transcription_id, text) for transcription_id, text, _ in rows]
-        recorded_dates = {
-            transcription_id: to_user_local_date(recorded_at)
-            for transcription_id, _, recorded_at in rows
-        }
 
         # Photo descriptions are not rebuilt from transcripts: they stay
         await db.execute(
@@ -80,10 +81,13 @@ async def reanalyse_conversation(
         # photo showed is not in the transcripts: those entities stay as they are
         await release_conversation(db, conversation_id)
         from_photos = Entity.metadata_["photo_id"].astext.isnot(None)
+        # People are the user's own (People), with their facts and their voice: a
+        # conversation analysed again never deletes them, only its mention of them
         await db.execute(
             delete(Entity)
             .where(Entity.conversation_id == conversation_id)
             .where(~from_photos)
+            .where(Entity.entity_type != "person")
         )
         await db.flush()
         photo_entities = (
@@ -105,41 +109,36 @@ async def reanalyse_conversation(
         known_people = await known_people_names(db, conversation.user_id)
         assistants = await assistant_names(db, conversation.user_id)
 
+        # Read whole, once (in parts when very long): a line alone gave a note a line
         fresh_entities: list[Entity] = []
-        for transcription_id, text in transcriptions:
+        for first in range(0, len(rows), CONVERSATION_WINDOW_LINES):
+            window = rows[first:first + CONVERSATION_WINDOW_LINES]
             extracted = await retry_with_backoff(
                 extract_entities,
                 llm_service,
-                text,
+                "\n".join(f"[{n}] {text}" for n, (_, text, _) in enumerate(window, start=1)),
                 conversation.user_id,
-                transcription_id,
+                None,
                 conversation.id,
                 known_people=known_people,
-                reference_date=recorded_dates[transcription_id],
+                reference_date=to_user_local_date(window[0][2]),
                 not_people=assistants,
+                line_ids=[transcription_id for transcription_id, _, _ in window],
                 operation_name=(
                     f"Reanalysis entity extraction conversation {conversation_id}"
                 ),
             )
             fresh_entities.extend(extracted)
 
-        for entity in fresh_entities:
-            db.add(entity)
-        await db.flush()
-        await record_mentions(db, fresh_entities)
-
-        if fresh_entities:
-            entity_texts = [
-                f"{entity.name}: {entity.content}" if entity.content else entity.name
-                for entity in fresh_entities
-            ]
-            entity_embeddings = await retry_with_backoff(
-                embedding_service.embed_batch,
-                entity_texts,
-                operation_name=f"Reanalysis entity embeddings {conversation_id}",
-            )
-            for entity, embedding in zip(fresh_entities, entity_embeddings):
-                entity.embedding = embedding
+        # Merged into what is already known from other conversations, embedded, mentioned
+        await save_entities(
+            db,
+            fresh_entities,
+            conversation.user_id,
+            llm_service,
+            embedding_service,
+            label=f"conversation {conversation_id}",
+        )
 
         full_text = " ".join(text for _, text in transcriptions)
         chunks = chunk_text(
@@ -164,16 +163,13 @@ async def reanalyse_conversation(
                     )
                 )
 
-        if len(full_text.split()) > 10:
-            result = await retry_with_backoff(
-                generate_conversation_summary,
-                llm_service,
-                full_text,
-                operation_name=f"Reanalysis summary {conversation_id}",
-            )
-            conversation.title = result.title
-            conversation.summary = result.summary
-            conversation.emoji = result.emoji
+        if len(full_text.split()) > settings.summary_min_words:
+            try:
+                # Summary, topics, and the facts: as for any closed conversation
+                await write_summary(db, llm_service, conversation, full_text)
+            except RetryExhaustedError:
+                # Left without one: the summaries loop tries again (workers/summaries.py)
+                logger.warning("[Reanalysis] No summary yet for %s", conversation_id)
 
         conversation.analysis_status = "completed"
         await db.commit()

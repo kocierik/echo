@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -244,12 +244,24 @@ def closed_before(now: datetime) -> datetime:
 
 
 async def conversations_to_retranscribe(db: AsyncSession, now: datetime, limit: int):
-    """Closed, analysed, not yet transcribed again; the oldest first."""
+    """Closed, analysed, not yet read whole; the oldest first. Not while its speech is
+    still arriving (the card's backlog comes late, a segment at a time) or waiting to be
+    transcribed: it would be read with half of it missing."""
+    arriving = (
+        select(Segment.id)
+        .where(Segment.conversation_id == Conversation.id)
+        .where(or_(
+            Segment.received_at >= closed_before(now),
+            Segment.transcription_status.in_(("pending", "processing")),
+        ))
+        .exists()
+    )
     return list(await db.scalars(
         select(Conversation)
         .where(Conversation.retranscribed_at.is_(None))
         .where(Conversation.analysis_status == "completed")
         .where(func.coalesce(Conversation.ended_at, Conversation.started_at) < closed_before(now))
+        .where(~arriving)
         .order_by(Conversation.started_at.asc())
         .limit(limit)
         .with_for_update(skip_locked=True)

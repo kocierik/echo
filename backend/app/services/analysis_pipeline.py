@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.timezone import to_user_local_date
 from app.models.assistant import Assistant
 from app.models.chunk import Chunk
 from app.models.conversation import Conversation
@@ -47,38 +46,16 @@ class AnalysisPipeline:
         if transcription is None:
             return AnalysisResult(0, 0, 0)
 
-        user_id = segment.user_id
-
         # --- Conversation grouping ---
         conversation = await assign_to_conversation(db, segment)
+        if conversation.retranscribed_at is not None:
+            # Speech that arrives after its conversation was read whole (the card's
+            # backlog): the conversation is read again, with it
+            conversation.retranscribed_at = None
 
-        # --- Fetch known people for context-aware extraction ---
-        known_people = await known_people_names(db, user_id)
-
-        # --- Entity extraction (with retry + known people context) ---
-        # Requests to Echo inside the text are skipped by the extraction prompt itself.
-        entities = await retry_with_backoff(
-            extract_entities,
-            self.llm_service,
-            transcription.text,
-            user_id,
-            transcription.id,
-            conversation.id,
-            known_people=known_people,
-            reference_date=to_user_local_date(segment.recorded_at),
-            not_people=await assistant_names(db, user_id),
-            operation_name=f"Entity extraction segment {segment.id}",
-        )
-
-        new_entities = await save_entities(
-            db,
-            entities,
-            user_id,
-            self.llm_service,
-            self.embedding_service,
-            label=f"segment {segment.id}",
-        )
-
+        # No entities here: a segment is a sentence or two, and extracting from each gave
+        # hundreds of notes nobody found again. They are extracted once the conversation is
+        # closed, from all of it (services/conversation_reanalysis.py).
         # --- Incremental chunking & embedding ---
         # Only embed the NEW segment's text as an additional chunk,
         # instead of re-chunking the entire conversation every time.
@@ -124,7 +101,7 @@ class AnalysisPipeline:
         conversation.analysis_status = "completed"
 
         await db.commit()
-        return AnalysisResult(len(entities), len(new_entities), len(new_chunks))
+        return AnalysisResult(0, 0, len(new_chunks))
 
 
 async def assistant_names(db: AsyncSession, user_id: uuid.UUID) -> list[str]:
@@ -278,8 +255,13 @@ async def extract_entities(
     known_people: list[str] | None = None,
     reference_date: date | None = None,
     not_people: list[str] | None = None,
+    line_ids: list[uuid.UUID] | None = None,
 ) -> list[Entity]:
     """Use LLM to extract structured entities from transcription text.
+
+    With `line_ids`, `text` is a whole conversation, each line numbered "[1] ...", and
+    `line_ids` their transcriptions in that order: each entity then says the line it comes
+    from (its source), and ideas and notes are the few worth finding again, not one a line.
 
     Args:
         llm_service: LLM service for extraction.
@@ -375,6 +357,7 @@ async def extract_entities(
                 "- Se l'orario o la durata non sono detti, ometti event_time o "
                 "duration_minutes: non inventarli\n"
                 '- Se non ci sono entità da estrarre, rispondi con {"entities": []}.'
+                f"{_CONVERSATION_RULES if line_ids else ''}"
                 f"{people_context}"
                 f"{date_context}"
             ),
@@ -413,12 +396,47 @@ async def extract_entities(
             name=name,
             content=entity_data.get("content"),
             metadata_=entity_data.get("metadata", {}),
-            source_transcription_id=transcription_id,
+            source_transcription_id=_source(entity_data.get("line"), line_ids, transcription_id),
             conversation_id=conversation_id,
         )
         entities.append(entity)
 
+    if line_ids:
+        # However many the model gives: the first few ideas and notes of a conversation
+        kept, loose = [], 0
+        for entity in entities:
+            if entity.entity_type in ("idea", "note"):
+                loose += 1
+                if loose > MAX_IDEAS_AND_NOTES:
+                    continue
+            kept.append(entity)
+        entities = kept
     return entities
+
+
+# A conversation's ideas and notes together: per segment there were hundreds, none found again
+MAX_IDEAS_AND_NOTES = 5
+# A conversation longer than this is read in parts of this many lines
+CONVERSATION_WINDOW_LINES = 150
+
+_CONVERSATION_RULES = (
+    "\n- Il testo è un'intera conversazione, una riga per frase, numerata \"[n]\": per ogni "
+    "entità aggiungi \"line\": n, il numero della riga in cui è detta\n"
+    "- Ogni cosa una volta sola, anche se se ne parla in più righe\n"
+    f"- idea e note: al massimo {MAX_IDEAS_AND_NOTES} in tutto, solo ciò che l'utente vorrà "
+    "ritrovare (una decisione, un dato, un consiglio preciso); una chiacchierata può non "
+    "averne nessuna. Non riassumere la conversazione in note"
+)
+
+
+def _source(
+    line, line_ids: list[uuid.UUID] | None, fallback: uuid.UUID | None
+) -> uuid.UUID | None:
+    """The transcription of the numbered line the model named; `fallback` without one."""
+    if line_ids and isinstance(line, int) and not isinstance(line, bool):
+        if 1 <= line <= len(line_ids):
+            return line_ids[line - 1]
+    return fallback
 
 
 UNTITLED_CONVERSATION = "Untitled conversation"

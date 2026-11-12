@@ -16,29 +16,24 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 import redis.asyncio as aioredis
-from sqlalchemy import func, select, true
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.conversation import Conversation
-from app.models.entity import Entity
-from app.models.entity_mention import EntityMention
 from app.models.segment import Segment
 from app.models.transcription import Transcription
-from app.services.analysis_pipeline import generate_conversation_summary
-from app.services.fact_suggestions import suggest_facts
+from app.services.conversation_close import write_summary
 from app.services.llm_openai import get_llm_analysis_service
-from app.services.person_facts import extract_person_facts
 from app.services.retranscription import (
     conversations_to_retranscribe,
     mark_reanalysis,
     retranscribe,
 )
 from app.services.stt_openai import get_stt_service
-from app.services.topics import normalize_topics
 from app.services.usage import usage_owner
 from app.workers.lifecycle import sleep_or_shutdown
-from app.workers.retry import RetryExhaustedError, retry_with_backoff
+from app.workers.retry import RetryExhaustedError
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +46,9 @@ def _build_closed_conversations_query(now: datetime):
         select(Conversation)
         .where(Conversation.summary.is_(None))
         .where(Conversation.analysis_status == "completed")
-        # Transcribed again whole first: its summary is written from the better text
-        .where(
-            Conversation.retranscribed_at.is_not(None)
-            if settings.conversation_retranscription
-            else true()
-        )
+        # Read whole first (close_conversations): its analysis writes the summary; this
+        # loop is for what that left without one
+        .where(Conversation.retranscribed_at.is_not(None))
         .where(func.coalesce(Conversation.ended_at, Conversation.started_at) < cutoff)
         .order_by(Conversation.started_at.asc())
         .limit(settings.summary_batch_size)
@@ -96,12 +88,7 @@ async def summarize_closed_conversations(
                 continue
 
             try:
-                result = await retry_with_backoff(
-                    generate_conversation_summary,
-                    llm,
-                    full_text,
-                    operation_name=f"Summary conversation {conversation.id}",
-                )
+                await write_summary(db, llm, conversation, full_text)
             except RetryExhaustedError as exc:
                 # Left as None: retried on the next run
                 logger.error(
@@ -110,74 +97,46 @@ async def summarize_closed_conversations(
                     exc.last_error,
                 )
                 continue
-
-            conversation.title = result.title
-            conversation.summary = result.summary
-            conversation.emoji = result.emoji
-            person_names = (
-                await db.execute(
-                    select(Entity.name)
-                    .join(EntityMention, EntityMention.entity_id == Entity.id)
-                    .where(EntityMention.conversation_id == conversation.id)
-                    .where(Entity.user_id == conversation.user_id)
-                    .where(Entity.entity_type == "person")
-                )
-            ).scalars().all()
-            conversation.topics = normalize_topics(result.topics, person_names) or None
             summarized += 1
-            # What the user said about themselves: suggestions for About you. A failure
-            # here never costs the summary
-            try:
-                async with db.begin_nested():
-                    await suggest_facts(db, llm, conversation)
-            except Exception:
-                logger.warning("[Summaries] No fact suggestions for %s", conversation.id,
-                               exc_info=True)
-            try:
-                async with db.begin_nested():
-                    await extract_person_facts(db, llm, conversation)
-            except Exception as exc:
-                logger.warning(
-                    "[Summaries] No person facts for %s (%s)",
-                    conversation.id,
-                    type(exc).__name__,
-                )
 
         await db.commit()
 
     return summarized
 
 
-async def retranscribe_closed_conversations(
+async def close_conversations(
     redis_client,
     *,
     now: datetime | None = None,
     session_factory=async_session,
     stt=None,
 ) -> int:
-    """Transcribe closed conversations again whole (services/retranscription.py);
-    the ones whose text changed are analysed again. Returns how many."""
+    """Closed conversations read whole, once each: transcribed again
+    (services/retranscription.py, when turned on), then queued for their analysis
+    (services/conversation_reanalysis.py): entities, chunks, summary, topics and facts.
+    A segment alone gets none of them any more. Returns how many were queued."""
     effective_now = now or datetime.now(timezone.utc)
-    stt = stt or get_stt_service()
-    changed: list = []
+    stt = (stt or get_stt_service()) if settings.conversation_retranscription else None
+    closed: list = []
     async with session_factory() as db:
         for conversation in await conversations_to_retranscribe(
             db, effective_now, settings.summary_batch_size
         ):
             usage_owner.set(conversation.user_id)
             conversation.retranscribed_at = effective_now  # once, whatever happens
-            try:
-                async with db.begin_nested():
-                    if await retranscribe(db, conversation, stt):
-                        conversation.analysis_status = "reprocessing"
-                        changed.append(conversation.id)
-            except Exception:
-                logger.warning("[Summaries] Not transcribed again: %s", conversation.id,
-                               exc_info=True)
+            if stt is not None:
+                try:
+                    async with db.begin_nested():
+                        await retranscribe(db, conversation, stt)
+                except Exception:
+                    logger.warning("[Summaries] Not transcribed again: %s", conversation.id,
+                                   exc_info=True)
+            conversation.analysis_status = "reprocessing"
+            closed.append(conversation.id)
         await db.commit()
-    for conversation_id in changed:
+    for conversation_id in closed:
         await mark_reanalysis(redis_client, conversation_id, effective_now)
-    return len(changed)
+    return len(closed)
 
 
 async def run_summary_loop(shutdown_event: asyncio.Event | None = None):
@@ -190,10 +149,10 @@ async def run_summary_loop(shutdown_event: asyncio.Event | None = None):
     redis_client = aioredis.from_url(settings.redis_url)
     while not (shutdown_event and shutdown_event.is_set()):
         try:
-            if settings.conversation_retranscription:
-                again = await retranscribe_closed_conversations(redis_client)
-                if again:
-                    logger.info("[Summaries] Transcribed again: %s conversations", again)
+            closed = await close_conversations(redis_client)
+            if closed:
+                logger.info("[Summaries] Closed and queued for analysis: %s conversations",
+                            closed)
             count = await summarize_closed_conversations()
             if count:
                 logger.info("[Summaries] Summarized %s conversations", count)

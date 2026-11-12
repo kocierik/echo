@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.dialects import postgresql
 
+from app.services import conversation_close
 from app.workers import summaries
 from app.workers.retry import RetryExhaustedError
 
@@ -78,7 +79,7 @@ def _patch_direct_retry(monkeypatch):
         kwargs.pop("operation_name", None)
         return await coro_func(*args, **kwargs)
 
-    monkeypatch.setattr(summaries, "retry_with_backoff", direct_retry)
+    monkeypatch.setattr(conversation_close, "retry_with_backoff", direct_retry)
 
 
 @pytest.mark.asyncio
@@ -129,7 +130,7 @@ async def test_llm_failure_leaves_the_conversation_for_the_next_run(monkeypatch)
     async def failing_retry(*_args, **_kwargs):
         raise RetryExhaustedError(RuntimeError("timeout"), 3)
 
-    monkeypatch.setattr(summaries, "retry_with_backoff", failing_retry)
+    monkeypatch.setattr(conversation_close, "retry_with_backoff", failing_retry)
     conversation = _conversation()
     words = " ".join(f"parola{i}" for i in range(30))
     session = _FakeSession([conversation], {conversation.id: [words]})

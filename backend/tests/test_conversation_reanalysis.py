@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Chunk, Conversation, Entity, Segment, Transcription
+from app.models import Chunk, Conversation, Entity, EntityMention, Segment, Transcription
 from app.services.conversation_reanalysis import reanalyse_conversation
 from app.services.llm_base import LLMResponse
 from app.workers import reanalysis as reanalysis_worker
@@ -20,19 +20,25 @@ from tests.conftest import TEST_USER_ID
 
 @pytest.fixture(autouse=True)
 def direct_reanalysis_retries(monkeypatch):
+    import app.services.analysis_pipeline as pipeline_module
     import app.services.conversation_reanalysis as reanalysis_module
+    from app.services import conversation_close
 
     async def direct_retry(coro_func, *args, **kwargs):
         kwargs.pop("operation_name", None)
         return await coro_func(*args, **kwargs)
 
     monkeypatch.setattr(reanalysis_module, "retry_with_backoff", direct_retry)
+    # The entities are saved and the summary written by the shared code
+    monkeypatch.setattr(pipeline_module, "retry_with_backoff", direct_retry)
+    monkeypatch.setattr(conversation_close, "retry_with_backoff", direct_retry)
 
 
 class RecordingLLM:
     def __init__(self) -> None:
         self.extracted_texts: list[str] = []
         self.summary_texts: list[str] = []
+        self.extra_entities: list[dict] = []
 
     async def complete(self, messages, temperature=0.3):
         return LLMResponse(content="", model="test")
@@ -40,21 +46,25 @@ class RecordingLLM:
     async def complete_json(self, messages, temperature=0.1):
         system_text = next(message.content for message in messages if message.role == "system")
         user_text = next(message.content for message in messages if message.role == "user")
-        supplied_text = user_text.split("\n\n", 1)[1]
-        if "entities" in system_text.lower():
+        if system_text.startswith("Sei un sistema di estrazione"):
+            supplied_text = user_text.split("\n\n", 1)[1]
             self.extracted_texts.append(supplied_text)
             return {
                 "entities": [
                     {
                         "type": "note",
                         "name": f"Fresh {len(self.extracted_texts)}",
-                        "content": supplied_text,
+                        "content": "Said late",
                         "metadata": {},
-                    }
+                        "line": 2,
+                    },
+                    *self.extra_entities,
                 ]
             }
-        self.summary_texts.append(supplied_text)
-        return {"title": "Fresh title", "summary": "Fresh summary"}
+        if "You organize the user's conversations." in system_text:
+            self.summary_texts.append(user_text.split("\n\n", 1)[1])
+            return {"title": "Fresh title", "summary": "Fresh summary", "topics": ["Atlas"]}
+        return {"facts": []}  # about the user, about saved people: nothing here
 
 
 class RecordingEmbeddings:
@@ -164,9 +174,10 @@ async def test_reanalysis_replaces_only_target_derivatives_and_is_idempotent(
     )
 
     assert first_result.found is True
+    # The whole conversation in one reading, its lines numbered
     assert llm.extracted_texts == [
-        "Early one two three four five six.",
-        "Late words seven eight nine ten eleven twelve.",
+        "[1] Early one two three four five six.\n"
+        "[2] Late words seven eight nine ten eleven twelve."
     ]
     assert llm.summary_texts == [
         "Early one two three four five six. Late words seven eight nine ten eleven twelve."
@@ -174,6 +185,8 @@ async def test_reanalysis_replaces_only_target_derivatives_and_is_idempotent(
     await db_session.refresh(conversation)
     assert conversation.title == "Fresh title"
     assert conversation.summary == "Fresh summary"
+    # As any closed conversation: its topics too, which a reanalysis used to skip
+    assert conversation.topics == ["atlas"]
     assert conversation.analysis_status == "completed"
 
     target_entities = (
@@ -183,10 +196,16 @@ async def test_reanalysis_replaces_only_target_derivatives_and_is_idempotent(
             .order_by(Entity.name)
         )
     ).scalars().all()
-    assert len(target_entities) == 2
+    assert len(target_entities) == 1
     assert stale_entity.id not in {entity.id for entity in target_entities}
     assert all(entity.embedding is not None for entity in target_entities)
-    assert all(entity.source_transcription_id is not None for entity in target_entities)
+    # Its source is the line the model named: the second, said late
+    late = (
+        await db_session.execute(
+            select(Transcription.id).where(Transcription.text.startswith("Late"))
+        )
+    ).scalar_one()
+    assert target_entities[0].source_transcription_id == late
     assert await db_session.get(Entity, null_entity.id) is not None
     assert await db_session.get(Entity, other_entity.id) is not None
 
@@ -205,10 +224,49 @@ async def test_reanalysis_replaces_only_target_derivatives_and_is_idempotent(
 
     assert await db_session.scalar(
         select(func.count(Entity.id)).where(Entity.conversation_id == conversation.id)
-    ) == 2
+    ) == 1
     assert await db_session.scalar(
         select(func.count(Chunk.id)).where(Chunk.conversation_id == conversation.id)
     ) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_saved_person_named_only_here_survives_and_is_mentioned(
+    db_session: AsyncSession,
+) -> None:
+    """People are the user's own: analysing a conversation again deleted one it alone
+    named, with their facts and their voice."""
+    conversation, _, _, _ = await _seed_reanalysis_data(db_session)
+    marco = Entity(
+        user_id=TEST_USER_ID, entity_type="person", name="Marco", metadata_={},
+        conversation_id=conversation.id,
+    )
+    db_session.add(marco)
+    await db_session.commit()
+    marco_id, conversation_id = marco.id, conversation.id
+    llm = RecordingLLM()
+    llm.extra_entities = [
+        {"type": "person", "name": "Marco", "content": "Friend", "metadata": {}, "line": 1},
+        {"type": "person", "name": "Nobody saved", "content": "", "metadata": {}, "line": 1},
+    ]
+
+    await reanalyse_conversation(db_session, conversation_id, llm, RecordingEmbeddings())
+
+    people = (
+        await db_session.execute(
+            select(Entity.id).where(Entity.user_id == TEST_USER_ID, Entity.name == "Marco")
+        )
+    ).scalars().all()
+    assert people == [marco_id]
+    assert await db_session.scalar(
+        select(func.count(EntityMention.id)).where(
+            EntityMention.entity_id == marco_id,
+            EntityMention.conversation_id == conversation_id,
+        )
+    ) == 1
+    assert await db_session.scalar(
+        select(func.count(Entity.id)).where(Entity.name == "Nobody saved")
+    ) == 0
 
 
 @pytest.mark.asyncio

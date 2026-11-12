@@ -6,7 +6,7 @@ using mock LLM services, without requiring Redis or a real database.
 
 import json
 import uuid
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -15,11 +15,9 @@ from sqlalchemy.dialects import postgresql
 from app.models.entity import Entity
 from app.services.analysis_pipeline import (
     AnalysisPipeline,
-    ConversationSummary,
     extract_entities,
     generate_conversation_summary,
 )
-from app.services.entity_consolidation import ConsolidationResult
 from app.workers import stt as stt_worker
 from tests.mocks import MockLLMService
 
@@ -38,17 +36,10 @@ class _QueryResult:
 class _PipelineDatabase:
     def __init__(self, events):
         self.events = events
-        self.query_results = [
-            _QueryResult([("Ada",)]),
-            _QueryResult([(3,)]),
-            _QueryResult(
-                [("Uno due tre quattro cinque sei.",), ("Sette otto nove dieci undici.",)]
-            ),
-        ]
+        self.query_results = [_QueryResult([(3,)])]
 
     async def execute(self, _query):
-        labels = ["known_people", "max_chunk", "full_text"]
-        self.events.append(labels[3 - len(self.query_results)])
+        self.events.append("max_chunk")
         return self.query_results.pop(0)
 
     def add(self, value):
@@ -179,7 +170,8 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
     events = []
     user_id = uuid.uuid4()
     conversation = SimpleNamespace(
-        id=uuid.uuid4(), title=None, summary=None, analysis_status="pending"
+        id=uuid.uuid4(), title=None, summary=None, analysis_status="pending",
+        retranscribed_at=(captured or {}).get("read_whole_at"),
     )
     captured = captured if captured is not None else {}
     transcription = SimpleNamespace(id=uuid.uuid4(), text=text)
@@ -194,69 +186,23 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
         events.append("assign")
         return conversation
 
-    async def _assistants(_db, _user_id):
-        return ["Coach"]
-
-    async def fake_extract(
-        _llm,
-        _text,
-        extracted_user_id,
-        transcription_id,
-        conversation_id,
-        known_people=None,
-        reference_date=None,
-        not_people=None,
-    ):
-        events.append("extract")
-        # The user's assistants are not people
-        assert not_people == ["Coach"]
-        captured["extract_text"] = _text
-        # 22:30 UTC is already the next day in the user's timezone (Europe/Rome)
-        assert reference_date == date(2026, 10, 14)
-        assert extracted_user_id == user_id
-        assert transcription_id == transcription.id
-        assert conversation_id == conversation.id
-        assert known_people == ["Ada"]
-        return [
-            Entity(
-                user_id=user_id,
-                entity_type="person",
-                name="Ada",
-                content="Collega",
-                metadata_={},
-                source_transcription_id=transcription.id,
-                conversation_id=conversation.id,
-            )
-        ]
-
-    async def fake_summary(_llm, _full_text):
-        events.append("summary")
-        return ConversationSummary("Titolo", "Riassunto", "💬")
-
-    async def fake_consolidate(_db, entities, _user_id):
-        events.append("consolidate")
-        return ConsolidationResult(new=entities, resolved=entities)
-
-    async def fake_deduplicate(_db, _user_id, _llm):
-        events.append("deduplicate")
-        return 0
+    async def no_extract(*_args, **_kwargs):
+        raise AssertionError("a segment alone is not extracted from any more")
 
     async def direct_retry(coro_func, *args, **kwargs):
         kwargs.pop("operation_name", None)
         return await coro_func(*args, **kwargs)
 
     monkeypatch.setattr(pipeline_module, "assign_to_conversation", fake_assign)
-    monkeypatch.setattr(pipeline_module, "extract_entities", fake_extract)
-    monkeypatch.setattr(pipeline_module, "assistant_names", _assistants)
-    monkeypatch.setattr(pipeline_module, "generate_conversation_summary", fake_summary)
-    monkeypatch.setattr(pipeline_module, "consolidate_entities", fake_consolidate)
-    monkeypatch.setattr(pipeline_module, "deduplicate_entities", fake_deduplicate)
+    monkeypatch.setattr(pipeline_module, "extract_entities", no_extract)
+    monkeypatch.setattr(pipeline_module, "generate_conversation_summary", no_extract)
     monkeypatch.setattr(pipeline_module, "retry_with_backoff", direct_retry)
 
     embeddings = _PipelineEmbeddings(events)
     pipeline = AnalysisPipeline(MockLLMService(), embeddings)
     result = await pipeline.analyze_segment(_PipelineDatabase(events), segment)
     captured["chunk_texts"] = embeddings.chunk_texts
+    captured["conversation"] = conversation
     return events, result
 
 
@@ -264,44 +210,31 @@ async def _run_pipeline(monkeypatch, text=_DEFAULT_TEXT, captured=None):
 async def test_analysis_pipeline_preserves_normal_call_order(monkeypatch):
     events, result = await _run_pipeline(monkeypatch)
 
-    assert events == [
-        "assign",
-        "known_people",
-        "extract",
-        "consolidate",
-        "add_entity",
-        "entity_embeddings",
-        "flush",
-        "deduplicate",
-        "max_chunk",
-        "chunk_embeddings",
-        "add_chunk",
-        "commit",
-    ]
-    # Titles/summaries are written later, once the conversation is closed
-    # (app/workers/summaries.py), never per segment.
-    assert result.extracted_entity_count == 1
-    assert result.new_entity_count == 1
+    # Grouped and made searchable at once; entities, title and summary come when the
+    # conversation is closed, from all of it (services/conversation_reanalysis.py)
+    assert events == ["assign", "max_chunk", "chunk_embeddings", "add_chunk", "commit"]
+    assert result.extracted_entity_count == 0
+    assert result.new_entity_count == 0
     assert result.chunk_count == 1
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "text",
-    [
-        # find_wake hits but it is a mention: Marco must still be extracted
-        "[You] ho comprato un Echo nuovo con Marco e domani lo proviamo insieme",
-        # a request to Echo: the extraction prompt tells the LLM to skip it
-        "[You] Ok. Echo, segnami il dentista martedì alle dieci di mattina",
-    ],
-)
-async def test_analysis_pipeline_extracts_from_the_full_text(monkeypatch, text):
-    captured = {}
-    events, _ = await _run_pipeline(monkeypatch, text=text, captured=captured)
+async def test_speech_arriving_late_has_its_conversation_read_whole_again(monkeypatch):
+    """The card's backlog reaches a conversation already analysed: without this, that
+    speech would never give entities, nor be in the summary."""
+    captured = {"read_whole_at": datetime(2026, 10, 13, 12, tzinfo=timezone.utc)}
+    await _run_pipeline(monkeypatch, captured=captured)
 
-    assert captured["extract_text"] == text
+    assert captured["conversation"].retranscribed_at is None
+
+
+@pytest.mark.asyncio
+async def test_a_segment_is_searchable_at_once_with_its_whole_text(monkeypatch):
+    text = "[You] ho comprato un Echo nuovo con Marco e domani lo proviamo insieme"
+    captured = {}
+    await _run_pipeline(monkeypatch, text=text, captured=captured)
+
     assert captured["chunk_texts"] == [text]
-    assert "extract" in events
 
 
 @pytest.mark.asyncio
