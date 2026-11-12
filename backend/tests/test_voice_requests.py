@@ -15,6 +15,7 @@ from app.actions.provider import ActionProviderError, ToolResult
 from app.models.action_log import ActionLog
 from app.models.chat_session import ChatSession
 from app.models.segment import Segment
+from app.services.device_commands import DEVICE_COMMANDS_KEY
 from app.services.transcription_enhancer import STTContext
 from app.workers import main as worker_main
 from app.workers import stt as stt_worker
@@ -296,18 +297,37 @@ async def test_collect_command_gives_up_waiting_after_25_seconds():
 
 
 @pytest.mark.asyncio
-async def test_collect_command_waits_briefly_for_a_continuation_still_uploading():
+async def test_a_command_that_ended_on_a_pause_is_answered_at_once():
+    """The wearable closes a segment after 1.4 s of silence: the command is whole. It
+    waited 10 s for more at every request."""
     wake = _seg("Echo, segnami il dentista")
     db = _Db(segments=[wake])
-    # Nothing has closed the command yet: a continuation may still be on its way
+
+    assert await voice.collect_command(db, wake, _after(wake, 0)) == "segnami il dentista"
+
+
+@pytest.mark.asyncio
+async def test_collect_command_waits_for_a_continuation_only_when_one_may_come():
+    # A single word after the name is not a whole command yet
+    wake = _seg("Echo, segnami")
+    db = _Db(segments=[wake])
     assert await voice.collect_command(db, wake, _after(wake, 1)) is None
     assert (
         await voice.collect_command(db, wake, _after(wake, voice.CONTINUATION_WAIT_S))
-        == "segnami il dentista"
+        == "segnami"
     )
-    # A following pause closes the command at once
+    # A following pause closes it at once
     db.segments.append(_seg("altro", 8.0, silence=3500))
-    assert await voice.collect_command(db, wake, _after(wake, 1)) == "segnami il dentista"
+    assert await voice.collect_command(db, wake, _after(wake, 1)) == "segnami"
+
+
+def test_ehi_echo_opening_the_utterance_is_said_to_echo():
+    """No second opinion from the model then; a bare "Echo" may be a mention."""
+    assert voice.is_direct_address("[You] Ehi Echo, che tempo fa?")
+    assert voice.is_direct_address("Hey, ecco: ricordami il dentista")
+    assert not voice.is_direct_address("[You] Echo, che tempo fa?")
+    assert not voice.is_direct_address("[You] Ok. Ehi Echo, che tempo fa?")
+    assert not voice.is_direct_address("[You] ho comprato un Echo nuovo")
 
 
 @pytest.mark.asyncio
@@ -903,7 +923,7 @@ async def test_queue_loop_requeues_waits_and_survives_errors(worker, monkeypatch
 
     assert calls == ["riassumimi le mail", "cosa ho in agenda"]
     assert sleeps == [vr.POLL_INTERVAL_S, vr.POLL_INTERVAL_S]
-    assert vr.POLL_INTERVAL_S == 2
+    assert vr.POLL_INTERVAL_S == 0.5
     # The waiting item is still queued for the next poll, nothing else is
     assert redis.lists[vr.VOICE_QUEUE] == [str(waiting.id).encode()]
     session = _voice_session(worker)
@@ -1073,6 +1093,46 @@ async def test_worker_named_app_with_nothing_connected(worker):
     assert _voice_session(worker).messages[-1]["content"] == (
         "Google Calendar non è collegato. Collegalo da Profile → Apps."
     )
+
+
+@pytest.mark.asyncio
+async def test_the_phone_is_told_as_soon_as_the_answer_is_there(worker):
+    """It looked only at its next upload: after a question, in silence, the answer
+    waited on the server."""
+    worker.llm.intent = _NOT_NEEDED
+    wake = _seg("[You] Ehi Echo, che tempo fa a Nizza?")
+    _ready(worker, wake)
+    redis = _Redis()
+
+    await vr.handle_voice_item(redis, str(wake.id))
+
+    commands = redis.lists[DEVICE_COMMANDS_KEY.format(user_id=wake.user_id)]
+    assert [json.loads(command)["type"] for command in commands] == ["voice_update"]
+
+
+@pytest.mark.asyncio
+async def test_ehi_echo_is_answered_without_asking_if_it_is_a_request(worker):
+    worker.provider = FakeActionProvider(connected={"todoist"})
+    worker.llm.intent = _NOT_NEEDED
+    wake = _seg("[You] Ehi Echo, cosa c'era in agenda ieri?")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.llm.json_calls == 1  # the intent check alone
+    assert len(worker.rag_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_reminder_goes_to_the_agent_with_no_app_tools(worker):
+    worker.provider = FakeActionProvider(connected={"gmail", "googlecalendar"})
+    worker.llm.intent = {"todo": True, "needs_apps": False, "apps": []}
+    wake = _seg("[You] Ehi Echo, ricordami di chiamare Giulia venerdì")
+    _ready(worker, wake)
+
+    await vr.handle_voice_item(_Redis(), str(wake.id))
+
+    assert worker.agent_calls[0].kw["connected_toolkits"] == []
 
 
 # --- H1: the voice path uses the same single intent check and routing ------------------

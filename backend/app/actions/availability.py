@@ -126,9 +126,10 @@ class Route:
 
     kind: str
     notice: str | None = None
-    # For "agent": the connected apps the request names (empty: any connected app).
-    # Only their tools are offered, which keeps the agent's prompt small and fast.
-    apps: list[str] = field(default_factory=list)
+    # For "agent": the connected apps the request names; None: any connected app; empty:
+    # none (Echo's own tools are enough). Only their tools are offered, which keeps the
+    # agent's prompt small and fast.
+    apps: list[str] | None = None
     # For "photo": save what the photo shows once it is analysed ("Echo, save this")
     save: bool = False
 
@@ -278,8 +279,10 @@ async def route_request(
     if camera and intent.camera:
         return Route("photo", save=intent.saved)
     if intent.routine or intent.todo or intent.saved:
-        # Echo's own tools: no app is needed, whatever is connected
-        return Route("agent")
+        # Echo's own tools: no app is needed, whatever is connected. The tools of every
+        # connected app went along all the same: ~14,000 tokens a request
+        named = [slug for slug in intent.apps if slug in (connected or [])]
+        return Route("agent", apps=named)
     if not intent.needs_apps:
         return Route("memory")
     if connected is None:
@@ -291,4 +294,4 @@ async def route_request(
         return Route("notice", not_connected_answer(request, intent.unresolved[0]))
     if not connected:
         return Route("notice", none_connected_answer(request))
-    return Route("agent", apps=list(intent.apps))
+    return Route("agent", apps=list(intent.apps) or None)

@@ -479,7 +479,7 @@ async def _answer_query(
                     answer=route.notice, sources=[], session_id=session_id, date_filter=None
                 )
             use_agent = route.kind == "agent"
-            apps = route.apps or connected
+            apps = connected if route.apps is None else route.apps
         else:
             # No app to act in: only a routine (Echo's own tools) goes to the agent
             route = await route_request(get_llm_intent_service(), body.question, history, [])

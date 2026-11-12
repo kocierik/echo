@@ -168,7 +168,7 @@ async def test_the_photo_worker_restores_the_upload_correlation_id(tracking, mon
     new_correlation_id()
     seen = []
 
-    async def analyse(found_id, _session_factory):
+    async def analyse(found_id, _session_factory, _redis=None):
         seen.append((found_id, core_logging.correlation_id.get()))
 
     monkeypatch.setattr(photo_worker, "_analyse_once", analyse)

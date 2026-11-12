@@ -439,6 +439,7 @@ async def analyse_photo(
     embedding_service,
     analysis_llm: LLMService | None = None,
     save_with: PhotoSaver | None = None,
+    answered: Callable[[uuid.UUID], Awaitable[None]] | None = None,
 ) -> bool:
     """Answer in the chat and describe the photo in memory. False if there was nothing to
     do (deleted, already done, or no image). Model errors propagate (the worker retries).
@@ -446,6 +447,9 @@ async def analyse_photo(
     With `save_with`, a photo whose request asked to save it is saved once described,
     and the thread shows the save's answer with the photo; a failure there keeps the
     photo's own answer.
+
+    `answered`: called with the user once the answer is in the thread (not for a photo
+    the app itself is waiting for).
 
     With `analysis_llm`, a business card becomes a person in People, and once the answer
     is sent what the photo shows becomes entities (tasks, events, people); both are best
@@ -544,6 +548,9 @@ async def analyse_photo(
         },
     )
     await db.commit()
+    if answered is not None and photo.source != "app":
+        # Asked by voice: the phone is told now, not after the entities below
+        await answered(photo.user_id)
 
     # The answer is out: what the photo shows becomes memory after it (several model
     # calls, ~20 s), so it never delays the answer

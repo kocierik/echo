@@ -8,7 +8,8 @@ does not pick up in time is dropped. Kinds:
 - `phone_action`: run on the iPhone with EventKit (actions/phone_provider.py). Picking it
   up is remembered (DELIVERED_KEY): a call that gets no answer then may have run;
 - `get_location`: the phone's place for a thing being saved (services/phone_location.py);
-- `voice_update`: new answers in the thread with Echo (a routine ran);
+- `voice_update`: new answers in the thread with Echo (a spoken request or a photo was
+  answered, a routine ran): the phone checks at once (`tell_phone_to_check`);
 - `person_brief`: a known voice started talking, what to know about them, shown at once
   (services/person_brief.py).
 """
@@ -69,3 +70,19 @@ async def take_device_commands(redis_client, user_id: uuid.UUID, wait_s: int) ->
             )
         commands.append(command)
     return commands
+
+
+# An answer the phone did not come for in this long is found at its next check anyway
+VOICE_UPDATE_TTL_S = 15 * 60
+
+
+async def tell_phone_to_check(redis_client, user_id: uuid.UUID | str) -> None:
+    """A new answer is in the thread with Echo: the phone is told to look now. Without it
+    the phone looked only at its next upload or when the app was opened: after a spoken
+    question, in silence, the answer waited there. Never raises."""
+    try:
+        await push_device_command(
+            redis_client, user_id, {"type": "voice_update"}, VOICE_UPDATE_TTL_S
+        )
+    except Exception:
+        logger.warning("Could not tell the phone to check its answers", exc_info=True)

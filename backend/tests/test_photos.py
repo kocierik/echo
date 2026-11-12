@@ -548,6 +548,34 @@ async def test_the_answer_is_sent_before_what_the_photo_shows_is_remembered(
 
 
 @pytest.mark.asyncio
+async def test_a_photo_asked_by_voice_tells_the_phone_before_remembering_what_it_shows(
+    client, auth_headers, db_session
+):
+    told = []
+
+    async def answered(user_id):
+        told.append(user_id)
+
+    class _Late(AnalysisLLM):
+        async def complete_json(self, messages, temperature=0.1):
+            assert told, "the phone is told before the entities are extracted"
+            return await super().complete_json(messages, temperature)
+
+    photo = await _request(client, auth_headers)
+    await _upload(client, auth_headers, photo["id"])
+    row = await db_session.get(Photo, uuid.UUID(photo["id"]))
+    row.source = "voice"
+    await db_session.commit()
+
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), VisionLLM(), _BatchEmbeddings(),
+        analysis_llm=_Late(), answered=answered,
+    )
+
+    assert told == [TEST_USER_ID]
+
+
+@pytest.mark.asyncio
 async def test_photos_in_the_conversation_and_in_the_list(client, auth_headers, db_session):
     photo = await _analysed(client, auth_headers, db_session)
 

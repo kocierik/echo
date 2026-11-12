@@ -33,6 +33,8 @@ STT_WAIT_LIMIT = timedelta(seconds=25)
 # A continuation starts < 3 s after the previous segment ends and lasts <= 6 s, so it
 # arrives within about this many seconds of the previous segment's arrival.
 CONTINUATION_WAIT_S = 10
+# A command of this many words that ended on a pause is whole
+MIN_COMMAND_WORDS = 2
 
 # Requests being answered, per user (hash: segment id -> {"command", "since"}), so the app
 # can show "Echo is working on it"; the TTL clears what a crash would leave behind.
@@ -60,6 +62,18 @@ Decide whether the speaker is addressing Echo with a request or a question for i
 "Ehi Eco, segnami il dentista martedì") or is only mentioning the word (e.g. \
 "ho comprato un Echo nuovo", "l'eco della stanza", an Amazon Echo device, an echo sound).
 Respond with ONLY a JSON object: {"assistant_request": true} or {"assistant_request": false}."""
+
+
+# "Ehi Echo, ..." opening the utterance: said to Echo, no doubt about it
+_DIRECT = re.compile(
+    r"^[\s\W]*(?:hey|hei|ehi|ehy|ei)[\s,.!;:]+(?:echo|eco|ecco|eko)(?![\w'’])", re.IGNORECASE
+)
+
+
+def is_direct_address(text: str) -> bool:
+    """The utterance opens by calling Echo ("Ehi Echo, ..."): a request, not a mention
+    ("ho comprato un Echo"), so the model need not be asked."""
+    return _DIRECT.match(strip_speaker_tag(text)) is not None
 
 
 def strip_speaker_tag(text: str) -> str:
@@ -196,7 +210,12 @@ async def collect_command(
         parts.append(strip_speaker_tag(segment_text).strip())
         last = segment
 
-    if not closed:
+    command = " ".join(part for part in parts if part)
+    # The wearable ends a segment after 1.4 s of silence: a command that ended there is
+    # whole, and is answered at once (it waited 10 s for more, at every request). Only the
+    # name alone ("Ehi Echo…") or a single word waits for what follows.
+    whole = len(command.split()) >= MIN_COMMAND_WORDS
+    if not closed and not whole:
         last_end = last.recorded_at + timedelta(milliseconds=last.duration_ms or 0)
         wait_until = min(
             last.received_at + timedelta(seconds=CONTINUATION_WAIT_S), give_up_at
@@ -204,7 +223,7 @@ async def collect_command(
         if last_end < window_end and now < wait_until:
             return None  # a continuation may still be uploading
 
-    return " ".join(part for part in parts if part)
+    return command
 
 
 async def get_or_create_voice_session(db: AsyncSession, user_id: uuid.UUID) -> ChatSession:

@@ -18,6 +18,7 @@ from app.actions.saved_tools import SavedContext
 from app.core.database import async_session
 from app.core.logging import new_correlation_id, restore_correlation_for
 from app.models.photo import Photo
+from app.services.device_commands import tell_phone_to_check
 from app.services.embedding_openai import get_embedding_service
 from app.services.llm_openai import (
     get_llm_analysis_service,
@@ -67,7 +68,7 @@ async def save_photo_request(
     return outcome.answer, ({"saved": outcome.saved} if outcome.saved else {})
 
 
-async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
+async def _analyse_once(photo_id: uuid.UUID, session_factory, redis_client=None) -> bool:
     async with session_factory() as db:
         return await analyse_photo(
             db,
@@ -76,6 +77,10 @@ async def _analyse_once(photo_id: uuid.UUID, session_factory) -> bool:
             get_embedding_service(),
             analysis_llm=get_llm_analysis_service(),
             save_with=save_photo_request,
+            answered=(
+                None if redis_client is None
+                else lambda user_id: tell_phone_to_check(redis_client, user_id)
+            ),
         )
 
 
@@ -97,6 +102,7 @@ async def handle_photo(raw, session_factory=async_session, redis_client=None) ->
             _analyse_once,
             photo_id,
             session_factory,
+            redis_client,
             timeout=ANALYSIS_TIMEOUT_S,
             operation_name=f"Photo analysis {photo_id}",
         )

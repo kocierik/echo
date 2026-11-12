@@ -64,6 +64,9 @@ async def test_a_to_do_with_no_app_named_goes_to_the_agent(connected):
     route = await availability.route_request(llm, "segnami di comprare il latte", [], connected)
 
     assert route.kind == "agent"
+    # Echo's own tools are enough: no connected app's tools go along (they did, all of
+    # them, ~14,000 tokens a request)
+    assert route.apps == []
     assert '"todo"' in llm.call_log[0][0].content
 
 

@@ -37,6 +37,7 @@ from app.actions.voice import (
     find_wake,
     get_or_create_voice_session,
     is_assistant_request,
+    is_direct_address,
     strip_speaker_tag,
 )
 from app.actions.whatsapp_provider import with_whatsapp
@@ -44,6 +45,7 @@ from app.core.database import async_session
 from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.services.about_echo import about_echo_for
+from app.services.device_commands import tell_phone_to_check
 from app.services.embedding_openai import get_embedding_service
 from app.services.language import clear_language, detect_language
 from app.services.llm_base import LLMMessage, LLMService
@@ -69,7 +71,8 @@ from app.workers.queue import done, take_now
 logger = logging.getLogger(__name__)
 
 VOICE_QUEUE = "queue:voice"
-POLL_INTERVAL_S = 2
+# A request waits at most this long to be picked up
+POLL_INTERVAL_S = 0.5
 # A segment answered once is never answered again (re-transcription, duplicate pushes).
 DONE_KEY = "voice:done:{segment_id}"
 DONE_TTL_S = 7 * 24 * 3600
@@ -228,7 +231,7 @@ async def _answer(
         source="voice",
         provider=provider,
         llm=llm,
-        connected_toolkits=route.apps or connected,
+        connected_toolkits=connected if route.apps is None else route.apps,
         # The phone for a place; the segment and its conversation for the moment
         saved=SavedContext(
             redis_client=redis_client,
@@ -287,7 +290,10 @@ async def _process(
         return True
 
     heard = _heard_text(segment.transcription.text or "", command)
-    if not await is_assistant_request(get_llm_analysis_service(), heard):
+    # "Ehi Echo, ..." needs no second opinion; a bare "Echo" may be a mention
+    if not is_direct_address(segment.transcription.text or "") and not await (
+        is_assistant_request(get_llm_analysis_service(), heard)
+    ):
         logger.info(f"[Voice] Segment {segment_id}: not a request to Echo")
         return True
     claim.user_id = segment.user_id
@@ -336,6 +342,7 @@ async def _answer_confirmed(db: AsyncSession, redis_client, segment: Segment, co
     answer, extra = result
     _append_turn(voice_session, command, asked_at, answer, extra)
     await db.commit()
+    await tell_phone_to_check(redis_client, segment.user_id)
     logger.info(f"[Voice] Answered request from segment {segment_id}")
     return True
 
@@ -432,6 +439,7 @@ async def handle_voice_item(redis_client, raw) -> bool:
             if claim.command is not None:
                 try:
                     await _report_failure(session, claim, audit)
+                    await tell_phone_to_check(redis_client, claim.user_id)
                 except Exception:
                     logger.exception(
                         f"[Voice] Could not record the failure of segment {segment_id}"
