@@ -139,3 +139,38 @@ async def test_without_a_known_name_nothing_changes(db_session: AsyncSession):
 
     assert "People asked about" not in memory.context
     assert memory.sources[0]["conversation_id"] == conversation.id
+
+
+@pytest.mark.asyncio
+async def test_a_passage_with_the_question_s_own_word_is_found_among_closer_ones(
+    db_session: AsyncSession,
+):
+    """By meaning alone six passages are nearer than the one that names "Zefiro": asked
+    about Zefiro, that one must still come."""
+    from app.services.memory_retrieval import search_terms
+
+    now = datetime.now(timezone.utc)
+    conversation, _ = await make_conversation(
+        db_session, started_at=now - timedelta(days=3), title="Riunione", texts=()
+    )
+    question = "Quanto costa il progetto Zefiro?"
+    embedding = await MockEmbeddingService().embed(question)
+    for index in range(6):
+        # As near to the question as a passage can be, and nothing about Zefiro
+        db_session.add(Chunk(
+            conversation_id=conversation.id, text=f"Parliamo di costi e progetti, parte {index}.",
+            token_count=6, chunk_index=index, embedding=embedding,
+        ))
+    far = [-value for value in embedding]
+    db_session.add(Chunk(
+        conversation_id=conversation.id, text="Per Zefiro servono dodicimila euro.",
+        token_count=5, chunk_index=6, embedding=far,
+    ))
+    await db_session.commit()
+
+    memory = await retrieve_memory_context(
+        db_session, TEST_USER_ID, question, top_k=5, embedding_service=MockEmbeddingService()
+    )
+
+    assert search_terms(question) == ["quanto", "costa", "progetto", "zefiro"]
+    assert any("Zefiro" in source["text"] for source in memory.sources)

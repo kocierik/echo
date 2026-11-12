@@ -14,11 +14,12 @@ where it happened. Outside assistants see none of it.
 """
 
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chunk import Chunk
@@ -73,35 +74,19 @@ async def retrieve_memory_context(
     question_embedding = await embedding_service.embed(question)
     people = await people_named_in(db, user_id, question)
 
-    similarity_query = (
-        select(
-            Chunk.id,
-            Chunk.conversation_id,
-            Chunk.text,
-            (1 - Chunk.embedding.cosine_distance(question_embedding)).label("similarity"),
-            Conversation.title.label("conversation_title"),
-            Conversation.started_at.label("conversation_started_at"),
-        )
-        .join(Conversation, Conversation.id == Chunk.conversation_id)
-        .where(Conversation.user_id == user_id)
-        .where(Chunk.embedding.isnot(None))
-    )
-
     # Conversations that overlap the period (not only those starting in it)
-    if date_range:
-        similarity_query = similarity_query.where(
-            *conversation_overlaps(date_range.date_from, date_range.date_to)
-        )
-
-    by_similarity = similarity_query.order_by(
-        Chunk.embedding.cosine_distance(question_embedding)
+    in_period = (
+        conversation_overlaps(date_range.date_from, date_range.date_to) if date_range else ()
     )
-    rows = await _reranked(db, user_id, (await db.execute(by_similarity.limit(top_k))).all())
+    terms = search_terms(question)
+    best = _passages(user_id, question_embedding, terms, *in_period)
+    rows = await _reranked(db, user_id, (await db.execute(best.limit(top_k))).all())
 
     if people:
         # The named people's conversations first, then a couple of the best others
-        about_people = by_similarity.where(
-            or_(*(in_person_conversations(person) for person in people))
+        about_people = _passages(
+            user_id, question_embedding, terms, *in_period,
+            or_(*(in_person_conversations(person) for person in people)),
         )
         person_rows = await _reranked(
             db, user_id, (await db.execute(about_people.limit(top_k))).all()
@@ -335,6 +320,91 @@ async def conversation_places(
     return {cid: name for cid, visit in found.items() if (name := places.label(visit))}
 
 
+# Reciprocal rank fusion: a passage's score is the sum of 1 / (RRF_K + its rank) over the
+# rankings it is in. 60 is the constant of the original paper
+RRF_K = 60
+# The newest conversations, a little: between two passages alike, the recent one
+RECENCY_WEIGHT = 0.3
+MAX_TERMS = 12
+# A passage's words count once they are rare enough: one word found in about a third of
+# the passages or fewer (ln 3), or several commoner ones together
+MIN_WORDS_SCORE = 1.0
+# Words that say nothing of what is asked (Italian and English)
+_STOPWORDS = frozenset(
+    "che chi cosa come con del della dei delle degli nel nella per una uno gli alla "
+    "allo sono era ero hai abbiamo detto dire fatto quando dove quale quali mio mia "
+    "the and for with what when where who which was were did does have has had about "
+    "said say that this from you your "
+    # asking who said something is not asking about "saying"
+    "parlato parlare parla dice chiesto talked told asked".split()
+)
+
+
+def search_terms(question: str) -> list[str]:
+    """The words of a question worth finding exactly: 3 letters or more, no filler."""
+    seen: dict[str, None] = {}
+    for word in re.findall(r"\d{2,}|[^\W_]{3,}", question.lower()):
+        if word not in _STOPWORDS:
+            seen.setdefault(word)
+    return list(seen)[:MAX_TERMS]
+
+
+def _passages(user_id: uuid.UUID, question_embedding, terms: list[str], *conditions):
+    """The user's passages for a question, the best first: by meaning (the embedding), by
+    the question's own words (a name, a code, "fattura": what meaning alone ranks low)
+    and, a little, by how recent, fused by rank. One query: every passage is scored.
+
+    A word counts by how rare it is among the user's passages (Postgres's own ranking
+    does not): "parlato" is in half of them and says nothing, "Zefiro" is in one.
+
+    shortcut: scans all the user's passages (their words are kept ready, migration 042),
+    fine in the tens of thousands; beyond, take the top of each ranking from its index
+    (HNSW, GIN) and fuse those.
+    """
+    distance = Chunk.embedding.cosine_distance(question_embedding)
+    passages = func.count().over()
+    words = literal(0.0)
+    for term in terms:
+        has = case((Chunk.text_words.op("@@")(func.to_tsquery("simple", term)), 1.0), else_=0.0)
+        words = words + has * func.ln((passages + 1.0) / (func.sum(has).over() + 1.0))
+    matched = (
+        select(
+            Chunk.id,
+            Chunk.conversation_id,
+            Chunk.text,
+            distance.label("distance"),
+            Conversation.title.label("conversation_title"),
+            Conversation.started_at.label("conversation_started_at"),
+            words.label("words"),
+        )
+        .join(Conversation, Conversation.id == Chunk.conversation_id)
+        .where(Conversation.user_id == user_id)
+        .where(Chunk.embedding.isnot(None))
+        .where(*conditions)
+        .subquery()
+    )
+    ranked = select(
+        matched,
+        func.rank().over(order_by=matched.c.distance).label("by_meaning"),
+        func.rank().over(order_by=matched.c.words.desc()).label("by_words"),
+        func.rank().over(order_by=matched.c.conversation_started_at.desc()).label("by_recency"),
+    ).subquery()
+    score = (
+        1.0 / (RRF_K + ranked.c.by_meaning)
+        + case((ranked.c.words >= MIN_WORDS_SCORE, 1.0 / (RRF_K + ranked.c.by_words)), else_=0.0)
+        + RECENCY_WEIGHT / (RRF_K + ranked.c.by_recency)
+    ).label("score")
+    return select(
+        ranked.c.id,
+        ranked.c.conversation_id,
+        ranked.c.text,
+        (1 - ranked.c.distance).label("similarity"),
+        ranked.c.conversation_title,
+        ranked.c.conversation_started_at,
+        score,
+    ).order_by(score.desc())
+
+
 async def _reranked(db: AsyncSession, user_id: uuid.UUID, rows: list) -> list:
     """Rows re-ranked by the user's feedback; those rated down are dropped."""
     if not rows:
@@ -343,7 +413,7 @@ async def _reranked(db: AsyncSession, user_id: uuid.UUID, rows: list) -> list:
 
     multipliers = await get_chunk_feedback_scores(db, user_id, [row.id for row in rows])
     scored = [
-        (row, float(row.similarity) * multipliers.get(row.id, 1.0))
+        (row, float(getattr(row, "score", row.similarity)) * multipliers.get(row.id, 1.0))
         for row in rows
         if multipliers.get(row.id, 1.0) != 0.0
     ]

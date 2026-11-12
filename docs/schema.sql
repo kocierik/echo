@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (041) for reading.
+-- Do not apply this file: it shows the schema at the head revision (042) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -124,6 +124,9 @@ CREATE TABLE chunks (
 
 CREATE INDEX idx_chunks_conversation ON chunks (conversation_id);
 CREATE INDEX idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops);  -- 035: was IVFFlat
+-- Migration 042: a passage's words, for the search by the question's own words
+ALTER TABLE chunks ADD COLUMN text_words tsvector GENERATED ALWAYS AS (to_tsvector('simple', text)) STORED;
+CREATE INDEX idx_chunks_text_words ON chunks USING gin (text_words);
 
 -- ============================================================
 -- ENTITIES: structured knowledge extracted by LLM
