@@ -213,5 +213,7 @@ async def test_the_worker_passes_the_other_languages_and_keeps_what_was_heard(mo
     )
 
     assert (asked[0]["language"], asked[0]["also"]) == ("it", ["en"])
+    # Each word with who says it: several voices in a segment become its turns
+    assert asked[0]["diarize"] is True
     [transcription] = [obj for obj in saved if type(obj).__name__ == "Transcription"]
     assert transcription.language == "en"

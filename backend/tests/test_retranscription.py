@@ -304,3 +304,41 @@ async def test_only_the_closest_voice_is_the_user(tmp_path, monkeypatch):
             .where(Segment.conversation_id == conversation_id).order_by(Segment.recorded_at)
         )).all()
     assert [tuple(r) for r in rows] == [("self", "[You] Ciao."), ("other", "[Others] Ciao a te.")]
+
+
+async def test_a_segment_with_several_voices_is_split_as_soon_as_it_is_transcribed(monkeypatch):
+    """Live, before the conversation closes: me, then two voices nobody named. They are
+    told apart, but not numbered: "Person 2" needs the whole conversation."""
+    from app.models.voice_profile import VoiceProfile
+    from app.services import retranscription
+
+    async with test_session() as db:
+        me = VoiceProfile(user_id=TEST_USER_ID, name="You", is_self=True,
+                          embedding=_axis(0), sample_count=3)
+        db.add(me)
+        await db.commit()
+        me_id = str(me.id)
+
+        voices = iter([_axis(0), _axis(1), _axis(2)])
+
+        async def embed(_wav):
+            return next(voices)
+
+        monkeypatch.setattr(retranscription, "embed_voice", embed)
+        segment = Segment(user_id=TEST_USER_ID, speaker="self")
+        words = [
+            Word("Hai", 0.1, 0.3, 0), Word("i", 0.3, 0.4, 0), Word("numeri?", 0.4, 0.8, 0),
+            Word("Sì.", 1.0, 1.3, 1), Word("Eccoli.", 1.5, 1.9, 2),
+        ]
+
+        turns = await retranscription.segment_turns(db, segment, words, b"\0" * 64000)
+        one_voice = await retranscription.segment_turns(
+            db, segment, [Word("Ciao.", 0.1, 0.4, 0)], b"\0" * 64000
+        )
+
+    assert [(t["speaker"], t["profile_id"], t["group"], t["text"]) for t in turns] == [
+        ("self", me_id, None, "Hai i numeri?"),
+        ("other", None, None, "Sì."),
+        ("other", None, None, "Eccoli."),
+    ]
+    assert one_voice is None

@@ -161,6 +161,25 @@ def _turns(words: list[Word], voices: dict) -> list[dict]:
     return turns
 
 
+async def segment_turns(db: AsyncSession, segment: Segment, words: list[Word], pcm: bytes):
+    """A segment where several spoke, split into its turns as soon as it is transcribed:
+    each voice recognised from what it said in this segment. None with one voice.
+
+    Unknown voices are told apart but not numbered: "Person 2" is the same person only
+    across a whole conversation, which is read again when it closes (`retranscribe`).
+    """
+    if any(w.speaker is None for w in words) or len({w.speaker for w in words}) < 2:
+        return None
+    voices = await _voices(db, segment, [segment], [words], pcm)
+    turns = [t for t in _turns(words, voices) if clean_transcription(t["text"])]
+    if len(turns) < 2:
+        return None
+    for turn in turns:
+        turn["text"] = clean_transcription(turn["text"])
+        turn["group"] = None
+    return turns
+
+
 async def retranscribe(db: AsyncSession, conversation: Conversation, stt: STTService) -> bool:
     """The conversation's segments transcribed again as one recording; True when a
     segment's text changed. Its unknown voices are then told apart: by each word's

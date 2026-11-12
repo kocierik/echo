@@ -30,6 +30,7 @@ from app.models.transcription import Transcription
 from app.services.language import account_languages
 from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
+from app.services.retranscription import segment_turns
 from app.services.segment_audio import decode_segment, pcm_to_wav, segment_to_wav
 from app.services.speaker_detector import classify_segment
 from app.services.stt_openai import get_stt_service
@@ -234,9 +235,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
 
                 # The voice fingerprint of where someone speaks, beside the transcription
                 # (adds no delay)
-                fingerprint = asyncio.create_task(
-                    embed_voice(pcm_to_wav(loudest_frames(decode_segment(audio_data))))
-                )
+                pcm = decode_segment(audio_data)
+                fingerprint = asyncio.create_task(embed_voice(pcm_to_wav(loudest_frames(pcm))))
 
                 # Known names and topics, as a prompt or keyterms depending on the provider
                 stt_context = await build_stt_context(db, segment.user_id)
@@ -251,6 +251,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                         also=others or None,
                         prompt=stt_context.prompt or None,
                         keyterms=stt_context.keyterms,
+                        # Who says each word: several voices in a segment are its turns
+                        diarize=True,
                         operation_name=f"STT segment {segment_id}",
                     )
                 except BaseException:
@@ -274,6 +276,16 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                     speaker = await classify_segment(db, segment.user_id, segment.audio_energy)
                 segment.speaker = speaker
 
+                # Several voices in the segment: who said what, at once. Best effort: the
+                # conversation is read whole again when it closes
+                turns = None
+                words = getattr(stt_result, "words", None) or []
+                if cleaned_text and words:
+                    try:
+                        turns = await segment_turns(db, segment, words, pcm)
+                    except Exception:
+                        logger.warning("No turns for segment %s", segment_id, exc_info=True)
+
                 # Prefix transcription with speaker tag
                 cleaned_text = f"{speaker_prefix(speaker)}{cleaned_text}"
 
@@ -287,6 +299,7 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                     # even when Deepgram transcribed)
                     stt_provider=stt_service.provider,
                     stt_model=stt_service.model,
+                    turns=turns,
                 )
                 db.add(transcription)
 
