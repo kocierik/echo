@@ -132,6 +132,13 @@ class FakeMemoryApi implements MemoryApi, TranscriptMemoryApi {
   }
 
   @override
+  Future<void> addPerson(String name) async {
+    calls.add('add person $name');
+    await _wait();
+    if (peopleError case final error?) throw error;
+  }
+
+  @override
   Future<List<PersonSummary>> listPeople() async {
     calls.add('people');
     await _wait();

@@ -241,6 +241,38 @@ async def test_naming_a_voice_links_the_person_and_labels_the_conversation(
 
 
 @pytest.mark.asyncio
+async def test_naming_a_new_voice_saves_that_person(
+    client, auth_headers, db_session: AsyncSession
+):
+    """Naming a voice is the user saving a person: they are in People from then on, and
+    a voice named before they were is theirs."""
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    _, segments = await _segments(
+        db_session, start, ("[Others] Ciao.", "[Others] A dopo."),
+        [near(MARCO, STRANGER, 0.97), near(MARCO, ME, 0.9)],
+    )
+    # A voice named "Giulia" before this: no person with it
+    earlier = _profile(STRANGER, name="Giulia")
+    db_session.add(earlier)
+    await db_session.commit()
+    earlier_id = earlier.id
+
+    named = await client.post(
+        f"/api/segments/{segments[0].id}/voice", headers=auth_headers, json={"name": "Marco"}
+    )
+    linked = await client.post(
+        f"/api/segments/{segments[1].id}/voice", headers=auth_headers, json={"name": "giulia"}
+    )
+
+    people = (await client.get("/api/people", headers=auth_headers)).json()
+    assert sorted(person["name"] for person in people) == ["Giulia", "Marco"]
+    by_name = {person["name"]: person["id"] for person in people}
+    assert named.json()["profile"]["person_id"] == by_name["Marco"]
+    assert linked.json()["profile"]["id"] == str(earlier_id)
+    assert linked.json()["profile"]["person_id"] == by_name["Giulia"]
+
+
+@pytest.mark.asyncio
 async def test_a_segment_without_fingerprint_cannot_start_a_profile(
     client, auth_headers, db_session: AsyncSession
 ):

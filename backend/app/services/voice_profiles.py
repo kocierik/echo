@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
 
@@ -300,16 +300,32 @@ async def assign_voice(
     if is_self:
         query = query.where(VoiceProfile.is_self)
     elif person is not None:
-        query = query.where(VoiceProfile.person_id == person.id)
+        # Theirs, or one named so before they were in People
+        query = query.where(~VoiceProfile.is_self).where(or_(
+            VoiceProfile.person_id == person.id,
+            func.lower(VoiceProfile.name) == name.lower(),
+        ))
     else:
         query = query.where(
             ~VoiceProfile.is_self, func.lower(VoiceProfile.name) == name.lower()
         )
     profile = (await db.execute(query.limit(1))).scalar_one_or_none()
 
+    if profile is None and embedding is None:
+        raise ValueError("this segment has no voice fingerprint to start a profile from")
+    if not is_self and person is None:
+        # Naming a voice is the user saving that person: in People from now on
+        # (as the voice was already named, when it was)
+        person = Entity(
+            user_id=user_id, entity_type="person", metadata_={},
+            name=profile.name if profile is not None else name,
+        )
+        db.add(person)
+        await db.flush()
+    if profile is not None and person is not None and profile.person_id is None:
+        profile.person_id = person.id
+
     if profile is None:
-        if embedding is None:
-            raise ValueError("this segment has no voice fingerprint to start a profile from")
         profile = VoiceProfile(
             user_id=user_id,
             name=SELF_NAME if is_self else name,

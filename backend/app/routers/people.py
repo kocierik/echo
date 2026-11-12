@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,6 +140,38 @@ def _fact(fact: PersonFact) -> FactOut:
         conversation_id=fact.conversation_id,
         created_at=fact.created_at,
     )
+
+
+class NewPerson(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+
+
+@router.post("", response_model=PersonSummary)
+async def add_person(
+    body: NewPerson,
+    response: Response,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """The user adds someone to People. Only people saved here are kept from what is
+    heard: without this there was no one to keep. A name already there is that person."""
+    name = " ".join(body.name.split())
+    if not name:
+        raise HTTPException(status_code=422, detail="A name is needed")
+    person = (
+        await db.execute(
+            select(Entity)
+            .where(Entity.user_id == user_id, Entity.entity_type == "person")
+            .where(func.lower(Entity.name) == name.lower())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if person is None:
+        person = Entity(user_id=user_id, entity_type="person", name=name, metadata_={})
+        db.add(person)
+        await db.commit()
+        response.status_code = 201
+    return await _summary(db, person, user_id)
 
 
 @router.get("", response_model=list[PersonSummary])

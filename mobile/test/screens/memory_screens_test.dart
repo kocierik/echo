@@ -124,6 +124,32 @@ void main() {
     expect(opened, isTrue);
   });
 
+  testWidgets('People: with no one yet it says to add them, and Add person adds one',
+      (tester) async {
+    final api = FakeMemoryApi();
+    final controller = MemoriesController(api: api);
+    addTearDown(controller.dispose);
+
+    await _pump(tester, PeopleScreen(
+      controller: controller,
+      onOpenPerson: (_) async {},
+      onOpenMap: () async {},
+      now: DateTime(2026, 11, 12),
+    ));
+
+    // Only people added here are kept from what Echo hears
+    expect(find.textContaining('Add the people you want Echo to remember'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('people-add')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('people-add-name')), '  Marco Rossi ');
+    await tester.tap(find.byKey(const Key('people-add-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(api.calls, contains('add person Marco Rossi'));
+    // The list is asked again, to show them
+    expect(api.calls.where((call) => call == 'people').length, 2);
+  });
+
   group('About you', () {
     testWidgets('the kept facts and what Echo noticed, kept with a tap', (tester) async {
       final api = _Memory();

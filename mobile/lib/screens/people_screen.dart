@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/api/api_exception.dart';
 import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sections.dart';
@@ -48,6 +49,48 @@ final class _PeopleScreenState extends State<PeopleScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Only people added here are kept from what Echo hears.
+  Future<void> _addPerson() async {
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final field = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add person'),
+          content: TextField(
+            key: const Key('people-add-name'),
+            controller: field,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: 'Name'),
+            onSubmitted: (value) => Navigator.of(context).pop(value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              key: const Key('people-add-confirm'),
+              onPressed: () => Navigator.of(context).pop(field.text),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+    final trimmed = name?.trim() ?? '';
+    if (trimmed.isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.controller.addPerson(trimmed);
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text(userMessage(error, 'Could not add this person.'))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
@@ -57,6 +100,12 @@ final class _PeopleScreenState extends State<PeopleScreen> {
       appBar: AppBar(
         title: const Text('People'),
         actions: [
+          IconButton(
+            key: const Key('people-add'),
+            onPressed: () => unawaited(_addPerson()),
+            icon: const Icon(Icons.person_add_alt_1_outlined),
+            tooltip: 'Add person',
+          ),
           TextButton.icon(
             key: const Key('people-map'),
             onPressed: () => unawaited(widget.onOpenMap()),
@@ -109,7 +158,11 @@ final class _PeopleScreenState extends State<PeopleScreen> {
       return FullScreenMessage(
         icon: Icons.people_outline_rounded,
         title: 'No people yet',
-        message: 'People you talk with or about show up here.',
+        message: 'Add the people you want Echo to remember: what is said with or about '
+            'them is kept from then on.',
+        actionKey: const Key('people-add-first'),
+        actionLabel: 'Add person',
+        onAction: _addPerson,
         onRefresh: controller.loadPeople,
       );
     }

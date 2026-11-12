@@ -151,6 +151,12 @@ final class MemoriesController extends ChangeNotifier {
     if (_state.peopleLoaded) unawaited(loadPeople());
   }
 
+  /// Adds someone to People, then shows them. Throws when the server refuses.
+  Future<void> addPerson(String name) async {
+    await _api.addPerson(name);
+    await loadPeople();
+  }
+
   /// Loads everyone Echo heard about; called when People is first shown.
   Future<void> loadPeople() async {
     final generation = ++_peopleGeneration;

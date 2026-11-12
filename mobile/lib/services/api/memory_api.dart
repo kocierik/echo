@@ -26,6 +26,9 @@ abstract interface class MemoryApi {
   Future<void> deleteConversation(String conversationId);
   Future<List<PersonSummary>> listPeople();
   Future<PersonDetail> getPerson(String id);
+
+  /// Adds someone to People (a name already there is that person).
+  Future<void> addPerson(String name);
   Future<void> deletePersonFact(String personId, String factId);
 }
 
@@ -225,6 +228,9 @@ mixin MemoryEndpoints on ApiClient
   @override
   Future<void> deleteEntity(String id) =>
       delete('/api/entities/${Uri.encodeComponent(id)}');
+
+  @override
+  Future<void> addPerson(String name) => post('/api/people', body: {'name': name});
 
   @override
   Future<List<PersonSummary>> listPeople() async {

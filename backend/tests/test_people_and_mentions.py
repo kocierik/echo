@@ -367,3 +367,22 @@ async def test_conversations_by_topic(client, auth_headers, db_session: AsyncSes
     assert [conversation["id"] for conversation in response.json()["conversations"]] == [
         str(matching.id)
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_user_adds_a_person_and_the_same_name_is_the_same_person(
+    client, auth_headers, db_session: AsyncSession
+):
+    """Only people saved in People are kept from what is heard: there was no way to
+    save one."""
+    added = await client.post(
+        "/api/people", headers=auth_headers, json={"name": "  Marco   Rossi "}
+    )
+    again = await client.post("/api/people", headers=auth_headers, json={"name": "marco rossi"})
+    empty = await client.post("/api/people", headers=auth_headers, json={"name": "   "})
+
+    assert added.status_code == 201 and added.json()["name"] == "Marco Rossi"
+    assert again.status_code == 200 and again.json()["id"] == added.json()["id"]
+    assert empty.status_code == 422
+    listed = (await client.get("/api/people", headers=auth_headers)).json()
+    assert [person["name"] for person in listed] == ["Marco Rossi"]
