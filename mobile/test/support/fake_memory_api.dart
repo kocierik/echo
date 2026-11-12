@@ -265,7 +265,7 @@ class FakeTodayApi extends FakeMemoryApi
 
   @override
   Future<int> nameVoice(String segmentId,
-          {bool isSelf = false, String? personId, String? name}) =>
+          {bool isSelf = false, String? personId, String? name, int? turn}) =>
       throw UnimplementedError();
 
   @override

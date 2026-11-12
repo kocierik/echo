@@ -12,7 +12,15 @@ abstract interface class VoiceApi {
 
   /// Whose voice a segment is: the user's, a person of theirs, or a new name. Returns
   /// how many other segments of the conversation were labelled with it.
-  Future<int> nameVoice(String segmentId, {bool isSelf, String? personId, String? name});
+  ///
+  /// With [turn], whose voice that one turn of the segment is (several spoke in it).
+  Future<int> nameVoice(
+    String segmentId, {
+    bool isSelf,
+    String? personId,
+    String? name,
+    int? turn,
+  });
 
   /// Not the suggested person.
   Future<void> rejectVoice(String segmentId);
@@ -50,11 +58,13 @@ mixin VoiceEndpoints on ApiClient implements VoiceApi {
     bool isSelf = false,
     String? personId,
     String? name,
+    int? turn,
   }) async {
     final response = await post('/api/segments/$segmentId/voice', body: {
       'is_self': isSelf,
       if (personId != null) 'person_id': personId,
       if (name != null) 'name': name,
+      if (turn != null) 'turn': turn,
     });
     return parse(
       response.data,

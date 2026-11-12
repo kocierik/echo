@@ -273,6 +273,67 @@ async def test_naming_a_new_voice_saves_that_person(
 
 
 @pytest.mark.asyncio
+async def test_naming_one_turn_teaches_that_voice_and_finds_its_other_turns(
+    client, auth_headers, db_session: AsyncSession
+):
+    """Two people in one segment: the user says who the second block is. That voice is
+    learned from that block alone, and its other blocks take the name; mine do not."""
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    conversation, segments = await _segments(
+        db_session, start, ("[You] Hai i numeri? Sì.", "[You] Eccoli. Grazie."),
+        [near(ME, MARCO, 0.8), near(ME, MARCO, 0.8)],
+    )
+    db_session.add(_profile(ME, is_self=True))
+
+    def turn(text, voice, speaker="other"):
+        return {"speaker": speaker, "profile_id": None, "group": None, "text": text,
+                "embedding": voice}
+
+    first = (await db_session.execute(
+        select(Transcription).where(Transcription.segment_id == segments[0].id)
+    )).scalar_one()
+    second = (await db_session.execute(
+        select(Transcription).where(Transcription.segment_id == segments[1].id)
+    )).scalar_one()
+    first.turns = [
+        turn("Hai i numeri?", near(ME, STRANGER, 0.97), "self"),
+        turn("Sì.", near(MARCO, STRANGER, 0.97)),
+    ]
+    second.turns = [
+        turn("Eccoli.", near(MARCO, ME, 0.95)),
+        turn("Grazie.", near(ME, MARCO, 0.95), "self"),
+        turn("Ciao.", axis(STRANGER)),
+    ]
+    await db_session.commit()
+
+    named = await client.post(
+        f"/api/segments/{segments[0].id}/voice", headers=auth_headers,
+        json={"name": "Marco", "turn": 1},
+    )
+    missing = await client.post(
+        f"/api/segments/{segments[0].id}/voice", headers=auth_headers,
+        json={"name": "Marco", "turn": 7},
+    )
+
+    assert named.status_code == 200 and missing.status_code == 404
+    assert named.json()["learned"] is True and named.json()["relabelled"] == 1
+    detail = (
+        await client.get(f"/api/conversations/{conversation.id}", headers=auth_headers)
+    ).json()
+    blocks = [
+        [(t["speaker_label"], t["speaker_name"]) for t in line["turns"]]
+        for line in detail["transcriptions"]
+    ]
+    assert blocks == [
+        [("self", None), ("other", "Marco")],
+        [("other", "Marco"), ("self", None), ("other", None)],
+    ]
+    # In People too: naming a voice is saving that person
+    people = (await client.get("/api/people", headers=auth_headers)).json()
+    assert [person["name"] for person in people] == ["Marco"]
+
+
+@pytest.mark.asyncio
 async def test_a_segment_without_fingerprint_cannot_start_a_profile(
     client, auth_headers, db_session: AsyncSession
 ):

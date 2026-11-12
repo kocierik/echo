@@ -233,7 +233,8 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
   }
 
   /// "Who is speaking?" for a line: Echo learns the voice and relabels the conversation.
-  Future<void> _nameVoice(TranscriptLine line) async {
+  /// With [turn], for that one block of a line where several people spoke.
+  Future<void> _nameVoice(TranscriptLine line, {int? turn}) async {
     final voices = _voices;
     if (voices == null) return;
     List<PersonSummary> people = const [];
@@ -248,6 +249,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           isSelf: choice.isSelf,
           personId: choice.personId,
           name: choice.name,
+          turn: turn,
         ));
   }
 
@@ -583,6 +585,10 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
           onSpeakerTap: _voices == null || line.text == null || line.turns.isNotEmpty
               ? null
               : () => unawaited(_nameVoice(line)),
+          // Several voices: each block is named by itself, from its own voice
+          onTurnTap: _voices == null || line.turns.isEmpty
+              ? null
+              : (turn) => unawaited(_nameVoice(line, turn: turn)),
           onConfirmVoice: _voices == null || !line.isSuggestion || line.turns.isNotEmpty
               ? null
               : () => unawaited(_voiceAction(
@@ -694,6 +700,7 @@ final class _LineTile extends StatelessWidget {
     this.languageTag,
     this.translation,
     this.onSpeakerTap,
+    this.onTurnTap,
     this.onConfirmVoice,
     this.onRejectVoice,
   });
@@ -710,6 +717,9 @@ final class _LineTile extends StatelessWidget {
   /// "Who is speaking?"
   final VoidCallback? onSpeakerTap;
 
+  /// "Who is speaking?" for one block of a line where several people spoke.
+  final void Function(int turn)? onTurnTap;
+
   /// For a suggested voice ("Marco?"): yes, or no.
   final VoidCallback? onConfirmVoice;
   final VoidCallback? onRejectVoice;
@@ -721,6 +731,9 @@ final class _LineTile extends StatelessWidget {
     final text = line.text;
     final turns = line.turns;
     final speaker = turns.isEmpty ? line.speakerLabel : turns.first.speakerLabel;
+    // The name on top is the first block's when several people spoke
+    final headerTap =
+        turns.isEmpty ? onSpeakerTap : (onTurnTap == null ? null : () => onTurnTap!(0));
     final body = turns.isNotEmpty
         // Read aloud after the first speaker's name (the label below says it)
         ? [for (final (i, t) in turns.indexed) i == 0 ? t.text : '${t.speakerLabel}: ${t.text}']
@@ -763,11 +776,11 @@ final class _LineTile extends StatelessWidget {
                     Row(
                       children: [
                         Semantics(
-                          button: onSpeakerTap != null,
+                          button: headerTap != null,
                           label: 'Who is speaking: $speaker',
                           child: InkWell(
                             key: Key('speaker-${line.segmentId}'),
-                            onTap: onSpeakerTap,
+                            onTap: headerTap,
                             child: Padding(
                               padding: const EdgeInsets.symmetric(vertical: 2),
                               child: Text(
@@ -777,9 +790,8 @@ final class _LineTile extends StatelessWidget {
                                   color: turns.isEmpty
                                       ? speakerColor(line.speaker, line.speakerName)
                                       : speakerColor(turns.first.speaker, turns.first.speakerName),
-                                  decoration: onSpeakerTap == null
-                                      ? null
-                                      : TextDecoration.underline,
+                                  decoration:
+                                      headerTap == null ? null : TextDecoration.underline,
                                   decorationStyle: TextDecorationStyle.dotted,
                                 ),
                               ),
@@ -822,11 +834,25 @@ final class _LineTile extends StatelessWidget {
                         if (i > 0)
                           Padding(
                             padding: const EdgeInsets.only(top: 6),
-                            child: Text(
-                              turn.speakerLabel,
-                              style: textTheme.labelSmall?.copyWith(
-                                fontSize: 12,
-                                color: speakerColor(turn.speaker, turn.speakerName),
+                            child: Semantics(
+                              button: onTurnTap != null,
+                              label: 'Who is speaking: ${turn.speakerLabel}',
+                              child: InkWell(
+                                key: Key('turn-speaker-${line.segmentId}-$i'),
+                                onTap: onTurnTap == null ? null : () => onTurnTap!(i),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 2),
+                                  child: Text(
+                                    turn.speakerLabel,
+                                    style: textTheme.labelSmall?.copyWith(
+                                      fontSize: 12,
+                                      color: speakerColor(turn.speaker, turn.speakerName),
+                                      decoration:
+                                          onTurnTap == null ? null : TextDecoration.underline,
+                                      decorationStyle: TextDecorationStyle.dotted,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),

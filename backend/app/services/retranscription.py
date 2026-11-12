@@ -89,7 +89,9 @@ def _at(seconds: float) -> int:
 
 async def _voices(db, conversation, segments, parts, pcm) -> dict:
     """Who each speaker is, recognised from all they said:
-    {speaker: {"speaker": "self"|"other", "profile_id": str|None, "group": int|None}}."""
+    {speaker: {"speaker": "self"|"other", "profile_id": str|None, "group": int|None,
+    "embedding": [...]|None}}. The fingerprint stays with the turns: the user can then
+    say whose voice one turn is (voice_profiles.assign_voice)."""
     profiles = await list_profiles(db, conversation.user_id)
     has_self = any(p.is_self for p in profiles)
     words = [w for part in parts for w in part]
@@ -128,7 +130,11 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
     unknown: list = []
     for index, speaker in enumerate(speakers):
         profile = matched.get(index)
-        voice = {"speaker": "other", "profile_id": None, "group": None}
+        embedding = embeddings[speaker]
+        voice = {
+            "speaker": "other", "profile_id": None, "group": None,
+            "embedding": None if embedding is None else [round(float(x), 5) for x in embedding],
+        }
         if profile is not None:
             voice["speaker"] = "self" if profile.is_self else "other"
             voice["profile_id"] = str(profile.id)

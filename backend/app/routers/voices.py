@@ -60,6 +60,8 @@ class VoiceAssignment(BaseModel):
     is_self: bool = False
     name: str | None = Field(default=None, max_length=200)
     person_id: uuid.UUID | None = None
+    # Whose voice one turn of the segment is (several spoke in it); None: the segment's
+    turn: int | None = Field(default=None, ge=0)
 
 
 class VoiceAssignmentOut(BaseModel):
@@ -135,7 +137,8 @@ async def name_segment_voice(
     segment = await _own_segment(db, segment_id, user_id)
     try:
         result = await assign_voice(
-            db, segment, is_self=body.is_self, name=body.name, person_id=body.person_id
+            db, segment, is_self=body.is_self, name=body.name, person_id=body.person_id,
+            turn=body.turn,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

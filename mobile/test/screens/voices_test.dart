@@ -42,10 +42,14 @@ final class _VoiceMemoryApi extends FakeMemoryApi implements VoiceApi {
 
   @override
   Future<int> nameVoice(String segmentId,
-      {bool isSelf = false, String? personId, String? name}) async {
+      {bool isSelf = false, String? personId, String? name, int? turn}) async {
     named.add((segmentId, isSelf, personId, name));
+    namedTurns.add(turn);
     return 2;
   }
+
+  /// The turn each naming was for (null: the whole segment).
+  final namedTurns = <int?>[];
 
   @override
   Future<void> rejectVoice(String segmentId) async => rejected.add(segmentId);
@@ -137,6 +141,43 @@ void main() {
       await tester.tap(find.byKey(const Key('voice-save-name')));
       await tester.pumpAndSettle();
       expect(api.named.last, ('s2', false, null, 'Giulia'));
+    });
+
+    testWidgets('several voices in a line: each block is named by itself', (tester) async {
+      api.details['c1'] = ConversationDetail(
+        card: card('c1', startedAt: DateTime(2026, 10, 14, 12, 30)),
+        lines: [
+          TranscriptLine(
+            segmentId: 's3',
+            recordedAt: DateTime(2026, 10, 14, 12, 31),
+            status: 'completed',
+            text: '[You] Hai i numeri? Sì, eccoli.',
+            speaker: 'self',
+            turns: const [
+              Turn(speaker: 'self', text: 'Hai i numeri?'),
+              Turn(speaker: 'other', text: 'Sì, eccoli.'),
+            ],
+          ),
+        ],
+        entities: const [],
+      );
+      await openTranscript(tester);
+
+      // The second block: someone nobody named yet
+      await tester.tap(find.byKey(const Key('turn-speaker-s3-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ada Lovelace'));
+      await tester.pumpAndSettle();
+      expect(api.named.last, ('s3', false, 'p1', null));
+      expect(api.namedTurns.last, 1);
+
+      // The name on top is the first block's
+      await tester.tap(find.byKey(const Key('speaker-s3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('voice-me')));
+      await tester.pumpAndSettle();
+      expect(api.named.last, ('s3', true, null, null));
+      expect(api.namedTurns.last, 0);
     });
 
     testWidgets('no speaker actions without the voice api', (tester) async {

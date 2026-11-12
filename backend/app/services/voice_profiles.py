@@ -23,6 +23,7 @@ from sqlalchemy.orm import undefer
 from app.core.config import settings
 from app.models.entity import Entity
 from app.models.segment import Segment
+from app.models.transcription import Transcription
 from app.models.voice_profile import VoiceProfile
 from app.services.transcription_enhancer import speaker_prefix
 from app.services.voice_embedding import cosine, normalize
@@ -277,12 +278,22 @@ async def assign_voice(
     is_self: bool = False,
     name: str | None = None,
     person_id: uuid.UUID | None = None,
+    turn: int | None = None,
 ) -> Assignment:
-    """The user says whose voice a segment is: "me", a person of theirs, or a new name."""
+    """The user says whose voice a segment is: "me", a person of theirs, or a new name.
+    With `turn`, whose voice that one turn of the segment is (several people spoke in it):
+    the voice is learned from that turn alone, not from the mix."""
     user_id = segment.user_id
-    embedding = (
-        await db.execute(select(Segment.voice_embedding).where(Segment.id == segment.id))
-    ).scalar_one_or_none()
+    turns: list[dict] = []
+    if turn is None:
+        embedding = (
+            await db.execute(select(Segment.voice_embedding).where(Segment.id == segment.id))
+        ).scalar_one_or_none()
+    else:
+        turns = list((segment.transcription.turns if segment.transcription else None) or [])
+        if not 0 <= turn < len(turns):
+            raise LookupError("turn not found")
+        embedding = turns[turn].get("embedding")
 
     person = None
     if not is_self:
@@ -339,16 +350,71 @@ async def assign_voice(
     elif embedding is not None:
         add_sample(profile, embedding)
 
-    segment.voice_profile_id = profile.id
-    segment.voice_match = "confirmed"
-    segment.voice_similarity = None
-    label_speaker(segment, "self" if is_self else "other")
+    if turn is None:
+        segment.voice_profile_id = profile.id
+        segment.voice_match = "confirmed"
+        segment.voice_similarity = None
+        label_speaker(segment, "self" if is_self else "other")
+    else:
+        turns[turn] = {
+            **turns[turn],
+            "speaker": "self" if is_self else "other",
+            "profile_id": str(profile.id),
+            "group": None,
+            "confirmed": True,
+        }
+        segment.transcription.turns = turns  # a new list: the JSON change is seen
 
     relabelled = 0
     if segment.conversation_id is not None:
         relabelled = await _relabel_conversation(db, segment, profile)
+        relabelled += await _relabel_turns(db, segment.conversation_id, profile)
     await db.commit()
     return Assignment(profile, relabelled, embedding is not None)
+
+
+async def _relabel_turns(
+    db: AsyncSession, conversation_id: uuid.UUID, profile: VoiceProfile
+) -> int:
+    """The conversation's turns with this voice: those nearer to it than to any other
+    known voice, by the margin (through the pendant every voice is near every other);
+    never a turn the user named."""
+    profiles = await list_profiles(db, profile.user_id)
+    transcriptions = (
+        await db.execute(
+            select(Transcription)
+            .join(Segment, Segment.id == Transcription.segment_id)
+            .where(Segment.conversation_id == conversation_id)
+            .where(Transcription.turns.isnot(None))
+        )
+    ).scalars().all()
+    count = 0
+    for transcription in transcriptions:
+        turns = []
+        for turn in transcription.turns:
+            match = (
+                best_match(profiles, turn["embedding"])
+                if turn.get("embedding") and not turn.get("confirmed")
+                else None
+            )
+            if (
+                match is not None
+                and match.profile.id == profile.id
+                and match.similarity >= settings.voice_match_threshold
+                and match.lead >= settings.voice_match_margin
+                and turn.get("profile_id") != str(profile.id)
+            ):
+                turn = {
+                    **turn,
+                    "speaker": "self" if profile.is_self else "other",
+                    "profile_id": str(profile.id),
+                    "group": None,
+                }
+                count += 1
+            turns.append(turn)
+        if turns != transcription.turns:
+            transcription.turns = turns
+    return count
 
 
 async def _relabel_conversation(
