@@ -47,7 +47,9 @@ async def test_the_limit_takes_the_newest(db_session, tmp_path, monkeypatch):
     await _said(db_session, tmp_path, "[You] la prima", 2)
     newest = await _said(db_session, tmp_path, "[You] la seconda", 1)
 
-    written = await export.export_wake_eval(tmp_path / "eval", limit=1, session_factory=test_session)
+    written = await export.export_wake_eval(
+        tmp_path / "eval", limit=1, session_factory=test_session
+    )
 
     assert written == 1
     assert (tmp_path / "eval" / f"{newest.id}.wav").exists()
