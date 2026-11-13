@@ -49,6 +49,11 @@
 // This captures the speech onset that would otherwise be lost
 #define PRE_BUFFER_FRAMES 16           // ~500ms of audio (16 × 32ms)
 
+// The wake phrase heard on the pendant (wake_detector.h, models/wake.json): 1 once its model
+// passes its gate (plan 2026-11-13, Milestone C). At 0 the model is not compiled in
+#ifndef WAKE_WORD_ENABLED
+#define WAKE_WORD_ENABLED 0
+#endif
 // The wake phrase counts only this far into a segment (wake_window.h): the server wants the
 // name among the first words
 #define WAKE_WINDOW_MS 4000

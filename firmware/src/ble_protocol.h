@@ -78,6 +78,9 @@ constexpr size_t OTA_PUBLIC_KEY_SIZE = 64;
 
 // Photo transfers use ids with the high bit set, apart from audio segment ids
 constexpr uint32_t PHOTO_SEGMENT_ID_FLAG = 0x80000000U;
+// Firmware 0.11.0 on: the pendant heard its wake phrase in this audio segment's opening
+// (wake_window.h). Older apps treat the id as opaque, so it needs no protocol bump
+constexpr uint32_t WAKE_SEGMENT_ID_FLAG = 0x40000000U;
 
 constexpr size_t SEGMENT_START_SIZE = 20;
 constexpr size_t SEGMENT_METADATA_SIZE = 19;

@@ -336,6 +336,14 @@ void test_the_log_knows_the_cards_size_and_room() {
     TEST_ASSERT_EQUAL_UINT64(10000 - 8, log.freeBytes());  // the read position's file stays
 }
 
+void test_a_segment_that_heard_the_name_keeps_its_flag_on_the_card() {
+    MemoryStorage card;
+    SegmentLog log(card, 1024);
+    TEST_ASSERT_TRUE(log.begin());
+    append(log, 9U | EchoBleProtocol::WAKE_SEGMENT_ID_FLAG, 200);
+    TEST_ASSERT_EQUAL_HEX32(9U | EchoBleProtocol::WAKE_SEGMENT_ID_FLAG, peekId(log));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_segments_come_back_oldest_first_with_their_data);
@@ -350,5 +358,6 @@ int main(int, char**) {
     RUN_TEST(test_another_key_cannot_read_it);
     RUN_TEST(test_records_left_in_clear_move_into_the_encrypted_log);
     RUN_TEST(test_the_log_knows_the_cards_size_and_room);
+    RUN_TEST(test_a_segment_that_heard_the_name_keeps_its_flag_on_the_card);
     return UNITY_END();
 }

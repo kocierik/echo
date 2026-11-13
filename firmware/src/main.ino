@@ -42,6 +42,10 @@
 #include "ota_health.h"
 #include "power_off_policy.h"
 #include "wake_gate.h"
+#include "wake_window.h"
+#if WAKE_WORD_ENABLED
+#include "wake_detector.h"
+#endif
 
 // ============================================================
 // Global instances
@@ -70,6 +74,10 @@ BatteryMonitor battery;
 ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS, BUTTON_POWER_OFF_MS);
 PowerOffPolicy powerOff;
 OtaHealthCheck otaHealth(OTA_CONFIRM_TIMEOUT_MS);
+WakeWindow wakeWindow(WAKE_WINDOW_MS);
+#if WAKE_WORD_ENABLED
+WakeDetector wakeDetector;
+#endif
 MuteState muteState(
     [](bool& muted) { return devicePreferences.loadMuted(muted); },
     [](bool muted) { return devicePreferences.saveMuted(muted); });
@@ -210,6 +218,9 @@ void syncMicrophone() {
     }
     if (audio.begin()) {
         vad.reset();
+#if WAKE_WORD_ENABLED
+        wakeDetector.reset();
+#endif
         return;
     }
     micFailed = true;
@@ -432,6 +443,10 @@ void setup() {
     if (!muteState.isMuted() && !audio.begin()) fatal("[FATAL] Audio capture init failed");
 
     if (!opusCodec.begin()) fatal("[FATAL] Opus encoder init failed");
+#if WAKE_WORD_ENABLED
+    // Never fatal: without it Echo listens as before, and a firmware on trial stays
+    wakeDetector.begin();
+#endif
     vad.reset();
 
     indicators.setBlinking(false);
@@ -526,6 +541,13 @@ void loop() {
     if (samplesRead <= 0) return;
     const uint32_t frameStartedUs = micros();
     amplify(pcmBuffer, samplesRead, micGain);
+    // Every frame while listening, idle or recording: the features' noise estimate needs
+    // the audio around the phrase too
+#if WAKE_WORD_ENABLED
+    const bool wakeDetected = wakeDetector.feed(pcmBuffer, samplesRead);
+#else
+    const bool wakeDetected = false;
+#endif
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);
@@ -548,6 +570,7 @@ void loop() {
                 segmentCrcAccumulator = EchoBleProtocol::CRC32_INITIAL_VALUE;
                 appendEncoded(opusWriter.begin(encodedFrame));
                 indicators.setRecording(true);
+                wakeWindow.segmentStarted(segmentStartMs);
 
                 // Encode the pre-buffer first (captures speech onset)
                 const uint8_t replayFrames = preBufferCount - 1;
@@ -586,6 +609,10 @@ void loop() {
 
     }
 
+    if (wakeWindow.heard(wakeDetected, millis())) {
+        Serial.println("[Wake] heard");
+    }
+
     const uint32_t frameUs = micros() - frameStartedUs;
     if (frameUs > frameUsMax) frameUsMax = frameUs;
     frameUsTotal += frameUs;
@@ -598,6 +625,7 @@ void loop() {
 
 void discardInProgressCapture() {
     indicators.setRecording(false);
+    wakeWindow.segmentEnded();
     state = STATE_IDLE;
     segmentPos = 0;
     energySum = 0;
@@ -643,6 +671,7 @@ void finalizeSegment() {
         preBufferCount = 0;
         preBufferWriteIdx = 0;
         state = STATE_IDLE;
+        wakeWindow.segmentEnded();
         return;
     }
 
@@ -660,7 +689,9 @@ void finalizeSegment() {
 
     const uint16_t avgEnergy =
         energyFrameCount > 0 ? static_cast<uint16_t>(energySum / energyFrameCount) : 0;
-    const uint32_t segmentId = nextSegmentId++;
+    const uint32_t segmentId = nextSegmentId++ |
+        (wakeWindow.segmentHeard() ? EchoBleProtocol::WAKE_SEGMENT_ID_FLAG : 0U);
+    wakeWindow.segmentEnded();
     const uint32_t segmentCrc = EchoBleProtocol::crc32Finalize(segmentCrcAccumulator);
 
     indicators.setBlinking(true);

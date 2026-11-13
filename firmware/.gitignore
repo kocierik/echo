@@ -6,3 +6,4 @@
 
 # The firmware release key (scripts/firmware-signing-key.sh): never committed
 signing/
+src/wake_model.h

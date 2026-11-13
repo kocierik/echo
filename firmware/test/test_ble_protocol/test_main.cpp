@@ -526,6 +526,27 @@ void test_ota_frames() {
     TEST_ASSERT_FALSE(decodeOtaData(chunk, OTA_DATA_HEADER_SIZE, offset, data, length));
 }
 
+void test_the_wake_flag_is_not_the_photo_flag() {
+    TEST_ASSERT_EQUAL_HEX32(0x40000000U, EchoBleProtocol::WAKE_SEGMENT_ID_FLAG);
+    TEST_ASSERT_EQUAL_HEX32(0, EchoBleProtocol::WAKE_SEGMENT_ID_FLAG & EchoBleProtocol::PHOTO_SEGMENT_ID_FLAG);
+}
+
+void test_a_flagged_id_travels_whole_in_every_frame() {
+    const uint32_t id = 7U | EchoBleProtocol::WAKE_SEGMENT_ID_FLAG;
+    uint8_t frame[EchoBleProtocol::SEGMENT_START_SIZE];
+    EchoBleProtocol::SegmentStart start = {id, EchoBleProtocol::PROTOCOL_VERSION, 10, 20, 1, 0};
+    TEST_ASSERT_EQUAL(EchoBleProtocol::SEGMENT_START_SIZE,
+                      EchoBleProtocol::encodeSegmentStart(start, frame, sizeof(frame)));
+    EchoBleProtocol::SegmentStart back = {};
+    TEST_ASSERT_TRUE(EchoBleProtocol::decodeSegmentStart(frame, sizeof(frame), back));
+    TEST_ASSERT_EQUAL_HEX32(id, back.segmentId);
+
+    const uint8_t uploadOk[] = {EchoBleProtocol::FRAME_UPLOAD_OK, 0x07, 0x00, 0x00, 0x40};
+    EchoBleProtocol::ControlFrame control = {};
+    TEST_ASSERT_TRUE(EchoBleProtocol::decodeControlFrame(uploadOk, sizeof(uploadOk), control));
+    TEST_ASSERT_EQUAL_HEX32(id, control.segmentId);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_mic_gain_frame_takes_1_to_8);
@@ -559,5 +580,7 @@ int main(int, char**) {
     RUN_TEST(test_photo_start_has_the_segment_start_layout_with_its_own_type);
     RUN_TEST(test_take_photo_and_photo_failed_frames);
     RUN_TEST(test_ota_frames);
+    RUN_TEST(test_the_wake_flag_is_not_the_photo_flag);
+    RUN_TEST(test_a_flagged_id_travels_whole_in_every_frame);
     return UNITY_END();
 }
