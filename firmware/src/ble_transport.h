@@ -93,6 +93,14 @@ public:
         _pendingPhotoFailure = reason;
     }
 
+    /** The wake phrase was just heard: told to a connected app, never later (stale
+     *  feedback is worse than none). */
+    void reportWakeHeard() {
+        if (!_connected) return;
+        _wakeHeardPending = true;
+        _wakeHeardAtMs = millis();
+    }
+
     /** Muted: stop sending a photo (the slot is emptied by the caller). */
     void cancelPhoto() {
         if (!_active || !_activeIsPhoto) return;
@@ -188,6 +196,13 @@ public:
         }
         // The update has the link to itself: audio and photos wait
         if (updating) return;
+        if (_wakeHeardPending && _connected && _state.isReady()) {
+            if (millis() - _wakeHeardAtMs > WAKE_HEARD_STALE_MS) {
+                _wakeHeardPending = false;
+            } else if (!notifyWakeHeard(deadlineUs)) {
+                return;
+            }
+        }
         if (_pendingPhotoFailure != 0 && _connected) {
             if (!notifyPhotoFailed(deadlineUs)) return;
         }
@@ -603,6 +618,16 @@ private:
         return true;
     }
 
+    bool notifyWakeHeard(uint32_t deadlineUs) {
+        if (_controlCharacteristic == nullptr) return false;
+        uint8_t frame[EchoBleProtocol::WAKE_HEARD_SIZE] = {};
+        EchoBleProtocol::encodeWakeHeard(frame, sizeof(frame));
+        if (!beforeBurstDeadline(deadlineUs)) return false;
+        if (!_controlCharacteristic->notify(frame, sizeof(frame))) return false;
+        _wakeHeardPending = false;
+        return true;
+    }
+
     bool notifyPowerState(uint32_t deadlineUs) {
         if (_controlCharacteristic == nullptr) return false;
         uint8_t frame[EchoBleProtocol::POWER_STATE_SIZE] = {};
@@ -701,6 +726,7 @@ private:
         _infoPending = false;
         _powerStatePending = false;
         _powerResendPending = false;
+        _wakeHeardPending = false;
         _active = false;
         _activeIsPhoto = false;  // a photo stays in its slot: sent again on reconnect
         lockOta();
@@ -886,6 +912,9 @@ private:
     uint8_t _pendingPowerReason = EchoBleProtocol::POWER_REASON_NONE;
     bool _powerStatePending = false;
     bool _powerResendPending = false;
+    static constexpr uint32_t WAKE_HEARD_STALE_MS = 1000;
+    bool _wakeHeardPending = false;
+    uint32_t _wakeHeardAtMs = 0;
     BondPolicy _bondPolicy;
     BleTransferState _state;
     BleTransportEventQueue _events;

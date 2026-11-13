@@ -54,6 +54,17 @@
 #ifndef WAKE_WORD_ENABLED
 #define WAKE_WORD_ENABLED 0
 #endif
+// When it is heard: the LED goes the other way for a moment, the motor buzzes, the app is told
+#define WAKE_FLASH_MS 150
+#define WAKE_HAPTIC_MS 60
+// Optional parts, -1 until soldered: an LED of its own, active high (suggested D3 / GPIO4),
+// which works with a microSD mounted; a vibration motor through a transistor (D4 / GPIO5)
+#ifndef FEEDBACK_LED_PIN
+#define FEEDBACK_LED_PIN -1
+#endif
+#ifndef HAPTIC_PIN
+#define HAPTIC_PIN -1
+#endif
 // The wake phrase counts only this far into a segment (wake_window.h): the server wants the
 // name among the first words
 #define WAKE_WINDOW_MS 4000

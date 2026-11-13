@@ -547,6 +547,15 @@ void test_a_flagged_id_travels_whole_in_every_frame() {
     TEST_ASSERT_EQUAL_HEX32(id, control.segmentId);
 }
 
+void test_wake_heard_is_one_byte() {
+    uint8_t frame[2] = {0, 0xEE};
+    TEST_ASSERT_EQUAL(1, EchoBleProtocol::encodeWakeHeard(frame, sizeof(frame)));
+    TEST_ASSERT_EQUAL_HEX8(0x25, frame[0]);
+    TEST_ASSERT_EQUAL_HEX8(0xEE, frame[1]);
+    TEST_ASSERT_EQUAL(0, EchoBleProtocol::encodeWakeHeard(frame, 0));
+    TEST_ASSERT_EQUAL(0, EchoBleProtocol::encodeWakeHeard(nullptr, 1));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_mic_gain_frame_takes_1_to_8);
@@ -582,5 +591,6 @@ int main(int, char**) {
     RUN_TEST(test_ota_frames);
     RUN_TEST(test_the_wake_flag_is_not_the_photo_flag);
     RUN_TEST(test_a_flagged_id_travels_whole_in_every_frame);
+    RUN_TEST(test_wake_heard_is_one_byte);
     return UNITY_END();
 }

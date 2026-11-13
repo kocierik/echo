@@ -298,8 +298,9 @@ void test_transport_gates_each_notification_at_the_deadline() {
     TEST_ASSERT_TRUE(source.find("notifyBufferStatus(const SegmentQueue& buffer, uint32_t deadlineUs)") !=
                      std::string::npos);
     TEST_ASSERT_EQUAL_UINT32(1, countOccurrences(source, "_audioCharacteristic->notify("));
-    // FORGET_BOND_OK, DEVICE_STATUS, PHOTO_FAILED, POWER_STATE, OTA_STATUS and DEVICE_INFO
-    TEST_ASSERT_EQUAL_UINT32(6, countOccurrences(source, "_controlCharacteristic->notify("));
+    // FORGET_BOND_OK, DEVICE_STATUS, PHOTO_FAILED, POWER_STATE, OTA_STATUS, DEVICE_INFO and
+    // WAKE_HEARD
+    TEST_ASSERT_EQUAL_UINT32(7, countOccurrences(source, "_controlCharacteristic->notify("));
     TEST_ASSERT_TRUE(source.find(
         "if (!beforeBurstDeadline(deadlineUs)) return false;\n"
         "        const bool ok = _audioCharacteristic->notify") != std::string::npos);

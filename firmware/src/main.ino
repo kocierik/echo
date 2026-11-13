@@ -611,6 +611,9 @@ void loop() {
 
     if (wakeWindow.heard(wakeDetected, millis())) {
         Serial.println("[Wake] heard");
+        indicators.wink(WAKE_FLASH_MS);
+        indicators.pulse(WAKE_HAPTIC_MS);
+        bleTransport.reportWakeHeard();
     }
 
     const uint32_t frameUs = micros() - frameStartedUs;

@@ -39,6 +39,9 @@ constexpr uint8_t FRAME_PHOTO_FAILED = 0x22; // v3, wearable -> app: [type, reas
 constexpr uint8_t FRAME_OTA_STATUS = 0x23;
 // wearable -> app, firmware 0.10.0 on: [type, state, reason]. Older apps ignore it
 constexpr uint8_t FRAME_POWER_STATE = 0x24;
+// wearable -> app, firmware 0.11.0 on: [type]. The wake phrase was just heard: the app may
+// play a tone in headphones. Older apps ignore it (no protocol bump)
+constexpr uint8_t FRAME_WAKE_HEARD = 0x25;
 // 3: photos (TAKE_PHOTO, PHOTO_START, PHOTO_FAILED, camera flag in DEVICE_STATUS)
 // 4: firmware updates over BLE (OTA_*), DEVICE_INFO sent after READY
 // 5: the microSD in DEVICE_STATUS (in use, size, free space, speech waiting on it)
@@ -93,6 +96,7 @@ constexpr size_t SET_MUTED_SIZE = 2;
 constexpr size_t SET_MIC_GAIN_SIZE = 2;
 constexpr size_t POWER_OFF_SIZE = 2;
 constexpr size_t POWER_STATE_SIZE = 3;
+constexpr size_t WAKE_HEARD_SIZE = 1;
 constexpr size_t FORGET_BOND_SIZE = 1;
 constexpr size_t FORGET_BOND_OK_SIZE = 1;
 constexpr size_t TAKE_PHOTO_SIZE = 1;
@@ -409,6 +413,12 @@ inline size_t encodePowerState(uint8_t state, uint8_t reason, uint8_t* output, s
     output[1] = state;
     output[2] = reason;
     return POWER_STATE_SIZE;
+}
+
+inline size_t encodeWakeHeard(uint8_t* output, size_t capacity) {
+    if (output == nullptr || capacity < WAKE_HEARD_SIZE) return 0;
+    output[0] = FRAME_WAKE_HEARD;
+    return WAKE_HEARD_SIZE;
 }
 
 inline size_t encodeOtaStatus(uint8_t state, uint8_t error, uint32_t received,
