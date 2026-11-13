@@ -42,6 +42,7 @@
 #include "ota_health.h"
 #include "power_off_policy.h"
 #include "wake_gate.h"
+#include "spike_wake.h"
 
 // ============================================================
 // Global instances
@@ -432,6 +433,7 @@ void setup() {
     if (!muteState.isMuted() && !audio.begin()) fatal("[FATAL] Audio capture init failed");
 
     if (!opusCodec.begin()) fatal("[FATAL] Opus encoder init failed");
+    if (!spike::begin()) Serial.println("[Spike] wake word detection not started");
     vad.reset();
 
     indicators.setBlinking(false);
@@ -526,6 +528,7 @@ void loop() {
     if (samplesRead <= 0) return;
     const uint32_t frameStartedUs = micros();
     amplify(pcmBuffer, samplesRead, micGain);
+    spike::feed(pcmBuffer, samplesRead);
 
     // Run VAD on the frame
     bool isSpeech = vad.process(pcmBuffer, samplesRead);
