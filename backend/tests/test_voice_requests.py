@@ -1405,3 +1405,23 @@ async def test_worker_save_this_with_the_camera_marks_the_photo_to_save(worker):
     assert worker.agent_calls == []
     last = _voice_session(worker).messages[-1]
     assert last["role"] == "user" and "photo_id" in last and last["save"] is True
+
+
+def test_the_timing_line_says_whether_the_pendant_heard():
+    from types import SimpleNamespace
+
+    from app.workers.voice_requests import _timing
+
+    now = datetime.now(timezone.utc)
+
+    def segment(heard: bool):
+        return SimpleNamespace(
+            recorded_at=now - timedelta(seconds=10),
+            duration_ms=2000,
+            received_at=now - timedelta(seconds=6),
+            transcription=SimpleNamespace(created_at=now - timedelta(seconds=4)),
+            wake_heard=heard,
+        )
+
+    assert "pendant heard the name: yes" in _timing(segment(True))
+    assert "pendant heard the name: no" in _timing(segment(False))

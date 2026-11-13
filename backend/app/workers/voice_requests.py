@@ -329,7 +329,8 @@ def _timing(segment) -> str:
         return (
             f": {(_utcnow() - spoken).total_seconds():.1f} s after the sentence ended"
             f" (on the server after {(segment.received_at - spoken).total_seconds():.1f} s,"
-            f" transcribed after {(transcribed - spoken).total_seconds():.1f} s)"
+            f" transcribed after {(transcribed - spoken).total_seconds():.1f} s,"
+            f" pendant heard the name: {'yes' if getattr(segment, 'wake_heard', False) else 'no'})"
         )
     except Exception:
         return ""

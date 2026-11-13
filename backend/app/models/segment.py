@@ -2,7 +2,17 @@ import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    false,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
@@ -27,6 +37,10 @@ class Segment(UUIDPrimaryKey, Base):
         comment="SHA-256 of audio content + recorded_at for idempotency"
     )
     audio_energy: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The pendant heard its wake phrase in this segment's opening (firmware 0.11.0 on)
+    wake_heard: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
     speaker: Mapped[str | None] = mapped_column(
         String(10), nullable=True, default="unknown",
         comment="self | other | unknown"

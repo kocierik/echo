@@ -30,6 +30,7 @@ CREATE TABLE segments (
     audio_hash VARCHAR(64),
     -- Migration 003: speaker detection
     audio_energy INTEGER,
+    wake_heard BOOLEAN NOT NULL DEFAULT false,
     speaker VARCHAR(10) DEFAULT 'unknown'
 );
 

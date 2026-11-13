@@ -256,3 +256,26 @@ async def test_a_segment_from_a_clock_ahead_is_live(client: AsyncClient, auth_he
     segment_id = await _ingest_at(client, auth_headers, now + timedelta(minutes=2))
 
     assert segment_id in _queued("queue:stt:live")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("header", "expected"), [("1", True), ("0", False), (None, False)])
+async def test_ingest_records_that_the_pendant_heard_its_name(
+    client: AsyncClient, auth_headers, db_session, header, expected
+):
+    headers = {
+        **auth_headers,
+        "X-Recorded-At": datetime.now(timezone.utc).isoformat(),
+        "X-Duration-Ms": "3000",
+    }
+    if header is not None:
+        headers["X-Wake-Heard"] = header
+    response = await client.post(
+        "/api/segments",
+        headers=headers,
+        files={"audio": ("segment.adpcm", uuid.uuid4().bytes * 64, "application/octet-stream")},
+    )
+    assert response.status_code == 201
+
+    segment = await db_session.get(Segment, uuid.UUID(response.json()["id"]))
+    assert segment.wake_heard is expected
