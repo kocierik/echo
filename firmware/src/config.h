@@ -49,6 +49,10 @@
 // This captures the speech onset that would otherwise be lost
 #define PRE_BUFFER_FRAMES 16           // ~500ms of audio (16 × 32ms)
 
+// The wake phrase counts only this far into a segment (wake_window.h): the server wants the
+// name among the first words
+#define WAKE_WINDOW_MS 4000
+
 // ============================================================
 // Encoding
 // ============================================================
