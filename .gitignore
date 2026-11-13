@@ -92,3 +92,4 @@ backend/evals/data/
 # be root's, and the backup service (uid 1000) could not write in it
 backups/*
 !backups/.gitkeep
+backend/.wake_eval/
