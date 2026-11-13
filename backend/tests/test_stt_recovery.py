@@ -75,3 +75,25 @@ async def test_recovery_waits_until_existing_queue_is_empty(db_session, tmp_path
 
     assert recovered == 0
     assert redis.lists[stt_worker.STT_QUEUE] == ["already-queued"]
+
+
+async def test_recovery_waits_while_live_speech_is_queued(db_session, tmp_path):
+    now = datetime.now(timezone.utc)
+    segment = Segment(
+        id=uuid.uuid4(),
+        user_id=TEST_USER_ID,
+        received_at=now,
+        recorded_at=now,
+        duration_ms=1000,
+        audio_path=str(tmp_path / "pending.adpcm"),
+        transcription_status="pending",
+    )
+    db_session.add(segment)
+    await db_session.commit()
+    redis = InMemoryRedis()
+    await redis.lpush(stt_worker.LIVE_STT_QUEUE, str(segment.id))
+
+    recovered = await stt_worker.recover_stt_queue(redis, session_factory=test_session, now=now)
+
+    assert recovered == 0
+    assert stt_worker.STT_QUEUE not in redis.lists

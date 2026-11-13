@@ -206,4 +206,13 @@ async def test_live_speech_comes_first(monkeypatch):
 
     assert claims == [(segment_id, False)]
     assert ("queue:voice", str(segment_id)) in redis.pushes
-    assert redis.popped_from[0] == ["queue:stt", "queue:stt:deferred"]
+    assert redis.popped_from[0] == ["queue:stt:live", "queue:stt", "queue:stt:deferred"]
+
+
+async def test_speech_from_the_live_queue_is_not_late(monkeypatch):
+    segment_id, claims, redis = await _run(
+        monkeypatch, b"queue:stt:live", "Echo, segnami il dentista"
+    )
+
+    assert claims == [(segment_id, False)]
+    assert ("queue:voice", str(segment_id)) in redis.pushes

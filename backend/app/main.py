@@ -196,7 +196,9 @@ async def health(request: Request):
         await redis_client.ping()
 
         # Queue depths — useful to detect worker lag
-        stt_queue_len = await redis_client.llen("queue:stt")
+        stt_queue_len = await redis_client.llen("queue:stt") + await redis_client.llen(
+            "queue:stt:live"
+        )
         analysis_queue_len = await redis_client.llen("queue:analysis")
         dead_letter_len = await redis_client.llen("queue:dead-letter")
 

@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile, status
@@ -31,6 +31,8 @@ from app.services.transcription_editor import (
 router = APIRouter(prefix="/segments", tags=["segments"])
 logger = logging.getLogger(__name__)
 MAX_AUDIO_BYTES = 5 * 1024 * 1024
+# Speech that ended this recently is transcribed before a backlog (queue:stt:live)
+LIVE_WINDOW = timedelta(seconds=30)
 
 
 async def _read_audio_limited(audio: UploadFile) -> bytes:
@@ -46,10 +48,20 @@ async def _read_audio_limited(audio: UploadFile) -> bytes:
     return audio_data
 
 
-async def _queue_stt_segment(request: Request, segment_id: uuid.UUID) -> None:
+def _is_live(recorded_at: datetime, duration_ms: int) -> bool:
+    """Just spoken (or from a clock ahead of the server's), not a backlog uploaded late."""
+    if recorded_at.tzinfo is None:
+        recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+    ended = recorded_at + timedelta(milliseconds=duration_ms)
+    return ended >= datetime.now(timezone.utc) - LIVE_WINDOW
+
+
+async def _queue_stt_segment(
+    request: Request, segment_id: uuid.UUID, *, live: bool = False
+) -> None:
     redis_client = request.app.state.redis
     await remember_correlation(redis_client, "segment", segment_id)
-    await redis_client.lpush("queue:stt", str(segment_id))
+    await redis_client.lpush("queue:stt:live" if live else "queue:stt", str(segment_id))
 
 
 class SegmentResponse(BaseModel):
@@ -211,7 +223,9 @@ async def ingest_segment(
     existing_segment = existing.scalar_one_or_none()
     if existing_segment is not None:
         if existing_segment.transcription_status == "pending":
-            await _queue_stt_segment(request, existing_segment.id)
+            await _queue_stt_segment(
+                request, existing_segment.id, live=_is_live(recorded_at, duration_ms)
+            )
         # Return the existing segment — no duplicate processing
         return SegmentResponse(
             id=existing_segment.id,
@@ -246,7 +260,7 @@ async def ingest_segment(
     await db.commit()
 
     # Queue for STT processing via Redis (shared pool)
-    await _queue_stt_segment(request, segment_id)
+    await _queue_stt_segment(request, segment_id, live=_is_live(recorded_at, duration_ms))
 
     return SegmentResponse(
         id=segment.id,

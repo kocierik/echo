@@ -1,10 +1,12 @@
 """STT worker: uploaded segments become transcriptions with a speaker.
 
-`queue:stt` holds segment ids. Each segment's ADPCM audio is decoded and transcribed with
-the user's known names and topics as context; the voice fingerprint is computed meanwhile
-and decides who spoke (the known voices, else the audio energy). Meaningful text goes on to
-`queue:analysis`, and text that addresses Echo by name to `queue:voice`. Live speech whose
-voice is surely a named person may brief the phone on them (services/person_brief.py).
+`queue:stt` holds segment ids, and `queue:stt:live` those of speech that just ended, read
+first so a request is not transcribed after a backlog the phone uploads. Each segment's
+ADPCM audio is decoded and transcribed with the user's known names and topics as context;
+the voice fingerprint is computed meanwhile and decides who spoke (the known voices, else
+the audio energy). Meaningful text goes on to `queue:analysis`, and text that addresses
+Echo by name to `queue:voice`. Live speech whose voice is surely a named person may brief
+the phone on them (services/person_brief.py).
 
 Past the plan's monthly budget a segment is marked `deferred` instead (services/plans.py):
 its audio is kept and it waits. Deferred segments come back on `queue:stt:deferred`
@@ -51,6 +53,8 @@ from app.workers.voice_requests import VOICE_QUEUE
 logger = logging.getLogger(__name__)
 
 STT_QUEUE = "queue:stt"
+# Speech that just ended (routers/segments.py): before the backlog a phone uploads late
+LIVE_STT_QUEUE = "queue:stt:live"
 # Deferred speech the budget allows again, oldest first
 DEFERRED_STT_QUEUE = "queue:stt:deferred"
 ANALYSIS_QUEUE = "queue:analysis"
@@ -92,7 +96,11 @@ async def recover_stt_queue(
 
     # Existing queue entries are consumed first; once empty, the remaining pending
     # records are restored. Claim-status checks make duplicate IDs safe.
-    if not pending_ids or await redis_client.llen(STT_QUEUE):
+    if (
+        not pending_ids
+        or await redis_client.llen(STT_QUEUE)
+        or await redis_client.llen(LIVE_STT_QUEUE)
+    ):
         return 0
 
     await redis_client.lpush(STT_QUEUE, *(str(segment_id) for segment_id in pending_ids))
@@ -209,7 +217,10 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
     while not shutdown_event.is_set():
         # Blocking pop from Redis queue (short timeout to check shutdown flag)
         # Live speech first: the deferred queue only when nothing new is waiting
-        result = await redis_client.brpop([STT_QUEUE, DEFERRED_STT_QUEUE], timeout=2)
+        # (BRPOP takes from the first non-empty list, the sentence just said first)
+        result = await redis_client.brpop(
+            [LIVE_STT_QUEUE, STT_QUEUE, DEFERRED_STT_QUEUE], timeout=2
+        )
         if result is None:
             continue
 

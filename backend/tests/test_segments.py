@@ -210,3 +210,49 @@ async def test_recent_segments_require_authentication(client: AsyncClient):
     response = await client.get("/api/segments/recent")
 
     assert response.status_code in (401, 403)
+
+
+async def _ingest_at(client, auth_headers, recorded_at: datetime, duration_ms: int = 4000):
+    response = await client.post(
+        "/api/segments",
+        headers={
+            **auth_headers,
+            "X-Recorded-At": recorded_at.isoformat(),
+            "X-Duration-Ms": str(duration_ms),
+        },
+        files={"audio": ("segment.adpcm", uuid.uuid4().bytes * 64, "application/octet-stream")},
+    )
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def _queued(queue: str) -> list:
+    from app.main import app
+
+    return [v.decode() if isinstance(v, bytes) else v for v in app.state.redis.lists.get(queue, [])]
+
+
+@pytest.mark.asyncio
+async def test_a_segment_just_spoken_is_queued_as_live(client: AsyncClient, auth_headers):
+    now = datetime.now(timezone.utc)
+    segment_id = await _ingest_at(client, auth_headers, now - timedelta(seconds=5))
+
+    assert segment_id in _queued("queue:stt:live")
+    assert segment_id not in _queued("queue:stt")
+
+
+@pytest.mark.asyncio
+async def test_a_backlog_segment_waits_its_turn(client: AsyncClient, auth_headers):
+    now = datetime.now(timezone.utc)
+    segment_id = await _ingest_at(client, auth_headers, now - timedelta(minutes=10))
+
+    assert segment_id in _queued("queue:stt")
+    assert segment_id not in _queued("queue:stt:live")
+
+
+@pytest.mark.asyncio
+async def test_a_segment_from_a_clock_ahead_is_live(client: AsyncClient, auth_headers):
+    now = datetime.now(timezone.utc)
+    segment_id = await _ingest_at(client, auth_headers, now + timedelta(minutes=2))
+
+    assert segment_id in _queued("queue:stt:live")
