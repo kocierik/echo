@@ -111,6 +111,9 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
   /// The wearable could not take a photo (PHOTO_FAILED reason).
   Future<void> Function(String reason)? onPhotoFailed;
 
+  /// The pendant just heard its wake phrase (firmware 0.11.0 on).
+  void Function()? onWakeHeard;
+
   @override
   bool get connected => _phase == DeviceBlePhase.ready;
 
@@ -508,6 +511,10 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
 
   void _onControlPacket(List<int> value) {
     if (value.isEmpty) return;
+    if (DeviceProtocol.isWakeHeard(value)) {
+      onWakeHeard?.call();
+      return;
+    }
     if (DeviceProtocol.isForgetBondOk(value)) {
       final acknowledgement = _forgetAck;
       if (acknowledgement != null && !acknowledgement.isCompleted) {
@@ -574,6 +581,7 @@ class BleService implements DeviceBlePort, PhotoDevice, FirmwareLink {
         durationMs: segment.durationMs,
         silenceBeforeMs: segment.silenceBeforeMs,
         audioEnergy: segment.averageEnergy,
+        wakeHeard: segment.wakeHeard,
       );
       if (!uploaded) _recordUploadFailure();
       return uploaded;

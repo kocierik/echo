@@ -7,6 +7,31 @@ void main() {
   const segmentId = 0x12345678;
   final recordedAt = DateTime.utc(2026, 8, 2, 12, 30, 45);
 
+  group('BleCompletedSegment.wakeHeard', () {
+    BleCompletedSegment segment(int id, {bool isPhoto = false}) => BleCompletedSegment(
+          id: id,
+          adpcmBytes: const [1],
+          recordedAt: recordedAt,
+          durationMs: 1000,
+          silenceBeforeMs: 0,
+          averageEnergy: 0,
+          isPhoto: isPhoto,
+        );
+
+    test('an audio segment whose id carries the wake flag heard the phrase', () {
+      expect(segment(0x40000007).wakeHeard, isTrue);
+      expect(segment(0x40000007).id, 0x40000007);
+    });
+
+    test('a plain id did not', () {
+      expect(segment(7).wakeHeard, isFalse);
+    });
+
+    test('a photo never did, whatever its id', () {
+      expect(segment(0xC0000001, isPhoto: true).wakeHeard, isFalse);
+    });
+  });
+
   group('BlePacketAssembler', () {
     test('uses the firmware CRC32 polynomial and final XOR', () {
       expect(bleCrc32('123456789'.codeUnits), 0xcbf43926);

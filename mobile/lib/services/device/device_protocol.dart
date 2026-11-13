@@ -91,6 +91,8 @@ abstract final class DeviceProtocol {
   static const String powerOffFirmware = '0.10.0';
   static const int _framePowerOff = 0x1C;
   static const int framePowerState = 0x24;
+  /// Firmware 0.11.0 on: the pendant just heard its wake phrase.
+  static const int frameWakeHeard = 0x25;
   static const int _frameForgetBond = 0x16;
   static const int _frameForgetBondOk = 0x17;
   static const int _frameTakePhoto = 0x18;
@@ -187,6 +189,10 @@ abstract final class DeviceProtocol {
   static Uint8List powerOff() => Uint8List.fromList([_framePowerOff, 1]);
 
   static Uint8List cancelPowerOff() => Uint8List.fromList([_framePowerOff, 0]);
+
+  /// WAKE_HEARD: [type] alone.
+  static bool isWakeHeard(List<int> bytes) =>
+      bytes.length == 1 && bytes.first == frameWakeHeard;
 
   /// POWER_STATE, or null for any other frame.
   static DevicePowerState? parsePowerState(List<int> bytes) {

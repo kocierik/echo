@@ -69,31 +69,47 @@ final class NaturalVoice implements AnswerVoice {
   }
 }
 
+bool _sessionConfigured = false;
+
+/// Echo's sound lowers other sound, never pauses it.
+Future<void> _configureSession() async {
+  if (_sessionConfigured) return;
+  final session = await AudioSession.instance;
+  await session.configure(AudioSessionConfiguration(
+    avAudioSessionCategory: AVAudioSessionCategory.playback,
+    avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.duckOthers |
+        AVAudioSessionCategoryOptions.interruptSpokenAudioAndMixWithOthers,
+    avAudioSessionMode: AVAudioSessionMode.voicePrompt,
+    androidAudioAttributes: const AndroidAudioAttributes(
+      contentType: AndroidAudioContentType.speech,
+      usage: AndroidAudioUsage.assistant,
+    ),
+    androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
+  ));
+  _sessionConfigured = true;
+}
+
+/// The tone for a heard wake phrase (assets/sounds/heard.wav), mixed with other sound.
+final class JustAudioEarcon implements Earcon {
+  AudioPlayer? _player;
+
+  @override
+  Future<void> play() async {
+    await _configureSession();
+    final player = _player ??= AudioPlayer();
+    await player.stop();
+    await player.setAsset('assets/sounds/heard.wav');
+    await player.play();
+  }
+}
+
 /// just_audio, with other sound lowered (not paused) while it speaks.
 final class JustAudioPlayback implements AudioPlayback {
   AudioPlayer? _player;
-  bool _configured = false;
-
-  Future<void> _configure() async {
-    if (_configured) return;
-    final session = await AudioSession.instance;
-    await session.configure(AudioSessionConfiguration(
-      avAudioSessionCategory: AVAudioSessionCategory.playback,
-      avAudioSessionCategoryOptions: AVAudioSessionCategoryOptions.duckOthers |
-          AVAudioSessionCategoryOptions.interruptSpokenAudioAndMixWithOthers,
-      avAudioSessionMode: AVAudioSessionMode.voicePrompt,
-      androidAudioAttributes: const AndroidAudioAttributes(
-        contentType: AndroidAudioContentType.speech,
-        usage: AndroidAudioUsage.assistant,
-      ),
-      androidAudioFocusGainType: AndroidAudioFocusGainType.gainTransientMayDuck,
-    ));
-    _configured = true;
-  }
 
   @override
   Future<void> play(Uint8List mp3) async {
-    await _configure();
+    await _configureSession();
     final file = File('${(await getTemporaryDirectory()).path}/echo-answer.mp3');
     await file.writeAsBytes(mp3, flush: true);
     final player = _player ??= AudioPlayer();

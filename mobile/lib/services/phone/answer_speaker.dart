@@ -24,6 +24,11 @@ abstract interface class AudioOutput {
   Future<bool> headphones();
 }
 
+/// A short tone: the pendant heard its wake phrase.
+abstract interface class Earcon {
+  Future<void> play();
+}
+
 /// Echo's microphone, muted while the phone speaks on its speaker.
 abstract interface class EchoMic {
   /// Connected and recording.
@@ -45,7 +50,9 @@ final class AnswerSpeaker {
     required String? Function() language,
     EchoMic? mic,
     ValueListenable<bool>? quiet,
-  })  : _voice = voice,
+    Earcon? earcon,
+  })  : _earcon = earcon,
+        _voice = voice,
         _output = output,
         _setting = setting,
         _preferences = preferences,
@@ -57,6 +64,7 @@ final class AnswerSpeaker {
   static const mutedKey = 'spoken_answers_muted_echo';
 
   final AnswerVoice _voice;
+  final Earcon? _earcon;
   final AudioOutput _output;
   final ValueListenable<SpokenAnswers> _setting;
   final SharedPreferences _preferences;
@@ -91,6 +99,20 @@ final class AnswerSpeaker {
         final language = _language() ?? guessLanguage(answer);
         await _speak(spokenText(answer, language: language), language, generation);
       });
+
+  /// The pendant heard its wake phrase: a tone in headphones when answers are spoken
+  /// there. Never on the phone's speaker, where Echo would record it inside the request;
+  /// never while the user dictates. Echo is not muted for it. Never throws.
+  Future<void> heard() async {
+    final earcon = _earcon;
+    if (earcon == null || _setting.value == SpokenAnswers.off || (_quiet?.value ?? false)) {
+      return;
+    }
+    if (!await _headphones()) return;
+    try {
+      await earcon.play();
+    } catch (_) {}
+  }
 
   /// "Try it": a sample sentence, whatever the setting; once, however many taps.
   Future<void> sample() {

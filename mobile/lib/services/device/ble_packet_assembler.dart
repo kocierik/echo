@@ -94,6 +94,12 @@ final class BleCompletedSegment {
 
   /// A photo from the wearable camera (recordedAt is when it was taken).
   final bool isPhoto;
+
+  /// Firmware 0.11.0 on: id bit 30 marks audio whose opening held the wake phrase.
+  static const wakeFlag = 0x40000000;
+
+  /// The pendant heard its wake phrase in this segment's opening.
+  bool get wakeHeard => !isPhoto && (id & wakeFlag) != 0;
   final DateTime recordedAt;
   final int durationMs;
   final int silenceBeforeMs;

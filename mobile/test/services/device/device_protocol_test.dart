@@ -5,6 +5,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('DeviceProtocol', () {
+    test('recognises WAKE_HEARD and nothing else', () {
+      expect(DeviceProtocol.isWakeHeard([0x25]), isTrue);
+      expect(DeviceProtocol.isWakeHeard([0x25, 0]), isFalse);
+      expect(DeviceProtocol.isWakeHeard([0x24, 0, 0]), isFalse);
+      expect(DeviceProtocol.isWakeHeard([]), isFalse);
+    });
+
     test('parses the exact device status v2 vector', () {
       final status = DeviceProtocol.parseStatus(Uint8List.fromList([
         0x20, 0x02, 0x03, 0xff, 0x03, 0x00,

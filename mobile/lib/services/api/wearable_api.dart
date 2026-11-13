@@ -13,6 +13,7 @@ mixin WearableEndpoints on ApiClient implements FirmwareApi {
     required int durationMs,
     int? silenceBeforeMs,
     int? audioEnergy,
+    bool wakeHeard = false,
   }) async {
     final request = await multipart('POST', '/api/segments');
     debugPrint(
@@ -27,6 +28,7 @@ mixin WearableEndpoints on ApiClient implements FirmwareApi {
     if (audioEnergy != null) {
       request.headers['X-Audio-Energy'] = audioEnergy.toString();
     }
+    if (wakeHeard) request.headers['X-Wake-Heard'] = '1';
     request.files.add(
       http.MultipartFile.fromBytes('audio', audioData, filename: 'segment.adpcm'),
     );

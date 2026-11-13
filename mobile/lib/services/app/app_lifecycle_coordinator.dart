@@ -291,7 +291,10 @@ final class AppLifecycleCoordinator {
       language: () => preferences.getString(SpokenLanguageStore.key),
       mic: DeviceEchoMic(deviceController),
       quiet: appController.askDictation,
+      earcon: JustAudioEarcon(),
     );
+    // The pendant heard its wake phrase: a tone in headphones, before the answer
+    bleService.onWakeHeard = () => unawaited(answerSpeaker.heard());
     // Echo found muted (often on reconnecting) may have been left so by an answer
     final speakerSubscription = deviceController.stateStream.listen(
       (status) => unawaited(answerSpeaker.deviceSeen(status.connectionState)),

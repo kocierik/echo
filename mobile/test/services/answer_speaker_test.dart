@@ -56,6 +56,17 @@ final class _Mic implements EchoMic {
   }
 }
 
+final class _Earcon implements Earcon {
+  int plays = 0;
+  bool fail = false;
+
+  @override
+  Future<void> play() async {
+    if (fail) throw StateError('no player');
+    plays++;
+  }
+}
+
 void main() {
   late _Voice voice;
   late _Output output;
@@ -85,6 +96,63 @@ void main() {
         mic: mic,
         quiet: dictating,
       );
+
+  group('heard: a tone when the pendant hears its phrase', () {
+    late _Earcon earcon;
+    AnswerSpeaker withEarcon() => AnswerSpeaker(
+          voice: voice,
+          output: output,
+          setting: setting,
+          preferences: preferences,
+          language: () => language,
+          mic: mic,
+          quiet: dictating,
+          earcon: earcon,
+        );
+
+    setUp(() => earcon = _Earcon());
+
+    test('plays in headphones with answers spoken there or always', () async {
+      output.on = true;
+      setting.value = SpokenAnswers.headphones;
+      await withEarcon().heard();
+      setting.value = SpokenAnswers.always;
+      await withEarcon().heard();
+
+      expect(earcon.plays, 2);
+      expect(voice.log, isEmpty);  // Echo is not muted for a tone
+    });
+
+    test('never on the phone speaker: Echo would record it inside the request', () async {
+      output.on = false;
+      await withEarcon().heard();
+
+      expect(earcon.plays, 0);
+    });
+
+    test('nothing with spoken answers off', () async {
+      output.on = true;
+      setting.value = SpokenAnswers.off;
+      await withEarcon().heard();
+
+      expect(earcon.plays, 0);
+    });
+
+    test('nothing while the user dictates', () async {
+      output.on = true;
+      dictating.value = true;
+      await withEarcon().heard();
+
+      expect(earcon.plays, 0);
+    });
+
+    test('a failing player is not an error', () async {
+      output.on = true;
+      earcon.fail = true;
+
+      await expectLater(withEarcon().heard(), completes);
+    });
+  });
 
   test('off: nothing is spoken', () async {
     setting.value = SpokenAnswers.off;
