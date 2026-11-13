@@ -287,18 +287,20 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                     speaker = await classify_segment(db, segment.user_id, segment.audio_energy)
                 segment.speaker = speaker
 
+                # Prefix transcription with speaker tag
+                spoken = cleaned_text
+                cleaned_text = f"{speaker_prefix(speaker)}{cleaned_text}"
+
                 # Several voices in the segment: who said what, at once. Best effort: the
-                # conversation is read whole again when it closes
+                # conversation is read whole again when it closes. Not for a request to
+                # Echo: one voice, and its answer would wait for every voice's fingerprint
                 turns = None
                 words = getattr(stt_result, "words", None) or []
-                if cleaned_text and words:
+                if spoken and words and find_wake(cleaned_text) is None:
                     try:
                         turns = await segment_turns(db, segment, words, pcm)
                     except Exception:
                         logger.warning("No turns for segment %s", segment_id, exc_info=True)
-
-                # Prefix transcription with speaker tag
-                cleaned_text = f"{speaker_prefix(speaker)}{cleaned_text}"
 
                 # Save transcription
                 transcription = Transcription(

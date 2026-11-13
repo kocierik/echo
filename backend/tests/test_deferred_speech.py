@@ -135,7 +135,7 @@ async def test_live_queue_duplicates_do_not_reclaim_an_active_or_completed_segme
     assert actual_status == status
 
 
-async def _run(monkeypatch, queue: bytes, text: str):
+async def _run(monkeypatch, queue: bytes, text: str, words=None, turns_calls=None):
     segment = SimpleNamespace(
         id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=10, speaker=None,
         transcription_status="processing",
@@ -164,7 +164,7 @@ async def _run(monkeypatch, queue: bytes, text: str):
         return STTContext(prompt="", keyterms=[])
 
     async def retry(func, *args, **kwargs):
-        return SimpleNamespace(text=text, language="it", confidence=0.9)
+        return SimpleNamespace(text=text, language="it", confidence=0.9, words=words or [])
 
     async def classify(_db, _user_id, _energy):
         return "self"
@@ -183,6 +183,13 @@ async def _run(monkeypatch, queue: bytes, text: str):
     monkeypatch.setattr(stt_worker, "retry_with_backoff", retry)
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
     monkeypatch.setattr(stt_worker, "account_languages", language)
+
+    async def turns(_db, _segment, _words, _pcm):
+        turns_calls.append(_segment.id)
+        return None
+
+    if turns_calls is not None:
+        monkeypatch.setattr(stt_worker, "segment_turns", turns)
 
     shutdown = asyncio.Event()
     redis = _Redis([(queue, str(segment.id).encode())])
@@ -216,3 +223,26 @@ async def test_speech_from_the_live_queue_is_not_late(monkeypatch):
 
     assert claims == [(segment_id, False)]
     assert ("queue:voice", str(segment_id)) in redis.pushes
+
+
+_WORDS = [SimpleNamespace(word="ciao", start=0.0, end=0.4, speaker=0)]
+
+
+async def test_a_request_to_echo_is_not_split_into_turns(monkeypatch):
+    calls = []
+    segment_id, _, redis = await _run(
+        monkeypatch, b"queue:stt:live", "Ehi Echo, che tempo fa domani",
+        words=_WORDS, turns_calls=calls,
+    )
+
+    assert calls == []
+    assert ("queue:voice", str(segment_id)) in redis.pushes
+
+
+async def test_other_speech_is_still_split_into_turns(monkeypatch):
+    calls = []
+    segment_id, _, _ = await _run(
+        monkeypatch, b"queue:stt", "andiamo a casa domani", words=_WORDS, turns_calls=calls
+    )
+
+    assert calls == [segment_id]
