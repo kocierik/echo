@@ -1,5 +1,7 @@
 # ADPCM encoding for audio transmission
 
+> Superseded by [0011](0011-opus-audio-encoding.md): Opus from firmware 0.9.
+
 Audio captured by the Wearable's microphone is encoded in IMA-ADPCM before transmission and buffering. This provides 4:1 compression over raw PCM at negligible CPU cost on the ESP32-S3, resulting in ~8KB/s at 16kHz/16bit mono.
 
 ## Considered Options

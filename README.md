@@ -77,7 +77,7 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
 ## Architecture
 
 ```
-┌──────────────┐  BLE (ADPCM frames,  ┌──────────────┐  HTTPS        ┌──────────────────────────────┐
+┌──────────────┐  BLE (Opus frames,   ┌──────────────┐  HTTPS        ┌──────────────────────────────┐
 │   Wearable   │  ACK windows, CRC)   │  Mobile app  │ ────────────▶ │        FastAPI (api)         │
 │  ESP32-S3    │ ───────────────────▶ │  (Flutter)   │               │ segments · query · actions   │
 │ VAD + PSRAM  │ ◀── UPLOAD_OK, mute, │ relay + UI   │ ◀──────────── │ conversations · entities …   │
@@ -199,7 +199,7 @@ curl -X POST http://localhost:8000/api/segments \
   -H "X-API-Key: my-secret-key" \
   -H "X-Recorded-At: 2026-07-19T10:30:00Z" \
   -H "X-Duration-Ms: 5000" \
-  -F "audio=@segment.adpcm"
+  -F "audio=@segment.opus"
 ```
 
 ### 6. Connect your apps (optional)
@@ -325,10 +325,15 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   `GET /api/auth/devices` with `scope: "read"` (phones and scripts are `"full"`), revoked the same way.
 - `POST /api/auth/logout` — revokes the key that sent it. `GET /api/auth/devices` — the phones signed
   in and the other keys; `DELETE /api/auth/devices/{id}` — revoke one.
+- `POST /api/auth/me/delete` (`{password}`) — deletes the account and everything Echo keeps of it
+  (every row with its user id, the audio on disk, its Redis keys; WhatsApp and the connected apps
+  are unlinked, best effort). 403 for a wrong password, limited like signing in. The daily backups
+  keep it until they rotate (14 days). In the app: Profile → More → About → Delete account.
 
 ### Segments
-- `POST /api/segments` — ingest an ADPCM Segment (multipart `audio`, max 5 MB). Headers:
-  `X-Recorded-At` (ISO 8601), `X-Duration-Ms`, optional `X-Silence-Before-Ms`, `X-Audio-Energy`.
+- `POST /api/segments` — ingest a Segment, Opus from firmware 0.9 or ADPCM before it (multipart
+  `audio`, max 5 MB). Headers: `X-Recorded-At` (ISO 8601), `X-Duration-Ms`, optional
+  `X-Silence-Before-Ms`, `X-Audio-Energy`, `X-Wake-Heard` (1: the pendant heard its wake phrase).
   Idempotent on audio content + `recorded_at`.
 - `GET /api/segments/recent?limit=50` — latest Segments, including pending transcriptions.
 - `PATCH /api/segments/{id}/transcription` — correct text and speaker (`self`/`other`/`unknown`);
@@ -524,7 +529,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 See [docs/adr/](docs/adr/) for architectural decision records:
 
 - [0001 — Wi-Fi direct with PSRAM buffer](docs/adr/0001-wifi-direct-with-psram-buffer.md) (superseded by 0006)
-- [0002 — ADPCM audio encoding](docs/adr/0002-adpcm-audio-encoding.md)
+- [0002 — ADPCM audio encoding](docs/adr/0002-adpcm-audio-encoding.md) (superseded by 0011)
 - [0003 — Store-then-analyze pipeline](docs/adr/0003-store-then-analyze-pipeline.md)
 - [0004 — Provider abstraction layer](docs/adr/0004-provider-abstraction-layer.md)
 - [0005 — Structured entities + vector search](docs/adr/0005-structured-entities-plus-vector-search.md)
@@ -533,6 +538,7 @@ See [docs/adr/](docs/adr/) for architectural decision records:
 - [0008 — Voice fingerprints](docs/adr/0008-voice-fingerprints.md)
 - [0009 — Firmware updates over BLE](docs/adr/0009-firmware-updates-over-ble.md)
 - [0010 — iPhone Reminders and Calendar](docs/adr/0010-iphone-reminders-and-calendar.md)
+- [0011 — Opus audio encoding](docs/adr/0011-opus-audio-encoding.md)
 
 Feature designs: [Composio actions](docs/superpowers/specs/2026-10-13-composio-actions-design.md),
 [first run and sign-in](docs/superpowers/specs/2026-10-16-first-run-and-sign-in-design.md),
