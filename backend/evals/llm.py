@@ -90,22 +90,33 @@ async def extraction(llm) -> bool:
     reference = date.fromisoformat(suite["reference_date"])
     passed, seconds = 0, 0.0
     for case in suite["cases"]:
+        # A whole conversation, as reanalysis reads it: numbered lines, each its own id
+        lines = case.get("lines")
+        line_ids = [uuid.uuid4() for _ in lines] if lines else None
         entities, elapsed = await _timed(
             extract_entities(
                 llm,
-                case["text"],
+                "\n".join(f"[{n}] {line}" for n, line in enumerate(lines, start=1))
+                if lines
+                else case["text"],
                 uuid.uuid4(),
-                uuid.uuid4(),
+                None if lines else uuid.uuid4(),
                 uuid.uuid4(),
                 known_people=suite["known_people"],
                 reference_date=reference,
+                line_ids=line_ids,
             )
         )
         seconds += elapsed
         result = score_extraction(
             case,
             [
-                Extracted(e.entity_type, e.name, e.content or "", e.metadata_ or {})
+                Extracted(
+                    e.entity_type, e.name, e.content or "", e.metadata_ or {},
+                    line=line_ids.index(e.source_transcription_id) + 1
+                    if line_ids and e.source_transcription_id in line_ids
+                    else None,
+                )
                 for e in entities
             ],
         )

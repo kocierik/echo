@@ -421,6 +421,77 @@
           ]
         }
       ]
+    },
+    {
+      "id": "conversation-event-from-its-line",
+      "lines": [
+        "[Tu] Ciao Marco, come va?",
+        "[Altri] Tutto bene, sono appena tornato dal mare.",
+        "[Altri] Senti, hai poi sentito l'idraulico?",
+        "[Tu] Sì, passa la prossima settimana.",
+        "[Altri] Ah, sabato c'è la cena da Giulia alle otto.",
+        "[Tu] Perfetto, ci sarò.",
+        "[Altri] Hai visto la partita ieri?",
+        "[Tu] No, ero stanchissimo, sono andato a letto presto."
+      ],
+      "expect": [
+        {
+          "types": [
+            "event"
+          ],
+          "keywords": [
+            "cena"
+          ],
+          "date": "2026-10-17",
+          "line": 5
+        },
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "marco"
+          ]
+        }
+      ],
+      "forbid": [
+        {
+          "types": [
+            "idea",
+            "note"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "conversation-unknown-person-is-not-saved",
+      "lines": [
+        "[Tu] Giulia, com'è andata la presentazione?",
+        "[Altri] Bene, c'era anche Luca del marketing.",
+        "[Altri] Luca ha fatto un sacco di domande sui numeri.",
+        "[Tu] Luca è sempre così, gli piacciono i dettagli.",
+        "[Altri] Comunque il cliente sembra contento."
+      ],
+      "expect": [
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "giulia"
+          ]
+        }
+      ],
+      "forbid": [
+        {
+          "types": [
+            "person"
+          ],
+          "keywords": [
+            "luca"
+          ]
+        }
+      ]
     }
   ]
 }

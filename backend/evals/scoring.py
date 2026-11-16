@@ -37,6 +37,8 @@ class Extracted:
     name: str
     content: str = ""
     metadata: dict = field(default_factory=dict)
+    # The conversation line it cites (1-based), for a case given as numbered lines
+    line: int | None = None
 
 
 # Expectation keys checked against the entity's metadata. "date" accepts a task's
@@ -53,6 +55,8 @@ def _matches(entity: Extracted, spec: dict) -> bool:
     for key in _METADATA_KEYS:
         if key in spec and str(entity.metadata.get(key, "")) != spec[key]:
             return False
+    if "line" in spec and entity.line != spec["line"]:
+        return False
     if "promise" in spec and bool(entity.metadata.get("promise")) != spec["promise"]:
         return False
     if "expected" in spec and bool(entity.metadata.get("expected")) != spec["expected"]:

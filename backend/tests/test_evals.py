@@ -80,7 +80,8 @@ def test_case_files_are_well_formed(name):
     ids = [case["id"] for case in suite["cases"]]
     assert len(ids) == len(set(ids))
     for case in suite["cases"]:
-        assert case["text"].strip()
+        # A sentence, or a whole conversation as numbered lines (extraction only)
+        assert (case.get("text") or "").strip() or (name == "extraction.json" and case["lines"])
         if name == "routing.json":
             assert case["expect"] in {"memory", "agent", "notice", "photo"}
             # Only voice requests may take a photo
@@ -110,3 +111,12 @@ def test_answer_and_tool_cases_are_well_formed():
     }
     for case in tools["cases"]:
         assert set(case["first"]) <= names
+
+
+def test_an_expected_entity_can_name_the_line_it_comes_from():
+    case = {"id": "c", "expect": [{"types": ["task"], "keywords": ["preventivo"], "line": 3}]}
+    right = Extracted("task", "Mandare il preventivo", line=3)
+    wrong = Extracted("task", "Mandare il preventivo", line=1)
+
+    assert score_extraction(case, [right]).passed
+    assert not score_extraction(case, [wrong]).passed
