@@ -709,6 +709,14 @@ final class _MoreScreen extends StatelessWidget {
                 appController: appController,
                 sessionController: sessionController,
                 onLoggedOut: onLoggedOut,
+                deleteAccount: (password) async {
+                  final api = (apiServiceFactory ?? ApiService.new)();
+                  try {
+                    await api.deleteAccount(password);
+                  } finally {
+                    if (apiServiceFactory == null) api.dispose();
+                  }
+                },
               )),
         ),
       ],

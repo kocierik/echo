@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/app/app_controller.dart';
 import '../../services/app/session_controller.dart';
+import 'delete_account_row.dart';
 import 'logout_row.dart';
 import 'settings_components.dart';
 
@@ -10,12 +11,16 @@ class AboutSettingsScreen extends StatelessWidget {
     required this.appController,
     required this.sessionController,
     required this.onLoggedOut,
+    this.deleteAccount,
     super.key,
   });
 
   final AppController appController;
   final SessionController sessionController;
   final VoidCallback onLoggedOut;
+
+  /// Deletes the account on the server; without it the row is not shown.
+  final Future<void> Function(String password)? deleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +44,12 @@ class AboutSettingsScreen extends StatelessWidget {
         ),
         const SettingsSection('ACCOUNT'),
         LogoutRow(sessionController: sessionController, onLoggedOut: onLoggedOut),
+        if (deleteAccount case final delete?)
+          DeleteAccountRow(
+            sessionController: sessionController,
+            deleteAccount: delete,
+            onLoggedOut: onLoggedOut,
+          ),
       ],
     );
   }

@@ -192,6 +192,17 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     await credentials.configure(server, key);
   }
 
+  /// Deletes the account and everything Echo keeps of it, once [password] confirms it.
+  /// A wrong password is a 403 (a 401 would read as a revoked key).
+  Future<void> deleteAccount(String password) async {
+    await post(
+      '/api/auth/me/delete',
+      body: {'password': password},
+      expect: const {204},
+      decode: false,
+    );
+  }
+
   /// Deletes this phone's key on the server; an already revoked key counts as done.
   @override
   Future<void> signOutThisPhone() async {

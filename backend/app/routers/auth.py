@@ -297,7 +297,8 @@ async def delete_me(
             if seconds is not None:
                 raise _too_many(seconds)
     if not await run_in_threadpool(verify_password, user.password_hash, body.password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong password.")
+        # 403, not 401: the key is good, and the app takes a 401 for a revoked key
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wrong password.")
     if redis is not None:
         for key in limits:
             await release_attempt(redis, key)

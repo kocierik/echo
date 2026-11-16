@@ -95,7 +95,8 @@ async def test_a_wrong_password_deletes_nothing(client, db_session, tmp_path, mo
 
     response = await _delete(client, password="not it")
 
-    assert response.status_code == 401
+    # Not 401: the app would take it for a revoked key and sign the phone out
+    assert response.status_code == 403
     db_session.expire_all()
     assert await _rows_of(db_session, TEST_USER_ID) == before
 
