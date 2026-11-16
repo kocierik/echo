@@ -110,17 +110,47 @@ async def test_deleting_one_conversation_keeps_a_person_mentioned_elsewhere(
 @pytest.mark.asyncio
 async def test_deleting_the_only_conversation_deletes_its_entities(db_session: AsyncSession):
     conversation, (line,) = await make_conversation(db_session, started_at=NOW)
+    idea = make_entity(conversation, "idea", "Aprire un forno", source=line)
+    db_session.add(idea)
+    await db_session.flush()
+    await record_mentions(db_session, [idea])
+    await db_session.commit()
+    idea_id, conversation_id = idea.id, conversation.id
+
+    await delete_conversation(db_session, TEST_USER_ID, conversation_id, _NoStorage())
+    db_session.expire_all()
+
+    assert await db_session.get(Entity, idea_id) is None
+
+
+@pytest.mark.asyncio
+async def test_a_saved_person_outlives_the_only_conversation_naming_them(
+    db_session: AsyncSession,
+):
+    # People are only the ones the user saved: deleting a conversation never deletes one
+    conversation, (line,) = await make_conversation(db_session, started_at=NOW)
     ada = make_entity(conversation, "person", "Ada", source=line)
     db_session.add(ada)
     await db_session.flush()
     await record_mentions(db_session, [ada])
+    db_session.add(PersonFact(
+        user_id=TEST_USER_ID, person_id=ada.id, text="Works at Acme", category="work",
+        quote="Ada lavora alla Acme", conversation_id=conversation.id, status="current",
+    ))
     await db_session.commit()
     ada_id, conversation_id = ada.id, conversation.id
 
     await delete_conversation(db_session, TEST_USER_ID, conversation_id, _NoStorage())
     db_session.expire_all()
 
-    assert await db_session.get(Entity, ada_id) is None
+    survivor = await db_session.get(Entity, ada_id)
+    assert survivor is not None
+    assert survivor.conversation_id is None
+    assert survivor.source_transcription_id is None
+    facts = (
+        await db_session.execute(select(PersonFact).where(PersonFact.person_id == ada_id))
+    ).scalars().all()
+    assert [fact.text for fact in facts] == ["Works at Acme"]
 
 
 @pytest.mark.asyncio

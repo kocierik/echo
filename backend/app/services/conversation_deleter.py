@@ -6,10 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.conversation import Conversation
+from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.user_fact import UserFact
 from app.services.entity_mentions import release_conversation
@@ -126,6 +127,12 @@ async def delete_conversation(
     try:
         # People and tasks also mentioned in other conversations are kept
         await release_conversation(db, conversation.id)
+        # People named only here are the user's own (People): kept, no longer tied to it
+        await db.execute(
+            update(Entity)
+            .where(Entity.conversation_id == conversation.id, Entity.entity_type == "person")
+            .values(conversation_id=None, source_transcription_id=None)
+        )
         # What Echo noticed in it and the user has not kept goes with it
         await db.execute(
             delete(UserFact).where(
