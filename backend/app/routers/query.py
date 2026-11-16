@@ -29,6 +29,7 @@ from app.core.auth import get_current_user_id
 from app.core.config import settings
 from app.core.database import get_db, get_session_factory
 from app.core.rate_limit import limiter
+from app.core.runs import run_scope
 from app.models.assistant import Assistant
 from app.models.chat_session import ChatSession
 from app.services import assistants as assistants_service
@@ -330,9 +331,11 @@ async def _answer_and_store(
     recorder = AuditRecorder(db)
     progress = _Progress()
     try:
-        response = await _answer_query(
-            redis_client, body, user_id, recorder, progress, on_token
-        )
+        # One tracked run per question: its model calls are its steps (make runs)
+        async with run_scope(user_id, "chat"):
+            response = await _answer_query(
+                redis_client, body, user_id, recorder, progress, on_token
+            )
         if key is not None:
             # The turn and any pending action are saved before the answer can be replayed
             await db.commit()

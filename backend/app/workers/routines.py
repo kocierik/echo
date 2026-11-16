@@ -29,6 +29,7 @@ from app.actions.composio_provider import get_action_provider
 from app.actions.provider import ActionProviderError
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
+from app.core.runs import run_scope
 from app.models.assistant import Assistant
 from app.models.routine import Routine
 from app.services.device_commands import push_device_command
@@ -183,7 +184,10 @@ async def _run_one(session_factory, redis_client, llm, provider, routine: _Due) 
         async with session_factory() as db:
             try:
                 # The conversion call, when there is one, is inside the same budget
-                result = await asyncio.wait_for(_ask(db, llm, provider, routine), RUN_TIMEOUT_S)
+                async with run_scope(routine.user_id, "routine"):
+                    result = await asyncio.wait_for(
+                        _ask(db, llm, provider, routine), RUN_TIMEOUT_S
+                    )
             except Exception:
                 logger.warning(f"[Routines] {routine.id} failed", exc_info=True)
                 await db.rollback()

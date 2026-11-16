@@ -43,6 +43,7 @@ from app.actions.voice import (
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
 from app.core.logging import restore_correlation_for
+from app.core.runs import run_scope
 from app.models.segment import Segment
 from app.services.about_echo import about_echo_for
 from app.services.device_commands import tell_phone_to_check
@@ -300,7 +301,9 @@ async def _process(
     claim.command = command
     await _mark_working(redis_client, segment.user_id, segment_id, command)
     try:
-        return await _answer_confirmed(db, redis_client, segment, command)
+        # One tracked run per request: where its seconds go, model call by model call
+        async with run_scope(segment.user_id, "voice"):
+            return await _answer_confirmed(db, redis_client, segment, command)
     finally:
         await _unmark_working(redis_client, segment.user_id, segment_id)
 

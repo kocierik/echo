@@ -1425,3 +1425,24 @@ def test_the_timing_line_says_whether_the_pendant_heard():
 
     assert "pendant heard the name: yes" in _timing(segment(True))
     assert "pendant heard the name: no" in _timing(segment(False))
+
+
+@pytest.mark.asyncio
+async def test_a_voice_request_runs_inside_a_tracked_run(worker, monkeypatch):
+    from app.core.runs import current_run
+
+    seen = []
+    answer = worker.outcome
+
+    async def agent(db, user_id, request, history, **kw):
+        seen.append(current_run())
+        return answer
+
+    monkeypatch.setattr(vr, "run_action_agent", agent)
+    wake = _seg("[You] Ok. Echo, riassumimi")
+    _ready(worker, wake, _seg("[You] le ultime mail", 5.0))
+
+    assert await vr.handle_voice_item(_Redis(), str(wake.id)) is True
+
+    assert [(run.source, run.user_id) for run in seen] == [("voice", USER_ID)]
+    assert current_run() is None or current_run() is not seen[0]

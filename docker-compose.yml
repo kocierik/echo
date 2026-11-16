@@ -21,6 +21,8 @@ services:
       # WhatsApp on by default; WHATSAPP_BRIDGE_URL= (empty) in .env turns it off
       - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
       - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
+      # Each request's model calls, with their time, for `make runs` (kept 30 days)
+      - RUN_TRACKING_ENABLED=${RUN_TRACKING_ENABLED-true}
     # The code is the image's (make deploy), never the folder's: a git pull changes
     # nothing that runs until the next deploy
     volumes:
@@ -52,6 +54,8 @@ services:
       # WhatsApp on by default; WHATSAPP_BRIDGE_URL= (empty) in .env turns it off
       - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL-http://whatsapp:3100}
       - WHATSAPP_BRIDGE_TOKEN=${WHATSAPP_BRIDGE_TOKEN:-echo-local-bridge-token}
+      # Each request's model calls, with their time, for `make runs` (kept 30 days)
+      - RUN_TRACKING_ENABLED=${RUN_TRACKING_ENABLED-true}
     volumes:
       - audio_data:/data/audio
     depends_on:
@@ -72,6 +76,9 @@ services:
     # As `docker compose exec api` ran them before: root, without the image's entrypoint
     user: root
     entrypoint: []
+    # The tests switch tracking on where they test it
+    environment:
+      - RUN_TRACKING_ENABLED=false
     volumes:
       - ./backend:/app
     depends_on:

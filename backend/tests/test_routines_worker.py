@@ -524,3 +524,21 @@ async def test_one_routine_crashing_does_not_stop_the_others(monkeypatch):
 
     assert [r.status for r in await _runs(fine)] == ["reported"]
     assert [r.status for r in await _runs(broken)] == ["failed"]
+
+
+async def test_a_routine_runs_inside_a_tracked_run(monkeypatch):
+    from app.core.runs import current_run
+
+    seen = []
+    ask = worker._ask
+
+    async def tracked_ask(db, llm, provider, routine):
+        seen.append(current_run())
+        return await ask(db, llm, provider, routine)
+
+    monkeypatch.setattr(worker, "_ask", tracked_ask)
+    await _routine()
+
+    assert await _run(_LLM()) == 1
+
+    assert [(run.source, run.user_id) for run in seen] == [("routine", TEST_USER_ID)]
