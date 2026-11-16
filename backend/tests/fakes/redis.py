@@ -25,6 +25,7 @@ class InMemoryRedis:
         removed = 0
         for key in keys:
             removed += self.values.pop(key, None) is not None
+            removed += self.lists.pop(key, None) is not None
             self.ttls.pop(key, None)
         return removed
 
@@ -74,6 +75,13 @@ class InMemoryRedis:
             k.encode(): v.encode() if isinstance(v, str) else v
             for k, v in dict(self.values.get(key, {})).items()
         }
+
+    async def scan_iter(self, match="*"):
+        from fnmatch import fnmatchcase
+
+        for key in [*self.values, *self.lists]:
+            if fnmatchcase(key, match):
+                yield key
 
     async def llen(self, key):
         return len(self.lists.get(key, []))

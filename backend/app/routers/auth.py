@@ -8,6 +8,7 @@ import re
 import secrets
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -30,6 +31,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
+from app.services.account_deleter import delete_account
 from app.services.language import HEARD_LANGUAGES, MAX_OTHER_LANGUAGES, SUPPORTED_LANGUAGES
 from app.services.passwords import (
     DUMMY_PASSWORD_HASH,
@@ -265,6 +267,49 @@ def _me(user: User) -> Me:
         email=user.email, language=user.language, name=user.name,
         instructions=user.instructions, other_languages=list(user.other_languages or []),
     )
+
+
+class AccountDeletion(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+@router.post("/me/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    body: AccountDeletion,
+    request: Request,
+    current: ApiKey = Depends(get_current_api_key),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes the account and everything Echo keeps of it, once the password confirms it:
+    a phone left unlocked cannot do it alone."""
+    user = await db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This key has no account to delete.",
+        )
+    redis = getattr(request.app.state, "redis", None)
+    # Limited as signing in is: a stolen key cannot try passwords
+    limits = [login_failure_key(request), email_failure_key(user.email)]
+    if redis is not None:
+        for key in limits:
+            seconds = await reserve_attempt(redis, key)
+            if seconds is not None:
+                raise _too_many(seconds)
+    if not await run_in_threadpool(verify_password, user.password_hash, body.password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Wrong password.")
+    if redis is not None:
+        for key in limits:
+            await release_attempt(redis, key)
+
+    key_hashes = await delete_account(
+        db, redis, user.id, audio_root=Path(settings.audio_storage_path)
+    )
+    if redis is not None:
+        # Its phones' later requests are not failed attempts
+        for key_hash in key_hashes:
+            await remember_revoked(redis, key_hash)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/me", response_model=Me)
