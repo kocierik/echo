@@ -236,7 +236,7 @@ testWidgets('system back closes the tab page before leaving the app', (tester) a
 - Produces: `AccountButton({required VoidCallback onTap, String? initial})`: a 32 pt circle with the user's initial (from `AccountInfo.name`, else the email's first letter, else none), semantics label "Account", 44 pt hit area.
 - Produces: `Future<void> showAccountSheet(BuildContext context, {required AppController appController, DeviceController? deviceController, SessionController? sessionController, NetworkPolicy? networkPolicy, SharedPreferences? preferences, VoidCallback? onRequireOnboarding})`: `showModalBottomSheet(useRootNavigator: true, isScrollControlled: true, showDragHandle: true)` around `AccountSheet` with the same parameters.
 - `AccountSheet` content, in this order (spec, "The account sheet"):
-  1. The pendant card: connection and listening state in words, battery, segments waiting, firmware version, a Mute switch; a tap opens `openEchoDevice` (as today's pill does).
+  1. The pendant card (`Key('account-pendant')`): connection and listening state in words, battery, segments waiting, firmware version, a Mute switch; a tap opens `openEchoDevice` (as today's pill does).
   2. Section "ECHO DOES": Routines, Apps, WhatsApp, Notifications, Spoken answers, Activity.
   3. Section "YOU": About you (opens `MemoryScreen`), Voices, Assistants, Language.
   4. Section "SETTINGS": Appearance, Privacy, Places visited, Health, Plan, Devices, Server connection, Diagnostics, What Echo can do, Example data, About.
