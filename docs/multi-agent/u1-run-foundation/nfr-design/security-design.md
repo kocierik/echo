@@ -43,7 +43,7 @@ La revisione del design funzionale e quella dei requisiti non funzionali hanno r
 
 **Decisione:** il formato dei messaggi non cambia. Il correlation ID si salva in Redis accanto all'oggetto a cui appartiene:
 
-- al caricamento di un Segment (`routers/segments.py`) si scrive `corr:segment:{segment_id}` = correlation ID corrente, con scadenza 48 ore;
+- al caricamento di un Segment (`routers/segments.py`) si scrive `corr:segment:{segment_id}` = correlation ID corrente, con scadenza 7 giorni (`correlation_key_ttl_seconds`; era 48 ore nel design);
 - al caricamento di una foto (`routers/photos.py`) `corr:photo:{photo_id}`, stessa scadenza;
 - ogni worker che preleva un id (`stt`, `analysis`, `voice_requests`, `deferred`, `photos`) chiama `restore_correlation_for("segment" | "photo", id)`: legge la chiave e imposta la ContextVar, o ne crea uno nuovo se la chiave manca o è scaduta;
 - il rilancio dalla dead-letter e i re-accodamenti dopo un errore non devono fare nulla: la chiave è legata all'id, non al messaggio.
