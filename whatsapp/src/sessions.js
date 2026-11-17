@@ -23,6 +23,9 @@ const VERSION_WAIT_MS = 5_000;
 const NAMES_FILE = 'echo-names.json';
 // Names arrive in bursts (the address book): written once it settles
 const NAMES_WAIT_MS = 2_000;
+// "Not online", said again this often: a companion WhatsApp counts as active keeps the
+// phone from getting notifications
+const PRESENCE_EVERY_MS = 5 * 60_000;
 
 function failure(status, publicMessage) {
   return Object.assign(new Error(publicMessage), { status, publicMessage });
@@ -48,6 +51,7 @@ export class Sessions {
     authState = useMultiFileAuthState,
     pairingWaitMs = PAIRING_WAIT_MS,
     namesWaitMs = NAMES_WAIT_MS,
+    presenceEveryMs = PRESENCE_EVERY_MS,
   }) {
     this.dataDir = dataDir;
     this.store = store;
@@ -65,6 +69,7 @@ export class Sessions {
     // userId -> timer: names to resolve and write once a burst settles
     this.nameTimers = new Map();
     this.namesWaitMs = namesWaitMs;
+    this.presenceEveryMs = presenceEveryMs;
   }
 
   status(userId) {
@@ -141,6 +146,7 @@ export class Sessions {
   close() {
     for (const session of this.sessions.values()) {
       session.stopped = true;
+      clearInterval(session.presenceTimer);
       session.sock.end(undefined);
     }
   }
@@ -149,6 +155,7 @@ export class Sessions {
     const session = this.sessions.get(userId);
     if (session) {
       session.stopped = true;
+      clearInterval(session.presenceTimer);
       try {
         session.sock.end(undefined);
       } catch {
@@ -210,6 +217,7 @@ export class Sessions {
 
     sock.ev.on('creds.update', (update) => {
       void saveCreds();
+      if (update?.me?.name) session.name = update.me.name;
       // Baileys says "not online" at connect only if it knows the profile name; a new link
       // learns it later, and a companion never marked offline mutes the phone's notifications
       if (live() && update?.me?.name && !session.offline) {
@@ -233,8 +241,9 @@ export class Sessions {
         // new link gets it anyway)
         if (restored && !hadNames && !session.contactsAsked) {
           session.contactsAsked = true;
-          void this.#askContacts(userId, session, state);
+          void this.#resync(userId, session, state, 'critical_unblock_low');
         }
+        this.#keepOffline(userId, session, state, live);
       }
       if (connection === 'close') this.#closed(userId, session, lastDisconnect);
     });
@@ -370,13 +379,38 @@ export class Sessions {
     }
   }
 
-  /** The address book from WhatsApp again: its sync version dropped, a full snapshot. */
-  async #askContacts(userId, session, state) {
+  /** "Not online" now and every `presenceEveryMs` while linked. Without the profile name
+   *  WhatsApp takes no presence (Baileys drops it): the name is asked for instead. */
+  #keepOffline(userId, session, state, live) {
+    const tick = () => {
+      if (!live()) {
+        clearInterval(session.presenceTimer);
+        return;
+      }
+      if (session.name ?? state.creds?.me?.name) {
+        session.sock.sendPresenceUpdate('unavailable').catch((error) => {
+          this.logger?.warn({ userId, err: error }, 'could not say the device is not online');
+        });
+      } else {
+        // The push name is in this collection; a fresh link has not received it yet
+        void this.#resync(userId, session, state, 'critical_block');
+      }
+    };
+    tick();
+    if (!session.presenceTimer) {
+      session.presenceTimer = setInterval(tick, this.presenceEveryMs);
+      session.presenceTimer.unref?.();
+    }
+  }
+
+  /** One app-state collection from WhatsApp again: its sync version dropped, a full
+   *  snapshot (the address book, or the profile name). */
+  async #resync(userId, session, state, collection) {
     try {
-      await state.keys.set({ 'app-state-sync-version': { critical_unblock_low: null } });
-      await session.sock.resyncAppState?.(['critical_unblock_low'], false);
+      await state.keys.set({ 'app-state-sync-version': { [collection]: null } });
+      await session.sock.resyncAppState?.([collection], false);
     } catch (error) {
-      this.logger?.warn({ userId, err: error }, 'could not ask for the contacts again');
+      this.logger?.warn({ userId, err: error, collection }, 'could not sync from WhatsApp again');
     }
   }
 }

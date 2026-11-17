@@ -23,7 +23,11 @@ function fakeSocket({ mapping = {} } = {}) {
       ev: new EventEmitter(),
       user: { id: '393330000000:12@s.whatsapp.net' },
       resynced: [],
+      presence: [],
       end() {},
+      async sendPresenceUpdate(type) {
+        this.presence.push(type);
+      },
       signalRepository: {
         lidMapping: {
           // As Baileys gives them: the number with its device
@@ -45,7 +49,8 @@ function fakeSocket({ mapping = {} } = {}) {
 function restoredAuth(keysSet) {
   return async () => ({
     state: {
-      creds: { registered: true, me: { id: '393330000000:12@s.whatsapp.net' } },
+      // A restored link knows its profile name: Baileys keeps it with the keys
+      creds: { registered: true, me: { id: '393330000000:12@s.whatsapp.net', name: 'Erik' } },
       keys: { set: async (data) => keysSet.push(data) },
     },
     saveCreds: async () => {},

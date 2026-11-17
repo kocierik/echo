@@ -31,6 +31,10 @@ function fakeSocket() {
     async sendPresenceUpdate(type) {
       this.presence.push(type);
     },
+    resynced: [],
+    async resyncAppState(collections) {
+      this.resynced.push(...collections);
+    },
     async requestPairingCode(phone) {
       this.paired = phone;
       return 'ABCD1234';
@@ -166,4 +170,33 @@ test('linking an account already linked is refused', async () => {
   await linked();
 
   await assert.rejects(sessions.link('u1', '393330000000'), { status: 409 });
+});
+
+test('a link that does not know the profile name asks WhatsApp for it at once', async () => {
+  const sock = await linked();
+  await until(() => sock.resynced.length > 0);
+
+  // The name lets the bridge say it is not online; without it the phone stays silent
+  assert.ok(sock.resynced.includes('critical_block'));
+});
+
+test('it keeps telling WhatsApp it is not online, and stops once unlinked', async () => {
+  sessions = new Sessions({
+    dataDir,
+    store,
+    connect: fakeSocket,
+    fetchVersion: async () => ({ version: [2, 3000, 1] }),
+    presenceEveryMs: 30,
+  });
+  const sock = await linked();
+  sock.ev.emit('creds.update', { me: { id: '393330000000:12@s.whatsapp.net', name: 'Erik' } });
+  await until(() => sock.presence.length >= 3);
+
+  assert.ok(sock.presence.length >= 3);
+  assert.ok(sock.presence.every((type) => type === 'unavailable'));
+
+  await sessions.unlink('u1');
+  const after = sock.presence.length;
+  await settle(100);
+  assert.equal(sock.presence.length, after);
 });
