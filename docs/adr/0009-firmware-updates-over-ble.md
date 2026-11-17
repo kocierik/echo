@@ -53,8 +53,9 @@ wearable writes it next to the running firmware and switches only if it is intac
 
 ## Consequences
 
-- The image is not signed: the BLE bond (one phone, encrypted writes) is what keeps others out.
-  Secure boot and signed images matter only if Echo has other users.
+- Up to firmware 0.7 the image was not signed and only the BLE bond (one phone, encrypted
+  writes) kept others out. From 0.8.0 it is signed (see "Signed" above); secure boot and flash
+  encryption are still off, so someone with the device in hand can flash it over the cable.
 - The first firmware with updates over Bluetooth (0.5.0, protocol 4) goes over the cable; the
   app says so for an older wearable.
 - About 600 KB at one acknowledged write per connection event: roughly a minute on iOS.

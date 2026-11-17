@@ -28,9 +28,9 @@ al telefono via BLE; l'app lo inoltra a un backend self-hosted che trascrive, es
 Su richiesta esplicita (chat o "Echo, …" a voce) agisce sulle app collegate tramite Composio.
 
 ```
-XIAO ESP32-S3 Sense ──BLE (ADPCM, frame + CRC)──▶ App Flutter (iOS-first) ──HTTP──▶ FastAPI
+XIAO ESP32-S3 Sense ──BLE (Opus, frame + CRC)───▶ App Flutter (iOS-first) ──HTTP──▶ FastAPI
   VAD + pre-buffer                                 relay, upload, UI                  │ Redis queues
-  PSRAM ring buffer 512KB                                                             ▼
+  PSRAM 6 MB + microSD cifrata                                                        ▼
   mute persistente (NVS)                                                    Worker: STT → speaker → analisi
                                                                             → entità → chunk/embedding
                                                                             + richieste vocali "Echo, …"
@@ -57,9 +57,12 @@ un wearable, un backend. Le tre tranche (device reliability, memory controls, mo
 ## 2. Funzionalità implementate
 
 ### Firmware
-- Cattura PDM 16 kHz, VAD a soglia di energia (fissa a 500), pre-buffer ~500 ms per non perdere l'inizio parola.
-- Encoding IMA-ADPCM 4:1, segmenti max 6 s / 120 KB.
-- Ring buffer PSRAM 512 KB con politica **drop-oldest** e contatore dei segmenti persi.
+- Cattura PDM 16 kHz con guadagno del microfono regolabile dall'app (1–8, predefinito 3), VAD a soglia di energia
+  (250, senza la componente continua), pre-buffer ~500 ms per non perdere l'inizio parola.
+- Encoding Opus 32 kbit/s dalla 0.9 ([ADR 0011](adr/0011-opus-audio-encoding.md); fino alla 0.8 IMA-ADPCM); un segmento
+  finisce a una pausa di ~1,4 s o al massimo dopo 25 s.
+- Buffer PSRAM da 6 MB con politica **drop-oldest** e contatore dei segmenti persi; con una microSD i segmenti che
+  non ci stanno passano sulla scheda, cifrati.
 - Trasporto BLE a frame: finestre di ACK, restart segmento, `UPLOAD_OK` come unico dequeue, CRC32 ([ADR 0006](adr/0006-ble-relay-through-phone.md)).
 - BLE Secure Connections + bonding con un solo peer; `FORGET_BOND`; caratteristiche cifrate.
 - `SET_TIME` (ancora temporale dal telefono), `SET_MUTED` persistente in NVS, `DEVICE_STATUS` v2, `DEVICE_INFO`.
@@ -416,7 +419,7 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 | Diagnostica del limite di consolidamento cross-conversazione | ❓ non trovata in UI |
 
 ### Dalla roadmap (ancora aperti)
-- **Hardware reale:** calibrazione VAD (soglia fissa a 500, nessuna adattiva), misura consumi, range BLE.
+- **Hardware reale:** calibrazione VAD (soglia fissa a 250, nessuna adattiva), misura consumi, range BLE.
 - **Memoria:** raggruppamento conversazioni per argomento. Impronte vocali fatte ([ADR 0008](adr/0008-voice-fingerprints.md)):
   soglie da calibrare su registrazioni reali; un segmento con più voci prende quella prevalente.
 - **Query:** filtro per tipo di entità nel RAG (la ricerca per persona c'è: prima le conversazioni in cui compare).
@@ -460,7 +463,7 @@ Fatti entro il 04/11: deploy, il tuo account, la chiave di esempio tolta; la reg
    memoria, documenti, assistenti e WhatsApp, visti finora solo nei test.
 5. **Provare le azioni Composio** dal vivo: una richiesta in chat, una che chiede conferma, una a voce.
 6. **Test di 2 ore della beta** con la [checklist](BETA-GATE-CHECKLIST.md); test batteria di 12 ore.
-7. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 500) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
+7. **Calibrare** soglia VAD (`firmware/src/config.h`, oggi 250) e `SPEAKER_THRESHOLD_PERCENTILE` con registrazioni reali.
 8. **Provare la fotocamera** (OV3660): monitor seriale `[Camera] sensor PID`, tempo e peso della foto, poi 📷 in
    Ask e "Echo, cos'è questo?"; misurare consumo e calore.
 9. **Android:** installare l'SDK (o una CI) e provare la build.

@@ -9,7 +9,7 @@ U1 usa lo stack di oggi (`aidlc/spaces/default/codekb/echo/technology-stack.md`)
 | Contesto implicito | `contextvars.ContextVar` per RunContext e RequestLimits | Stesso meccanismo di `usage_owner` e `correlation_id` di oggi; i task figli ereditano il contesto |
 | Tempo per la scadenza | `time.monotonic()` | La scadenza non deve dipendere da cambi dell'orologio di sistema |
 | Scritture del tracciamento | nuova sessione dalla `get_session_factory()` di oggi, commit per operazione | Sopravvive al rollback della richiesta (BR1.6) |
-| Payload delle code | JSON con campo `correlation_id`; i consumatori accettano anche il formato di oggi (stringa con l'id) | Oggi le code trasportano stringhe nude: serve una transizione senza perdere i job già accodati (punto della revisione del design funzionale) |
+| Payload delle code | **Superato da D4** ([security-design.md](../nfr-design/security-design.md)): il formato dei messaggi non cambia, il correlation ID sta in Redis (`corr:{tipo}:{id}`, 48 ore). Era: JSON con campo `correlation_id`, scartato per il rischio di perdere job al rollback | È ciò che fa il codice: `remember_correlation` / `restore_correlation_for` in `backend/app/core/logging.py` |
 | Comando operatore | `app/cli/runs.py` con `argparse`, target `make runs` nel Makefile, come `make usage` | Stesso schema dei comandi operatore esistenti |
 | Misura della copertura (nuovo) | `pytest-cov` come dipendenza di sviluppo, con `--cov=app` e controllo della soglia sul codice nuovo in CI | Oggi la copertura non si misura; serve a NFR10 per tutte le unità |
 | Lint e formattazione | ruff 0.6.9 (come oggi) | Regole del progetto in `pyproject.toml` |

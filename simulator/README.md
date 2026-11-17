@@ -1,6 +1,8 @@
 # Echo Device Simulator
 
-Simulates the ESP32-S3 wearable device from your PC microphone. Records audio, applies Voice Activity Detection (VAD), encodes to ADPCM, and sends segments to the backend via HTTP POST — exactly as the real device would.
+Simulates the ESP32-S3 wearable device from your PC microphone. Records audio, applies Voice Activity Detection (VAD), encodes to ADPCM, and sends segments to the backend via HTTP POST, as the real device does. The device itself
+encodes Opus since firmware 0.9 ([ADR 0011](../docs/adr/0011-opus-audio-encoding.md)); the backend still decodes
+ADPCM, so the simulator's segments are transcribed the same way.
 
 ## Install
 
