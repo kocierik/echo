@@ -770,6 +770,11 @@ Future<void> _pumpOnboarding(
   bool settle = true,
   FirstResultWatcher Function()? firstResultWatcher,
 }) async {
+  // The system font sets taller than Archivo did: keep the whole screen in view.
+  tester.view.physicalSize = const Size(800, 1000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     MaterialApp(
       theme: AppTheme.light,

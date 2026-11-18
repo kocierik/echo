@@ -1,9 +1,9 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
-/// Echo's colours. Panels sit on a quiet ground; two accents carry meaning:
-/// [live] (orange) for what is happening now, [accent] (sky blue, the icon's) for
-/// what is on, done or can be tapped. [attention] is the "Needs you" panel. The
-/// graphite [chrome] is the hardware: the navigation bar, the device pill and puck.
+/// Echo's colours: Midnight (dark) and Graphite (light), one azure [accent]. The
+/// legacy roles ([live], [attention], [chrome]...) keep their names and now map to
+/// the accent, a normal panel and the translucent bar colours.
 @immutable
 final class EchoPalette extends ThemeExtension<EchoPalette> {
   const EchoPalette({
@@ -14,6 +14,7 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     required this.text2,
     required this.border,
     required this.accent,
+    required this.onAccent,
     required this.accentSoft,
     required this.onAccentSoft,
     required this.tint,
@@ -33,61 +34,62 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     required this.onChromeMuted,
   });
 
+  /// Graphite: a warm white ground, white panels, the darker azure.
   static const light = EchoPalette(
-    background: Color(0xFFE9EAE7),
-    surface: Color(0xFFF7F7F5),
-    surface2: Color(0xFFECEDEA),
-    text: Color(0xFF1F2326),
-    text2: Color(0xFF5B6166),
-    border: Color(0xFFE0E1DD),
-    // Deep enough to read on the light ground (4.5:1 and more)
-    accent: Color(0xFF0A6A94),
-    accentSoft: Color(0xFFD3E7F1),
-    onAccentSoft: Color(0xFF1E4A5F),
-    tint: Color(0xFFE2EAEE),
-    live: Color(0xFFE8590C),
-    liveText: Color(0xFFAE430A),
-    liveGlow: Color(0xFF5A3B2C),
-    attention: Color(0xFFFFF1E2),
-    onAttention: Color(0xFF8A4B12),
-    onAttention2: Color(0xFF6B4A2B),
+    background: Color(0xFFF5F5F2),
+    surface: Color(0xFFFFFFFF),
+    surface2: Color(0xFFF0F0ED),
+    text: Color(0xFF1D1D1F),
+    text2: Color(0xFF6E6E73),
+    border: Color(0xFFE3E3E0),
+    accent: Color(0xFF0A6FD6),
+    onAccent: Color(0xFFFFFFFF),
+    accentSoft: Color(0xFFE3EEF9),
+    onAccentSoft: Color(0xFF0A4F9E),
+    tint: Color(0xFFE3EEF9),
+    live: Color(0xFF0A6FD6),
+    liveText: Color(0xFF0A6FD6),
+    liveGlow: Color(0xFFE3EEF9),
+    attention: Color(0xFFFFFFFF),
+    onAttention: Color(0xFF1D1D1F),
+    onAttention2: Color(0xFF6E6E73),
     green: Color(0xFF1E7A4D),
-    amber: Color(0xFF925700),
-    red: Color(0xFFB72F3B),
-    chrome: Color(0xFF1F2326),
-    chromeRaised: Color(0xFF2E3133),
-    chromeLine: Color(0xFF464B4F),
-    onChrome: Color(0xFFF7F7F5),
-    onChromeMuted: Color(0xFFB9BBB6),
+    amber: Color(0xFF8A5A00),
+    red: Color(0xFFD70015),
+    chrome: Color(0xEBF5F5F2),
+    chromeRaised: Color(0xFFF0F0ED),
+    chromeLine: Color(0xFFE3E3E0),
+    onChrome: Color(0xFF1D1D1F),
+    onChromeMuted: Color(0xFF6E6E73),
   );
 
-  /// Near black, panels a step above it; never pure black.
+  /// Midnight: black ground, graphite panels, the pendant's azure.
   static const dark = EchoPalette(
-    background: Color(0xFF0E0F10),
-    surface: Color(0xFF1A1C1E),
-    surface2: Color(0xFF232629),
-    text: Color(0xFFECEDEA),
-    text2: Color(0xFFA3A8AC),
-    border: Color(0xFF2C2F32),
-    // The icon's blue
-    accent: Color(0xFF6CCBF5),
-    accentSoft: Color(0xFF15303C),
-    onAccentSoft: Color(0xFFA8DDF5),
-    tint: Color(0xFF1B2428),
-    live: Color(0xFFFF7A33),
-    liveText: Color(0xFFFF9A5C),
-    liveGlow: Color(0xFF45291B),
-    attention: Color(0xFF2D2116),
-    onAttention: Color(0xFFF2B57A),
-    onAttention2: Color(0xFFD9B48E),
-    green: Color(0xFF5CC98F),
-    amber: Color(0xFFFFBD59),
-    red: Color(0xFFFF6B74),
-    chrome: Color(0xFF2A2D31),
-    chromeRaised: Color(0xFF3D4145),
-    chromeLine: Color(0xFF54595E),
-    onChrome: Color(0xFFF7F7F5),
-    onChromeMuted: Color(0xFF9EA3A7),
+    background: Color(0xFF000000),
+    surface: Color(0xFF1C1C1E),
+    surface2: Color(0xFF2C2C2E),
+    text: Color(0xFFE8E8ED),
+    text2: Color(0xFF8E8E93),
+    border: Color(0xFF38383A),
+    accent: Color(0xFF64D2FF),
+    onAccent: Color(0xFF00141C),
+    accentSoft: Color(0xFF0B2A36),
+    onAccentSoft: Color(0xFF64D2FF),
+    tint: Color(0xFF0B2A36),
+    live: Color(0xFF64D2FF),
+    liveText: Color(0xFF64D2FF),
+    liveGlow: Color(0xFF0B2A36),
+    attention: Color(0xFF1C1C1E),
+    onAttention: Color(0xFFE8E8ED),
+    onAttention2: Color(0xFF8E8E93),
+    green: Color(0xFF30D158),
+    amber: Color(0xFFFFD60A),
+    red: Color(0xFFFF453A),
+    chrome: Color(0xEB121214),
+    chromeRaised: Color(0xFF2C2C2E),
+    chromeLine: Color(0xFF38383A),
+    onChrome: Color(0xFFE8E8ED),
+    onChromeMuted: Color(0xFF8E8E93),
   );
 
   /// The ground the panels sit on.
@@ -106,6 +108,9 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
 
   /// On, done, selected, a link (teal).
   final Color accent;
+
+  /// Text and icons on an accent fill.
+  final Color onAccent;
   final Color accentSoft;
   final Color onAccentSoft;
 
@@ -147,6 +152,7 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     Color? text2,
     Color? border,
     Color? accent,
+    Color? onAccent,
     Color? accentSoft,
     Color? onAccentSoft,
     Color? tint,
@@ -173,6 +179,7 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
       text2: text2 ?? this.text2,
       border: border ?? this.border,
       accent: accent ?? this.accent,
+      onAccent: onAccent ?? this.onAccent,
       accentSoft: accentSoft ?? this.accentSoft,
       onAccentSoft: onAccentSoft ?? this.onAccentSoft,
       tint: tint ?? this.tint,
@@ -205,6 +212,7 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
       text2: mix(text2, other.text2),
       border: mix(border, other.border),
       accent: mix(accent, other.accent),
+      onAccent: mix(onAccent, other.onAccent),
       accentSoft: mix(accentSoft, other.accentSoft),
       onAccentSoft: mix(onAccentSoft, other.onAccentSoft),
       tint: mix(tint, other.tint),
@@ -227,10 +235,6 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
 }
 
 class AppTheme {
-  static const fontFamily = 'Archivo';
-
-  /// Archivo at 116% width: screen and panel titles.
-  static const titleFamily = 'Archivo Expanded';
   static const minimumInteractiveDimension = 44.0;
 
   /// Panels and the tiles inside them.
@@ -257,7 +261,11 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      fontFamily: fontFamily,
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: {
+          for (final p in TargetPlatform.values) p: const CupertinoPageTransitionsBuilder(),
+        },
+      ),
       visualDensity: VisualDensity.standard,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       scaffoldBackgroundColor: palette.background,
@@ -266,9 +274,9 @@ class AppTheme {
         brightness: brightness,
         // Switches, checkboxes and progress are teal; buttons set their own ink
         primary: palette.accent,
-        onPrimary: palette.background,
+        onPrimary: palette.onAccent,
         secondary: palette.accent,
-        onSecondary: palette.background,
+        onSecondary: palette.onAccent,
         error: palette.red,
         onError: Colors.white,
         surface: palette.surface,
@@ -381,9 +389,9 @@ class AppTheme {
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             return states.contains(WidgetState.disabled)
                 ? palette.text.withValues(alpha: 0.24)
-                : palette.text;
+                : palette.accent;
           }),
-          foregroundColor: WidgetStatePropertyAll(palette.background),
+          foregroundColor: WidgetStatePropertyAll(palette.onAccent),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
           shape: const WidgetStatePropertyAll(pill),
         ),
@@ -423,32 +431,29 @@ class AppTheme {
     TextStyle style(
       double size,
       FontWeight weight, {
-      String family = fontFamily,
       Color? color,
       double height = 1.3,
     }) {
       return TextStyle(
-        fontFamily: family,
         fontSize: size,
         fontWeight: weight,
         color: color ?? palette.text,
         height: height,
-        letterSpacing: 0,
       );
     }
 
     return TextTheme(
       // Screen titles: "15 October", "Ask", "Memories"
-      displayLarge: style(32, FontWeight.w700, family: titleFamily, height: 1.05),
-      displayMedium: style(28, FontWeight.w700, family: titleFamily, height: 1.1),
-      displaySmall: style(24, FontWeight.w700, family: titleFamily, height: 1.1),
-      headlineLarge: style(30, FontWeight.w700, family: titleFamily),
-      headlineMedium: style(20, FontWeight.w700, family: titleFamily),
-      headlineSmall: style(20, FontWeight.w700, family: titleFamily),
+      displayLarge: style(32, FontWeight.w700, height: 1.05),
+      displayMedium: style(28, FontWeight.w700, height: 1.1),
+      displaySmall: style(24, FontWeight.w700, height: 1.1),
+      headlineLarge: style(30, FontWeight.w700),
+      headlineMedium: style(20, FontWeight.w700),
+      headlineSmall: style(20, FontWeight.w700),
       // App bar titles of the pages behind a screen
-      titleLarge: style(20, FontWeight.w700, family: titleFamily),
+      titleLarge: style(20, FontWeight.w700),
       // Panel titles: "To do today", "Your day"
-      titleMedium: style(16, FontWeight.w700, family: titleFamily),
+      titleMedium: style(16, FontWeight.w700),
       // Row titles
       titleSmall: style(15, FontWeight.w600),
       bodyLarge: style(17, FontWeight.w400, height: 1.45),

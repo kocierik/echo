@@ -1,43 +1,52 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('light theme: panels on a quiet ground, Archivo', () {
-    final theme = AppTheme.light;
-    final palette = theme.extension<EchoPalette>()!;
-
-    expect(theme.brightness, Brightness.light);
-    expect(theme.textTheme.bodyMedium!.fontFamily, 'Archivo');
-    expect(theme.textTheme.displayLarge!.fontFamily, 'Archivo Expanded');
-    expect(palette.background, const Color(0xFFE9EAE7));
-    expect(palette.surface, const Color(0xFFF7F7F5));
-    expect(palette.text, const Color(0xFF1F2326));
-    expect(palette.accent, const Color(0xFF0A6A94));
-    expect(palette.live, const Color(0xFFE8590C));
-    expect(palette.chrome, const Color(0xFF1F2326));
+  test('Graphite: warm white ground, white panels, the darker azure', () {
+    final palette = AppTheme.light.extension<EchoPalette>()!;
+    expect(palette.background, const Color(0xFFF5F5F2));
+    expect(palette.surface, const Color(0xFFFFFFFF));
+    expect(palette.text, const Color(0xFF1D1D1F));
+    expect(palette.text2, const Color(0xFF6E6E73));
+    expect(palette.accent, const Color(0xFF0A6FD6));
+    expect(palette.onAccent, const Color(0xFFFFFFFF));
+    expect(palette.live, palette.accent);
   });
 
-  test('dark theme: near black, panels a step above, never pure black', () {
-    final theme = AppTheme.dark;
-    final palette = theme.extension<EchoPalette>()!;
-
-    expect(theme.brightness, Brightness.dark);
-    expect(palette.background, const Color(0xFF0E0F10));
-    expect(palette.surface, const Color(0xFF1A1C1E));
-    expect(palette.chrome, const Color(0xFF2A2D31));
-    expect(palette.text, const Color(0xFFECEDEA));
-    expect(palette.accent, const Color(0xFF6CCBF5));
-    expect(palette.live, const Color(0xFFFF7A33));
+  test('Midnight: black ground, graphite panels, the pendant azure', () {
+    final palette = AppTheme.dark.extension<EchoPalette>()!;
+    expect(palette.background, const Color(0xFF000000));
+    expect(palette.surface, const Color(0xFF1C1C1E));
+    expect(palette.text, const Color(0xFFE8E8ED));
+    expect(palette.accent, const Color(0xFF64D2FF));
+    expect(palette.onAccent, const Color(0xFF00141C));
+    expect(palette.red, const Color(0xFFFF453A));
   });
 
-  test('main buttons are ink on the ground, links are blue', () {
+  test('the primary button is the accent, links are the accent', () {
     for (final theme in [AppTheme.dark, AppTheme.light]) {
       final palette = theme.extension<EchoPalette>()!;
       final filled = theme.filledButtonTheme.style!;
-      expect(filled.backgroundColor!.resolve({}), palette.text);
-      expect(filled.foregroundColor!.resolve({}), palette.background);
+      expect(filled.backgroundColor!.resolve({}), palette.accent);
+      expect(filled.foregroundColor!.resolve({}), palette.onAccent);
       expect(theme.textButtonTheme.style!.foregroundColor!.resolve({}), palette.accent);
+    }
+  });
+
+  test('no Archivo: the platform font (San Francisco on iOS)', () {
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      expect(theme.textTheme.bodyMedium!.fontFamily, isNot('Archivo'));
+      expect(theme.textTheme.displayLarge!.fontFamily, isNot('Archivo Expanded'));
+    }
+  });
+
+  test('pages slide in from the side and swipe back, on every platform', () {
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      for (final platform in TargetPlatform.values) {
+        expect(theme.pageTransitionsTheme.builders[platform], isA<CupertinoPageTransitionsBuilder>());
+      }
     }
   });
 
@@ -56,7 +65,7 @@ void main() {
     }
   });
 
-  test('every control keeps a 44 pt target and text has no tracking', () {
+  test('every control keeps a 44 pt target and text tracking is left to the platform', () {
     for (final theme in [AppTheme.dark, AppTheme.light]) {
       for (final style in [
         theme.elevatedButtonTheme.style!,
@@ -69,8 +78,8 @@ void main() {
         expect(minimum.width, greaterThanOrEqualTo(44));
         expect(minimum.height, greaterThanOrEqualTo(44));
       }
-      expect(theme.textTheme.displayLarge!.letterSpacing, 0);
-      expect(theme.textTheme.bodyMedium!.letterSpacing, 0);
+      expect(theme.textTheme.displayLarge!.letterSpacing, isNull);
+      expect(theme.textTheme.bodyMedium!.letterSpacing, isNull);
     }
   });
 }

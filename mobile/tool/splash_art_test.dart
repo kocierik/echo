@@ -25,7 +25,7 @@ const _word = 56.0;
 void main() {
   testWidgets('draws the launch artwork', (tester) async {
     await tester.runAsync(() async {
-      final font = FontLoader(AppTheme.titleFamily)
+      final font = FontLoader('Archivo Expanded')
         ..addFont(rootBundle.load('assets/fonts/ArchivoExpanded-Bold.ttf'));
       await font.load();
     });
@@ -125,7 +125,7 @@ Future<void> _draw(
                     Text(
                       'Echo',
                       style: TextStyle(
-                        fontFamily: AppTheme.titleFamily,
+                        fontFamily: 'Archivo Expanded',
                         fontWeight: FontWeight.w700,
                         fontSize: 28,
                         height: 1,
