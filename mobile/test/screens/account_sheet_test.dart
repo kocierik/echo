@@ -286,6 +286,51 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
+  widgetTest('Instructions: a save is what the editor shows next time', (tester) async {
+    await openRow(tester, 'About you');
+    await tester.tap(find.byKey(const Key('memory-instructions')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Keep it short');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Keep it short'), findsOneWidget); // the row's subtitle
+    await tester.tap(find.byKey(const Key('memory-instructions')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Keep it short'), findsOneWidget);
+  });
+
+  widgetTest('Instructions does not open an empty editor while the account is unknown',
+      (tester) async {
+    api.meGate = Completer<void>();
+    await openRow(tester, 'About you');
+    await tester.tap(find.byKey(const Key('memory-instructions')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsNothing);
+    api.meGate!.complete();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('memory-instructions')));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextField, 'Be brief'), findsOneWidget);
+  });
+
+  widgetTest('the Mute switch has a spoken label', (tester) async {
+    await pumpAccountSheet(tester);
+    expect(find.bySemanticsLabel('Mute'), findsOneWidget);
+  });
+
+  widgetTest('the About row says who is signed in', (tester) async {
+    await pumpAccountSheet(tester);
+    expect(find.text('Signed in as erik@x.io'), findsOneWidget);
+  });
+
+  widgetTest('a mute that fails says so', (tester) async {
+    ble.failMute = true;
+    await pumpAccountSheet(tester);
+    await tester.tap(find.byKey(const Key('account-mute')));
+    await tester.pumpAndSettle();
+    expect(find.text('Echo could not update the microphone.'), findsOneWidget);
+  });
+
   widgetTest('Assistants opens the list', (tester) async {
     await openRow(tester, 'Assistants');
     expect(find.byKey(const Key('assistants-new')), findsOneWidget);
@@ -398,10 +443,21 @@ final class _FakeApiService extends ApiService {
       const VisitPage(visits: [], more: false);
 
   int validationCalls = 0;
-  AccountInfo account = const AccountInfo(email: 'erik@x.io', language: 'it');
+  AccountInfo account =
+      const AccountInfo(email: 'erik@x.io', language: 'it', instructions: 'Be brief');
+
+  /// Holds me() back, to see the pages before the account is known.
+  Completer<void>? meGate;
 
   @override
-  Future<AccountInfo> me() async => account;
+  Future<AccountInfo> me() async {
+    await meGate?.future;
+    return account;
+  }
+
+  @override
+  Future<AccountInfo> setInstructions(String? instructions) async =>
+      account = AccountInfo(email: account.email, language: account.language, instructions: instructions);
 
   /// None: the server cannot say (an older one).
   PlanInfo? plan = PlanInfo.fromJson(planJson());
@@ -521,8 +577,13 @@ final class _FakeBlePort implements DeviceBlePort {
   Future<String> pair() async => 'echo';
   final mutes = <bool>[];
 
+  bool failMute = false;
+
   @override
-  Future<void> setMuted(bool muted) async => mutes.add(muted);
+  Future<void> setMuted(bool muted) async {
+    if (failMute) throw StateError('ble');
+    mutes.add(muted);
+  }
 
   final micGains = <int>[];
 

@@ -73,7 +73,8 @@ Future<void> showAccountSheet(
     isScrollControlled: true,
     showDragHandle: true,
     backgroundColor: EchoPalette.of(context).background,
-    constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
+    constraints:
+        BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
     builder: (_) => AccountSheet(
       pageContext: context,
       appController: appController,
@@ -173,17 +174,25 @@ class _AccountSheetState extends State<AccountSheet> {
         widget.networkPolicy != null &&
         widget.preferences != null;
     final coordinator = fullyInjected ? null : AppRuntime.coordinator;
-    _deviceController = widget.deviceController ?? coordinator!.deviceController;
+    _deviceController =
+        widget.deviceController ?? coordinator!.deviceController;
     _appController = widget.appController;
-    _sessionController = widget.sessionController ?? coordinator!.sessionController;
+    _sessionController =
+        widget.sessionController ?? coordinator!.sessionController;
     _networkPolicy = widget.networkPolicy ?? coordinator!.networkPolicy;
     _preferences = widget.preferences ?? coordinator!.preferences;
     _api = (widget.apiServiceFactory ?? ApiService.new)();
     unawaited(_load());
   }
 
-  // shortcut: _api is never disposed, the screens the rows open outlive the sheet and
-  // share it; one idle HTTP client until the app ends, upgrade by giving each page its own.
+  /// A row handed [_api] to a screen, which closes it when it is done (the sheet is gone by then).
+  bool _handedOn = false;
+
+  @override
+  void dispose() {
+    if (!_handedOn && widget.apiServiceFactory == null) _api.dispose();
+    super.dispose();
+  }
 
   /// The account and the connected apps; a failure leaves them out.
   Future<void> _load() async {
@@ -192,9 +201,11 @@ class _AccountSheetState extends State<AccountSheet> {
       if (mounted) setState(() => _account = account);
     } catch (_) {}
     try {
-      final connected = (await _api.getToolkits()).where((t) => t.connected).toList();
+      final connected =
+          (await _api.getToolkits()).where((t) => t.connected).toList();
       if (mounted) {
-        setState(() => _apps = connected.isEmpty ? null : connected.map((t) => t.name).join(', '));
+        setState(() => _apps =
+            connected.isEmpty ? null : connected.map((t) => t.name).join(', '));
       }
     } catch (_) {}
     await _loadPlan();
@@ -204,7 +215,9 @@ class _AccountSheetState extends State<AccountSheet> {
   /// "WhatsApp, Gmail": what Apps has connected, WhatsApp first when it is linked.
   String? get _appsLine {
     final names = [
-      if (_whatsapp case final whatsapp? when whatsapp.available && whatsapp.isLinked) 'WhatsApp',
+      if (_whatsapp case final whatsapp?
+          when whatsapp.available && whatsapp.isLinked)
+        'WhatsApp',
       if (_apps case final apps?) apps,
     ];
     return names.isEmpty ? null : names.join(', ');
@@ -216,12 +229,15 @@ class _AccountSheetState extends State<AccountSheet> {
         if (phoneActions != null)
           SettingsRow(
             key: const Key('apps-phone'),
-            icon: PhoneWords.isIPhone ? Icons.phone_iphone_rounded : Icons.phone_android_rounded,
+            icon: PhoneWords.isIPhone
+                ? Icons.phone_iphone_rounded
+                : Icons.phone_android_rounded,
             title: PhoneWords.onThisPhone,
             subtitle: PhoneWords.isIPhone
                 ? 'Reminders and Calendar, for Echo to use.'
                 : 'The calendar, for Echo to use.',
-            onTap: () => _pushOnPage(PhoneAppsScreen(phoneActions: phoneActions)),
+            onTap: () =>
+                _pushOnPage(PhoneAppsScreen(phoneActions: phoneActions)),
           ),
         if (_whatsapp case final whatsapp? when whatsapp.available)
           SettingsRow(
@@ -254,18 +270,32 @@ class _AccountSheetState extends State<AccountSheet> {
     } catch (_) {}
   }
 
+  Future<void> _setMuted(bool muted) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _deviceController.setMuted(muted);
+    } catch (_) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+            content: Text('Echo could not update the microphone.')));
+    }
+  }
+
   /// Closes the sheet, then opens a screen on the page it came from (under the tab bar).
   Future<void> _pushBuilder(WidgetBuilder builder) async {
     final navigator = Navigator.of(widget.pageContext);
+    _handedOn = true;
     Navigator.of(context).pop();
     await navigator.push(MaterialPageRoute<void>(builder: builder));
+    if (widget.apiServiceFactory == null) _api.dispose();
   }
 
   Future<void> _push(Widget page) => _pushBuilder((_) => page);
 
   /// From inside a screen the sheet opened, which outlives the sheet.
-  Future<void> _pushOnPage(Widget page) =>
-      Navigator.of(widget.pageContext).push(MaterialPageRoute<void>(builder: (_) => page));
+  Future<void> _pushOnPage(Widget page) => Navigator.of(widget.pageContext)
+      .push(MaterialPageRoute<void>(builder: (_) => page));
 
   void _openDevice() {
     final pageContext = widget.pageContext;
@@ -283,22 +313,24 @@ class _AccountSheetState extends State<AccountSheet> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final phoneActions = AppRuntime.maybeCoordinator?.phoneActions;
-    final places = widget.placesVisited ?? AppRuntime.maybeCoordinator?.placesVisited;
-    final language =
-        spokenLanguages[_preferences.getString(SpokenLanguageStore.key) ?? _account?.language];
+    final places =
+        widget.placesVisited ?? AppRuntime.maybeCoordinator?.placesVisited;
+    final language = spokenLanguages[
+        _preferences.getString(SpokenLanguageStore.key) ?? _account?.language];
     return ColoredBox(
       color: palette.background,
       child: ListView(
         key: const Key('account-sheet'),
         shrinkWrap: true,
-        padding: EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+        padding:
+            EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
         children: [
           ValueListenableBuilder<AppViewState>(
             valueListenable: _appController,
             builder: (context, state, _) => _PendantCard(
               status: state.device,
               onOpen: _openDevice,
-              onMute: (muted) => unawaited(_deviceController.setMuted(muted)),
+              onMute: _setMuted,
             ),
           ),
           const SettingsSection('ECHO DOES'),
@@ -309,7 +341,8 @@ class _AccountSheetState extends State<AccountSheet> {
               title: 'Routines',
               subtitle: 'What Echo does on its own, and when.',
               onTap: () => _push(RoutinesScreen(
-                onOpenResults: (id) => _appController.requestOpenRoutines(routineId: id),
+                onOpenResults: (id) =>
+                    _appController.requestOpenRoutines(routineId: id),
                 onOpenThread: _appController.requestOpenThread,
               )),
             ),
@@ -346,7 +379,8 @@ class _AccountSheetState extends State<AccountSheet> {
                 },
               )),
             ),
-            if (widget.spokenAnswers ?? AppRuntime.maybeCoordinator?.spokenAnswers
+            if (widget.spokenAnswers ??
+                    AppRuntime.maybeCoordinator?.spokenAnswers
                 case final spoken?)
               ValueListenableBuilder<SpokenAnswers>(
                 valueListenable: spoken,
@@ -361,9 +395,11 @@ class _AccountSheetState extends State<AccountSheet> {
                         AppRuntime.maybeCoordinator?.answerSpeaker.sample ??
                         () async {},
                     voices: AppRuntime.maybeCoordinator?.phoneVoice,
-                    voiceStore: widget.spokenVoice ?? AppRuntime.maybeCoordinator?.spokenVoice,
+                    voiceStore: widget.spokenVoice ??
+                        AppRuntime.maybeCoordinator?.spokenVoice,
                     naturalVoices: _api.naturalVoices,
-                    language: _preferences.getString(SpokenLanguageStore.key) ?? 'en',
+                    language:
+                        _preferences.getString(SpokenLanguageStore.key) ?? 'en',
                   )),
                 ),
               ),
@@ -371,7 +407,8 @@ class _AccountSheetState extends State<AccountSheet> {
               icon: Icons.history_rounded,
               title: 'Activity',
               subtitle: 'What Echo did in your apps.',
-              onTap: () => _pushBuilder(widget.activityBuilder ?? (_) => const ActionLogScreen()),
+              onTap: () => _pushBuilder(
+                  widget.activityBuilder ?? (_) => const ActionLogScreen()),
             ),
           ]),
           const SettingsSection('YOU'),
@@ -380,12 +417,14 @@ class _AccountSheetState extends State<AccountSheet> {
               key: const Key('account-about-you'),
               icon: Icons.psychology_outlined,
               title: 'About you',
-              subtitle: 'What Echo knows about you, how it talks to you, your documents.',
+              subtitle:
+                  'What Echo knows about you, how it talks to you, your documents.',
               onTap: () => _push(MemoryScreen(
                 facts: _api,
                 documents: _api,
                 instructions: _api,
-                instructionsText: _account?.instructions,
+                account: _api,
+                knownAccount: _account,
               )),
             ),
             SettingsRow(
@@ -414,7 +453,8 @@ class _AccountSheetState extends State<AccountSheet> {
               value: language,
               subtitle: language == null ? 'The language you speak.' : null,
               onTap: () => _push(LanguageSettingsScreen(
-                store: SpokenLanguageStore(api: _api, preferences: _preferences),
+                store:
+                    SpokenLanguageStore(api: _api, preferences: _preferences),
               )),
             ),
           ]),
@@ -426,11 +466,13 @@ class _AccountSheetState extends State<AccountSheet> {
                 icon: Icons.contrast_rounded,
                 title: 'Appearance',
                 subtitle: switch (state.themePreference) {
-                  ThemePreference.system => 'System: light by day, dark at night',
+                  ThemePreference.system =>
+                    'System: light by day, dark at night',
                   ThemePreference.light => 'Light',
                   ThemePreference.dark => 'Dark',
                 },
-                onTap: () => _push(AppearanceSettingsScreen(appController: _appController)),
+                onTap: () => _push(
+                    AppearanceSettingsScreen(appController: _appController)),
               ),
             ),
             SettingsRow(
@@ -452,7 +494,8 @@ class _AccountSheetState extends State<AccountSheet> {
                   subtitle: on
                       ? 'On: where you stayed, kept for 90 days.'
                       : 'Off. Echo can note where you stay.',
-                  onTap: () => _push(PlacesVisitedScreen(places: places, api: _api)),
+                  onTap: () =>
+                      _push(PlacesVisitedScreen(places: places, api: _api)),
                 ),
               ),
             SettingsRow(
@@ -475,7 +518,8 @@ class _AccountSheetState extends State<AccountSheet> {
               icon: Icons.devices_rounded,
               title: 'Devices',
               subtitle: 'Phones, and assistants that read your memory.',
-              onTap: () => _pushBuilder(widget.devicesBuilder ?? (_) => const DevicesScreen()),
+              onTap: () => _pushBuilder(
+                  widget.devicesBuilder ?? (_) => const DevicesScreen()),
             ),
             SettingsRow(
               icon: Icons.dns_outlined,
@@ -492,7 +536,8 @@ class _AccountSheetState extends State<AccountSheet> {
               title: 'Diagnostics',
               subtitle: 'Bluetooth transfers and upload messages.',
               onTap: () => _pushBuilder(
-                widget.diagnosticsBuilder ?? (_) => const DeviceMessagesScreen(),
+                widget.diagnosticsBuilder ??
+                    (_) => const DeviceMessagesScreen(),
               ),
             ),
             SettingsRow(
@@ -514,7 +559,10 @@ class _AccountSheetState extends State<AccountSheet> {
             SettingsRow(
               icon: Icons.info_outline_rounded,
               title: 'About',
-              subtitle: 'Version, licenses and your account.',
+              subtitle: switch (_account?.email) {
+                final email? => 'Signed in as $email',
+                null => 'Version, licenses and your account.',
+              },
               onTap: () => _push(AboutSettingsScreen(
                 appController: _appController,
                 sessionController: _sessionController,
@@ -539,7 +587,8 @@ class _AccountSheetState extends State<AccountSheet> {
 /// Echo in a card: its state, battery, segments waiting and firmware, and Mute. A tap on
 /// the card opens the Echo screen.
 final class _PendantCard extends StatelessWidget {
-  const _PendantCard({required this.status, required this.onOpen, required this.onMute});
+  const _PendantCard(
+      {required this.status, required this.onOpen, required this.onMute});
 
   final DeviceStatus status;
   final VoidCallback onOpen;
@@ -556,7 +605,9 @@ final class _PendantCard extends StatelessWidget {
         DeviceConnectionState.reconnecting =>
           'Connecting',
         DeviceConnectionState.bluetoothOff => 'Bluetooth is off',
-        DeviceConnectionState.offline || DeviceConnectionState.error => 'Offline',
+        DeviceConnectionState.offline ||
+        DeviceConnectionState.error =>
+          'Offline',
         DeviceConnectionState.unpaired => 'Not paired',
       };
 
@@ -596,16 +647,19 @@ final class _PendantCard extends StatelessWidget {
                         height: 44,
                         alignment: Alignment.topCenter,
                         padding: const EdgeInsets.only(top: 8),
-                        decoration:
-                            BoxDecoration(color: palette.chromeRaised, shape: BoxShape.circle),
+                        decoration: BoxDecoration(
+                            color: palette.chromeRaised,
+                            shape: BoxShape.circle),
                         child: Container(
                           width: 8,
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: live ? palette.live : null,
-                            border:
-                                live ? null : Border.all(color: palette.onChromeMuted, width: 1.5),
+                            border: live
+                                ? null
+                                : Border.all(
+                                    color: palette.onChromeMuted, width: 1.5),
                           ),
                         ),
                       ),
@@ -630,11 +684,18 @@ final class _PendantCard extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Mute', style: textTheme.labelSmall?.copyWith(color: palette.text2)),
-                  Switch(
-                    key: const Key('account-mute'),
-                    value: state == DeviceConnectionState.muted,
-                    onChanged: canMute ? onMute : null,
+                  ExcludeSemantics(
+                    child: Text('Mute',
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: palette.text2)),
+                  ),
+                  Semantics(
+                    label: 'Mute',
+                    child: Switch(
+                      key: const Key('account-mute'),
+                      value: state == DeviceConnectionState.muted,
+                      onChanged: canMute ? onMute : null,
+                    ),
                   ),
                 ],
               ),
