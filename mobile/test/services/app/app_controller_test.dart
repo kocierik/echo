@@ -66,11 +66,13 @@ void main() {
     expect(controller.value.selectedTab, AppController.askTab);
     controller.dispose();
 
-    // The new key wins once it is written
-    preferences.values[AppController.selectedTabKey] = AppController.profileTab;
-    controller = await createController();
-    expect(controller.value.selectedTab, AppController.profileTab);
     expect(AppController.selectedTabKey, isNot(AppController.legacySelectedTabKey));
+  });
+
+  test('a stored third tab (Profile before) opens Library', () async {
+    preferences.values[AppController.selectedTabKey] = 2;
+    controller = await createController();
+    expect(controller.value.selectedTab, AppController.libraryTab);
   });
 
   test('Ask starts on Chat, with no routine filter', () async {
@@ -273,7 +275,7 @@ void main() {
       controller.handleNotificationPayload('person:p-1');
       expect(controller.pendingPersonId.value, 'p-1');
 
-      await controller.setSelectedTab(AppController.profileTab);
+      await controller.setSelectedTab(AppController.libraryTab);
       final before = controller.openTasksRequests.value;
       controller.handleNotificationPayload('tasks');
       await Future<void>.delayed(Duration.zero);

@@ -35,7 +35,7 @@ final class AppController extends ValueNotifier<AppViewState> {
   static const legacySelectedTabKey = 'echo_selected_tab_v3';
   static const todayTab = 0;
   static const askTab = 1;
-  static const profileTab = 2;
+  static const libraryTab = 2;
   static const tabCount = AppViewState.tabCount;
 
   /// A chat session the Ask tab should open (e.g. from a notification tap).
