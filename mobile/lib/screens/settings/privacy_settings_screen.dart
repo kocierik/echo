@@ -6,6 +6,7 @@ import '../../services/api/api_service.dart';
 import '../../services/app/app_controller.dart';
 import '../../services/app/sharing.dart';
 import 'settings_components.dart';
+import '../navigation.dart';
 
 class PrivacySettingsScreen extends StatelessWidget {
   const PrivacySettingsScreen({
@@ -99,7 +100,7 @@ class PrivacySettingsScreen extends StatelessWidget {
               onTap: onOpenTranscripts == null
                   ? null
                   : () {
-                      Navigator.of(context).popUntil((route) => route.isFirst);
+                      popToTabs(context);
                       onOpenTranscripts!();
                     },
             ),

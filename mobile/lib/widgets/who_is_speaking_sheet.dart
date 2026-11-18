@@ -29,6 +29,7 @@ Future<VoiceChoice?> showWhoIsSpeaking(
 }) {
   return showModalBottomSheet<VoiceChoice>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     showDragHandle: true,
     builder: (context) => WhoIsSpeakingSheet(people: people),

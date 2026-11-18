@@ -77,6 +77,7 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
     final current = _detail!.item.listId;
     final chosen = await showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true,
       showDragHandle: true,
       builder: (context) => SafeArea(
         child: ListView(

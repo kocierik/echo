@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/app/session_controller.dart';
 import 'settings_components.dart';
+import '../navigation.dart';
 
 /// "Delete account": the password confirms it, then everything Echo keeps of the account
 /// is deleted on the server and this phone is signed out, back to the first screen.
@@ -30,7 +31,7 @@ class DeleteAccountRow extends StatelessWidget {
     // The account and this phone's key are gone on the server: the phone forgets them too
     await sessionController.logout();
     if (!context.mounted) return;
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    popToTabs(context);
     onLoggedOut();
   }
 

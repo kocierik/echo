@@ -101,7 +101,7 @@ final class PhotoThumbnail extends StatelessWidget {
 
   void _open(BuildContext context, PhotoImageSource source) {
     final palette = EchoPalette.of(context);
-    Navigator.of(context).push(
+    Navigator.of(context, rootNavigator: true).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
         builder: (context) => Scaffold(

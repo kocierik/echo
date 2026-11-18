@@ -135,6 +135,7 @@ final class _DocumentsScreenState extends State<DocumentsScreen> {
   Future<void> _open(UserDocument document) async {
     final deleted = await showModalBottomSheet<bool>(
       context: context,
+      useRootNavigator: true,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) => _DocumentSheet(api: widget.api, document: document),

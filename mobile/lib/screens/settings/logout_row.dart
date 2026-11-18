@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/app/session_controller.dart';
 import 'settings_components.dart';
+import '../navigation.dart';
 
 /// "Log out", asked to confirm; while it runs a spinner, after a failed cleanup the
 /// way to retry. Once logged out from this row, back to the first screen and
@@ -35,7 +36,7 @@ class _LogoutRowState extends State<LogoutRow> {
       if (!mounted) return;
       setState(() => _state = state);
       if (state.loggedOut && _confirmedHere) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        popToTabs(context);
         widget.onLoggedOut();
       }
     });

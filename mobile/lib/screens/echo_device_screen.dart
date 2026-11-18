@@ -14,6 +14,7 @@ import '../widgets/device_instrument.dart';
 import '../widgets/device_readings.dart' show microSdLabel;
 import '../widgets/firmware_update_section.dart';
 import 'settings/settings_components.dart';
+import 'navigation.dart';
 
 /// Pushes the Echo screen; the app's own device and preferences unless given (tests).
 Future<void> openEchoDevice(
@@ -237,7 +238,7 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
       await widget.deviceController.forget();
       await widget.resetOnboarding();
       if (!mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      popToTabs(context);
       widget.onForgot?.call();
       widget.onRequireOnboarding?.call();
     } catch (_) {
@@ -251,7 +252,7 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
 
   /// Reopens the onboarding at its pairing step, over the whole app.
   void _pair() {
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    popToTabs(context);
     widget.onRequireOnboarding?.call();
   }
 

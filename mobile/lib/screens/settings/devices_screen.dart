@@ -150,6 +150,7 @@ final class _DevicesScreenState extends State<DevicesScreen> {
       unawaited(_load());
       await showModalBottomSheet<void>(
         context: context,
+        useRootNavigator: true,
         isScrollControlled: true,
         showDragHandle: true,
         builder: (_) => ConnectAppSheet(app: app),

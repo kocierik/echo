@@ -361,7 +361,7 @@ OnboardingController _createDefaultOnboardingController(
   );
 }
 
-class MainShell extends StatelessWidget {
+class MainShell extends StatefulWidget {
   const MainShell({
     required this.appController,
     this.deviceController,
@@ -383,31 +383,39 @@ class MainShell extends StatelessWidget {
   final VoidCallback? onSettingsTap;
   final VoidCallback? onRequireOnboarding;
 
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  /// One navigator per tab; Library's takes the pages the requests open.
+  final tabNavigators = List.generate(3, (_) => GlobalKey<NavigatorState>());
+
   /// Profile: every setting, as the third tab.
   Widget _profile() => ProfileScreen(
-        deviceController: deviceController,
-        appController: appController,
-        sessionController: sessionController,
-        networkPolicy: networkPolicy,
-        preferences: preferences,
-        onRequireOnboarding: onRequireOnboarding,
+        deviceController: widget.deviceController,
+        appController: widget.appController,
+        sessionController: widget.sessionController,
+        networkPolicy: widget.networkPolicy,
+        preferences: widget.preferences,
+        onRequireOnboarding: widget.onRequireOnboarding,
         onOpenTranscripts: () {
-          unawaited(appController.setSelectedTab(AppController.todayTab));
+          unawaited(widget.appController.setSelectedTab(AppController.todayTab));
         },
       );
 
   /// The device pill (Today, Ask) and the firmware tip: the Echo screen.
   void _openDevice(BuildContext context) {
-    if (onSettingsTap != null) {
-      onSettingsTap!();
+    if (widget.onSettingsTap != null) {
+      widget.onSettingsTap!();
       return;
     }
     unawaited(openEchoDevice(
       context,
-      appController: appController,
-      deviceController: deviceController,
-      preferences: preferences,
-      onRequireOnboarding: onRequireOnboarding,
+      appController: widget.appController,
+      deviceController: widget.deviceController,
+      preferences: widget.preferences,
+      onRequireOnboarding: widget.onRequireOnboarding,
     ));
   }
 
@@ -431,8 +439,8 @@ class MainShell extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (_) => TasksPage(
-          segmentUploadedStream: segmentUploadedStream,
-          onAsk: appController.requestAsk,
+          segmentUploadedStream: widget.segmentUploadedStream,
+          onAsk: widget.appController.requestAsk,
         ),
       ),
     );
@@ -440,7 +448,7 @@ class MainShell extends StatelessWidget {
 
   /// The pill's long press: mute, or resume listening.
   Future<void> _toggleMute(BuildContext context, DeviceStatus status) async {
-    final controller = deviceController;
+    final controller = widget.deviceController;
     if (controller == null) return;
     final mute = status.connectionState == DeviceConnectionState.listening;
     final messenger = ScaffoldMessenger.of(context);
@@ -459,64 +467,65 @@ class MainShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PersonRequestListener(
-      request: appController.pendingPersonId,
-      onAsk: appController.requestAsk,
+      request: widget.appController.pendingPersonId,
+      onAsk: widget.appController.requestAsk,
       child: TasksRequestListener(
-        requests: appController.openTasksRequests,
+        requests: widget.appController.openTasksRequests,
         onOpen: () => _openTasks(context),
         child: ValueListenableBuilder<AppViewState>(
-          valueListenable: appController,
+          valueListenable: widget.appController,
           builder: (context, state, child) {
             final pill = DevicePill(
               status: state.device,
               onTap: () => _openDevice(context),
-              onLongPress: deviceController == null
+              onLongPress: widget.deviceController == null
                   ? null
                   : () => unawaited(_toggleMute(context, state.device)),
             );
             return Scaffold(
               body: ValueListenableBuilder<bool>(
-                valueListenable: appController.askDictation,
+                valueListenable: widget.appController.askDictation,
                 builder: (context, dictating, _) => EchoAppShell(
                   selectedIndex: state.selectedTab,
                   dictating: dictating,
                   onDestinationSelected: (index) {
-                    unawaited(appController.setSelectedTab(index));
+                    unawaited(widget.appController.setSelectedTab(index));
                   },
-                  onAskHold: appController.setAskDictation,
+                  onAskHold: widget.appController.setAskDictation,
+                  navigatorKeys: tabNavigators,
                   children: [
                     HomeScreen(
                       deviceStatus: state.device,
                       headerAction: pill,
-                      onReconnect: deviceController?.reconnect,
-                      onPair: onRequireOnboarding,
-                      onAsk: appController.requestAsk,
+                      onReconnect: widget.deviceController?.reconnect,
+                      onPair: widget.onRequireOnboarding,
+                      onAsk: widget.appController.requestAsk,
                       onOpenChat: (sessionId) => sessionId == null
-                          ? appController.handleNotificationPayload(
+                          ? widget.appController.handleNotificationPayload(
                               NotificationService.voicePayloadPrefix)
-                          : appController.requestOpenSession(sessionId),
+                          : widget.appController.requestOpenSession(sessionId),
                       onOpenTasks: () => _openTasks(context),
-                      segmentUploadedStream: segmentUploadedStream,
+                      segmentUploadedStream: widget.segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
                       onOpenDevice: () => _openDevice(context),
-                      routineRunsChanged: appController.routineRunsChanged,
-                      onOpenThread: appController.requestOpenThread,
+                      routineRunsChanged: widget.appController.routineRunsChanged,
+                      onOpenThread: widget.appController.requestOpenThread,
                       placesOn: AppRuntime.maybeCoordinator?.placesVisited.on,
                       onOpenPlaces: () => _openPlaces(context),
                     ),
                     ChatScreen(
                       headerAction: pill,
-                      dictation: appController.askDictation,
-                      openSessionRequest: appController.pendingChatSessionId,
-                      composerFocusRequest: appController.composerFocusRequest,
-                      threadUpdates: appController.threadUpdates,
-                      assistantsChanged: appController.assistantsChanged,
-                      askView: appController.askView,
-                      routinesFilter: appController.routinesFilter,
-                      routineRunsChanged: appController.routineRunsChanged,
-                      segmentUploadedStream: segmentUploadedStream,
-                      appState: appController,
-                      askRequest: appController.pendingChatQuestion,
+                      dictation: widget.appController.askDictation,
+                      openSessionRequest: widget.appController.pendingChatSessionId,
+                      composerFocusRequest: widget.appController.composerFocusRequest,
+                      threadUpdates: widget.appController.threadUpdates,
+                      assistantsChanged: widget.appController.assistantsChanged,
+                      askView: widget.appController.askView,
+                      routinesFilter: widget.appController.routinesFilter,
+                      routineRunsChanged: widget.appController.routineRunsChanged,
+                      segmentUploadedStream: widget.segmentUploadedStream,
+                      appState: widget.appController,
+                      askRequest: widget.appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
                     _profile(),

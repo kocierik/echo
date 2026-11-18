@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/formatting.dart';
 import '../../widgets/panel.dart';
 import '../../widgets/routine_run_sheet.dart';
+import '../navigation.dart';
 
 /// Profile → Routines: what Echo does on its own, when, and when it speaks. Routines are
 /// created by asking Echo; here they are paused, resumed or deleted, and lead to what
@@ -124,7 +125,7 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
   }
 
   /// Back to the app's tabs, where Ask is.
-  void _closeToTabs() => Navigator.of(context).popUntil((route) => route.isFirst);
+  void _closeToTabs() => popToTabs(context);
 
   void _openResults(Routine routine) {
     final open = widget.onOpenResults;

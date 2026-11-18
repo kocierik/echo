@@ -4,7 +4,7 @@ import 'package:echo_app/widgets/device_pill.dart';
 import 'package:echo_app/widgets/echo_app_shell.dart';
 import 'package:echo_app/widgets/echo_nav_bar.dart';
 import 'package:echo_app/widgets/screen_header.dart';
-import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoPageRoute;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -145,6 +145,7 @@ void main() {
             selectedIndex: 0,
             onDestinationSelected: (_) {},
             onAskHold: (_) {},
+            navigatorKeys: _keys(),
             children: [
               Builder(builder: (context) {
                 covered = EchoShellInsets.bottomOf(context);
@@ -184,11 +185,58 @@ void main() {
             dictating: true,
             onDestinationSelected: (_) {},
             onAskHold: (_) {},
+            navigatorKeys: _keys(),
             children: const [SizedBox(), SizedBox(), SizedBox()],
           ),
         ),
       ));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('EchoAppShell tab stacks', () {
+    Future<void> openInner(WidgetTester tester) async {
+      await tester.pumpWidget(_themed(const _StackHost()));
+      await tester.tap(find.text('Open inner'));
+      await tester.pumpAndSettle();
+      expect(find.text('Inner'), findsOneWidget);
+    }
+
+    testWidgets('a page opened in Today is still there after visiting Library',
+        (tester) async {
+      await openInner(tester);
+      await tester.tap(find.byKey(const Key('echo-nav-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('echo-nav-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('Inner'), findsOneWidget);
+      expect(find.byKey(const Key('echo-nav-0')), findsOneWidget);
+    });
+
+    testWidgets('tapping the active tab again goes back to its top',
+        (tester) async {
+      await openInner(tester);
+      await tester.tap(find.byKey(const Key('echo-nav-0')));
+      await tester.pumpAndSettle();
+      expect(find.text('Inner'), findsNothing);
+    });
+
+    testWidgets('system back closes the tab page before leaving the app',
+        (tester) async {
+      await openInner(tester);
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(handled, isTrue);
+      expect(find.text('Inner'), findsNothing);
+    });
+
+    testWidgets('the tab root still rebuilds when the shell does',
+        (tester) async {
+      final host = GlobalKey<_StackHostState>();
+      await tester.pumpWidget(_themed(_StackHost(key: host)));
+      host.currentState!.rename('Changed');
+      await tester.pump();
+      expect(find.text('Changed'), findsOneWidget);
     });
   });
 
@@ -350,6 +398,7 @@ final class _ShellHostState extends State<_ShellHost> {
         setState(() => selectedIndex = index);
       },
       onAskHold: (_) {},
+      navigatorKeys: _keys(),
       children: [
         _RetainedTab(key: widget.retainedKey),
         const ColoredBox(color: Colors.red),
@@ -395,6 +444,49 @@ final class _RetainedTabState extends State<_RetainedTab> {
             itemBuilder: (context, index) => Text('Item $index'),
           ),
         ),
+      ],
+    );
+  }
+}
+
+List<GlobalKey<NavigatorState>> _keys() =>
+    List.generate(3, (_) => GlobalKey<NavigatorState>());
+
+final class _StackHost extends StatefulWidget {
+  const _StackHost({super.key});
+
+  @override
+  State<_StackHost> createState() => _StackHostState();
+}
+
+final class _StackHostState extends State<_StackHost> {
+  final keys = _keys();
+  int selected = 0;
+  String label = 'Today root';
+
+  void rename(String value) => setState(() => label = value);
+
+  @override
+  Widget build(BuildContext context) {
+    return EchoAppShell(
+      selectedIndex: selected,
+      onDestinationSelected: (i) => setState(() => selected = i),
+      onAskHold: (_) {},
+      navigatorKeys: keys,
+      children: [
+        Builder(
+          builder: (context) => Column(children: [
+            Text(label),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(CupertinoPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('Inner')),
+              )),
+              child: const Text('Open inner'),
+            ),
+          ]),
+        ),
+        const SizedBox(),
+        const SizedBox(),
       ],
     );
   }

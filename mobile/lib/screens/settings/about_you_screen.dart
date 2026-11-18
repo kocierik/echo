@@ -51,6 +51,7 @@ final class _AboutYouScreenState extends State<AboutYouScreen> {
   /// "Add a fact" or editing one: the sentence, in a sheet from the bottom.
   Future<String?> _ask({String? initial}) => showModalBottomSheet<String>(
         context: context,
+        useRootNavigator: true,
         isScrollControlled: true,
         showDragHandle: true,
         builder: (context) => _FactSheet(initial: initial),

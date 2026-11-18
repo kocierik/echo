@@ -91,6 +91,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
   Future<void> _rejectFact(PersonFact fact) async {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
+      useRootNavigator: true,
       builder: (context) => SafeArea(
         child: ListTile(
           leading: const Icon(Icons.close_rounded),

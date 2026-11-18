@@ -52,7 +52,7 @@ final class CapabilitiesScreen extends StatelessWidget {
             onTap: onAsk == null
                 ? null
                 : () {
-                    Navigator.of(context).popUntil((route) => route.isFirst);
+                    popToTabs(context);
                     onAsk!(question);
                   },
           ),
