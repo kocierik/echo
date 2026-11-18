@@ -91,14 +91,19 @@ final class _EchoAppShellState extends State<EchoAppShell> {
                     child: MediaQuery.removePadding(
                       context: context,
                       removeBottom: true,
-                      child: EchoShellInsets(
-                        bottom: covered,
-                        child: NavigatorPopHandler(
+                      // Pushed pages clear the bar through their own bottom padding
+                      child: Builder(
+                        builder: (context) => MediaQuery(
+                          data: MediaQuery.of(context).copyWith(
+                            padding: MediaQuery.of(context).padding.copyWith(bottom: covered),
+                          ),
+                          child: NavigatorPopHandler(
                           enabled: _canPop,
                           onPopWithResult: (_) =>
-                              widget.navigatorKeys[widget.selectedIndex].currentState?.pop(),
+                              widget.navigatorKeys[widget.selectedIndex].currentState?.maybePop(),
                           child: _TabChildren(
                             children: widget.children,
+                            covered: covered,
                             child: IndexedStack(
                               index: widget.selectedIndex,
                               sizing: StackFit.expand,
@@ -108,11 +113,12 @@ final class _EchoAppShellState extends State<EchoAppShell> {
                                     key: widget.navigatorKeys[i],
                                     observers: [_observers[i]],
                                     onGenerateRoute: (_) => CupertinoPageRoute<void>(
-                                      builder: (context) => _TabChildren.of(context)[i],
+                                      builder: (context) => _TabChildren.root(context, i),
                                     ),
                                   ),
                               ],
                             ),
+                          ),
                           ),
                         ),
                       ),
@@ -142,12 +148,24 @@ final class _EchoAppShellState extends State<EchoAppShell> {
 
 /// Hands a tab's current child to its first route, so it rebuilds with the shell.
 final class _TabChildren extends InheritedWidget {
-  const _TabChildren({required this.children, required super.child});
+  const _TabChildren({
+    required this.children,
+    required this.covered,
+    required super.child,
+  });
 
   final List<Widget> children;
+  final double covered;
 
-  static List<Widget> of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_TabChildren>()!.children;
+  /// A tab's root page: the bar's height is an inset, not padding.
+  static Widget root(BuildContext context, int index) {
+    final tabs = context.dependOnInheritedWidgetOfExactType<_TabChildren>()!;
+    return MediaQuery.removePadding(
+      context: context,
+      removeBottom: true,
+      child: EchoShellInsets(bottom: tabs.covered, child: tabs.children[index]),
+    );
+  }
 
   @override
   bool updateShouldNotify(_TabChildren old) => true;

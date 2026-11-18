@@ -9,6 +9,7 @@ import 'models/device_status.dart';
 import 'screens/home_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
+import 'screens/navigation.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/settings/places_visited_screen.dart';
@@ -390,6 +391,18 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   /// One navigator per tab; Library's takes the pages the requests open.
   final tabNavigators = List.generate(3, (_) => GlobalKey<NavigatorState>());
+
+  @override
+  void initState() {
+    super.initState();
+    TabNavigators.keys = tabNavigators;
+  }
+
+  @override
+  void dispose() {
+    if (identical(TabNavigators.keys, tabNavigators)) TabNavigators.keys = const [];
+    super.dispose();
+  }
 
   /// Profile: every setting, as the third tab.
   Widget _profile() => ProfileScreen(

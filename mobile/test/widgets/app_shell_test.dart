@@ -1,4 +1,5 @@
 import 'package:echo_app/models/device_status.dart';
+import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:echo_app/widgets/device_pill.dart';
 import 'package:echo_app/widgets/echo_app_shell.dart';
@@ -141,11 +142,12 @@ void main() {
         'tells the tabs how much the bar covers, and hides it for the '
         'keyboard', (tester) async {
       double? covered;
+      final keys = _keys();
       Widget shell() => EchoAppShell(
             selectedIndex: 0,
             onDestinationSelected: (_) {},
             onAskHold: (_) {},
-            navigatorKeys: _keys(),
+            navigatorKeys: keys,
             children: [
               Builder(builder: (context) {
                 covered = EchoShellInsets.bottomOf(context);
@@ -228,6 +230,38 @@ void main() {
       await tester.pumpAndSettle();
       expect(handled, isTrue);
       expect(find.text('Inner'), findsNothing);
+    });
+
+    testWidgets('back at a tab root is left to the system', (tester) async {
+      await tester.pumpWidget(_themed(const _StackHost()));
+      expect(await tester.binding.handlePopRoute(), isFalse);
+    });
+
+    testWidgets('a pushed page stays tappable above the bar', (tester) async {
+      await openInner(tester);
+      final bar = tester.getRect(find.byType(EchoNavBar));
+      final button = tester.getRect(find.text('Bottom'));
+      expect(button.bottom, lessThanOrEqualTo(bar.top));
+      await tester.tap(find.text('Bottom'));
+    });
+
+    testWidgets('asking from Today shows the Ask root, not a page left open',
+        (tester) async {
+      final host = GlobalKey<_StackHostState>();
+      await tester.pumpWidget(_themed(_StackHost(key: host)));
+      TabNavigators.keys = host.currentState!.keys;
+      addTearDown(() => TabNavigators.keys = const []);
+      host.currentState!.select(1);
+      await tester.pump();
+      await tester.tap(find.text('Open ask page'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask page'), findsOneWidget);
+      host.currentState!.select(0);
+      await tester.pump();
+      await tester.tap(find.text('Ask from here'));
+      await tester.pumpAndSettle();
+      expect(find.text('Ask page'), findsNothing);
+      expect(find.text('Ask root'), findsOneWidget);
     });
 
     testWidgets('the tab root still rebuilds when the shell does',
@@ -389,6 +423,7 @@ final class _ShellHost extends StatefulWidget {
 
 final class _ShellHostState extends State<_ShellHost> {
   int selectedIndex = 0;
+  final keys = _keys();
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +433,7 @@ final class _ShellHostState extends State<_ShellHost> {
         setState(() => selectedIndex = index);
       },
       onAskHold: (_) {},
-      navigatorKeys: _keys(),
+      navigatorKeys: keys,
       children: [
         _RetainedTab(key: widget.retainedKey),
         const ColoredBox(color: Colors.red),
@@ -464,6 +499,7 @@ final class _StackHostState extends State<_StackHost> {
   int selected = 0;
   String label = 'Today root';
 
+  void select(int i) => setState(() => selected = i);
   void rename(String value) => setState(() => label = value);
 
   @override
@@ -479,13 +515,41 @@ final class _StackHostState extends State<_StackHost> {
             Text(label),
             TextButton(
               onPressed: () => Navigator.of(context).push(CupertinoPageRoute<void>(
-                builder: (_) => const Scaffold(body: Text('Inner')),
+                builder: (_) => const Scaffold(
+                  body: SafeArea(
+                    child: Column(children: [
+                      Text('Inner'),
+                      Spacer(),
+                      TextButton(onPressed: null, child: Text('Bottom')),
+                    ]),
+                  ),
+                ),
               )),
               child: const Text('Open inner'),
             ),
+            Builder(
+              builder: (context) => TextButton(
+                onPressed: () => askFromAnywhere(
+                  context,
+                  (_) => setState(() => selected = 1),
+                  'q',
+                ),
+                child: const Text('Ask from here'),
+              ),
+            ),
           ]),
         ),
-        const SizedBox(),
+        Builder(
+          builder: (context) => Column(children: [
+            const Text('Ask root'),
+            TextButton(
+              onPressed: () => Navigator.of(context).push(CupertinoPageRoute<void>(
+                builder: (_) => const Scaffold(body: Text('Ask page')),
+              )),
+              child: const Text('Open ask page'),
+            ),
+          ]),
+        ),
         const SizedBox(),
       ],
     );

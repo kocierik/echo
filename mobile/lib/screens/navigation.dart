@@ -12,10 +12,20 @@ void askFromAnywhere(BuildContext context, AskCallback ask, String question) {
   ask(question);
 }
 
-/// Closes every page above the tabs: the tab's own, and any on the app's navigator.
+/// The shell's tab navigators, while it is on screen: lets a page anywhere close them all.
+final class TabNavigators {
+  static List<GlobalKey<NavigatorState>> keys = const [];
+}
+
+/// Closes every page above the tabs: each tab's own, and any on the app's navigator.
 void popToTabs(BuildContext context) {
-  final tab = Navigator.of(context);
-  final root = Navigator.of(context, rootNavigator: true);
-  tab.popUntil((route) => route.isFirst);
-  if (root != tab) root.popUntil((route) => route.isFirst);
+  final navigators = {
+    Navigator.of(context),
+    Navigator.of(context, rootNavigator: true),
+    for (final key in TabNavigators.keys)
+      if (key.currentState != null) key.currentState!,
+  };
+  for (final navigator in navigators) {
+    navigator.popUntil((route) => route.isFirst);
+  }
 }
