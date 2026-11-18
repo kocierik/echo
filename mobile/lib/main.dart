@@ -11,7 +11,7 @@ import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/navigation.dart';
 import 'screens/onboarding/onboarding_screen.dart';
-import 'screens/profile_screen.dart';
+import 'screens/account_sheet.dart';
 import 'screens/settings/places_visited_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
@@ -32,6 +32,7 @@ import 'services/app/notification_service.dart';
 import 'services/app/session_controller.dart';
 import 'theme/app_theme.dart';
 import 'widgets/echo_app_shell.dart';
+import 'widgets/account_button.dart';
 import 'widgets/device_pill.dart';
 import 'widgets/person_request_listener.dart';
 import 'widgets/tasks_request_listener.dart';
@@ -404,17 +405,29 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  /// Profile: every setting, as the third tab.
-  Widget _profile() => ProfileScreen(
-        deviceController: widget.deviceController,
-        appController: widget.appController,
-        sessionController: widget.sessionController,
-        networkPolicy: widget.networkPolicy,
-        preferences: widget.preferences,
-        onRequireOnboarding: widget.onRequireOnboarding,
-        onOpenTranscripts: () {
-          unawaited(widget.appController.setSelectedTab(AppController.todayTab));
-        },
+  /// The third tab until Library lands: only the account circle, so settings stay reachable.
+  Widget _profile() => Builder(
+        builder: (context) => Scaffold(
+          body: SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: AccountButton(
+                onTap: () => showAccountSheet(
+                  context,
+                  appController: widget.appController,
+                  deviceController: widget.deviceController,
+                  sessionController: widget.sessionController,
+                  networkPolicy: widget.networkPolicy,
+                  preferences: widget.preferences,
+                  onRequireOnboarding: widget.onRequireOnboarding,
+                  onOpenTranscripts: () {
+                    unawaited(widget.appController.setSelectedTab(AppController.todayTab));
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
       );
 
   /// The device pill (Today, Ask) and the firmware tip: the Echo screen.
