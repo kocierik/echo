@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,15 +10,18 @@ import '../theme/app_theme.dart';
 /// How much of the bottom of a tab the floating navigation covers: lists and the
 /// Ask composer keep this much space free. Zero outside the shell (and in tests).
 final class EchoShellInsets extends InheritedWidget {
-  const EchoShellInsets({required this.bottom, required super.child, super.key});
+  const EchoShellInsets(
+      {required this.bottom, required super.child, super.key});
 
   final double bottom;
 
   static double bottomOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<EchoShellInsets>()?.bottom ?? 0;
+      context.dependOnInheritedWidgetOfExactType<EchoShellInsets>()?.bottom ??
+      0;
 
   @override
-  bool updateShouldNotify(EchoShellInsets oldWidget) => bottom != oldWidget.bottom;
+  bool updateShouldNotify(EchoShellInsets oldWidget) =>
+      bottom != oldWidget.bottom;
 }
 
 /// The graphite bar: Today on the left, Profile on the right and, in the middle,
@@ -37,7 +42,7 @@ final class EchoNavBar extends StatelessWidget {
   /// above it, and the gap below it).
   static const reserved = barHeight + 20 + 24;
 
-  /// 0 Today, 1 Ask, 2 Profile.
+  /// 0 Today, 1 Ask, 2 Library.
   final int selectedIndex;
   final ValueChanged<int> onSelect;
 
@@ -54,31 +59,39 @@ final class EchoNavBar extends StatelessWidget {
         clipBehavior: Clip.none,
         alignment: Alignment.bottomCenter,
         children: [
-          Container(
-            height: barHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 28),
-            decoration: BoxDecoration(
-              color: palette.chrome,
-              borderRadius: BorderRadius.circular(barHeight / 2),
-            ),
-            child: Row(
-              children: [
-                _Destination(
-                  index: 0,
-                  label: 'Today',
-                  icon: Icons.schedule_rounded,
-                  selected: selectedIndex == 0,
-                  onSelect: onSelect,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(barHeight / 2),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                height: barHeight,
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                decoration: BoxDecoration(
+                  color: palette.chrome,
+                  // shortcut: a uniform hairline (a top-only border cannot follow the pill's radius).
+                  border: Border.all(color: palette.chromeLine, width: 0.5),
+                  borderRadius: BorderRadius.circular(barHeight / 2),
                 ),
-                const Spacer(),
-                _Destination(
-                  index: 2,
-                  label: 'Profile',
-                  icon: Icons.person_outline_rounded,
-                  selected: selectedIndex == 2,
-                  onSelect: onSelect,
+                child: Row(
+                  children: [
+                    _Destination(
+                      index: 0,
+                      label: 'Today',
+                      icon: CupertinoIcons.clock,
+                      selected: selectedIndex == 0,
+                      onSelect: onSelect,
+                    ),
+                    const Spacer(),
+                    _Destination(
+                      index: 2,
+                      label: 'Library',
+                      icon: CupertinoIcons.square_stack_3d_up,
+                      selected: selectedIndex == 2,
+                      onSelect: onSelect,
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
           Positioned(
@@ -251,7 +264,8 @@ final class _AskButtonState extends State<AskButton> {
                 ),
               ),
               alignment: Alignment.center,
-              child: Icon(Icons.mic_none_rounded, size: 26, color: palette.onChrome),
+              child: Icon(Icons.mic_none_rounded,
+                  size: 26, color: palette.onChrome),
             ),
           ),
         ),

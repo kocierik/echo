@@ -4,24 +4,25 @@ import 'package:echo_app/widgets/device_pill.dart';
 import 'package:echo_app/widgets/echo_app_shell.dart';
 import 'package:echo_app/widgets/echo_nav_bar.dart';
 import 'package:echo_app/widgets/screen_header.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('EchoNavBar', () {
-    testWidgets('shows Today, Profile and the Ask button with semantics',
+    testWidgets('shows Today, Library and the Ask button with semantics',
         (tester) async {
       await tester.pumpWidget(_themed(
         EchoNavBar(selectedIndex: 2, onSelect: (_) {}, onAskHold: (_) {}),
       ));
 
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Library'), findsOneWidget);
       expect(find.text('Memories'), findsNothing);
       expect(
         tester.getSemantics(find.byKey(const Key('echo-nav-2'))),
         matchesSemantics(
-          label: 'Profile',
+          label: 'Library',
           isButton: true,
           hasSelectedState: true,
           isSelected: true,
@@ -38,6 +39,30 @@ void main() {
           hasTapAction: true,
         ),
       );
+    });
+
+    testWidgets('the bar says Today and Library, never Profile',
+        (tester) async {
+      await tester.pumpWidget(_themed(
+        EchoNavBar(selectedIndex: 0, onSelect: (_) {}, onAskHold: (_) {}),
+      ));
+      expect(find.bySemanticsLabel('Today'), findsOneWidget);
+      expect(find.bySemanticsLabel('Library'), findsOneWidget);
+      expect(find.bySemanticsLabel('Profile'), findsNothing);
+      expect(find.byIcon(CupertinoIcons.clock), findsOneWidget);
+      expect(find.byIcon(CupertinoIcons.square_stack_3d_up), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+    });
+
+    testWidgets('at the largest text size the bar does not overflow',
+        (tester) async {
+      await tester.pumpWidget(MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: _themed(
+          EchoNavBar(selectedIndex: 0, onSelect: (_) {}, onAskHold: (_) {}),
+        ),
+      ));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('reports taps on every destination', (tester) async {
