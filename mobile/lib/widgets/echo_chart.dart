@@ -149,13 +149,16 @@ final class ChartSpec {
 List<Color> chartColors(EchoPalette palette) => [
       palette.accent,
       palette.amber,
-      const Color(0xFF7C6FD6),
-      const Color(0xFFE07A5F),
-      const Color(0xFF4A90C2),
+      _hue(palette.accent, 275),
+      _hue(palette.accent, 15),
+      _hue(palette.accent, 190),
       palette.green,
-      const Color(0xFFC46BA8),
-      const Color(0xFF9AA04A),
+      _hue(palette.accent, 330),
+      _hue(palette.accent, 65),
     ];
+
+/// The accent's saturation and lightness at another hue: more series that read on the same ground.
+Color _hue(Color accent, double hue) => HSLColor.fromColor(accent).withHue(hue).toColor();
 
 /// An answer's chart, in a panel of its own.
 final class EchoChart extends StatelessWidget {

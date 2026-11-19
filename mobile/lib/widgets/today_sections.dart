@@ -645,7 +645,7 @@ final class _ConversationBlock extends StatelessWidget {
         ? palette.surface2
         : marked
             ? palette.accentSoft
-            : palette.tint;
+            : palette.accentSoft;
     final muted = marked ? palette.onAccentSoft : palette.text2;
     final meta = [
       if (c.people.isNotEmpty) c.people.take(2).join(', '),
@@ -740,7 +740,7 @@ final class _PhotoBlock extends StatelessWidget {
       label: [title, if (c.summary != null) c.summary!].join(', '),
       excludeSemantics: true,
       child: Material(
-        color: palette.tint,
+        color: palette.accentSoft,
         borderRadius: radius,
         child: InkWell(
           key: Key('day-${c.id}'),

@@ -29,8 +29,8 @@ final class AppController extends ValueNotifier<AppViewState> {
         ));
 
   static const themePreferenceKey = 'echo_theme_mode';
-  // v4: Today, Ask, Profile (Memories moved into Today). v3's Memories (2) opens
-  // Today, never Profile; an older index would open the wrong tab
+  // v4: Today, Ask, Library (Memories moved into Today). v3's Memories (2) opens
+  // Today, never Library; an older index would open the wrong tab
   static const selectedTabKey = 'echo_selected_tab_v4';
   static const legacySelectedTabKey = 'echo_selected_tab_v3';
   static const todayTab = 0;
@@ -74,7 +74,7 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// Counts the times new routine runs arrived; Today and Ask → Routines reload them.
   final ValueNotifier<int> routineRunsChanged = ValueNotifier(0);
 
-  /// An assistant was made, changed or deleted (Profile → Assistants): Ask's row reloads.
+  /// An assistant was made, changed or deleted (Library → Assistants): Ask's row reloads.
   final ValueNotifier<int> assistantsChanged = ValueNotifier(0);
 
   static const personPayloadPrefix = 'person:';
@@ -179,7 +179,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     requestOpenSession(sessionId);
   }
 
-  /// Profile → Assistants saved or deleted one.
+  /// Library → Assistants saved or deleted one.
   void assistantsEdited() {
     if (_disposed) return;
     assistantsChanged.value++;
@@ -261,7 +261,7 @@ final class AppController extends ValueNotifier<AppViewState> {
 
   int _readSelectedTab(int? storedValue, int? legacyValue) {
     if (storedValue == null) {
-      // Before Profile: Today and Ask kept their places, Memories is part of Today
+      // Before Library: Today and Ask kept their places, Memories is part of Today
       return legacyValue == askTab ? askTab : todayTab;
     }
     if (storedValue < 0 || storedValue >= tabCount) return todayTab;

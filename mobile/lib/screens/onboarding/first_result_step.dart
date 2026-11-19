@@ -85,7 +85,7 @@ final class _FirstResultStepState extends State<FirstResultStep> {
             color: palette.surface,
             borderRadius: BorderRadius.circular(AppTheme.panelRadius),
             border: Border.all(
-              color: heard == null ? palette.surface : palette.live,
+              color: heard == null ? palette.surface : palette.accent,
               width: 2,
             ),
           ),
@@ -98,7 +98,7 @@ final class _FirstResultStepState extends State<FirstResultStep> {
                     width: 9,
                     height: 9,
                     decoration: BoxDecoration(
-                      color: heard == null ? palette.text2 : palette.live,
+                      color: heard == null ? palette.text2 : palette.accent,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -106,7 +106,7 @@ final class _FirstResultStepState extends State<FirstResultStep> {
                   Text(
                     'Echo heard',
                     style: textTheme.labelMedium?.copyWith(
-                      color: heard == null ? palette.text2 : palette.liveText,
+                      color: heard == null ? palette.text2 : palette.accent,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

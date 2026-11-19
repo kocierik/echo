@@ -12,7 +12,6 @@ void main() {
     expect(palette.text2, const Color(0xFF6E6E73));
     expect(palette.accent, const Color(0xFF0A6FD6));
     expect(palette.onAccent, const Color(0xFFFFFFFF));
-    expect(palette.live, palette.accent);
   });
 
   test('Midnight: black ground, graphite panels, the pendant azure', () {

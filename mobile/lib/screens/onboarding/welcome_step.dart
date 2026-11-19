@@ -146,7 +146,7 @@ final class _WelcomeStepState extends State<WelcomeStep>
                           child: Text(
                             notice,
                             style: textTheme.bodyMedium?.copyWith(
-                              color: palette.onAttention,
+                              color: palette.text,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -156,21 +156,20 @@ final class _WelcomeStepState extends State<WelcomeStep>
                       _SignInButton(
                         key: const Key('welcome-apple'),
                         label: 'Continue with Apple',
-                        background: palette.onChrome,
-                        foreground: const Color(0xFF1F2326),
-                        icon: const Icon(Icons.apple,
-                            size: 22, color: Color(0xFF1F2326)),
+                        background: palette.text,
+                        foreground: palette.background,
+                        icon: Icon(Icons.apple, size: 22, color: palette.background),
                         onPressed: () => _comingSoon('Apple'),
                       ),
                       const SizedBox(height: 10),
                       _SignInButton(
                         key: const Key('welcome-google'),
                         label: 'Continue with Google',
-                        background: palette.chrome,
+                        background: palette.bar,
                         foreground: palette.text,
-                        icon: const SizedBox.square(
+                        icon: SizedBox.square(
                           dimension: 20,
-                          child: CustomPaint(painter: _GoogleMark()),
+                          child: CustomPaint(painter: _GoogleMark(palette.text)),
                         ),
                         onPressed: () => _comingSoon('Google'),
                       ),
@@ -233,7 +232,7 @@ final class _Stage extends StatelessWidget {
                 size: ring,
                 // Each ring widens over 3.6 s, a third of the way after the last
                 phase: t == null ? 0.5 : ((t + k * 1.2) % 3.6) / 3.6,
-                color: palette.live,
+                color: palette.accent,
               ),
           EchoDeviceGlyph(
             size: device,
@@ -349,8 +348,8 @@ final class _Memories extends StatelessWidget {
           child: _Memory(
             label: 'Promise to Marco',
             text: 'Both options, Thu',
-            background: palette.attention,
-            accent: palette.onAttention,
+            background: palette.surface,
+            accent: palette.text,
             visible: _visible(0),
           ),
         ),
@@ -464,31 +463,32 @@ final class _SignInButton extends StatelessWidget {
   }
 }
 
-/// Google's "G", in its four colours.
+/// Google's "G", in one colour from the palette.
 final class _GoogleMark extends CustomPainter {
-  const _GoogleMark();
+  const _GoogleMark(this.color);
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = size.width * 0.2;
     final rect = Offset.zero & size;
     final arc = rect.deflate(stroke / 2);
-    Paint paint(int color) => Paint()
-      ..color = Color(color)
+    final paint = Paint()
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     canvas
-      ..drawArc(arc, -2.45, 1.75, false, paint(0xFFEA4335))
-      ..drawArc(arc, 2.3, 1.1, false, paint(0xFFFBBC05))
-      ..drawArc(arc, 0.75, 1.6, false, paint(0xFF34A853))
-      ..drawArc(arc, -0.05, 0.85, false, paint(0xFF4285F4))
+      ..drawArc(arc, -2.45, 1.75, false, paint)
+      ..drawArc(arc, 2.3, 1.1, false, paint)
+      ..drawArc(arc, 0.75, 1.6, false, paint)
+      ..drawArc(arc, -0.05, 0.85, false, paint)
       ..drawRect(
-        Rect.fromLTWH(size.width / 2, size.height / 2 - stroke / 2,
-            size.width / 2, stroke),
-        Paint()..color = const Color(0xFF4285F4),
+        Rect.fromLTWH(size.width / 2, size.height / 2 - stroke / 2, size.width / 2, stroke),
+        Paint()..color = color,
       );
   }
 
   @override
-  bool shouldRepaint(covariant _GoogleMark oldDelegate) => false;
+  bool shouldRepaint(covariant _GoogleMark oldDelegate) => oldDelegate.color != color;
 }

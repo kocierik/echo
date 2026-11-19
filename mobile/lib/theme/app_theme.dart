@@ -2,8 +2,7 @@ import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 /// Echo's colours: Midnight (dark) and Graphite (light), one azure [accent]. The
-/// legacy roles ([live], [attention], [chrome]...) keep their names and now map to
-/// the accent, a normal panel and the translucent bar colours.
+/// [bar] is the translucent colour of the navigation and title bars.
 @immutable
 final class EchoPalette extends ThemeExtension<EchoPalette> {
   const EchoPalette({
@@ -17,21 +16,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     required this.onAccent,
     required this.accentSoft,
     required this.onAccentSoft,
-    required this.tint,
-    required this.live,
-    required this.liveText,
-    required this.liveGlow,
-    required this.attention,
-    required this.onAttention,
-    required this.onAttention2,
     required this.green,
     required this.amber,
     required this.red,
-    required this.chrome,
-    required this.chromeRaised,
-    required this.chromeLine,
-    required this.onChrome,
-    required this.onChromeMuted,
+    required this.bar,
   });
 
   /// Graphite: a warm white ground, white panels, the darker azure.
@@ -46,21 +34,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     onAccent: Color(0xFFFFFFFF),
     accentSoft: Color(0xFFE3EEF9),
     onAccentSoft: Color(0xFF0A4F9E),
-    tint: Color(0xFFE3EEF9),
-    live: Color(0xFF0A6FD6),
-    liveText: Color(0xFF0A6FD6),
-    liveGlow: Color(0xFFE3EEF9),
-    attention: Color(0xFFFFFFFF),
-    onAttention: Color(0xFF1D1D1F),
-    onAttention2: Color(0xFF6E6E73),
     green: Color(0xFF1E7A4D),
     amber: Color(0xFF8A5A00),
     red: Color(0xFFD70015),
-    chrome: Color(0xEBF5F5F2),
-    chromeRaised: Color(0xFFF0F0ED),
-    chromeLine: Color(0xFFE3E3E0),
-    onChrome: Color(0xFF1D1D1F),
-    onChromeMuted: Color(0xFF6E6E73),
+    bar: Color(0xEBF5F5F2),
   );
 
   /// Midnight: black ground, graphite panels, the pendant's azure.
@@ -75,21 +52,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     onAccent: Color(0xFF00141C),
     accentSoft: Color(0xFF0B2A36),
     onAccentSoft: Color(0xFF64D2FF),
-    tint: Color(0xFF0B2A36),
-    live: Color(0xFF64D2FF),
-    liveText: Color(0xFF64D2FF),
-    liveGlow: Color(0xFF0B2A36),
-    attention: Color(0xFF1C1C1E),
-    onAttention: Color(0xFFE8E8ED),
-    onAttention2: Color(0xFF8E8E93),
     green: Color(0xFF30D158),
     amber: Color(0xFFFFD60A),
     red: Color(0xFFFF453A),
-    chrome: Color(0xEB121214),
-    chromeRaised: Color(0xFF2C2C2E),
-    chromeLine: Color(0xFF38383A),
-    onChrome: Color(0xFFE8E8ED),
-    onChromeMuted: Color(0xFF8E8E93),
+    bar: Color(0xEB121214),
   );
 
   /// The ground the panels sit on.
@@ -106,7 +72,7 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
   /// Hairlines between rows inside a panel.
   final Color border;
 
-  /// On, done, selected, a link (teal).
+  /// On, done, selected, a link.
   final Color accent;
 
   /// Text and icons on an accent fill.
@@ -114,30 +80,12 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
   final Color accentSoft;
   final Color onAccentSoft;
 
-  /// A neutral cool block (a conversation in the day's timeline).
-  final Color tint;
-
-  /// Happening now: the LED, recording, dictation (orange).
-  final Color live;
-
-  /// [live] for small text, readable on the ground.
-  final Color liveText;
-  final Color liveGlow;
-
-  /// The "Needs you" panel and its text.
-  final Color attention;
-  final Color onAttention;
-  final Color onAttention2;
   final Color green;
   final Color amber;
   final Color red;
 
-  /// Graphite hardware: the navigation bar, the device pill and puck.
-  final Color chrome;
-  final Color chromeRaised;
-  final Color chromeLine;
-  final Color onChrome;
-  final Color onChromeMuted;
+  /// The translucent navigation, title and device-pill bars.
+  final Color bar;
 
   static EchoPalette of(BuildContext context) {
     return Theme.of(context).extension<EchoPalette>()!;
@@ -155,21 +103,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
     Color? onAccent,
     Color? accentSoft,
     Color? onAccentSoft,
-    Color? tint,
-    Color? live,
-    Color? liveText,
-    Color? liveGlow,
-    Color? attention,
-    Color? onAttention,
-    Color? onAttention2,
     Color? green,
     Color? amber,
     Color? red,
-    Color? chrome,
-    Color? chromeRaised,
-    Color? chromeLine,
-    Color? onChrome,
-    Color? onChromeMuted,
+    Color? bar,
   }) {
     return EchoPalette(
       background: background ?? this.background,
@@ -182,21 +119,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
       onAccent: onAccent ?? this.onAccent,
       accentSoft: accentSoft ?? this.accentSoft,
       onAccentSoft: onAccentSoft ?? this.onAccentSoft,
-      tint: tint ?? this.tint,
-      live: live ?? this.live,
-      liveText: liveText ?? this.liveText,
-      liveGlow: liveGlow ?? this.liveGlow,
-      attention: attention ?? this.attention,
-      onAttention: onAttention ?? this.onAttention,
-      onAttention2: onAttention2 ?? this.onAttention2,
       green: green ?? this.green,
       amber: amber ?? this.amber,
       red: red ?? this.red,
-      chrome: chrome ?? this.chrome,
-      chromeRaised: chromeRaised ?? this.chromeRaised,
-      chromeLine: chromeLine ?? this.chromeLine,
-      onChrome: onChrome ?? this.onChrome,
-      onChromeMuted: onChromeMuted ?? this.onChromeMuted,
+      bar: bar ?? this.bar,
     );
   }
 
@@ -215,21 +141,10 @@ final class EchoPalette extends ThemeExtension<EchoPalette> {
       onAccent: mix(onAccent, other.onAccent),
       accentSoft: mix(accentSoft, other.accentSoft),
       onAccentSoft: mix(onAccentSoft, other.onAccentSoft),
-      tint: mix(tint, other.tint),
-      live: mix(live, other.live),
-      liveText: mix(liveText, other.liveText),
-      liveGlow: mix(liveGlow, other.liveGlow),
-      attention: mix(attention, other.attention),
-      onAttention: mix(onAttention, other.onAttention),
-      onAttention2: mix(onAttention2, other.onAttention2),
       green: mix(green, other.green),
       amber: mix(amber, other.amber),
       red: mix(red, other.red),
-      chrome: mix(chrome, other.chrome),
-      chromeRaised: mix(chromeRaised, other.chromeRaised),
-      chromeLine: mix(chromeLine, other.chromeLine),
-      onChrome: mix(onChrome, other.onChrome),
-      onChromeMuted: mix(onChromeMuted, other.onChromeMuted),
+      bar: mix(bar, other.bar),
     );
   }
 }
@@ -272,7 +187,7 @@ class AppTheme {
       canvasColor: palette.surface,
       colorScheme: ColorScheme(
         brightness: brightness,
-        // Switches, checkboxes and progress are teal; buttons set their own ink
+        // Switches, checkboxes and progress are accent
         primary: palette.accent,
         onPrimary: palette.onAccent,
         secondary: palette.accent,
@@ -360,8 +275,8 @@ class AppTheme {
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: palette.chrome,
-        contentTextStyle: textTheme.bodyMedium!.copyWith(color: palette.onChrome),
+        backgroundColor: palette.bar,
+        contentTextStyle: textTheme.bodyMedium!.copyWith(color: palette.text),
         actionTextColor: palette.accentSoft,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -370,14 +285,14 @@ class AppTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         side: BorderSide(color: palette.text2, width: 1.5),
       ),
-      // The main action is ink on the ground: graphite in light, light in dark
+      // The main action is the accent, like filled buttons
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ButtonStyle(
           minimumSize: minimumSize,
           padding: buttonPadding,
           elevation: const WidgetStatePropertyAll(0),
-          backgroundColor: WidgetStatePropertyAll(palette.text),
-          foregroundColor: WidgetStatePropertyAll(palette.background),
+          backgroundColor: WidgetStatePropertyAll(palette.accent),
+          foregroundColor: WidgetStatePropertyAll(palette.onAccent),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
           shape: const WidgetStatePropertyAll(pill),
         ),
@@ -402,7 +317,7 @@ class AppTheme {
           padding: buttonPadding,
           foregroundColor: WidgetStatePropertyAll(palette.text),
           textStyle: WidgetStatePropertyAll(textTheme.labelLarge),
-          side: WidgetStatePropertyAll(BorderSide(color: palette.chromeLine.withValues(alpha: 0.4))),
+          side: WidgetStatePropertyAll(BorderSide(color: palette.border.withValues(alpha: 0.4))),
           shape: const WidgetStatePropertyAll(pill),
         ),
       ),

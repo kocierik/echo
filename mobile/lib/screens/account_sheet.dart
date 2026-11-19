@@ -648,18 +648,18 @@ final class _PendantCard extends StatelessWidget {
                         alignment: Alignment.topCenter,
                         padding: const EdgeInsets.only(top: 8),
                         decoration: BoxDecoration(
-                            color: palette.chromeRaised,
+                            color: palette.surface2,
                             shape: BoxShape.circle),
                         child: Container(
                           width: 8,
                           height: 8,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: live ? palette.live : null,
+                            color: live ? palette.accent : null,
                             border: live
                                 ? null
                                 : Border.all(
-                                    color: palette.onChromeMuted, width: 1.5),
+                                    color: palette.text2, width: 1.5),
                           ),
                         ),
                       ),

@@ -26,7 +26,7 @@ class SettingsPageScaffold extends StatelessWidget {
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: Text(title),
-            backgroundColor: palette.chrome,
+            backgroundColor: palette.bar,
             border: Border(bottom: BorderSide(color: palette.border, width: 0.5)),
           ),
           SliverPadding(

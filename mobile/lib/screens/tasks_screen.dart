@@ -196,6 +196,7 @@ final class _TasksScreenState extends State<TasksScreen> {
             EchoGroup(
               key: Key('task-group-${group.bucket.name}'),
               header: '${group.bucket.label} · ${group.tasks.length}',
+              headerColor: group.bucket == TaskBucket.overdue ? palette.red : null,
               children: [for (final task in group.tasks) _tile(task, state, now)],
             ),
           if (state.done.isNotEmpty)

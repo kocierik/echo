@@ -4,9 +4,12 @@ import '../theme/app_theme.dart';
 
 /// Children in one rounded panel with a hairline between them, under an optional caption.
 class EchoGroup extends StatelessWidget {
-  const EchoGroup({required this.children, this.header, super.key});
+  const EchoGroup({required this.children, this.header, this.headerColor, super.key});
 
   final String? header;
+
+  /// The header text colour; text2 when null.
+  final Color? headerColor;
   final List<Widget> children;
 
   @override
@@ -23,7 +26,7 @@ class EchoGroup extends StatelessWidget {
               child: Semantics(
                 header: true,
                 child: Text(header!,
-                    style: TextStyle(color: palette.text2, fontSize: 13)),
+                    style: TextStyle(color: headerColor ?? palette.text2, fontSize: 13)),
               ),
             ),
           // A Material, so the rows' InkWell splashes show on the group's surface

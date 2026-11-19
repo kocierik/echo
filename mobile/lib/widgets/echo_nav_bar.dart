@@ -24,7 +24,7 @@ final class EchoShellInsets extends InheritedWidget {
       bottom != oldWidget.bottom;
 }
 
-/// The graphite bar: Today on the left, Profile on the right and, in the middle,
+/// The translucent bar: Today on the left, Library on the right and, in the middle,
 /// the round Ask button. A tap on it opens Ask; held, Ask dictates until let go.
 final class EchoNavBar extends StatelessWidget {
   const EchoNavBar({
@@ -67,9 +67,9 @@ final class EchoNavBar extends StatelessWidget {
                 height: barHeight,
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 decoration: BoxDecoration(
-                  color: palette.chrome,
+                  color: palette.bar,
                   // shortcut: a uniform hairline (a top-only border cannot follow the pill's radius).
-                  border: Border.all(color: palette.chromeLine, width: 0.5),
+                  border: Border.all(color: palette.border, width: 0.5),
                   borderRadius: BorderRadius.circular(barHeight / 2),
                 ),
                 child: Row(
@@ -127,7 +127,7 @@ final class _Destination extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final color = selected ? palette.onChrome : palette.onChromeMuted;
+    final color = selected ? palette.text : palette.text2;
     return Semantics(
       key: Key('echo-nav-$index'),
       label: label,

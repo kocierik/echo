@@ -41,7 +41,7 @@ final class DevicePill extends StatelessWidget {
       onTap: onTap,
       onLongPress: _canMute ? onLongPress : null,
       child: Material(
-        color: palette.chrome,
+        color: palette.bar,
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
@@ -63,7 +63,7 @@ final class DevicePill extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                      color: palette.onChrome,
+                      color: palette.text,
                       fontSize: 14,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
@@ -85,13 +85,13 @@ final class DevicePill extends StatelessWidget {
       DeviceConnectionState.listening => _PillLook(
           label: batteryText ?? 'On',
           spoken: 'Echo is listening$spokenBattery',
-          dot: palette.live,
-          glow: palette.liveGlow,
+          dot: palette.accent,
+          glow: palette.accentSoft,
         ),
       DeviceConnectionState.muted => _PillLook(
           label: 'Muted',
           spoken: 'Echo is muted$spokenBattery',
-          dot: palette.onChromeMuted,
+          dot: palette.text2,
           hollow: true,
         ),
       DeviceConnectionState.turningOff => _PillLook(
@@ -101,7 +101,7 @@ final class DevicePill extends StatelessWidget {
       DeviceConnectionState.off => _PillLook(
           label: 'Off',
           spoken: 'Echo is off',
-          dot: palette.onChromeMuted,
+          dot: palette.text2,
           hollow: true,
         ),
       DeviceConnectionState.scanning ||

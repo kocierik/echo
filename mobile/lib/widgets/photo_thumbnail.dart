@@ -68,7 +68,7 @@ final class PhotoThumbnail extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
-                color: palette.chrome,
+                color: palette.bar,
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
@@ -76,7 +76,7 @@ final class PhotoThumbnail extends StatelessWidget {
                 style: Theme.of(context)
                     .textTheme
                     .labelSmall
-                    ?.copyWith(color: palette.onChrome),
+                    ?.copyWith(color: palette.text),
               ),
             ),
           ),

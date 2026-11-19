@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -552,13 +553,13 @@ final class _ChatScreenState extends State<ChatScreen> {
                   if (!routines) ...[
                     HeaderIconButton(
                       key: const Key('chat-history'),
-                      icon: Icons.history_rounded,
+                      icon: CupertinoIcons.clock,
                       tooltip: 'Chat history',
                       onPressed: () => unawaited(_openHistory()),
                     ),
                     HeaderIconButton(
                       key: const Key('chat-new'),
-                      icon: Icons.add_rounded,
+                      icon: CupertinoIcons.add,
                       tooltip: 'New chat',
                       onPressed: _newChat,
                     ),

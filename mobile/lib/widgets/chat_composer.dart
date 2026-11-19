@@ -44,72 +44,72 @@ final class ChatComposer extends StatelessWidget {
       key: const Key('chat-composer'),
       color: palette.surface,
       child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: TextField(
-              key: const Key('chat-input'),
-              controller: controller,
-              focusNode: focusNode,
-              enabled: enabled,
-              minLines: 1,
-              maxLines: 4,
-              textInputAction: TextInputAction.send,
-              onChanged: onChanged,
-              onSubmitted: (_) {
-                if (canSend) onSend();
-              },
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: palette.surface2,
-                hintText: hintText,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                border: const OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(25)),
-                  borderSide: BorderSide.none,
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: TextField(
+                key: const Key('chat-input'),
+                controller: controller,
+                focusNode: focusNode,
+                enabled: enabled,
+                minLines: 1,
+                maxLines: 4,
+                textInputAction: TextInputAction.send,
+                onChanged: onChanged,
+                onSubmitted: (_) {
+                  if (canSend) onSend();
+                },
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: palette.surface2,
+                  hintText: hintText,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                  border: const OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(25)),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
             ),
-          ),
-          if (onDocument != null) ...[
-            const SizedBox(width: 8),
-            _RoundButton(
-              key: const Key('chat-document'),
-              tooltip: 'Add a document',
-              onPressed: enabled && !sending ? onDocument : null,
-              color: palette.surface2,
-              child: Icon(Icons.attach_file_rounded, size: 22, color: palette.text),
-            ),
+            if (onDocument != null) ...[
+              const SizedBox(width: 8),
+              _RoundButton(
+                key: const Key('chat-document'),
+                tooltip: 'Add a document',
+                onPressed: enabled && !sending ? onDocument : null,
+                color: palette.surface2,
+                child: Icon(Icons.attach_file_rounded, size: 22, color: palette.text),
+              ),
+            ],
+            if (onCamera != null) ...[
+              const SizedBox(width: 8),
+              _RoundButton(
+                key: const Key('chat-camera'),
+                tooltip: 'Ask Echo about what you see',
+                onPressed: enabled && !sending ? onCamera : null,
+                color: palette.surface2,
+                child: Icon(Icons.photo_camera_outlined, size: 22, color: palette.text),
+              ),
+            ],
+            if (canSend || sending) ...[
+              const SizedBox(width: 8),
+              _RoundButton(
+                key: const Key('chat-send'),
+                tooltip: 'Send question',
+                onPressed: canSend ? onSend : null,
+                color: palette.accent,
+                child: sending
+                    ? SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.onAccent),
+                      )
+                    : Icon(Icons.arrow_upward_rounded, color: palette.onAccent),
+              ),
+            ],
           ],
-          if (onCamera != null) ...[
-            const SizedBox(width: 8),
-            _RoundButton(
-              key: const Key('chat-camera'),
-              tooltip: 'Ask Echo about what you see',
-              onPressed: enabled && !sending ? onCamera : null,
-              color: palette.surface2,
-              child: Icon(Icons.photo_camera_outlined, size: 22, color: palette.text),
-            ),
-          ],
-          if (canSend || sending) ...[
-            const SizedBox(width: 8),
-            _RoundButton(
-              key: const Key('chat-send'),
-              tooltip: 'Send question',
-              onPressed: canSend ? onSend : null,
-              color: palette.accent,
-              child: sending
-                  ? SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: palette.onAccent),
-                    )
-                  : Icon(Icons.arrow_upward_rounded, color: palette.onAccent),
-            ),
-          ],
-        ],
-      ),
+        ),
       ),
     );
   }
@@ -183,7 +183,7 @@ final class DictationPanel extends StatelessWidget {
                   Text(
                     'Listening',
                     style: textTheme.labelMedium?.copyWith(
-                      color: palette.accent,
+                      color: palette.onAccentSoft,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

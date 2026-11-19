@@ -85,7 +85,7 @@ final class EchoDeviceGlyph extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: dark ? palette.chrome : palette.chromeRaised,
+        color: dark ? palette.bar : palette.surface2,
         shape: BoxShape.circle,
       ),
       child: Container(
@@ -95,20 +95,20 @@ final class EchoDeviceGlyph extends StatelessWidget {
         padding: EdgeInsets.only(top: size * 0.12),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: palette.chromeLine, width: 2),
+          border: Border.all(color: palette.border, width: 2),
         ),
         child: Container(
           width: led,
           height: led,
           decoration: BoxDecoration(
-            color: palette.live,
+            color: palette.accent,
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                  color: palette.liveGlow,
+                  color: palette.accentSoft,
                   spreadRadius: led * (0.4 + 0.3 * glow)),
               BoxShadow(
-                color: palette.live.withValues(alpha: 0.25 + 0.3 * glow),
+                color: palette.accent.withValues(alpha: 0.25 + 0.3 * glow),
                 blurRadius: led * (1.4 + 1.6 * glow),
                 spreadRadius: led * 0.3 * glow,
               ),

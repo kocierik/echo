@@ -90,7 +90,7 @@ final class TaskTile extends StatelessWidget {
                       key: Key('task-promise-${task.id}'),
                       style: textTheme.bodySmall?.copyWith(
                         fontSize: 13,
-                        color: palette.onAttention,
+                        color: palette.text,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

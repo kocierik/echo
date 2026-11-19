@@ -44,7 +44,7 @@ class EchoLargeTitlePage extends StatelessWidget {
             key: ValueKey(title),
             largeTitle: Text(title),
             trailing: trailing,
-            backgroundColor: palette.chrome,
+            backgroundColor: palette.bar,
             border:
                 Border(bottom: BorderSide(color: palette.border, width: 0.5)),
           ),

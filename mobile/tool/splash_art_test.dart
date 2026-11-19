@@ -114,7 +114,7 @@ Future<void> _draw(
                       shape: BoxShape.circle,
                       border: dark
                           ? Border.all(
-                              color: palette.onChrome.withValues(alpha: 0.28),
+                              color: palette.text.withValues(alpha: 0.28),
                               width: 2)
                           : null,
                     ),

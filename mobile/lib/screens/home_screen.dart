@@ -101,7 +101,7 @@ final class HomeScreen extends StatefulWidget {
   /// without a calendar, and then no "coming up" card.
   final Future<List<Map<String, Object?>>> Function()? phoneEvents;
 
-  /// The memory (every conversation by day, search, people); its own unless injected.
+  /// The memory (every conversation by day); its own unless injected.
   final MemoriesController? memories;
 
   /// Counts up when new routine runs arrive: "From your routines" reloads.
@@ -128,8 +128,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   String? _deviceError;
 
   // Sections: each loads on its own, so one failure never blanks the screen.
-  // The conversations (today's and the days before), search and people come from
-  // the memory; the phone's copy of today's shows until it has answered
+  // Today's conversations come from the memory; the phone's copy of today's shows until it has answered
   late final MemoriesController _memories;
   late final bool _ownsMemories;
   List<ConversationCard> _cachedToday = const [];
@@ -586,7 +585,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _refreshAll();
   }
 
-  /// A day of "Earlier" (or the whole of today): its digest, then its conversations.
+  /// A day (today, or one Today links to): its digest, then its conversations.
   Future<void> _openDay(List<ConversationCard> conversations) async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
       builder: (_) => DayScreen(

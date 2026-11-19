@@ -45,7 +45,7 @@ final class DeviceInstrumentPanel extends StatelessWidget {
     final battery = status.batteryPercent;
     final waiting = pendingSpeechLabel(status.bufferBytes);
     final (label, led) = switch (state) {
-      DeviceConnectionState.listening => ('Listening', palette.live),
+      DeviceConnectionState.listening => ('Listening', palette.accent),
       DeviceConnectionState.muted => ('Muted', null),
       DeviceConnectionState.turningOff => ('Turning off', palette.amber),
       DeviceConnectionState.off => ('Off', null),
@@ -170,7 +170,7 @@ final class _Device extends StatelessWidget {
         width: 88,
         height: 88,
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: palette.chromeRaised, shape: BoxShape.circle),
+        decoration: BoxDecoration(color: palette.surface2, shape: BoxShape.circle),
         child: Container(
           width: 66,
           height: 66,
@@ -178,7 +178,7 @@ final class _Device extends StatelessWidget {
           padding: const EdgeInsets.only(top: 10),
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: palette.chromeLine, width: 2),
+            border: Border.all(color: palette.border, width: 2),
           ),
           child: Container(
             width: 10,
@@ -186,8 +186,8 @@ final class _Device extends StatelessWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: led,
-              border: led == null ? Border.all(color: palette.onChromeMuted, width: 1.5) : null,
-              boxShadow: glow ? [BoxShadow(color: palette.liveGlow, spreadRadius: 5)] : null,
+              border: led == null ? Border.all(color: palette.text2, width: 1.5) : null,
+              boxShadow: glow ? [BoxShadow(color: palette.accentSoft, spreadRadius: 5)] : null,
             ),
           ),
         ),

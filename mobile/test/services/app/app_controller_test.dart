@@ -57,7 +57,7 @@ void main() {
       () async {
     preferences.values[AppController.legacySelectedTabKey] = 2;
     controller = await createController();
-    // Memories became part of Today: never Profile, which now has its place
+    // Memories became part of Today: never Library, which now has its place
     expect(controller.value.selectedTab, AppController.todayTab);
     controller.dispose();
 
