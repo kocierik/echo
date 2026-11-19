@@ -40,8 +40,10 @@ final class ChatComposer extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final canSend = enabled && !sending && controller.text.trim().isNotEmpty;
 
-    return Padding(
+    return Material(
       key: const Key('chat-composer'),
+      color: palette.surface,
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -60,6 +62,8 @@ final class ChatComposer extends StatelessWidget {
                 if (canSend) onSend();
               },
               decoration: InputDecoration(
+                filled: true,
+                fillColor: palette.surface2,
                 hintText: hintText,
                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                 border: const OutlineInputBorder(
@@ -75,7 +79,7 @@ final class ChatComposer extends StatelessWidget {
               key: const Key('chat-document'),
               tooltip: 'Add a document',
               onPressed: enabled && !sending ? onDocument : null,
-              color: palette.surface,
+              color: palette.surface2,
               child: Icon(Icons.attach_file_rounded, size: 22, color: palette.text),
             ),
           ],
@@ -85,7 +89,7 @@ final class ChatComposer extends StatelessWidget {
               key: const Key('chat-camera'),
               tooltip: 'Ask Echo about what you see',
               onPressed: enabled && !sending ? onCamera : null,
-              color: palette.surface,
+              color: palette.surface2,
               child: Icon(Icons.photo_camera_outlined, size: 22, color: palette.text),
             ),
           ],
@@ -95,16 +99,17 @@ final class ChatComposer extends StatelessWidget {
               key: const Key('chat-send'),
               tooltip: 'Send question',
               onPressed: canSend ? onSend : null,
-              color: palette.text,
+              color: palette.accent,
               child: sending
                   ? SizedBox.square(
                       dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: palette.background),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: palette.onAccent),
                     )
-                  : Icon(Icons.arrow_upward_rounded, color: palette.background),
+                  : Icon(Icons.arrow_upward_rounded, color: palette.onAccent),
             ),
           ],
         ],
+      ),
       ),
     );
   }
@@ -160,7 +165,7 @@ final class DictationPanel extends StatelessWidget {
         decoration: BoxDecoration(
           color: palette.surface,
           borderRadius: BorderRadius.circular(AppTheme.panelRadius),
-          border: Border.all(color: palette.live, width: 2),
+          border: Border.all(color: palette.accent, width: 2),
         ),
         child: Semantics(
           liveRegion: true,
@@ -172,13 +177,13 @@ final class DictationPanel extends StatelessWidget {
                   Container(
                     width: 9,
                     height: 9,
-                    decoration: BoxDecoration(color: palette.live, shape: BoxShape.circle),
+                    decoration: BoxDecoration(color: palette.accent, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 10),
                   Text(
                     'Listening',
                     style: textTheme.labelMedium?.copyWith(
-                      color: palette.liveText,
+                      color: palette.accent,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

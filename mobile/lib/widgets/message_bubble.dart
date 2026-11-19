@@ -97,7 +97,7 @@ final class MessageBubble extends StatelessWidget {
           constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.78),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: palette.text,
+              color: palette.surface2,
               borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(20),
                 topRight: Radius.circular(20),
@@ -109,7 +109,7 @@ final class MessageBubble extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
               child: Text(
                 message.text,
-                style: textTheme.bodyMedium?.copyWith(color: palette.background, height: 1.4),
+                style: textTheme.bodyMedium?.copyWith(color: palette.text, height: 1.4),
               ),
             ),
           ),
@@ -486,7 +486,7 @@ final class _SourceTile extends StatelessWidget {
               ? 'Opens the conversation'
               : null,
       child: Material(
-        color: palette.tint,
+        color: palette.surface2,
         borderRadius: radius,
         child: InkWell(
           key: Key('chat-source-${source.chunkId ?? conversationId ?? source.label}'),

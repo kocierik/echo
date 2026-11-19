@@ -219,7 +219,9 @@ final class _AskButtonState extends State<AskButton> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final live = widget.dictating || _holding;
-    final ring = live || widget.selected ? palette.live : palette.chromeLine;
+    final ring = live || widget.selected
+        ? palette.onAccent.withValues(alpha: 0.6)
+        : palette.accent;
     return Semantics(
       key: const Key('echo-nav-1'),
       label: live ? 'Dictating. Let go to stop' : 'Ask Echo',
@@ -242,12 +244,12 @@ final class _AskButtonState extends State<AskButton> {
             height: EchoNavBar.askSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: live ? palette.live : palette.chromeRaised,
+              color: palette.accent,
               boxShadow: [
                 BoxShadow(color: palette.background, spreadRadius: 5),
                 if (live)
                   BoxShadow(
-                    color: palette.live.withValues(alpha: 0.28),
+                    color: palette.accent.withValues(alpha: 0.28),
                     spreadRadius: 14,
                   ),
               ],
@@ -258,14 +260,11 @@ final class _AskButtonState extends State<AskButton> {
               height: 56,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.all(
-                  color: live ? palette.onChrome.withValues(alpha: 0.6) : ring,
-                  width: 2,
-                ),
+                border: Border.all(color: ring, width: 2),
               ),
               alignment: Alignment.center,
               child: Icon(Icons.mic_none_rounded,
-                  size: 26, color: palette.onChrome),
+                  size: 26, color: palette.onAccent),
             ),
           ),
         ),
