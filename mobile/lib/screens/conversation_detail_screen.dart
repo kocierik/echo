@@ -912,8 +912,7 @@ final class _VoiceButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       icon: Icon(icon, size: 18, color: color),
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 36, minHeight: 32),
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
       padding: EdgeInsets.zero,
     );
   }

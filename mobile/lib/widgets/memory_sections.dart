@@ -79,7 +79,7 @@ final class MemorySearchField extends StatelessWidget {
           decoration: InputDecoration(
             isDense: true,
             hintText: hint,
-            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            prefixIcon: const Icon(CupertinoIcons.search, size: 20),
             suffixIcon: value.text.isEmpty
                 ? null
                 : searching
@@ -95,7 +95,7 @@ final class MemorySearchField extends StatelessWidget {
                         key: const Key('memories-search-clear'),
                         tooltip: 'Clear search',
                         onPressed: onClear,
-                        icon: const Icon(Icons.close_rounded, size: 20),
+                        icon: const Icon(CupertinoIcons.xmark, size: 20),
                       ),
           ),
         );
@@ -128,7 +128,7 @@ final class MemorySearchView extends StatelessWidget {
     final results = state.results;
     if (state.searchError != null) {
       return FullScreenMessage(
-        icon: Icons.cloud_off_rounded,
+        icon: CupertinoIcons.wifi_slash,
         title: 'Search failed',
         message: state.searchError!,
         actionKey: const Key('search-retry'),
@@ -141,7 +141,7 @@ final class MemorySearchView extends StatelessWidget {
     }
     if (results.isEmpty) {
       return FullScreenMessage(
-        icon: Icons.search_off_rounded,
+        icon: CupertinoIcons.search,
         title: 'No results',
         message: 'Nothing in your memory matches "${state.query}".',
       );

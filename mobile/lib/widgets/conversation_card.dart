@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
@@ -78,19 +79,19 @@ final class ConversationCardTile extends StatelessWidget {
                         Text(meta, style: _metaStyle(context)),
                         if (c.people.isNotEmpty)
                           _IconText(
-                            icon: Icons.person_outline_rounded,
+                            icon: CupertinoIcons.person,
                             text: c.people.join(', '),
                           ),
                         if (c.place?.label case final place?)
-                          _IconText(icon: Icons.place_outlined, text: place),
+                          _IconText(icon: CupertinoIcons.location, text: place),
                         if (c.taskCount > 0)
                           _IconText(
-                            icon: Icons.check_circle_outline_rounded,
+                            icon: CupertinoIcons.checkmark_circle,
                             text: c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
                           ),
                         if (c.photoCount > 0)
                           _IconText(
-                            icon: Icons.photo_camera_outlined,
+                            icon: CupertinoIcons.camera,
                             text: c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
                           ),
                       ],
@@ -279,7 +280,7 @@ final class ConversationEmoji extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(color: palette.surface2, shape: BoxShape.circle),
         child: emoji == null
-            ? Icon(Icons.forum_outlined, size: size * 0.5, color: palette.text2)
+            ? Icon(CupertinoIcons.chat_bubble_2, size: size * 0.5, color: palette.text2)
             : Text(emoji!, style: TextStyle(fontSize: size * 0.5, height: 1)),
       ),
     );
