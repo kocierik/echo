@@ -521,8 +521,9 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
   DB-free subset; `make lint` / `make fmt` run ruff. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 - Mobile: `cd mobile && flutter test`.
 - Firmware: `cd firmware && pio test -e native`.
-- CI (`.github/workflows/ci.yml`) runs ruff, the backend tests with Postgres/Redis, the Flutter
-  analyzer and tests, the firmware build and native tests.
+- CI (`.github/workflows/`, one workflow per folder, each run only when its folder changes) runs
+  ruff, the backend tests with Postgres/Redis, the Flutter analyzer and tests, the firmware build
+  and native tests, the WhatsApp bridge tests and the simulator syntax check.
 
 ## Design Decisions
 

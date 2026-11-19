@@ -71,8 +71,10 @@ cd firmware && pio test -e native
   a provider stub it (`tests/mocks.py`, `tests/fakes/`).
 - To run them outside Docker, point `DATABASE_URL` at a `*_test` database and run
   `alembic upgrade head` on it first.
-- CI ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs ruff, the migrations on an empty
-  database, the backend tests, `flutter analyze` + `flutter test`, the firmware build and native tests.
+- CI ([.github/workflows/](../.github/workflows/), one workflow per folder: `backend.yml`, `mobile.yml`,
+  `firmware.yml`, `whatsapp.yml`, `simulator.yml`) runs ruff, the migrations on an empty database, the
+  backend tests, `flutter analyze` + `flutter test`, the firmware build and native tests. Each workflow
+  runs only when its own folder (or its workflow file) changes, to save Actions minutes.
 
 ## Evaluating models
 

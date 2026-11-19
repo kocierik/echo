@@ -1,10 +1,17 @@
-name: CI
+name: Backend
 
+# Runs only when its folder changes: Actions minutes are billed per run.
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend.yml"
 
 jobs:
   lint-and-test:
@@ -78,81 +85,3 @@ jobs:
           REDIS_URL: "redis://localhost:6379/0"
           OPENAI_API_KEY: "sk-test-not-real"
           AUDIO_STORAGE_PATH: "/tmp/echo_audio"
-
-  firmware-syntax:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install PlatformIO
-        run: pip install platformio
-
-      - name: Check firmware compiles
-        run: |
-          cd firmware
-          pio run --environment xiao_esp32s3
-
-      - name: Firmware unit tests (native)
-        run: |
-          cd firmware
-          pio test --environment native
-
-  mobile:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Install dependencies
-        working-directory: mobile
-        run: flutter pub get
-
-      - name: Analyze
-        working-directory: mobile
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Tests
-        working-directory: mobile
-        run: flutter test
-
-  whatsapp-bridge:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install
-        working-directory: whatsapp
-        run: npm ci --no-audit --no-fund
-
-      - name: Tests
-        working-directory: whatsapp
-        run: npm test
-
-  simulator-syntax:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Check simulator syntax
-        run: |
-          python -m py_compile simulator/adpcm_encode.py
-          python -m py_compile simulator/simulate_device.py

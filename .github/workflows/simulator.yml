@@ -1,0 +1,31 @@
+name: Simulator
+
+# Runs only when its folder changes: Actions minutes are billed per run.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "simulator/**"
+      - ".github/workflows/simulator.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "simulator/**"
+      - ".github/workflows/simulator.yml"
+
+jobs:
+  simulator-syntax:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check simulator syntax
+        run: |
+          python -m py_compile simulator/adpcm_encode.py
+          python -m py_compile simulator/simulate_device.py
