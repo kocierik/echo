@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../models/person.dart';
@@ -9,7 +10,8 @@ import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
 import '../utils/formatting.dart';
 import '../widgets/memory_entity_row.dart';
-import '../widgets/panel.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/person_avatar.dart';
 import '../widgets/sections.dart';
 import '../widgets/task_tile.dart';
@@ -94,7 +96,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
       useRootNavigator: true,
       builder: (context) => SafeArea(
         child: ListTile(
-          leading: const Icon(Icons.close_rounded),
+          leading: const Icon(CupertinoIcons.xmark),
           title: const Text('Not true'),
           onTap: () => Navigator.pop(context, true),
         ),
@@ -140,31 +142,34 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: PanelHeader(title: 'What Echo knows'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 8, 32, 4),
+          child: Semantics(
+            header: true,
+            child: Text('What Echo knows', style: Theme.of(context).textTheme.titleMedium),
+          ),
         ),
         for (final category in categories.entries)
           if (facts.any((fact) => fact.category == category.key))
-            PanelSection(
-              title: category.value,
+            EchoGroup(
+              header: category.value,
               children: [
                 for (final fact in facts.where((fact) => fact.category == category.key))
                   row(fact),
               ],
             ),
         if (earlier.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Panel(
-              padding: EdgeInsets.zero,
-              child: ExpansionTile(
+          EchoGroup(
+            children: [
+              ExpansionTile(
                 title: const Text('Before'),
+                shape: const Border(),
+                collapsedShape: const Border(),
                 children: [
                   for (final fact in earlier) row(fact, superseded: true),
                 ],
               ),
-            ),
+            ],
           ),
       ],
     );
@@ -212,37 +217,46 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: EchoPalette.of(context).background,
-      appBar: AppBar(
-        actions: [
-          if (_detail != null)
-            IconButton(
+    final palette = EchoPalette.of(context);
+    final detail = _detail;
+    return EchoLargeTitlePage(
+      key: const Key('person-detail'),
+      title: detail?.person.name ?? 'Person',
+      onRefresh: detail == null ? null : _load,
+      trailing: detail == null
+          ? null
+          : CupertinoButton(
               key: const Key('person-delete'),
-              tooltip: 'Delete',
-              icon: const Icon(Icons.delete_outline_rounded),
+              minimumSize: const Size(44, 44),
+              padding: EdgeInsets.zero,
               onPressed: _deleting ? null : _delete,
+              child: Icon(CupertinoIcons.delete, color: palette.accent, semanticLabel: 'Delete'),
             ),
-        ],
-      ),
-      body: _body(),
+      slivers: _body(detail),
     );
   }
 
-  Widget _body() {
+  List<Widget> _body(PersonDetail? detail) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(key: Key('person-loading')));
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator(key: Key('person-loading'))),
+        ),
+      ];
     }
-    final detail = _detail;
     if (detail == null) {
-      return FullScreenMessage(
-        icon: Icons.cloud_off_rounded,
-        title: 'Could not load this person',
-        message: _error ?? '',
-        actionKey: const Key('person-retry'),
-        actionLabel: 'Retry',
-        onAction: _load,
-      );
+      return [
+        FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.cloud_bolt,
+          title: 'Could not load this person',
+          message: _error ?? '',
+          actionKey: const Key('person-retry'),
+          actionLabel: 'Retry',
+          onAction: _load,
+        ),
+      ];
     }
 
     final person = detail.person;
@@ -251,82 +265,73 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
     final ask = widget.onAsk;
     final nothingLinked =
         tasks.isEmpty && detail.events.isEmpty && detail.conversations.isEmpty;
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        key: const Key('person-detail'),
-        padding: const EdgeInsets.only(bottom: 48),
-        children: [
-          _Header(person: person, now: now),
-          if (detail.facts.isNotEmpty || detail.earlierFacts.isNotEmpty) _facts(detail),
-          if (ask != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: OutlinedButton.icon(
-                key: const Key('person-ask'),
-                onPressed: () => askFromAnywhere(
-                  context,
-                  ask,
-                  'What did I talk about with ${person.name} recently, '
-                  'and what is still open with them?',
-                ),
-                icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                label: Text('Ask about ${person.name}'),
+    return [
+      SliverList.list(children: [
+        _Header(person: person, now: now),
+        if (detail.facts.isNotEmpty || detail.earlierFacts.isNotEmpty) _facts(detail),
+        if (ask != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: OutlinedButton.icon(
+              key: const Key('person-ask'),
+              onPressed: () => askFromAnywhere(
+                context,
+                ask,
+                'What did I talk about with ${person.name} recently, '
+                'and what is still open with them?',
               ),
+              icon: const Icon(CupertinoIcons.sparkles, size: 18),
+              label: Text('Ask about ${person.name}'),
             ),
-          if (tasks.isNotEmpty)
-            PanelSection(title: 'Open tasks', trailing: '${tasks.length}', children: [
-              for (final task in tasks)
-                TaskTile(
-                  task: task,
-                  now: now,
-                  busy: isTaskBusy(task),
-                  padding: const EdgeInsets.only(left: 6, right: 4),
-                  onToggle: () => unawaited(toggleTask(task)),
-                  onDismiss: () => unawaited(dismissTask(task)),
-                  onOpenConversation: task.conversationId == null
-                      ? null
-                      : () => unawaited(_openConversation(task.conversationId!)),
-                ),
-            ]),
-          if (detail.events.isNotEmpty)
-            PanelSection(title: 'Events', trailing: '${detail.events.length}', children: [
-              for (final event in detail.events)
-                MemoryEntityRow(
-                  entity: event,
-                  now: now,
-                  onAddToCalendar: ask == null
-                      ? null
-                      : () => askFromAnywhere(context, ask, calendarRequest(event)),
-                  onTap: event.conversationId == null
-                      ? null
-                      : () => unawaited(_openConversation(event.conversationId!)),
-                ),
-            ]),
-          if (detail.conversations.isNotEmpty)
-            PanelSection(
-              title: 'Conversations',
-              trailing: '${detail.conversations.length}',
-              children: [
-                for (final conversation in detail.conversations)
-                  ConversationCardTile(
-                    conversation: conversation,
-                    dayFrom: now,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    onTap: () => unawaited(_openConversation(conversation.id)),
-                  ),
-              ],
-            ),
-          if (nothingLinked)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: SectionEmpty(
-                message: 'Nothing else is linked to ${person.name} yet.',
+          ),
+        if (tasks.isNotEmpty)
+          EchoGroup(header: 'Open tasks', children: [
+            for (final task in tasks)
+              TaskTile(
+                task: task,
+                now: now,
+                busy: isTaskBusy(task),
+                padding: const EdgeInsets.only(left: 6, right: 4),
+                onToggle: () => unawaited(toggleTask(task)),
+                onDismiss: () => unawaited(dismissTask(task)),
+                onOpenConversation: task.conversationId == null
+                    ? null
+                    : () => unawaited(_openConversation(task.conversationId!)),
               ),
+          ]),
+        if (detail.events.isNotEmpty)
+          EchoGroup(header: 'Events', children: [
+            for (final event in detail.events)
+              MemoryEntityRow(
+                entity: event,
+                now: now,
+                onAddToCalendar: ask == null
+                    ? null
+                    : () => askFromAnywhere(context, ask, calendarRequest(event)),
+                onTap: event.conversationId == null
+                    ? null
+                    : () => unawaited(_openConversation(event.conversationId!)),
+              ),
+          ]),
+        if (detail.conversations.isNotEmpty)
+          EchoGroup(header: 'Conversations', children: [
+            for (final conversation in detail.conversations)
+              ConversationCardTile(
+                conversation: conversation,
+                dayFrom: now,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                onTap: () => unawaited(_openConversation(conversation.id)),
+              ),
+          ]),
+        if (nothingLinked)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: SectionEmpty(
+              message: 'Nothing else is linked to ${person.name} yet.',
             ),
-        ],
-      ),
-    );
+          ),
+      ]),
+    ];
   }
 }
 
@@ -404,13 +409,8 @@ final class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           PersonAvatar(initials: person.initials, size: 64),
-          const SizedBox(height: 12),
-          Semantics(
-            header: true,
-            child: Text(person.name, style: textTheme.displayLarge?.copyWith(fontSize: 28)),
-          ),
           if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 10),
             Text(subtitle, style: textTheme.bodySmall),
           ],
           if (person.about != null) ...[
@@ -480,7 +480,7 @@ final class PersonTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: palette.text2),
+              Icon(CupertinoIcons.chevron_forward, size: 18, color: palette.text2),
             ],
           ),
         ),

@@ -136,9 +136,12 @@ final class FullScreenMessage extends StatelessWidget {
     this.actionKey,
     this.actionLabel,
     this.onAction,
+    this.sliver = false,
     super.key,
   });
 
+  /// Inside a page's slivers (under a large title): no scroll view of its own.
+  final bool sliver;
   final IconData icon;
   final String title;
   final String message;
@@ -150,10 +153,7 @@ final class FullScreenMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final content = CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverFillRemaining(
+    final fill = SliverFillRemaining(
           hasScrollBody: false,
           child: Center(
             child: Padding(
@@ -191,8 +191,11 @@ final class FullScreenMessage extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ],
+        );
+    if (sliver) return fill;
+    final content = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [fill],
     );
     final refresh = onRefresh;
     return refresh == null ? content : RefreshIndicator(onRefresh: refresh, child: content);

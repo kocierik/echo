@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoButton, CupertinoIcons, CupertinoSearchTextField;
 import 'package:flutter/material.dart';
 
 import '../services/api/api_exception.dart';
 import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/sections.dart';
 import 'person_screen.dart';
 
@@ -94,102 +97,111 @@ final class _PeopleScreenState extends State<PeopleScreen> {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final state = widget.controller.state;
-    return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(
-        title: const Text('People'),
-        actions: [
-          IconButton(
+    return EchoLargeTitlePage(
+      title: 'People',
+      onRefresh: widget.controller.loadPeople,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CupertinoButton(
             key: const Key('people-add'),
+            minimumSize: const Size(44, 44),
+            padding: EdgeInsets.zero,
             onPressed: () => unawaited(_addPerson()),
-            icon: const Icon(Icons.person_add_alt_1_outlined),
-            tooltip: 'Add person',
+            child: Icon(CupertinoIcons.person_add, color: palette.accent, semanticLabel: 'Add person'),
           ),
-          TextButton.icon(
+          CupertinoButton(
             key: const Key('people-map'),
+            minimumSize: const Size(44, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             onPressed: () => unawaited(widget.onOpenMap()),
-            icon: const Icon(Icons.hub_outlined),
-            label: const Text('Map'),
+            child: Text('Map', style: TextStyle(color: palette.accent)),
           ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: TextField(
-                key: const Key('people-filter'),
-                controller: _filter,
-                onChanged: (_) => setState(() {}),
-                decoration: const InputDecoration(
-                  hintText: 'Search people',
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-              ),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: CupertinoSearchTextField(
+              key: const Key('people-filter'),
+              controller: _filter,
+              placeholder: 'Search people',
+              onChanged: (_) => setState(() {}),
             ),
-            Expanded(child: _list(state)),
-          ],
+          ),
         ),
-      ),
+        ..._list(widget.controller.state),
+      ],
     );
   }
 
-  Widget _list(MemoriesState state) {
+  List<Widget> _list(MemoriesState state) {
     final controller = widget.controller;
     if (state.peopleLoading || !state.peopleLoaded) {
-      return const Center(child: CircularProgressIndicator(key: Key('people-loading')));
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator(key: Key('people-loading'))),
+        ),
+      ];
     }
     if (state.people.isEmpty) {
       if (state.peopleError != null) {
-        return FullScreenMessage(
-          icon: Icons.cloud_off_rounded,
-          title: 'Could not load people',
-          message: state.peopleError!,
-          actionKey: const Key('people-retry'),
-          actionLabel: 'Retry',
-          onAction: controller.loadPeople,
-          onRefresh: controller.loadPeople,
-        );
+        return [
+          FullScreenMessage(
+            sliver: true,
+            icon: CupertinoIcons.cloud_bolt,
+            title: 'Could not load people',
+            message: state.peopleError!,
+            actionKey: const Key('people-retry'),
+            actionLabel: 'Retry',
+            onAction: controller.loadPeople,
+          ),
+        ];
       }
-      return FullScreenMessage(
-        icon: Icons.people_outline_rounded,
-        title: 'No people yet',
-        message: 'Add the people you want Echo to remember: what is said with or about '
-            'them is kept from then on.',
-        actionKey: const Key('people-add-first'),
-        actionLabel: 'Add person',
-        onAction: _addPerson,
-        onRefresh: controller.loadPeople,
-      );
+      return [
+        FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.person_2,
+          title: 'No people yet',
+          message: 'Add the people you want Echo to remember: what is said with or about '
+              'them is kept from then on.',
+          actionKey: const Key('people-add-first'),
+          actionLabel: 'Add person',
+          onAction: _addPerson,
+        ),
+      ];
     }
     final query = _filter.text.trim().toLowerCase();
     final people = query.isEmpty
         ? state.people
         : state.people.where((p) => p.name.toLowerCase().contains(query)).toList();
     if (people.isEmpty) {
-      return FullScreenMessage(
-        icon: Icons.search_off_rounded,
-        title: 'No one matches',
-        message: 'Nobody named "${_filter.text.trim()}" yet.',
-      );
+      return [
+        FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.search,
+          title: 'No one matches',
+          message: 'Nobody named "${_filter.text.trim()}" yet.',
+        ),
+      ];
     }
-    return RefreshIndicator(
-      onRefresh: controller.loadPeople,
-      child: ListView.builder(
-        key: const Key('people-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(top: 4, bottom: 24),
-        itemCount: people.length,
-        itemBuilder: (context, index) => PersonTile(
-          person: people[index],
-          now: widget.now,
-          onTap: () => unawaited(widget.onOpenPerson(people[index].id)),
+    // shortcut: one non-lazy group, fine for the people one person knows; page it if lists grow large.
+    return [
+      SliverToBoxAdapter(
+        child: EchoGroup(
+          key: const Key('people-list'),
+          children: [
+            for (final person in people)
+              PersonTile(
+                person: person,
+                now: widget.now,
+                onTap: () => unawaited(widget.onOpenPerson(person.id)),
+              ),
+          ],
         ),
       ),
-    );
+    ];
   }
 }

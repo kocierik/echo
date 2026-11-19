@@ -3,7 +3,7 @@ import 'package:echo_app/models/person.dart';
 import 'package:echo_app/screens/conversation_detail_screen.dart';
 import 'package:echo_app/screens/person_screen.dart';
 import 'package:echo_app/theme/app_theme.dart';
-import 'package:echo_app/widgets/panel.dart';
+import 'package:echo_app/widgets/echo_grouped.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -99,7 +99,7 @@ void main() {
     await pump(tester, FakeMemoryApi()..personDetails = {'p1': marco()});
 
     expect(find.text('MR'), findsOneWidget);
-    expect(find.text('Marco Rossi'), findsOneWidget);
+    expect(find.text('Marco Rossi'), findsWidgets); // large title and its collapsed twin
     expect(find.text('designer · Seen yesterday'), findsOneWidget);
     expect(find.text('Leads the Atlas design.'), findsOneWidget);
     expect(find.text('Send Marco the specs'), findsOneWidget);
@@ -107,6 +107,14 @@ void main() {
     expect(find.text('Dinner with Marco'), findsOneWidget);
     expect(find.text('Sat, Oct 17 at 20:00'), findsOneWidget);
     expect(find.text('Atlas design review'), findsOneWidget);
+  });
+
+  testWidgets('at 2.0 text scale the person does not overflow', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pump(tester, FakeMemoryApi()..personDetails = {'p1': marco()}, height: 2400);
+
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Ask goes back to the tabs and asks about them', (tester) async {
@@ -160,7 +168,7 @@ void main() {
     await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Marco Rossi'), findsOneWidget);
+    expect(find.text('Marco Rossi'), findsWidgets); // large title and its collapsed twin
     expect(find.byType(SnackBar), findsOneWidget);
   });
 
@@ -201,7 +209,7 @@ void main() {
     }
     final work = find.ancestor(
       of: find.text('Work'),
-      matching: find.byType(PanelSection),
+      matching: find.byType(EchoGroup),
     );
     expect(find.descendant(of: work, matching: find.text('Leads Atlas')), findsOneWidget);
     expect(find.descendant(of: work, matching: find.text('Designed Atlas')), findsOneWidget);
@@ -209,7 +217,7 @@ void main() {
         lessThan(tester.getTopLeft(find.text('Designed Atlas')).dy));
     final home = find.ancestor(
       of: find.text('Home'),
-      matching: find.byType(PanelSection),
+      matching: find.byType(EchoGroup),
     );
     expect(find.descendant(of: home, matching: find.text('Lives in Milan')), findsOneWidget);
   });

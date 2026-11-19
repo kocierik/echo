@@ -124,6 +124,20 @@ void main() {
     expect(opened, isTrue);
   });
 
+  testWidgets('at 2.0 text scale People does not overflow', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final controller = MemoriesController(api: FakeMemoryApi());
+    addTearDown(controller.dispose);
+    await _pump(tester, PeopleScreen(
+      controller: controller,
+      onOpenPerson: (_) async {},
+      onOpenMap: () async {},
+      now: DateTime(2026, 11, 10),
+    ));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('People: with no one yet it says to add them, and Add person adds one',
       (tester) async {
     final api = FakeMemoryApi();
