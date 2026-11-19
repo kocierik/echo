@@ -20,6 +20,8 @@ class _WeekApi extends FakeMemoryApi implements WeeklySummaryApi {
       WeeklySummary(weekStart: DateTime(2026, 11, 9), summary: 'A busy week');
 }
 
+void Function(bool) _setActive = (_) {};
+
 void main() {
   final now = DateTime(2026, 11, 17, 18);
 
@@ -31,6 +33,8 @@ void main() {
     ValueListenable<bool>? placesOn,
     int loads = 0,
     void Function()? onLoad,
+    DateTime? at,
+    bool active = true,
   }) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
@@ -45,26 +49,35 @@ void main() {
         data: MediaQuery.of(context).copyWith(textScaler: textScaler),
         child: child!,
       ),
-      home: LibraryScreen(
-        loadCounts: () async {
-          onLoad?.call();
-          return counts;
-        },
-        memories: memories,
-        api: fake,
-        placesOn: placesOn,
-        clock: () => now,
-      ),
+      home: StatefulBuilder(builder: (context, set) {
+        _setActive = (v) => set(() => active = v);
+        return LibraryScreen(
+          active: active,
+          loadCounts: () async {
+            onLoad?.call();
+            return counts;
+          },
+          memories: memories,
+          api: fake,
+          placesOn: placesOn,
+          clock: () => at ?? now,
+        );
+      }),
     ));
     await tester.pumpAndSettle();
     return memories;
   }
 
-  testWidgets('the tiles show their counts, and a dash for an unknown one', (tester) async {
+  testWidgets('the tiles show their counts, and a dash for an unknown one',
+      (tester) async {
     await pumpLibrary(
       tester,
       counts: const LibraryCounts(
-          people: 14, faces: ['M', 'G'], openTasks: 3, visitsThisWeek: 8, documents: 3),
+          people: 14,
+          faces: ['M', 'G'],
+          openTasks: 3,
+          visitsThisWeek: 8,
+          documents: 3),
     );
     expect(find.text('14 saved'), findsOneWidget);
     expect(find.text('—'), findsOneWidget);
@@ -75,12 +88,14 @@ void main() {
 
   testWidgets('places off says Off', (tester) async {
     await pumpLibrary(tester,
-        counts: const LibraryCounts(visitsThisWeek: null), placesOn: ValueNotifier(false));
+        counts: const LibraryCounts(visitsThisWeek: null),
+        placesOn: ValueNotifier(false));
     expect(find.text('Off'), findsOneWidget);
   });
 
   testWidgets('People opens the people page, inside Library', (tester) async {
-    await pumpLibrary(tester, counts: const LibraryCounts(people: 1, faces: ['M']));
+    await pumpLibrary(tester,
+        counts: const LibraryCounts(people: 1, faces: ['M']));
     await tester.tap(find.text('People'));
     await tester.pumpAndSettle();
     expect(find.byType(PeopleScreen), findsOneWidget);
@@ -93,11 +108,15 @@ void main() {
     expect(find.byType(MemorySearchScreen), findsOneWidget);
   });
 
-  testWidgets('this week lists days and opens one; earlier days and the week are reachable',
+  testWidgets(
+      'this week lists days and opens one; earlier days and the week are reachable',
       (tester) async {
     final api = _WeekApi()
       ..conversations = [
-        ConversationCard(id: 'a', startedAt: DateTime(2026, 11, 17, 9), people: const ['Marco']),
+        ConversationCard(
+            id: 'a',
+            startedAt: DateTime(2026, 11, 17, 9),
+            people: const ['Marco']),
         ConversationCard(id: 'b', startedAt: DateTime(2026, 11, 2, 9)),
       ];
     await pumpLibrary(tester, counts: const LibraryCounts(), api: api);
@@ -116,17 +135,61 @@ void main() {
 
   testWidgets('the counts reload on pull to refresh', (tester) async {
     var loads = 0;
-    await pumpLibrary(tester, counts: const LibraryCounts(), onLoad: () => loads++);
+    await pumpLibrary(tester,
+        counts: const LibraryCounts(), onLoad: () => loads++);
     expect(loads, 1);
-    await tester.fling(find.byType(CustomScrollView), const Offset(0, 400), 1000);
+    await tester.fling(
+        find.byType(CustomScrollView), const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
     expect(loads, 2);
   });
 
-  testWidgets('at the largest text size the Library does not overflow', (tester) async {
+  testWidgets('at the largest text size the Library does not overflow',
+      (tester) async {
     await pumpLibrary(tester,
         counts: const LibraryCounts(people: 14, faces: ['M', 'G', 'P']),
         textScaler: const TextScaler.linear(2.0));
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a day row shows its day number in a tile', (tester) async {
+    final api = FakeMemoryApi()
+      ..conversations = [
+        ConversationCard(id: 'a', startedAt: DateTime(2026, 11, 15, 9))
+      ];
+    await pumpLibrary(tester, counts: const LibraryCounts(), api: api);
+    expect(find.text('15'), findsOneWidget);
+  });
+
+  testWidgets('the 7th day back is in Earlier, never lost between the two',
+      (tester) async {
+    final api = FakeMemoryApi()
+      ..conversations = [
+        ConversationCard(id: 'a', startedAt: DateTime(2027, 3, 26, 9)),
+        ConversationCard(id: 'b', startedAt: DateTime(2027, 3, 25, 9)),
+      ];
+    await pumpLibrary(tester,
+        counts: const LibraryCounts(), api: api, at: DateTime(2027, 4, 1, 18));
+    expect(find.byKey(const Key('library-day-2027-03-26')), findsOneWidget);
+    await tester.tap(find.text('Earlier'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('earlier-2027-03-25')), findsOneWidget);
+    expect(find.byKey(const Key('earlier-2027-03-26')), findsNothing);
+  });
+
+  testWidgets('the counts load when the tab is first shown and again each time',
+      (tester) async {
+    var loads = 0;
+    await pumpLibrary(tester,
+        counts: const LibraryCounts(), onLoad: () => loads++, active: false);
+    expect(loads, 0);
+    _setActive(true);
+    await tester.pumpAndSettle();
+    expect(loads, 1);
+    _setActive(false);
+    await tester.pumpAndSettle();
+    _setActive(true);
+    await tester.pumpAndSettle();
+    expect(loads, 2);
   });
 }

@@ -76,7 +76,7 @@ final class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     widget.memories.addListener(_changed);
-    unawaited(_reload());
+    if (widget.active) unawaited(_reload());
   }
 
   @override
@@ -94,7 +94,8 @@ final class _LibraryScreenState extends State<LibraryScreen> {
   void _changed() {
     if (!mounted) return;
     // A page opened over this one may load people while the frame is still building
-    if (SchedulerBinding.instance.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _changed());
     } else {
       setState(() {});
@@ -106,7 +107,9 @@ final class _LibraryScreenState extends State<LibraryScreen> {
     final (counts, week) = await (
       widget.loadCounts(),
       api is WeeklySummaryApi
-          ? (api as WeeklySummaryApi).getLatestWeeklySummary().then<WeeklySummary?>((w) => w, onError: (_) => null)
+          ? (api as WeeklySummaryApi)
+              .getLatestWeeklySummary()
+              .then<WeeklySummary?>((w) => w, onError: (_) => null)
           : Future<WeeklySummary?>.value(),
     ).wait;
     if (mounted) {
@@ -118,7 +121,8 @@ final class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _push(Widget page) async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context)
+        .push<void>(MaterialPageRoute(builder: (_) => page));
     if (mounted) unawaited(_reload());
   }
 
@@ -138,7 +142,11 @@ final class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _openPerson(String id) async {
-    await _push(PersonScreen(personId: id, api: widget.api, onAsk: widget.onAsk, clock: widget.clock));
+    await _push(PersonScreen(
+        personId: id,
+        api: widget.api,
+        onAsk: widget.onAsk,
+        clock: widget.clock));
     if (mounted) await widget.memories.loadPeople();
   }
 
@@ -148,7 +156,8 @@ final class _LibraryScreenState extends State<LibraryScreen> {
         onOpenConversation: _openById,
       ));
 
-  Future<void> _openDay(List<ConversationCard> conversations) => _push(DayScreen(
+  Future<void> _openDay(List<ConversationCard> conversations) =>
+      _push(DayScreen(
         day: dayOf(conversations.first.startedAt),
         conversations: conversations,
         api: widget.api,
@@ -185,10 +194,12 @@ final class _LibraryScreenState extends State<LibraryScreen> {
     final state = widget.memories.state;
     final days = thisWeek(state.conversations, now);
     final api = widget.api;
-    final hasEarlier = state.hasMore || _olderDays(state.conversations, now).isNotEmpty;
+    final hasEarlier =
+        state.hasMore || _olderDays(state.conversations, now).isNotEmpty;
     final c = _counts;
 
-    String count(int? n, String Function(int n) say) => n == null ? '—' : say(n);
+    String count(int? n, String Function(int n) say) =>
+        n == null ? '—' : say(n);
 
     final tiles = <Widget>[
       _Tile(
@@ -210,7 +221,8 @@ final class _LibraryScreenState extends State<LibraryScreen> {
         onTap: api is SavedApi
             ? () => _push(SavedScreen(
                   api: api as SavedApi,
-                  loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
+                  loadPhoto:
+                      api is PhotoApi ? (api as PhotoApi).photoImage : null,
                   onAsk: widget.onAsk,
                   openConversation: (context, id) => _openById(id),
                   openPerson: (context, id) => _openPerson(id),
@@ -227,15 +239,19 @@ final class _LibraryScreenState extends State<LibraryScreen> {
           onAsk: widget.onAsk,
         )),
       ),
-      ValueListenableBuilder<bool>(
-        valueListenable: widget.placesOn ?? ValueNotifier(true),
-        builder: (context, on, _) => _Tile(
+      ListenableBuilder(
+        listenable: widget.placesOn ?? const AlwaysStoppedAnimation(true),
+        builder: (context, _) => _Tile(
           icon: CupertinoIcons.location,
           title: 'Places',
-          subtitle: on ? count(c.visitsThisWeek, (n) => '$n this week') : 'Off',
+          // Without the setting, on only when a count could be read
+          subtitle: (widget.placesOn?.value ?? c.visitsThisWeek != null)
+              ? count(c.visitsThisWeek, (n) => '$n this week')
+              : 'Off',
           onTap: widget.places == null || api is! PlacesApi
               ? null
-              : () => _push(PlacesVisitedScreen(places: widget.places!, api: api as PlacesApi)),
+              : () => _push(PlacesVisitedScreen(
+                  places: widget.places!, api: api as PlacesApi)),
         ),
       ),
       _Tile(
@@ -248,14 +264,17 @@ final class _LibraryScreenState extends State<LibraryScreen> {
         icon: CupertinoIcons.doc_text,
         title: 'Documents',
         subtitle: count(c.documents, (n) => '$n'),
-        onTap: api is DocumentsApi ? () => _push(DocumentsScreen(api: api as DocumentsApi)) : null,
+        onTap: api is DocumentsApi
+            ? () => _push(DocumentsScreen(api: api as DocumentsApi))
+            : null,
       ),
     ];
 
     return Material(
       color: palette.background,
       child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics()),
         slivers: [
           CupertinoSliverNavigationBar(
             largeTitle: Text('Library', style: TextStyle(color: palette.text)),
@@ -286,16 +305,23 @@ final class _LibraryScreenState extends State<LibraryScreen> {
                       ),
                     for (final day in days)
                       _Row(
-                        key: Key('library-day-${day.day.toIso8601String().substring(0, 10)}'),
+                        key: Key(
+                            'library-day-${day.day.toIso8601String().substring(0, 10)}'),
+                        date: day.day.day,
                         title: dayLabel(day.day, now),
                         subtitle: [
-                          day.conversations == 1 ? '1 conversation' : '${day.conversations} conversations',
+                          day.conversations == 1
+                              ? '1 conversation'
+                              : '${day.conversations} conversations',
                           if (day.people.isNotEmpty) day.people.join(', '),
                         ].join(' · '),
                         onTap: () => _openDay(_cardsOf(day.day)),
                       ),
                     if (hasEarlier)
-                      _Row(key: const Key('library-earlier'), title: 'Earlier', onTap: _openEarlier),
+                      _Row(
+                          key: const Key('library-earlier'),
+                          title: 'Earlier',
+                          onTap: _openEarlier),
                   ]),
                 ),
                 const SizedBox(height: 20),
@@ -303,11 +329,13 @@ final class _LibraryScreenState extends State<LibraryScreen> {
               for (var i = 0; i < tiles.length; i += 2) ...[
                 if (i > 0) const SizedBox(height: 12),
                 IntrinsicHeight(
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Expanded(child: tiles[i]),
-                    const SizedBox(width: 12),
-                    Expanded(child: tiles[i + 1]),
-                  ]),
+                  child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: tiles[i]),
+                        const SizedBox(width: 12),
+                        Expanded(child: tiles[i + 1]),
+                      ]),
                 ),
               ],
             ]),
@@ -320,10 +348,12 @@ final class _LibraryScreenState extends State<LibraryScreen> {
 
 /// Conversations from before the last 7 days.
 List<ConversationCard> _olderDays(List<ConversationCard> all, DateTime now) {
-  final first = dayOf(now).subtract(const Duration(days: 6));
+  final t = dayOf(now);
+  final first =
+      DateTime(t.year, t.month, t.day - 6); // calendar days, as thisWeek
   return [
     for (final c in all)
-      if (!c.isOpen && dayOf(c.startedAt).isBefore(DateTime(first.year, first.month, first.day))) c,
+      if (!c.isOpen && dayOf(c.startedAt).isBefore(first)) c,
   ];
 }
 
@@ -337,10 +367,8 @@ final class _SectionTitle extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
         child: Text(
           text,
-          style: Theme.of(context)
-              .textTheme
-              .labelMedium
-              ?.copyWith(color: EchoPalette.of(context).text2, letterSpacing: 0.6),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: EchoPalette.of(context).text2, letterSpacing: 0.6),
         ),
       );
 }
@@ -380,7 +408,15 @@ final class _SearchField extends StatelessWidget {
 
 /// A row of the THIS WEEK group.
 final class _Row extends StatelessWidget {
-  const _Row({required this.title, required this.onTap, this.subtitle, super.key});
+  const _Row(
+      {required this.title,
+      required this.onTap,
+      this.subtitle,
+      this.date,
+      super.key});
+
+  /// The day number, in a tile (day rows).
+  final int? date;
 
   final String title;
   final String? subtitle;
@@ -402,17 +438,39 @@ final class _Row extends StatelessWidget {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(children: [
+              if (date != null) ...[
+                Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                      color: palette.surface2,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Text('$date',
+                      style: textTheme.titleMedium?.copyWith(
+                          color: palette.text,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [FontFeature.tabularFigures()])),
+                ),
+                const SizedBox(width: 12),
+              ],
               Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: textTheme.bodyLarge?.copyWith(color: palette.text)),
-                  if (subtitle != null)
-                    Text(subtitle!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodySmall?.copyWith(color: palette.text2)),
-                ]),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
+                          style: textTheme.bodyLarge
+                              ?.copyWith(color: palette.text)),
+                      if (subtitle != null)
+                        Text(subtitle!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.bodySmall
+                                ?.copyWith(color: palette.text2)),
+                    ]),
               ),
-              Icon(CupertinoIcons.chevron_right, size: 14, color: palette.text2),
+              Icon(CupertinoIcons.chevron_right,
+                  size: 14, color: palette.text2),
             ]),
           ),
         ),
@@ -442,7 +500,7 @@ final class _Tile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return Semantics(
       label: '$title, $subtitle',
-      button: true,
+      button: onTap != null,
       excludeSemantics: true,
       onTap: onTap,
       child: Material(
@@ -455,28 +513,36 @@ final class _Tile extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 44),
             child: Padding(
               padding: const EdgeInsets.all(14),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(icon, size: 22, color: palette.accent),
-                const SizedBox(height: 10),
-                Text(title,
-                    style: textTheme.titleMedium?.copyWith(color: palette.text, fontWeight: FontWeight.w600)),
-                Text(subtitle, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
-                if (faces.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 4, runSpacing: 4, children: [
-                    for (final face in faces)
-                      Container(
-                        width: 24,
-                        height: 24,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(color: palette.accentSoft, shape: BoxShape.circle),
-                        child: Text(face,
-                            style: textTheme.labelSmall
-                                ?.copyWith(color: palette.onAccentSoft, fontWeight: FontWeight.w600)),
-                      ),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(icon, size: 22, color: palette.accent),
+                    const SizedBox(height: 10),
+                    Text(title,
+                        style: textTheme.titleMedium?.copyWith(
+                            color: palette.text, fontWeight: FontWeight.w600)),
+                    Text(subtitle,
+                        style: textTheme.bodySmall
+                            ?.copyWith(color: palette.text2)),
+                    if (faces.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(spacing: 4, runSpacing: 4, children: [
+                        for (final face in faces)
+                          Container(
+                            width: 24,
+                            height: 24,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                                color: palette.accentSoft,
+                                shape: BoxShape.circle),
+                            child: Text(face,
+                                style: textTheme.labelSmall?.copyWith(
+                                    color: palette.onAccentSoft,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                      ]),
+                    ],
                   ]),
-                ],
-              ]),
             ),
           ),
         ),
@@ -487,7 +553,8 @@ final class _Tile extends StatelessWidget {
 
 /// "Earlier": the days before this week, newest first; more load at the end.
 final class _EarlierDays extends StatelessWidget {
-  const _EarlierDays({required this.memories, required this.clock, required this.onOpenDay});
+  const _EarlierDays(
+      {required this.memories, required this.clock, required this.onOpenDay});
 
   final MemoriesController memories;
   final DateTime Function() clock;
