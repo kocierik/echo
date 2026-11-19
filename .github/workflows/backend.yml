@@ -6,11 +6,13 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "docs/schema.sql"  # test_migrations checks it against the models
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/**"
+      - "docs/schema.sql"  # test_migrations checks it against the models
       - ".github/workflows/backend.yml"
 
 jobs:
