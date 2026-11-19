@@ -1,6 +1,14 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
+/// Google's official "G" colours: a brand mark, not theme roles.
+abstract final class GoogleBrand {
+  static const blue = Color(0xFF4285F4);
+  static const red = Color(0xFFEA4335);
+  static const yellow = Color(0xFFFBBC05);
+  static const green = Color(0xFF34A853);
+}
+
 /// Echo's colours: Midnight (dark) and Graphite (light), one azure [accent]. The
 /// [bar] is the translucent colour of the navigation and title bars.
 @immutable
@@ -277,7 +285,7 @@ class AppTheme {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: palette.bar,
         contentTextStyle: textTheme.bodyMedium!.copyWith(color: palette.text),
-        actionTextColor: palette.accentSoft,
+        actionTextColor: palette.accent,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),

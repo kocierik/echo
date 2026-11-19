@@ -150,11 +150,9 @@ List<Color> chartColors(EchoPalette palette) => [
       palette.accent,
       palette.amber,
       _hue(palette.accent, 275),
-      _hue(palette.accent, 15),
-      _hue(palette.accent, 190),
       palette.green,
       _hue(palette.accent, 330),
-      _hue(palette.accent, 65),
+      palette.text2,
     ];
 
 /// The accent's saturation and lightness at another hue: more series that read on the same ground.
@@ -443,7 +441,7 @@ final class _ColumnPainter extends CustomPainter {
         topLeft: const Radius.circular(5),
         topRight: const Radius.circular(5),
       );
-      canvas.drawRRect(rect, Paint()..color = colors[index]);
+      canvas.drawRRect(rect, Paint()..color = colors[index % colors.length]);
       if (showValues) {
         final text = TextPainter(
           text: TextSpan(text: labels[index], style: labelStyle),

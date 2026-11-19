@@ -81,4 +81,16 @@ void main() {
       expect(theme.textTheme.bodyMedium!.letterSpacing, isNull);
     }
   });
+
+  test('the snack bar action reads on the bar (4.5:1)', () {
+    double lum(Color c) => c.computeLuminance();
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      final snack = theme.snackBarTheme;
+      // The bar is translucent over the ground: composite it first.
+      final ground = theme.extension<EchoPalette>()!.background;
+      final bar = Color.alphaBlend(snack.backgroundColor!, ground);
+      final a = lum(snack.actionTextColor!), b = lum(bar);
+      expect((a > b ? a + 0.05 : b + 0.05) / (a > b ? b + 0.05 : a + 0.05), greaterThanOrEqualTo(4.5));
+    }
+  });
 }

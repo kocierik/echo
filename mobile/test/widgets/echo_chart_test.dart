@@ -192,4 +192,21 @@ void main() {
       expect(kmLow, 0);
     });
   });
+
+  test('chart colours read on the panel (3:1) and none is orange', () {
+    double ratio(Color a, Color b) {
+      final x = a.computeLuminance(), y = b.computeLuminance();
+      return (x > y ? x + 0.05 : y + 0.05) / (x > y ? y + 0.05 : x + 0.05);
+    }
+
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      final palette = theme.extension<EchoPalette>()!;
+      for (final color in chartColors(palette)) {
+        expect(ratio(color, palette.surface), greaterThanOrEqualTo(3));
+        final hsl = HSLColor.fromColor(color);
+        final orange = color != palette.amber && hsl.saturation > 0.2 && hsl.hue >= 15 && hsl.hue <= 45;
+        expect(orange, isFalse);
+      }
+    }
+  });
 }

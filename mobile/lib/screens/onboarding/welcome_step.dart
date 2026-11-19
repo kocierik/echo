@@ -167,9 +167,9 @@ final class _WelcomeStepState extends State<WelcomeStep>
                         label: 'Continue with Google',
                         background: palette.bar,
                         foreground: palette.text,
-                        icon: SizedBox.square(
+                        icon: const SizedBox.square(
                           dimension: 20,
-                          child: CustomPaint(painter: _GoogleMark(palette.text)),
+                          child: CustomPaint(painter: _GoogleMark()),
                         ),
                         onPressed: () => _comingSoon('Google'),
                       ),
@@ -463,32 +463,30 @@ final class _SignInButton extends StatelessWidget {
   }
 }
 
-/// Google's "G", in one colour from the palette.
+/// Google's "G", in its four official colours.
 final class _GoogleMark extends CustomPainter {
-  const _GoogleMark(this.color);
-
-  final Color color;
+  const _GoogleMark();
 
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = size.width * 0.2;
     final rect = Offset.zero & size;
     final arc = rect.deflate(stroke / 2);
-    final paint = Paint()
+    Paint paint(Color color) => Paint()
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke;
     canvas
-      ..drawArc(arc, -2.45, 1.75, false, paint)
-      ..drawArc(arc, 2.3, 1.1, false, paint)
-      ..drawArc(arc, 0.75, 1.6, false, paint)
-      ..drawArc(arc, -0.05, 0.85, false, paint)
+      ..drawArc(arc, -2.45, 1.75, false, paint(GoogleBrand.red))
+      ..drawArc(arc, 2.3, 1.1, false, paint(GoogleBrand.yellow))
+      ..drawArc(arc, 0.75, 1.6, false, paint(GoogleBrand.green))
+      ..drawArc(arc, -0.05, 0.85, false, paint(GoogleBrand.blue))
       ..drawRect(
         Rect.fromLTWH(size.width / 2, size.height / 2 - stroke / 2, size.width / 2, stroke),
-        Paint()..color = color,
+        Paint()..color = GoogleBrand.blue,
       );
   }
 
   @override
-  bool shouldRepaint(covariant _GoogleMark oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _GoogleMark oldDelegate) => false;
 }
