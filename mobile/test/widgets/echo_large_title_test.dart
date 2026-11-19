@@ -114,4 +114,13 @@ void main() {
         _app(const Scaffold(body: EchoGroup(children: [Text('a')]))));
     expect(find.byType(Divider), findsNothing);
   });
+
+  testWidgets('a row with an InkWell splashes on the group surface', (tester) async {
+    await tester.pumpWidget(_app(Scaffold(
+      body: EchoGroup(children: [InkWell(onTap: () {}, child: const Text('a'))]),
+    )));
+    final material = tester.widget<Material>(
+        find.ancestor(of: find.byType(InkWell), matching: find.byType(Material)).first);
+    expect(material.color, EchoPalette.dark.surface);
+  });
 }

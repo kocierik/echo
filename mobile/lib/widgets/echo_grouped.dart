@@ -23,27 +23,24 @@ class EchoGroup extends StatelessWidget {
               child: Text(header!,
                   style: TextStyle(color: palette.text2, fontSize: 13)),
             ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.surface,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Column(
-                children: [
-                  for (var i = 0; i < children.length; i++) ...[
-                    if (i > 0)
-                      Divider(
-                        height: 0.5,
-                        thickness: 0.5,
-                        indent: 16,
-                        color: palette.border,
-                      ),
-                    children[i],
-                  ],
+          // A Material, so the rows' InkWell splashes show on the group's surface
+          Material(
+            color: palette.surface,
+            borderRadius: BorderRadius.circular(14),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (var i = 0; i < children.length; i++) ...[
+                  if (i > 0)
+                    Divider(
+                      height: 0.5,
+                      thickness: 0.5,
+                      indent: 16,
+                      color: palette.border,
+                    ),
+                  children[i],
                 ],
-              ),
+              ],
             ),
           ),
         ],

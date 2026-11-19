@@ -69,10 +69,14 @@ final class TodayTopCard extends StatelessWidget {
               if (more > 0)
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    key: const Key('needs-you-more'),
-                    onPressed: onMore,
-                    child: Text('+$more more'),
+                  child: Padding(
+                    // The button's own 12 pt + 20 = 32, where the group's text starts
+                    padding: const EdgeInsets.only(left: 20),
+                    child: TextButton(
+                      key: const Key('needs-you-more'),
+                      onPressed: onMore,
+                      child: Text('+$more more'),
+                    ),
                   ),
                 ),
             ],

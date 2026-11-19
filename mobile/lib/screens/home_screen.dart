@@ -22,7 +22,6 @@ import '../widgets/coming_up_today.dart';
 import '../widgets/echo_large_title.dart';
 import '../widgets/routine_run_sheet.dart';
 import '../widgets/routine_sections.dart';
-import '../widgets/screen_header.dart' show HeaderIconButton;
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
 import '../widgets/today_top_card.dart';
@@ -31,7 +30,6 @@ import '../services/memory/memories_controller.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
 import 'edit_today_screen.dart';
-import 'memory_search_screen.dart';
 import 'navigation.dart';
 import 'settings/plan_screen.dart';
 import 'settings/voice_settings_screen.dart';
@@ -588,23 +586,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _refreshAll();
   }
 
-  Future<void> _openById(String id) async {
-    final opener = widget.openConversation;
-    if (opener != null) {
-      await opener(context, id);
-    } else {
-      await Navigator.of(context).push<void>(MaterialPageRoute(
-        builder: (_) => ConversationDetailScreen(
-          conversationId: id,
-          api: _api,
-          onAsk: widget.onAsk,
-          clock: widget.clock,
-        ),
-      ));
-    }
-    if (mounted) await _memories.refresh();
-  }
-
   /// A day of "Earlier" (or the whole of today): its digest, then its conversations.
   Future<void> _openDay(List<ConversationCard> conversations) async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
@@ -617,19 +598,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
         clock: widget.clock,
       ),
     ));
-  }
-
-  /// Search over the whole memory, on a screen of its own.
-  Future<void> _openSearch() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => MemorySearchScreen(
-        memories: _memories,
-        clock: widget.clock,
-        onOpen: (id) => unawaited(_openById(id)),
-      ),
-    ));
-    // Closed: the search is over (not while its screen is torn down)
-    _memories.setQuery('');
   }
 
   Future<void> _reconnect() async {
@@ -756,18 +724,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       key: const Key('today'),
       title: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}',
       onRefresh: _refreshAll,
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          HeaderIconButton(
-            key: const Key('today-search'),
-            icon: CupertinoIcons.search,
-            tooltip: 'Search your memory',
-            onPressed: () => unawaited(_openSearch()),
-          ),
-          if (widget.accountAction != null) widget.accountAction!,
-        ],
-      ),
+      trailing: widget.accountAction,
       slivers: [
         // The pendant pill under the title, then what is wrong with it
         if (widget.headerAction != null)

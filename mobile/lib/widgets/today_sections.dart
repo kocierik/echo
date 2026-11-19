@@ -326,28 +326,26 @@ final class _DoneChip extends StatelessWidget {
       excludeSemantics: true,
       label: 'Done',
       onTap: onTap,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Opacity(
-          opacity: onTap == null ? 0.5 : 1,
-          child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.accent,
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              child: Text(
-                'Done',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: palette.onAccent, fontWeight: FontWeight.w600),
+      child: Opacity(
+        opacity: onTap == null ? 0.5 : 1,
+        child: Material(
+          color: palette.accent,
+          borderRadius: BorderRadius.circular(22),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                child: Text(
+                  'Done',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: palette.onAccent, fontWeight: FontWeight.w600),
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

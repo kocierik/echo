@@ -10,7 +10,6 @@ import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/widgets/echo_large_title.dart';
-import 'package:echo_app/widgets/panel.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/models/today_layout.dart';
 import 'package:echo_app/services/app/today_layout_store.dart';
@@ -637,9 +636,11 @@ void main() {
       final chip = find.byKey(const Key('action-confirm-a1'));
       expect(find.descendant(of: chip, matching: find.text('Done')), findsOneWidget);
       expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
-      final fill = tester.widget<DecoratedBox>(
-          find.descendant(of: chip, matching: find.byType(DecoratedBox)).first);
-      expect((fill.decoration as BoxDecoration).color, EchoPalette.light.accent);
+      final fill = tester.widget<Material>(
+          find.descendant(of: chip, matching: find.byType(Material)).first);
+      expect(fill.color, EchoPalette.light.accent);
+      // Pressed state: an InkWell on the chip
+      expect(find.descendant(of: chip, matching: find.byType(InkWell)), findsOneWidget);
 
       await tester.tap(chip);
       await tester.pumpAndSettle();
@@ -663,66 +664,10 @@ void main() {
   });
 
   group('the memory', () {
-    testWidgets('search over the whole memory, from the icon on top', (tester) async {
-      final api = FakeTodayApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
-        ..searchResults = MemorySearchResults(
-          conversations: [card('hit', startedAt: DateTime(2026, 10, 12, 9), title: 'Atlas kickoff')],
-          entities: const [
-            MemoryEntity(
-              id: 'e1',
-              type: 'idea',
-              name: 'Atlas dashboard',
-              sourceText: '[Tu] Facciamo una dashboard per Atlas.',
-              conversationId: 'hit',
-            ),
-          ],
-        );
-      late void Function() runSearch;
-      final memories = MemoriesController(
-        api: api,
-        debounceScheduler: (delay, callback) {
-          runSearch = callback;
-          return () {};
-        },
-      );
-      addTearDown(memories.dispose);
-      await pumpToday(tester, api: api, memories: memories);
+    testWidgets('no search on Today: it lives in Library', (tester) async {
+      await pumpToday(tester);
       await tester.pumpAndSettle();
-      // Not a field on Today any more: an icon in the header
-      expect(find.byKey(const Key('memories-search')), findsNothing);
-      await tester.tap(find.byKey(const Key('today-search')));
-      await tester.pumpAndSettle();
-
-      await tester.enterText(find.byKey(const Key('memories-search')), 'atlas');
-      await tester.pump();
-      expect(find.byKey(const Key('search-loading')), findsOneWidget);
-      runSearch();
-      await tester.pumpAndSettle();
-
-      expect(find.widgetWithText(PanelHeader, 'Conversations'), findsOneWidget);
-      expect(find.text('Atlas kickoff'), findsOneWidget);
-      expect(find.text('Atlas dashboard'), findsOneWidget);
-      expect(find.byKey(const Key('your-day')), findsNothing);
-      await tester.tap(find.text('Atlas dashboard'));
-      await tester.pumpAndSettle();
-      expect(calls, ['open hit']);
-
-      api.searchResults = const MemorySearchResults(conversations: [], entities: []);
-      await tester.enterText(find.byKey(const Key('memories-search')), 'zzz');
-      await tester.pump();
-      runSearch();
-      await tester.pumpAndSettle();
-      expect(find.text('No results'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('memories-search-clear')));
-      await tester.pumpAndSettle();
-      expect(find.text('No results'), findsNothing);
-
-      // Back on Today, the search is over
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(memories.state.query, isEmpty);
-      expect(find.byKey(const Key('your-day')), findsOneWidget);
+      expect(find.byKey(const Key('today-search')), findsNothing);
     });
 
     testWidgets('past the speech budget: a quiet line, opening the plan', (tester) async {
@@ -1045,9 +990,11 @@ void main() {
       ],
     );
     for (final theme in [AppTheme.light, AppTheme.dark]) {
-      await pumpToday(tester, api: api, theme: theme, size: const Size(320, 640), textScale: 1.3);
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+      for (final scale in [1.3, 2.0]) {
+        await pumpToday(tester, api: api, theme: theme, size: const Size(320, 640), textScale: scale);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
     }
   });
 }
