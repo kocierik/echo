@@ -242,8 +242,8 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: switch (node.kind) {
-                      'you' => palette.chrome,
-                      'topic' => palette.tint,
+                      'you' => palette.accent,
+                      'topic' => palette.text2,
                       _ => palette.accentSoft,
                     },
                     shape: BoxShape.circle,
@@ -256,7 +256,11 @@ final class _MemoryGraphScreenState extends State<MemoryGraphScreen> {
                     },
                     maxLines: 1,
                     style: TextStyle(
-                      color: node.kind == 'you' ? palette.onChrome : palette.text,
+                      color: switch (node.kind) {
+                        'you' => palette.onAccent,
+                        'topic' => palette.background,
+                        _ => palette.onAccentSoft,
+                      },
                       fontSize: node.kind == 'you' ? 22 : 12,
                       fontWeight: FontWeight.w700,
                     ),
