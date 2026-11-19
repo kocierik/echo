@@ -61,7 +61,8 @@ List<Widget> groupSettingsRows(List<Widget> children) {
   for (final child in children) {
     if (child is SettingsRow) {
       run.add(child);
-    } else if (child is SettingsSection && run.isEmpty) {
+    } else if (child is SettingsSection) {
+      flush();
       flushHeader();
       header = child.label;
     } else {
@@ -157,7 +158,8 @@ class SettingsRow extends StatelessWidget {
           ? null
           : ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 130),
-              child: Text(value!, overflow: TextOverflow.ellipsis),
+              child: Text(value!,
+                  overflow: TextOverflow.ellipsis, style: TextStyle(color: palette.text2)),
             ),
       trailing: trailing ?? (onTap == null ? null : const CupertinoListTileChevron()),
     );

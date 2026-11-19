@@ -83,4 +83,30 @@ void main() {
     final bottom = tester.getBottomLeft(find.text('Row 19')).dy;
     expect(bottom, lessThanOrEqualTo(tester.view.physicalSize.height / tester.view.devicePixelRatio - 90));
   });
+
+  testWidgets('a section after rows heads the next group', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.dark,
+      home: SettingsPageScaffold(title: 'T', children: [
+        const SettingsSection('ONE'),
+        SettingsRow(icon: CupertinoIcons.lock, title: 'a', onTap: () {}),
+        SettingsRow(icon: CupertinoIcons.lock, title: 'b', onTap: () {}),
+        const SettingsSection('TWO'),
+        SettingsRow(icon: CupertinoIcons.lock, title: 'c', onTap: () {}),
+      ]),
+    ));
+    expect(find.byType(CupertinoListSection), findsNWidgets(2));
+    expect(find.byType(SettingsSection), findsNothing);
+    expect(find.text('TWO'), findsOneWidget);
+  });
+
+  testWidgets('a row value is secondary text', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.dark,
+      home: const SettingsPageScaffold(title: 'T', children: [
+        SettingsRow(icon: CupertinoIcons.lock, title: 'a', value: 'On'),
+      ]),
+    ));
+    expect(tester.widget<Text>(find.text('On')).style?.color, EchoPalette.dark.text2);
+  });
 }
