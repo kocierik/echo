@@ -44,7 +44,8 @@ void main() {
     addTearDown(fixture.dispose);
     await fixture.pump(tester);
 
-    expect(find.text('Echo'), findsOneWidget);
+    // The large title also keeps a collapsed copy in the bar.
+    expect(find.text('Echo'), findsAtLeastNWidgets(1));
     expect(find.byKey(const Key('device-instrument')), findsOneWidget);
     // Already here: no way to "Device details"
     expect(find.byKey(const Key('device-details')), findsNothing);

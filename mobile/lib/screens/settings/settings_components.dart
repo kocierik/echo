@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
@@ -11,71 +12,90 @@ class SettingsPageScaffold extends StatelessWidget {
 
   final String title;
 
-  /// Rows next to each other share a panel; anything else stands on its own.
+  /// Rows next to each other share a panel; a [SettingsSection] right before them is its header.
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
+    // Pushed pages sit in a tab Navigator whose bottom padding is the floating bar.
+    final bottom = MediaQuery.paddingOf(context).bottom + 32;
     return Scaffold(
       backgroundColor: palette.background,
-      appBar: AppBar(title: Text(title)),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
-        children: groupSettingsRows(children),
+      body: CustomScrollView(
+        slivers: [
+          CupertinoSliverNavigationBar(
+            largeTitle: Text(title),
+            backgroundColor: palette.chrome,
+            border: Border(bottom: BorderSide(color: palette.border, width: 0.5)),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.only(bottom: bottom),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate(groupSettingsRows(children)),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// Puts each run of [SettingsRow]s in a [SettingsGroup].
+/// Puts each run of [SettingsRow]s in a [SettingsGroup], headed by the [SettingsSection] before it.
 List<Widget> groupSettingsRows(List<Widget> children) {
   final grouped = <Widget>[];
   var run = <Widget>[];
+  String? header;
+  void flushHeader() {
+    if (header != null) grouped.add(SettingsSection(header!));
+    header = null;
+  }
+
   void flush() {
     if (run.isEmpty) return;
-    grouped.add(SettingsGroup(children: run));
+    grouped.add(SettingsGroup(header: header, children: run));
+    header = null;
     run = [];
   }
 
   for (final child in children) {
     if (child is SettingsRow) {
       run.add(child);
+    } else if (child is SettingsSection && run.isEmpty) {
+      flushHeader();
+      header = child.label;
     } else {
       flush();
+      flushHeader();
       grouped.add(child);
     }
   }
   flush();
+  flushHeader();
   return grouped;
 }
 
-/// Rows in one panel, with a hairline between them.
+/// Rows in one inset grouped panel, with a hairline between them.
 class SettingsGroup extends StatelessWidget {
-  const SettingsGroup({required this.children, super.key});
+  const SettingsGroup({required this.children, this.header, super.key});
 
   final List<Widget> children;
+  final String? header;
 
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final radius = BorderRadius.circular(AppTheme.panelRadius);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Material(
+    return CupertinoListSection.insetGrouped(
+      backgroundColor: palette.background,
+      separatorColor: palette.border,
+      decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: radius,
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final (index, child) in children.indexed) ...[
-              if (index > 0) Divider(height: 1, indent: 52, color: palette.border),
-              child,
-            ],
-          ],
-        ),
+        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
       ),
+      header: header == null
+          ? null
+          : Text(header!, style: TextStyle(color: palette.text2, fontSize: 13)),
+      children: children,
     );
   }
 }
@@ -89,14 +109,8 @@ class SettingsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: palette.text2,
-              fontSize: 12,
-            ),
-      ),
+      padding: const EdgeInsets.fromLTRB(32, 16, 20, 8),
+      child: Text(label, style: TextStyle(color: palette.text2, fontSize: 13)),
     );
   }
 }
@@ -128,63 +142,24 @@ class SettingsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final textTheme = Theme.of(context).textTheme;
     final foreground = destructive ? palette.red : palette.text;
-    return InkWell(
+    return CupertinoListTile(
+      backgroundColor: palette.surface,
+      backgroundColorActivated: palette.surface2,
       onTap: onTap,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 60),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
-          child: Row(
-            children: [
-              leading ??
-                  Icon(icon, size: 22, color: destructive ? palette.red : palette.accent),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: foreground,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: textTheme.bodySmall?.copyWith(color: palette.text2),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (trailing != null)
-                trailing!
-              else ...[
-                if (value != null)
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 130),
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: Text(
-                        value!,
-                        overflow: TextOverflow.ellipsis,
-                        style: textTheme.bodySmall?.copyWith(color: palette.text2),
-                      ),
-                    ),
-                  ),
-                if (onTap != null)
-                  Icon(Icons.chevron_right_rounded, color: palette.text2),
-              ],
-            ],
-          ),
-        ),
-      ),
+      leading: leading ??
+          Icon(icon, size: 22, color: destructive ? palette.red : palette.accent),
+      title: Text(title, maxLines: 3, style: TextStyle(color: foreground)),
+      subtitle: subtitle == null
+          ? null
+          : Text(subtitle!, maxLines: 4, style: TextStyle(color: palette.text2)),
+      additionalInfo: value == null
+          ? null
+          : ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Text(value!, overflow: TextOverflow.ellipsis),
+            ),
+      trailing: trailing ?? (onTap == null ? null : const CupertinoListTileChevron()),
     );
   }
 }
