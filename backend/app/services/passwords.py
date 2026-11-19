@@ -82,6 +82,26 @@ async def create_user(
     return user
 
 
+async def create_google_user(
+    db: AsyncSession, email: str, google_subject: str, *, language: str, name: str | None
+) -> User:
+    """A new account made by signing in with Google: no password ("" never verifies)."""
+    email = normalize_email(email)
+    if await db.scalar(select(User.id).where(User.email == email)) is not None:
+        raise ValueError("email already exists")
+    user = User(
+        email=email,
+        password_hash="",
+        google_subject=google_subject,
+        language=language,
+        name=name,
+        plan=_new_account_plan(),
+    )
+    db.add(user)
+    await db.commit()
+    return user
+
+
 async def set_password(
     db: AsyncSession, email: str, password: str, *, sign_out_devices: bool = False
 ) -> int:

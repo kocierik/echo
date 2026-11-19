@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     # it, and accounts are then made only with `make create-user`
     registration_open: bool = True
 
+    # Sign in with Google: comma-separated OAuth client IDs of the app (iOS, web, Android)
+    # from Google Cloud Console. An ID token is accepted only when made for one of them.
+    # Empty: POST /api/auth/google does not exist
+    google_client_ids: str = ""
+
     # CORS: comma-separated browser origins allowed to call the API. Empty by default: the
     # app and the connected apps are not browsers ("*" allows any site)
     cors_origins: str = ""

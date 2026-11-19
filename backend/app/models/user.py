@@ -12,8 +12,13 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
 
     # Stored stripped and lower-cased (normalize_email)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
-    # Argon2id (app/services/passwords.py)
+    # Argon2id (app/services/passwords.py); "" for an account made with Google, which has
+    # no password (verify_password is always false for it)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    # Google's id for the person ("sub"), once they signed in with Google
+    google_subject: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True, index=True
+    )
     # The language the user speaks: the wearable's transcription and the app's dictation
     language: Mapped[str] = mapped_column(String(5), nullable=False, server_default="it")
     # Other languages the user hears around them (services/language.py HEARD_LANGUAGES):

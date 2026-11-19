@@ -233,7 +233,8 @@ CREATE UNIQUE INDEX idx_api_keys_hash ON api_keys (key_hash);
 CREATE TABLE users (
     id UUID PRIMARY KEY,
     email VARCHAR(320) NOT NULL UNIQUE,  -- stored lower-cased
-    password_hash TEXT NOT NULL,         -- Argon2id
+    password_hash TEXT NOT NULL,         -- Argon2id; '' for an account made with Google
+    google_subject VARCHAR(255) UNIQUE,  -- Google's id ("sub"), once signed in with Google (044)
     language VARCHAR(5) NOT NULL DEFAULT 'it',  -- spoken: transcription and dictation (016)
     name VARCHAR(100),                   -- the app's greeting; null until given (021)
     instructions TEXT,                   -- the user's own instructions to Echo (022)
