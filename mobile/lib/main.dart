@@ -8,6 +8,8 @@ import 'models/app_view_state.dart';
 import 'models/device_status.dart';
 import 'screens/home_screen.dart';
 import 'screens/library_screen.dart';
+import 'services/library_counts.dart';
+import 'services/memory/memories_controller.dart';
 import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/navigation.dart';
@@ -401,6 +403,10 @@ class _MainShellState extends State<MainShell> {
   /// The user's initial, on every circle: their name, else their email.
   String? _initial;
 
+  /// One server connection and one memory for Today and the Library.
+  final ApiService _api = ApiService();
+  late final MemoriesController _memories = MemoriesController(api: _api);
+
   @override
   void initState() {
     super.initState();
@@ -440,6 +446,8 @@ class _MainShellState extends State<MainShell> {
     widget.appController.pendingChatSessionId.removeListener(_showAskFirstPage);
     widget.appController.pendingChatQuestion.removeListener(_showAskFirstPage);
     if (identical(TabNavigators.keys, tabNavigators)) TabNavigators.keys = const [];
+    _memories.dispose();
+    _api.dispose();
     super.dispose();
   }
 
@@ -548,6 +556,8 @@ class _MainShellState extends State<MainShell> {
                   navigatorKeys: tabNavigators,
                   children: [
                     HomeScreen(
+                      api: _api,
+                      memories: _memories,
                       deviceStatus: state.device,
                       headerAction: pill,
                       accountAction: _account(),
@@ -581,7 +591,23 @@ class _MainShellState extends State<MainShell> {
                       askRequest: widget.appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
-                    LibraryScreen(accountAction: _account()),
+                    LibraryScreen(
+                      active: state.selectedTab == AppController.libraryTab,
+                      accountAction: _account(),
+                      memories: _memories,
+                      api: _api,
+                      places: AppRuntime.maybeCoordinator?.placesVisited,
+                      placesOn: AppRuntime.maybeCoordinator?.placesVisited.on,
+                      onAsk: widget.appController.requestAsk,
+                      segmentUploadedStream: widget.segmentUploadedStream,
+                      loadCounts: () => loadLibraryCounts(
+                        memory: _api,
+                        saved: _api,
+                        documents: _api,
+                        places: _api,
+                        placesOn: AppRuntime.maybeCoordinator?.placesVisited.on.value ?? false,
+                      ),
+                    ),
                   ],
                 ),
               ),
