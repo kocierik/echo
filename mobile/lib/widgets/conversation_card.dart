@@ -143,7 +143,7 @@ final class ConversationRow extends StatelessWidget {
     final meta = ConversationCardTile._meta(c, null);
     final chips = <Widget>[
       if (c.isOpen)
-        _Chip(label: 'Live', color: palette.live.withValues(alpha: 0.14), text: palette.liveText)
+        _Chip(label: 'Live', color: palette.accentSoft, text: palette.onAccentSoft)
       else if (c.isProcessing)
         _Chip(label: 'Processing', color: palette.surface2, text: palette.amber),
       if (c.people.isNotEmpty)
@@ -173,7 +173,7 @@ final class ConversationRow extends StatelessWidget {
         key: Key('conversation-${c.id}'),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

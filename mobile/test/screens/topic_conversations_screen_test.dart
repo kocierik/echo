@@ -35,7 +35,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.calls, contains('list 30 0 topic=Atlas'));
-    expect(find.text('Atlas'), findsOneWidget);
+    // The large title and the collapsed bar both carry it
+    expect(find.text('Atlas'), findsWidgets);
     expect(find.text('Atlas review'), findsOneWidget);
     expect(find.text('The new design.'), findsOneWidget);
 

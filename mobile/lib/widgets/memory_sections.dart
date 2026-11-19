@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/memory.dart';
@@ -7,6 +8,7 @@ import '../services/memory/memories_controller.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
 import 'conversation_card.dart';
+import 'echo_grouped.dart';
 import 'memory_entity_row.dart';
 import 'panel.dart';
 import 'person_avatar.dart';
@@ -280,7 +282,6 @@ final class EarlierPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
     final rows = <Widget>[
       if (week case final week?)
         _EarlierRow(
@@ -300,30 +301,23 @@ final class EarlierPanel extends StatelessWidget {
           onTap: () => onOpenDay(day),
         ),
     ];
-    return Panel(
+    return EchoGroup(
       key: const Key('earlier'),
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PanelHeader(title: 'Earlier'),
-          const SizedBox(height: 4),
-          for (final (index, row) in rows.indexed) ...[
-            if (index > 0) Divider(height: 1, color: palette.border),
-            row,
-          ],
-          if (hasMore)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: const Key('earlier-more'),
-                onPressed: loadingMore ? null : onMore,
-                style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                child: Text(loadingMore ? 'Loading…' : 'More days'),
-              ),
+      children: [
+        ...rows,
+        if (hasMore)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('earlier-more'),
+              onPressed: loadingMore ? null : onMore,
+              style: TextButton.styleFrom(
+                  minimumSize: const Size(44, 44),
+                  padding: const EdgeInsets.symmetric(horizontal: 16)),
+              child: Text(loadingMore ? 'Loading…' : 'More days'),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }
@@ -344,7 +338,7 @@ final class _EarlierRow extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 52),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
           child: Row(
             children: [
               Expanded(
@@ -362,7 +356,7 @@ final class _EarlierRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.chevron_right_rounded, color: palette.text2),
+              Icon(CupertinoIcons.chevron_right, size: 16, color: palette.text2),
             ],
           ),
         ),
@@ -380,21 +374,14 @@ final class DayConversationsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    return Panel(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final (index, conversation) in conversations.indexed) ...[
-            if (index > 0) Divider(height: 1, color: palette.border),
-            ConversationRow(
-              conversation: conversation,
-              onTap: () => onOpen(conversation.id),
-            ),
-          ],
-        ],
-      ),
+    return EchoGroup(
+      children: [
+        for (final conversation in conversations)
+          ConversationRow(
+            conversation: conversation,
+            onTap: () => onOpen(conversation.id),
+          ),
+      ],
     );
   }
 }

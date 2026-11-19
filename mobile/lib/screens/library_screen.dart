@@ -13,6 +13,7 @@ import '../services/memory/memories_controller.dart';
 import '../services/phone/places_visited.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/memory_sections.dart';
 import '../widgets/summary_sections.dart' show weekLabel;
 import 'conversation_detail_screen.dart';
@@ -562,18 +563,16 @@ final class _EarlierDays extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: EchoPalette.of(context).background,
-      appBar: AppBar(title: const Text('Earlier')),
-      body: ListenableBuilder(
-        listenable: memories,
-        builder: (context, _) {
-          final now = clock();
-          final state = memories.state;
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              EarlierPanel(
+    return ListenableBuilder(
+      listenable: memories,
+      builder: (context, _) {
+        final now = clock();
+        final state = memories.state;
+        return EchoLargeTitlePage(
+          title: 'Earlier',
+          slivers: [
+            SliverToBoxAdapter(
+              child: EarlierPanel(
                 days: conversationsByDay(_olderDays(state.conversations, now)),
                 now: now,
                 onOpenDay: (day) => unawaited(onOpenDay(day)),
@@ -581,10 +580,10 @@ final class _EarlierDays extends StatelessWidget {
                 loadingMore: state.loadingMore,
                 onMore: () => unawaited(memories.loadMore()),
               ),
-            ],
-          );
-        },
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

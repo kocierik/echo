@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -359,7 +360,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
             IconButton(
               key: const Key('conversation-share'),
               tooltip: 'Share conversation',
-              icon: const Icon(Icons.ios_share_rounded),
+              icon: const Icon(CupertinoIcons.share),
               onPressed: () => unawaited(widget.sharing.shareText(
                 conversationAsText(detail, widget.clock()),
                 subject: detail.card.title ?? 'Conversation',
@@ -395,7 +396,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     final detail = _detail;
     if (detail == null) {
       return FullScreenMessage(
-        icon: Icons.cloud_off_rounded,
+        icon: CupertinoIcons.wifi_slash,
         title: 'Could not load this conversation',
         message: _error ?? '',
         actionKey: const Key('conversation-retry'),
@@ -423,7 +424,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
                   '(${dayLabel(detail.card.startedAt, widget.clock())}, '
                   '${formatTime(detail.card.startedAt)}), and what did I agree to do?',
                 ),
-                icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                icon: const Icon(CupertinoIcons.sparkles, size: 18),
                 label: const Text('Ask about this conversation'),
               ),
             ),
@@ -553,7 +554,7 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.translate_rounded, size: 18),
+                  : const Icon(CupertinoIcons.globe, size: 18),
               label: Text(
                 _translating
                     ? 'Translating…'
@@ -645,7 +646,7 @@ final class _Header extends StatelessWidget {
               key: const Key('conversation-place'),
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.place_outlined, size: 16, color: palette.text2),
+                Icon(CupertinoIcons.location, size: 16, color: palette.text2),
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
@@ -664,7 +665,7 @@ final class _Header extends StatelessWidget {
             Text(
               'Live · still listening',
               style: textTheme.bodySmall?.copyWith(
-                color: palette.liveText,
+                color: palette.accent,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -677,7 +678,7 @@ final class _Header extends StatelessWidget {
               children: [
                 for (final name in people)
                   Chip(
-                    avatar: Icon(Icons.person_outline_rounded, size: 16, color: palette.text2),
+                    avatar: Icon(CupertinoIcons.person, size: 16, color: palette.text2),
                     label: Text(name),
                     visualDensity: VisualDensity.compact,
                     side: BorderSide.none,
@@ -814,7 +815,7 @@ final class _LineTile extends StatelessWidget {
                         if (onConfirmVoice != null)
                           _VoiceButton(
                             key: Key('voice-yes-${line.segmentId}'),
-                            icon: Icons.check_rounded,
+                            icon: CupertinoIcons.checkmark,
                             tooltip: 'Yes, it is ${line.speakerName}',
                             color: palette.green,
                             onPressed: onConfirmVoice!,
@@ -822,7 +823,7 @@ final class _LineTile extends StatelessWidget {
                         if (onRejectVoice != null)
                           _VoiceButton(
                             key: Key('voice-no-${line.segmentId}'),
-                            icon: Icons.close_rounded,
+                            icon: CupertinoIcons.xmark,
                             tooltip: 'No, not ${line.speakerName}',
                             color: palette.text2,
                             onPressed: onRejectVoice!,

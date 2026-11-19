@@ -7,6 +7,8 @@ import '../services/api/api_exception.dart';
 import '../services/api/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/conversation_card.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 
 final class TopicConversationsScreen extends StatefulWidget {
   const TopicConversationsScreen({
@@ -64,46 +66,46 @@ final class _TopicConversationsScreenState
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(title: Text(widget.topic)),
-      body: SafeArea(
-        top: false,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_error!, textAlign: TextAlign.center),
-                        const SizedBox(height: 12),
-                        TextButton(onPressed: _load, child: const Text('Retry')),
-                      ],
+    Widget message(Widget child) => SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+              child: Padding(padding: const EdgeInsets.all(24), child: child)),
+        );
+    return EchoLargeTitlePage(
+      title: widget.topic,
+      slivers: [
+        if (_loading)
+          message(const CircularProgressIndicator())
+        else if (_error != null)
+          message(Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 12),
+              TextButton(onPressed: _load, child: const Text('Retry')),
+            ],
+          ))
+        else if (_conversations.isEmpty)
+          message(Text(
+            'No conversations about ${widget.topic} yet.',
+            style: TextStyle(color: palette.text2),
+            textAlign: TextAlign.center,
+          ))
+        else
+          SliverToBoxAdapter(
+            child: EchoGroup(
+              children: [
+                for (final conversation in _conversations)
+                  ConversationRow(
+                    conversation: conversation,
+                    onTap: () => unawaited(
+                      widget.onOpenConversation(conversation.id),
                     ),
-                  )
-                : _conversations.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No conversations about ${widget.topic} yet.',
-                          style: TextStyle(color: palette.text2),
-                          textAlign: TextAlign.center,
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.only(top: 4, bottom: 24),
-                        itemCount: _conversations.length,
-                        itemBuilder: (context, index) {
-                          final conversation = _conversations[index];
-                          return ConversationCardTile(
-                            conversation: conversation,
-                            onTap: () => unawaited(
-                              widget.onOpenConversation(conversation.id),
-                            ),
-                          );
-                        },
-                      ),
-      ),
+                  ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

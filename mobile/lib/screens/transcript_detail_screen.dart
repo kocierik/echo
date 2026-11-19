@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../models/segment.dart';
@@ -218,7 +219,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.save_outlined),
+              : const Icon(CupertinoIcons.tray_arrow_down),
           label: Text(_submitting ? 'Saving...' : 'Save correction'),
         ),
         const SizedBox(height: 32),
@@ -248,7 +249,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
                   dimension: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Icon(Icons.delete_outline),
+              : const Icon(CupertinoIcons.delete),
           label: Text(_deleting ? 'Deleting...' : 'Delete conversation'),
         ),
       ],
@@ -317,7 +318,7 @@ class _TranscriptDetailScreenState extends State<TranscriptDetailScreen> {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.delete_outline),
+                : const Icon(CupertinoIcons.delete),
             label: Text(
               _deleting ? 'Deleting...' : 'Delete conversation',
             ),
@@ -439,7 +440,7 @@ class _CorrectionStatus extends StatelessWidget {
     if (result.queued) {
       return _StatusPanel(
         key: const Key('reanalysis-queued'),
-        icon: Icons.sync_rounded,
+        icon: CupertinoIcons.arrow_2_circlepath,
         color: palette.accent,
         message: 'Reprocessing memory',
       );
@@ -447,7 +448,7 @@ class _CorrectionStatus extends StatelessWidget {
     if (result.queueFailed) {
       return _StatusPanel(
         key: const Key('reanalysis-queue-failed'),
-        icon: Icons.warning_amber_rounded,
+        icon: CupertinoIcons.exclamationmark_triangle,
         color: palette.red,
         message:
             'Correction saved, but reprocessing needs retry or attention.',
@@ -455,7 +456,7 @@ class _CorrectionStatus extends StatelessWidget {
     }
     return _StatusPanel(
       key: const Key('reanalysis-unchanged'),
-      icon: Icons.check_circle_outline,
+      icon: CupertinoIcons.checkmark_circle,
       color: palette.text2,
       message: 'No reprocessing needed',
     );
@@ -525,7 +526,7 @@ class _ErrorPanel extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.error_outline, color: palette.red, size: 20),
+          Icon(CupertinoIcons.exclamationmark_circle, color: palette.red, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

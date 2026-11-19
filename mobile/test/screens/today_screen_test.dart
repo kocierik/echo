@@ -342,7 +342,11 @@ void main() {
       await tester.pumpAndSettle();
       // The whole of today, on a page of its own
       expect(find.byKey(const Key('day-screen')), findsOneWidget);
-      expect(find.text('Today'), findsOneWidget);
+      expect(
+        find.descendant(
+            of: find.byKey(const Key('day-screen')), matching: find.text('Today')),
+        findsWidgets,
+      );
     });
 
     testWidgets('a muted Echo shows the open conversation as in progress',
