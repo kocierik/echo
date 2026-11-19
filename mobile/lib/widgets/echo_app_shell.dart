@@ -47,7 +47,9 @@ final class _EchoAppShellState extends State<EchoAppShell> {
   void _refresh() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final can = widget.navigatorKeys[widget.selectedIndex].currentState?.canPop() ?? false;
+      final can =
+          widget.navigatorKeys[widget.selectedIndex].currentState?.canPop() ??
+              false;
       if (can != _canPop) setState(() => _canPop = can);
     });
   }
@@ -61,7 +63,8 @@ final class _EchoAppShellState extends State<EchoAppShell> {
   void _select(int index) {
     // Tapping the open tab again goes back to its first page
     if (index == widget.selectedIndex) {
-      widget.navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
+      widget.navigatorKeys[index].currentState
+          ?.popUntil((route) => route.isFirst);
     }
     widget.onDestinationSelected(index);
   }
@@ -95,30 +98,38 @@ final class _EchoAppShellState extends State<EchoAppShell> {
                       child: Builder(
                         builder: (context) => MediaQuery(
                           data: MediaQuery.of(context).copyWith(
-                            padding: MediaQuery.of(context).padding.copyWith(bottom: covered),
+                            padding: MediaQuery.of(context)
+                                .padding
+                                .copyWith(bottom: covered),
                           ),
                           child: NavigatorPopHandler(
-                          enabled: _canPop,
-                          onPopWithResult: (_) =>
-                              widget.navigatorKeys[widget.selectedIndex].currentState?.maybePop(),
-                          child: _TabChildren(
-                            children: widget.children,
-                            covered: covered,
-                            child: IndexedStack(
-                              index: widget.selectedIndex,
-                              sizing: StackFit.expand,
-                              children: [
-                                for (var i = 0; i < widget.children.length; i++)
-                                  Navigator(
-                                    key: widget.navigatorKeys[i],
-                                    observers: [_observers[i]],
-                                    onGenerateRoute: (_) => CupertinoPageRoute<void>(
-                                      builder: (context) => _TabChildren.root(context, i),
+                            enabled: _canPop,
+                            onPopWithResult: (_) => widget
+                                .navigatorKeys[widget.selectedIndex]
+                                .currentState
+                                ?.maybePop(),
+                            child: _TabChildren(
+                              children: widget.children,
+                              covered: covered,
+                              child: IndexedStack(
+                                index: widget.selectedIndex,
+                                sizing: StackFit.expand,
+                                children: [
+                                  for (var i = 0;
+                                      i < widget.children.length;
+                                      i++)
+                                    Navigator(
+                                      key: widget.navigatorKeys[i],
+                                      observers: [_observers[i]],
+                                      onGenerateRoute: (_) =>
+                                          CupertinoPageRoute<void>(
+                                        builder: (context) =>
+                                            _TabChildren.root(context, i),
+                                      ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
                           ),
                         ),
                       ),
@@ -178,9 +189,11 @@ final class _TabObserver extends NavigatorObserver {
   final VoidCallback changed;
 
   @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
   @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
 }

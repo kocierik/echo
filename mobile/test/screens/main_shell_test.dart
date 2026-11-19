@@ -1,0 +1,135 @@
+import 'package:echo_app/main.dart';
+import 'package:echo_app/models/device_status.dart';
+import 'package:echo_app/models/session_state.dart';
+import 'package:echo_app/screens/home_screen.dart';
+import 'package:echo_app/screens/navigation.dart';
+import 'package:echo_app/screens/person_screen.dart';
+import 'package:echo_app/screens/tasks_screen.dart';
+import 'package:echo_app/services/api/api_service.dart';
+import 'package:echo_app/services/app/app_controller.dart';
+import 'package:echo_app/services/app/spoken_language.dart';
+import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/account_button.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Some tab animates for ever, so pumpAndSettle never returns: a second of frames instead.
+Future<void> settle(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+void main() {
+  late AppController appController;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appController = AppController(
+      initialDevice: const DeviceStatus(connectionState: DeviceConnectionState.listening),
+      deviceStates: const Stream.empty(),
+      initialSession: const SessionState(SessionStatus.loggedIn),
+      sessionStates: const Stream.empty(),
+      preferences: SharedPreferencesAppPreferences(preferences),
+    );
+    await appController.initialize();
+  });
+
+  tearDown(() {
+    TabNavigators.keys = const [];
+    appController.dispose();
+  });
+
+  Future<void> pumpShell(WidgetTester tester, {AccountInfo? account}) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: MainShell(
+        appController: appController,
+        apiServiceFactory: () => _AccountApi(account ?? const AccountInfo(email: null, language: 'en')),
+      ),
+    ));
+    await settle(tester);
+  }
+
+  testWidgets('a person request opens the person in Library, with the bar', (tester) async {
+    await pumpShell(tester);
+    appController.pendingPersonId.value = 'person-1';
+    await settle(tester);
+
+    expect(appController.value.selectedTab, AppController.libraryTab);
+    expect(find.byType(PersonScreen), findsOneWidget);
+    expect(find.byKey(const Key('echo-nav-2')), findsOneWidget);
+    expect(TabNavigators.keys[AppController.libraryTab].currentState!.canPop(), isTrue);
+  });
+
+  testWidgets('a tasks request opens the Tasks page in Library, with the bar', (tester) async {
+    await pumpShell(tester);
+    appController.requestOpenTasks();
+    await settle(tester);
+
+    expect(appController.value.selectedTab, AppController.libraryTab);
+    expect(find.byType(TasksPage), findsOneWidget);
+    expect(find.byKey(const Key('echo-nav-2')), findsOneWidget);
+    expect(TabNavigators.keys[AppController.todayTab].currentState!.canPop(), isFalse);
+  });
+
+  testWidgets('a session request lands on Ask\'s first page, not under a page left open',
+      (tester) async {
+    await pumpShell(tester);
+    final ask = TabNavigators.keys[AppController.askTab].currentState!;
+    ask.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('History'))));
+    await appController.setSelectedTab(AppController.askTab);
+    await settle(tester);
+    expect(find.text('History'), findsOneWidget);
+
+    appController.handleNotificationPayload('voice:session-1');
+    await settle(tester);
+
+    expect(find.text('History'), findsNothing);
+    expect(ask.canPop(), isFalse);
+    expect(appController.value.selectedTab, AppController.askTab);
+  });
+
+  testWidgets('a question for Ask also lands on its first page', (tester) async {
+    await pumpShell(tester);
+    final ask = TabNavigators.keys[AppController.askTab].currentState!;
+    ask.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('A saved item'))));
+    await settle(tester);
+
+    appController.requestAsk('What did Marco say?');
+    await settle(tester);
+
+    expect(ask.canPop(), isFalse);
+  });
+
+  testWidgets("the circle in Today shows the user's initial", (tester) async {
+    await pumpShell(tester, account: const AccountInfo(email: 'a@x.io', language: 'en', name: 'Erik'));
+
+    expect(
+      find.descendant(
+          of: find.byType(HomeScreen),
+          matching: find.descendant(of: find.byType(AccountButton), matching: find.text('E'))),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('without a name the email gives the initial', (tester) async {
+    await pumpShell(tester, account: const AccountInfo(email: 'marta@x.io', language: 'en'));
+
+    expect(find.text('M'), findsOneWidget); // Today's circle; the other tabs are offstage
+  });
+}
+
+final class _AccountApi extends ApiService {
+  _AccountApi(this.account);
+
+  final AccountInfo account;
+
+  @override
+  Future<AccountInfo> me() async => account;
+}

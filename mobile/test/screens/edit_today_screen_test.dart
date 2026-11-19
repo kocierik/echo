@@ -22,33 +22,33 @@ void main() {
   }
 
   testWidgets('lists every section with its switch', (tester) async {
-    await pump(tester, TodayLayout.defaults.toggled(TodaySection.earlier));
+    await pump(tester, TodayLayout.defaults.toggled(TodaySection.yourDay));
 
     expect(find.text('Edit Today'), findsOneWidget);
     expect(find.text('Drag to reorder. Things to confirm always stay on top.'), findsOneWidget);
     for (final section in TodaySection.values) {
       expect(find.text(section.label), findsOneWidget, reason: section.name);
     }
-    final earlier = tester.widget<Switch>(find.byKey(const Key('edit-today-switch-earlier')));
-    expect(earlier.value, isFalse);
-    final saved = tester.widget<Switch>(find.byKey(const Key('edit-today-switch-saved')));
-    expect(saved.value, isTrue);
+    final last = tester.widget<Switch>(find.byKey(const Key('edit-today-switch-yourDay')));
+    expect(last.value, isFalse);
+    final first = tester.widget<Switch>(find.byKey(const Key('edit-today-switch-todo')));
+    expect(first.value, isTrue);
   });
 
   testWidgets('a switch hides a section', (tester) async {
     await pump(tester);
 
-    await tester.tap(find.byKey(const Key('edit-today-switch-people')));
+    await tester.tap(find.byKey(const Key('edit-today-switch-todo')));
     await tester.pumpAndSettle();
 
-    expect(changes.last.isHidden(TodaySection.people), isTrue);
-    expect(tester.widget<Switch>(find.byKey(const Key('edit-today-switch-people'))).value, isFalse);
+    expect(changes.last.isHidden(TodaySection.todo), isTrue);
+    expect(tester.widget<Switch>(find.byKey(const Key('edit-today-switch-todo'))).value, isFalse);
   });
 
   testWidgets('dragging reorders', (tester) async {
     await pump(tester);
 
-    final handle = find.byKey(const Key('edit-today-handle-saved'));
+    final handle = find.byKey(const Key('edit-today-handle-yourDay'));
     final top = tester.getCenter(find.byKey(const Key('edit-today-handle-routines')));
     final gesture = await tester.startGesture(tester.getCenter(handle));
     await tester.pump(kLongPressTimeout);
@@ -59,11 +59,11 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(changes.last.order.first, TodaySection.saved);
+    expect(changes.last.order.first, TodaySection.yourDay);
   });
 
   testWidgets('reset restores the defaults', (tester) async {
-    await pump(tester, TodayLayout.defaults.moved(5, 0).toggled(TodaySection.people));
+    await pump(tester, TodayLayout.defaults.moved(3, 0).toggled(TodaySection.todo));
 
     await tester.tap(find.byKey(const Key('edit-today-reset')));
     await tester.pumpAndSettle();

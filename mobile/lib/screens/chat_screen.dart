@@ -43,6 +43,7 @@ final class ChatScreen extends StatefulWidget {
     this.memoryApi,
     this.photoTaker,
     this.headerAction,
+    this.accountAction,
     this.dictation,
     this.threadUpdates,
     this.assistantsChanged,
@@ -60,6 +61,9 @@ final class ChatScreen extends StatefulWidget {
 
   /// The device pill, in the top right.
   final Widget? headerAction;
+
+  /// The user's circle, beside the pill.
+  final Widget? accountAction;
 
   /// True while the navigation's Ask button is held: dictate into the question.
   final ValueListenable<bool>? dictation;
@@ -560,6 +564,7 @@ final class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ],
                   if (widget.headerAction != null) widget.headerAction!,
+                  if (widget.accountAction != null) widget.accountAction!,
                 ],
               ),
               if (routinesApi != null)

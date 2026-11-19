@@ -19,11 +19,12 @@ final class TasksRequestListener extends StatefulWidget {
 }
 
 final class _TasksRequestListenerState extends State<TasksRequestListener> {
-  late int _seen = widget.requests.value;
+  int _seen = 0;
 
   @override
   void initState() {
     super.initState();
+    _seen = widget.requests.value;
     widget.requests.addListener(_onRequest);
   }
 

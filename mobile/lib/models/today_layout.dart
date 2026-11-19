@@ -8,11 +8,7 @@ enum TodaySection {
   routines('From your routines'),
   todo('To do today'),
   comingUp('Coming up today'),
-  yourDay('Your day'),
-  people('People'),
-  saved('Saved'),
-  places("Where you've been"),
-  earlier('Earlier days');
+  yourDay('Your day');
 
   const TodaySection(this.label);
 

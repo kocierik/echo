@@ -7,12 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/app_view_state.dart';
 import 'models/device_status.dart';
 import 'screens/home_screen.dart';
+import 'screens/library_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/echo_device_screen.dart';
 import 'screens/navigation.dart';
 import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/account_sheet.dart';
-import 'screens/settings/places_visited_screen.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
 import 'services/api/build_defaults.dart';
@@ -373,6 +373,7 @@ class MainShell extends StatefulWidget {
     this.segmentUploadedStream,
     this.onSettingsTap,
     this.onRequireOnboarding,
+    this.apiServiceFactory,
     super.key,
   });
 
@@ -385,6 +386,10 @@ class MainShell extends StatefulWidget {
   final VoidCallback? onSettingsTap;
   final VoidCallback? onRequireOnboarding;
 
+  /// The server connection the account is read through (the circle's initial); the
+  /// app's own unless injected.
+  final ApiService Function()? apiServiceFactory;
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -393,39 +398,67 @@ class _MainShellState extends State<MainShell> {
   /// One navigator per tab; Library's takes the pages the requests open.
   final tabNavigators = List.generate(3, (_) => GlobalKey<NavigatorState>());
 
+  /// The user's initial, on every circle: their name, else their email.
+  String? _initial;
+
   @override
   void initState() {
     super.initState();
     TabNavigators.keys = tabNavigators;
+    widget.appController.pendingChatSessionId.addListener(_showAskFirstPage);
+    widget.appController.pendingChatQuestion.addListener(_showAskFirstPage);
+    unawaited(_loadInitial());
+  }
+
+  Future<void> _loadInitial() async {
+    ApiService? api;
+    try {
+      api = (widget.apiServiceFactory ?? ApiService.new)();
+      final account = await api.me();
+      final who = account.name ?? account.email;
+      if (mounted && who != null) setState(() => _initial = who);
+    } catch (_) {
+      // No circle letter is fine
+    } finally {
+      if (widget.apiServiceFactory == null) api?.dispose();
+    }
+  }
+
+  /// A session or a question asked for lands on Ask's first page, never under History
+  /// or a saved item left open there.
+  void _showAskFirstPage() {
+    final controller = widget.appController;
+    if (controller.pendingChatSessionId.value == null &&
+        controller.pendingChatQuestion.value == null) {
+      return;
+    }
+    tabNavigators[AppController.askTab].currentState?.popUntil((route) => route.isFirst);
   }
 
   @override
   void dispose() {
+    widget.appController.pendingChatSessionId.removeListener(_showAskFirstPage);
+    widget.appController.pendingChatQuestion.removeListener(_showAskFirstPage);
     if (identical(TabNavigators.keys, tabNavigators)) TabNavigators.keys = const [];
     super.dispose();
   }
 
-  /// The third tab until Library lands: only the account circle, so settings stay reachable.
-  Widget _profile() => Builder(
-        builder: (context) => Scaffold(
-          body: SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: AccountButton(
-                onTap: () => showAccountSheet(
-                  context,
-                  appController: widget.appController,
-                  deviceController: widget.deviceController,
-                  sessionController: widget.sessionController,
-                  networkPolicy: widget.networkPolicy,
-                  preferences: widget.preferences,
-                  onRequireOnboarding: widget.onRequireOnboarding,
-                  onOpenTranscripts: () {
-                    unawaited(widget.appController.setSelectedTab(AppController.todayTab));
-                  },
-                ),
-              ),
-            ),
+  /// The user's circle: opens the account sheet.
+  Widget _account() => Builder(
+        builder: (context) => AccountButton(
+          initial: _initial,
+          onTap: () => showAccountSheet(
+            context,
+            appController: widget.appController,
+            deviceController: widget.deviceController,
+            sessionController: widget.sessionController,
+            networkPolicy: widget.networkPolicy,
+            preferences: widget.preferences,
+            onRequireOnboarding: widget.onRequireOnboarding,
+            apiServiceFactory: widget.apiServiceFactory,
+            onOpenTranscripts: () {
+              unawaited(widget.appController.setSelectedTab(AppController.todayTab));
+            },
           ),
         ),
       );
@@ -445,24 +478,9 @@ class _MainShellState extends State<MainShell> {
     ));
   }
 
-  /// Places visited, every stay (Today's "See all"); done once it is closed.
-  Future<void> _openPlaces(BuildContext context) async {
-    final places = AppRuntime.maybeCoordinator?.placesVisited;
-    if (places == null) return;
-    final api = ApiService();
-    try {
-      await Navigator.push(
-        context,
-        MaterialPageRoute<void>(builder: (_) => PlacesVisitedScreen(places: places, api: api)),
-      );
-    } finally {
-      api.dispose();
-    }
-  }
-
-  void _openTasks(BuildContext context) {
-    Navigator.push(
-      context,
+  /// The Tasks page, on [navigator]'s stack.
+  void _pushTasks(NavigatorState navigator) {
+    navigator.push(
       MaterialPageRoute(
         builder: (_) => TasksPage(
           segmentUploadedStream: widget.segmentUploadedStream,
@@ -470,6 +488,13 @@ class _MainShellState extends State<MainShell> {
         ),
       ),
     );
+  }
+
+  /// A tasks request (a notification): Library opens, with the Tasks page on it.
+  void _openTasksInLibrary() {
+    unawaited(widget.appController.setSelectedTab(AppController.libraryTab));
+    final navigator = tabNavigators[AppController.libraryTab].currentState;
+    if (navigator != null) _pushTasks(navigator);
   }
 
   /// The pill's long press: mute, or resume listening.
@@ -495,9 +520,11 @@ class _MainShellState extends State<MainShell> {
     return PersonRequestListener(
       request: widget.appController.pendingPersonId,
       onAsk: widget.appController.requestAsk,
+      navigator: tabNavigators[AppController.libraryTab],
+      onShow: () => unawaited(widget.appController.setSelectedTab(AppController.libraryTab)),
       child: TasksRequestListener(
         requests: widget.appController.openTasksRequests,
-        onOpen: () => _openTasks(context),
+        onOpen: _openTasksInLibrary,
         child: ValueListenableBuilder<AppViewState>(
           valueListenable: widget.appController,
           builder: (context, state, child) {
@@ -523,6 +550,7 @@ class _MainShellState extends State<MainShell> {
                     HomeScreen(
                       deviceStatus: state.device,
                       headerAction: pill,
+                      accountAction: _account(),
                       onReconnect: widget.deviceController?.reconnect,
                       onPair: widget.onRequireOnboarding,
                       onAsk: widget.appController.requestAsk,
@@ -530,17 +558,16 @@ class _MainShellState extends State<MainShell> {
                           ? widget.appController.handleNotificationPayload(
                               NotificationService.voicePayloadPrefix)
                           : widget.appController.requestOpenSession(sessionId),
-                      onOpenTasks: () => _openTasks(context),
+                      onOpenTasks: () => _pushTasks(tabNavigators[AppController.todayTab].currentState!),
                       segmentUploadedStream: widget.segmentUploadedStream,
                       firmwareUpdate: AppRuntime.maybeCoordinator?.firmwareUpdate,
                       onOpenDevice: () => _openDevice(context),
                       routineRunsChanged: widget.appController.routineRunsChanged,
                       onOpenThread: widget.appController.requestOpenThread,
-                      placesOn: AppRuntime.maybeCoordinator?.placesVisited.on,
-                      onOpenPlaces: () => _openPlaces(context),
                     ),
                     ChatScreen(
                       headerAction: pill,
+                      accountAction: _account(),
                       dictation: widget.appController.askDictation,
                       openSessionRequest: widget.appController.pendingChatSessionId,
                       composerFocusRequest: widget.appController.composerFocusRequest,
@@ -554,7 +581,7 @@ class _MainShellState extends State<MainShell> {
                       askRequest: widget.appController.pendingChatQuestion,
                       photoTaker: AppRuntime.maybeCoordinator?.photoService,
                     ),
-                    _profile(),
+                    LibraryScreen(accountAction: _account()),
                   ],
                 ),
               ),

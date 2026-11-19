@@ -275,12 +275,12 @@ void main() {
       controller.handleNotificationPayload('person:p-1');
       expect(controller.pendingPersonId.value, 'p-1');
 
-      await controller.setSelectedTab(AppController.libraryTab);
+      await controller.setSelectedTab(AppController.todayTab);
       final before = controller.openTasksRequests.value;
       controller.handleNotificationPayload('tasks');
       await Future<void>.delayed(Duration.zero);
-      // Tasks is a page of Today
-      expect(controller.value.selectedTab, AppController.todayTab);
+      // Tasks is a page of Library
+      expect(controller.value.selectedTab, AppController.libraryTab);
       expect(controller.openTasksRequests.value, before + 1);
 
       controller.handleNotificationPayload('today');

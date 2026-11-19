@@ -191,10 +191,10 @@ final class AppController extends ValueNotifier<AppViewState> {
     routineRunsChanged.value++;
   }
 
-  /// Selects Today and opens its Tasks page.
+  /// Selects Library and opens its Tasks page.
   void requestOpenTasks() {
     if (_disposed) return;
-    unawaited(setSelectedTab(todayTab));
+    unawaited(setSelectedTab(libraryTab));
     openTasksRequests.value++;
   }
 

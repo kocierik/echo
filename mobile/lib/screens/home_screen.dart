@@ -2,13 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/action_models.dart';
 import '../models/device_status.dart';
 import '../models/memory.dart';
-import '../models/person.dart';
-import '../models/place.dart';
 import '../models/plan.dart';
 import '../models/routine_run.dart';
 import '../models/task_item.dart';
@@ -23,26 +20,18 @@ import '../services/phone/phone_actions.dart';
 import '../theme/app_theme.dart';
 import '../widgets/coming_up_today.dart';
 import '../widgets/echo_nav_bar.dart';
-import '../widgets/places_today.dart';
 import '../widgets/routine_run_sheet.dart';
 import '../widgets/routine_sections.dart';
 import '../widgets/screen_header.dart';
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
 import '../widgets/today_top_card.dart';
-import '../utils/directions.dart';
 import '../utils/formatting.dart';
 import '../services/memory/memories_controller.dart';
-import '../widgets/memory_sections.dart';
-import '../widgets/saved_sections.dart';
 import 'conversation_detail_screen.dart';
 import 'day_screen.dart';
 import 'edit_today_screen.dart';
-import 'memory_graph_screen.dart';
 import 'memory_search_screen.dart';
-import 'people_screen.dart';
-import 'person_screen.dart';
-import 'saved_screen.dart';
 import 'navigation.dart';
 import 'settings/plan_screen.dart';
 import 'settings/voice_settings_screen.dart';
@@ -50,8 +39,8 @@ import 'task_editing.dart';
 
 /// Today: the day and a greeting, the search over the whole memory, one card for the
 /// moment (something to confirm, an event within the hour, the conversation going on,
-/// or the day so far), what today's routines found, what to do, a quiet line near and past the speech budget, the day,
-/// who came up, what was saved and the days before. Empty sections are left out. The wearable shows up only when something is wrong with it.
+/// or the day so far), what today's routines found, what to do, a quiet line near and past the speech budget and the day.
+/// Who came up, what was saved and the days before live in Library. Empty sections are left out. The wearable shows up only when something is wrong with it.
 final class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.deviceStatus,
@@ -67,16 +56,14 @@ final class HomeScreen extends StatefulWidget {
     this.firmwareUpdate,
     this.onOpenDevice,
     this.headerAction,
+    this.accountAction,
     this.workingPollInterval = const Duration(seconds: 5),
     this.clock = DateTime.now,
     this.phoneEvents,
     this.memories,
-    this.openPerson,
     this.routineRunsChanged,
     this.onOpenThread,
     this.layoutStore,
-    this.placesOn,
-    this.onOpenPlaces,
     super.key,
   });
 
@@ -105,6 +92,9 @@ final class HomeScreen extends StatefulWidget {
   /// The device pill, in the top right.
   final Widget? headerAction;
 
+  /// The user's circle, beside the pill.
+  final Widget? accountAction;
+
   /// How often "Echo is working on it" is checked while something is working.
   final Duration workingPollInterval;
   final DateTime Function() clock;
@@ -116,9 +106,6 @@ final class HomeScreen extends StatefulWidget {
   /// The memory (every conversation by day, search, people); its own unless injected.
   final MemoriesController? memories;
 
-  /// Opens a person; returns once their page is closed.
-  final ConversationOpener? openPerson;
-
   /// Counts up when new routine runs arrive: "From your routines" reloads.
   final ValueListenable<int>? routineRunsChanged;
 
@@ -128,12 +115,6 @@ final class HomeScreen extends StatefulWidget {
 
   /// Where the user's order and hidden sections are kept; the phone's preferences.
   final TodayLayoutStore? layoutStore;
-
-  /// Places visited is on (Profile): today's stays show.
-  final ValueListenable<bool>? placesOn;
-
-  /// Places visited, every stay ("See all"); done once it is closed.
-  final Future<void> Function()? onOpenPlaces;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -154,7 +135,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   late final MemoriesController _memories;
   late final bool _ownsMemories;
   List<ConversationCard> _cachedToday = const [];
-  WeeklySummary? _week;
   String? _openId;
 
   List<TaskItem> _openTasks = const [];
@@ -180,9 +160,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   /// Today's appointments still to come, from the phone's calendar.
   List<TodayEvent> _events = const [];
 
-  /// Today's stays, while Places visited is on.
-  List<PlaceVisit> _visits = const [];
-
   /// The user's order and hidden sections (Edit Today).
   late final TodayLayoutStore _layoutStore = widget.layoutStore ?? TodayLayoutStore();
   TodayLayout _layout = TodayLayout.defaults;
@@ -204,10 +181,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   static const _livePoll = Duration(seconds: 5);
   static const _liveLineCount = 3;
 
-  /// Saved: how many things, and the list one was last saved in (no row without any).
-  int _savedTotal = 0;
-  String? _savedLatest;
-
   /// The plan, for the line near and past the speech budget.
   PlanInfo? _plan;
 
@@ -227,11 +200,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     unawaited(_memories.initialize());
     _subscribeToUploads();
     widget.routineRunsChanged?.addListener(_onRoutineRuns);
-    widget.placesOn?.addListener(_onPlacesOn);
     // Back in the app (often the next morning): what depends on the time of day
     _lifecycle = AppLifecycleListener(onResume: () {
       unawaited(_loadAgenda());
-      unawaited(_loadVisits());
       unawaited(_loadRuns());
     });
     _layoutRead = _loadLayout();
@@ -273,10 +244,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       unawaited(_uploadSubscription?.cancel());
       _subscribeToUploads();
     }
-    if (oldWidget.placesOn != widget.placesOn) {
-      oldWidget.placesOn?.removeListener(_onPlacesOn);
-      widget.placesOn?.addListener(_onPlacesOn);
-    }
     if (oldWidget.routineRunsChanged != widget.routineRunsChanged) {
       oldWidget.routineRunsChanged?.removeListener(_onRoutineRuns);
       widget.routineRunsChanged?.addListener(_onRoutineRuns);
@@ -290,7 +257,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
   @override
   void dispose() {
     widget.routineRunsChanged?.removeListener(_onRoutineRuns);
-    widget.placesOn?.removeListener(_onPlacesOn);
     _lifecycle.dispose();
     _minuteTimer?.cancel();
     _pendingView.dispose();
@@ -321,15 +287,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     return todayConversations(state.conversations, widget.clock());
   }
 
-  /// The days before today, newest first.
-  List<List<ConversationCard>> get _earlierDays {
-    final today = dayOf(widget.clock());
-    final before = _memories.state.conversations
-        .where((c) => !c.isOpen && dayOf(c.startedAt).isBefore(today))
-        .toList();
-    return conversationsByDay(before);
-  }
-
   void _onMemories() {
     if (!mounted) return;
     setState(() {});
@@ -344,27 +301,14 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     }
   }
 
-  Future<void> _loadWeek() async {
-    final api = _api;
-    if (api is! WeeklySummaryApi) return;
-    try {
-      final week = await (api as WeeklySummaryApi).getLatestWeeklySummary();
-      if (mounted) setState(() => _week = week);
-    } catch (_) {}
-  }
-
   Future<void> _refreshAll() async {
     await Future.wait([
       _memories.refresh(),
-      _memories.loadPeople(),
-      _loadWeek(),
       _loadTasks(),
       _loadPending(),
       _loadWorking(),
       _loadOwnVoice(),
       _loadAgenda(),
-      _loadVisits(),
-      _loadSaved(),
       _loadPlan(),
       _loadRuns(),
     ]);
@@ -411,35 +355,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _loadPlan();
   }
 
-  Future<void> _loadSaved() async {
-    final api = _api;
-    if (api is! SavedApi) return;
-    try {
-      final saved = await (api as SavedApi).getSaved();
-      if (!mounted) return;
-      setState(() {
-        _savedTotal = saved.total;
-        _savedLatest = saved.latestList;
-      });
-    } catch (_) {}
-  }
-
-  Future<void> _openSaved() async {
-    final api = _api;
-    if (api is! SavedApi) return;
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => SavedScreen(
-        api: api as SavedApi,
-        loadPhoto: api is PhotoApi ? (api as PhotoApi).photoImage : null,
-        onAsk: widget.onAsk,
-        openConversation: (context, id) => _openById(id),
-        openPerson: (context, id) => _openPerson(id),
-        clock: widget.clock,
-      ),
-    ));
-    if (mounted) await _loadSaved();
-  }
-
   Future<void> _loadLayout() async {
     final layout = await _layoutStore.load();
     if (!mounted) return;
@@ -473,23 +388,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
       ];
       final recap = soon.isEmpty ? null : await (api as ComingUpApi).comingUp(soon);
       if (mounted) setState(() => _comingUp = recap);
-    } catch (_) {}
-  }
-
-  void _onPlacesOn() => unawaited(_loadVisits());
-
-  /// Today's stays, while Places visited is on.
-  Future<void> _loadVisits() async {
-    await _layoutRead;
-    if (!mounted || _layout.isHidden(TodaySection.places)) return;
-    final api = _api;
-    if (api is! PlacesApi || widget.placesOn?.value != true) {
-      if (_visits.isNotEmpty && mounted) setState(() => _visits = const []);
-      return;
-    }
-    try {
-      final page = await (api as PlacesApi).listVisits();
-      if (mounted) setState(() => _visits = visitsOn(page.visits, widget.clock()));
     } catch (_) {}
   }
 
@@ -707,44 +605,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     if (mounted) await _memories.refresh();
   }
 
-  Future<void> _openPerson(String id) async {
-    final opener = widget.openPerson;
-    if (opener != null) {
-      await opener(context, id);
-    } else {
-      await Navigator.of(context).push<void>(MaterialPageRoute(
-        builder: (_) => PersonScreen(
-          personId: id,
-          api: _api,
-          onAsk: widget.onAsk,
-          clock: widget.clock,
-        ),
-      ));
-    }
-    if (mounted) await _memories.loadPeople();
-  }
-
-  Future<void> _openPeople() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => PeopleScreen(
-        controller: _memories,
-        onOpenPerson: _openPerson,
-        onOpenMap: _openMemoryGraph,
-        now: widget.clock(),
-      ),
-    ));
-  }
-
-  Future<void> _openMemoryGraph() async {
-    await Navigator.of(context).push<void>(MaterialPageRoute(
-      builder: (_) => MemoryGraphScreen(
-        api: _api,
-        onOpenPerson: _openPerson,
-        onOpenConversation: _openById,
-      ),
-    ));
-  }
-
   /// A day of "Earlier" (or the whole of today): its digest, then its conversations.
   Future<void> _openDay(List<ConversationCard> conversations) async {
     await Navigator.of(context).push<void>(MaterialPageRoute(
@@ -807,11 +667,8 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     required List<ConversationCard> today,
     required bool todayLoading,
     required String? todayError,
-    required List<PersonSummary> peopleToday,
-    required List<List<ConversationCard>> earlier,
   }) {
     final device = widget.deviceStatus;
-    final memory = _memories.state;
     final api = _api;
     return switch (section) {
       TodaySection.routines => [
@@ -858,57 +715,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
             const SizedBox(height: 12),
           ],
         ],
-      TodaySection.people => [
-          if (peopleToday.isNotEmpty) ...[
-            PeoplePanel(
-              people: peopleToday,
-              onOpen: (id) => unawaited(_openPerson(id)),
-              onAll: () => unawaited(_openPeople()),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ],
-      TodaySection.saved => [
-          if (_savedTotal > 0) ...[
-            SavedRow(
-              total: _savedTotal,
-              latestList: _savedLatest,
-              onOpen: () => unawaited(_openSaved()),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ],
-      TodaySection.places => [
-          if (widget.placesOn?.value == true)
-            PlacesTodayPanel(
-              // Filtered again: loaded yesterday, shown this morning
-              visits: visitsOn(_visits, now),
-              now: now,
-              onOpen: (visit) => unawaited(_openVisit(visit)),
-              onSeeAll: () => unawaited(_openPlaces()),
-            ),
-        ],
-      TodaySection.earlier => [
-          if (_week != null || earlier.isNotEmpty)
-            EarlierPanel(
-              days: earlier,
-              now: now,
-              week: _week,
-              onOpenWeek: _week == null
-                  ? null
-                  : () => unawaited(Navigator.of(context).push<void>(
-                        MaterialPageRoute(
-                          builder: (_) => WeekScreen(week: _week!, now: now),
-                        ),
-                      )),
-              onOpenDay: (day) => unawaited(_openDay(day)),
-              hasMore: memory.hasMore,
-              loadingMore: memory.loadingMore,
-              onMore: () => unawaited(_memories.loadMore()),
-            ),
-          // Its gap like every other section's: Where you've been may come after it
-          if (_week != null || earlier.isNotEmpty) const SizedBox(height: 12),
-        ],
     };
   }
 
@@ -926,28 +732,9 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
           unawaited(_layoutStore.save(layout));
           // What a hidden section did not load
           if (shown.contains(TodaySection.comingUp)) unawaited(_loadAgenda());
-          if (shown.contains(TodaySection.places)) unawaited(_loadVisits());
         },
       ),
     ));
-  }
-
-  /// Places visited; what was deleted there leaves Today too.
-  Future<void> _openPlaces() async {
-    final open = widget.onOpenPlaces;
-    if (open == null) return;
-    await open();
-    if (mounted) await _loadVisits();
-  }
-
-  /// A stay, in the phone's maps.
-  Future<void> _openVisit(PlaceVisit visit) async {
-    final uri = visitMapsUri(visit, iOS: defaultTargetPlatform == TargetPlatform.iOS);
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) _snack('Could not open the map.');
-    }
   }
 
   @override
@@ -962,8 +749,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     // A failure shows only when there is nothing to show instead
     final todayError = memory.conversations.isEmpty && _cachedToday.isEmpty ? memory.error : null;
     final moment = pickMoment(pending: _pending);
-    final peopleToday = peopleSeenOn(memory.people, now);
-    final earlier = _earlierDays;
 
     // A Material, not a ColoredBox: row ink splashes paint on it
     return Material(
@@ -985,6 +770,7 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                   onPressed: () => unawaited(_openSearch()),
                 ),
                 if (widget.headerAction != null) widget.headerAction!,
+                if (widget.accountAction != null) widget.accountAction!,
               ],
             ),
             Expanded(
@@ -1057,8 +843,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
                         today: today,
                         todayLoading: todayLoading,
                         todayError: todayError,
-                        peopleToday: peopleToday,
-                        earlier: earlier,
                       ),
                     Center(
                       child: TextButton.icon(

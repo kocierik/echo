@@ -5,12 +5,9 @@ import 'package:echo_app/models/device_status.dart';
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/person.dart';
 import 'package:echo_app/models/photo.dart';
-import 'package:echo_app/models/place.dart';
 import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
-import 'package:echo_app/models/saved.dart';
-import 'package:echo_app/screens/navigation.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/widgets/panel.dart';
 import 'package:echo_app/models/today_insights.dart';
@@ -51,12 +48,9 @@ void main() {
     double textScale = 1,
     List<Map<String, Object?>> phoneEvents = const [],
     MemoriesController? memories,
-    ConversationOpener? openPerson,
     ValueListenable<int>? routineRunsChanged,
     TodayLayout? layout,
-    ValueListenable<bool>? placesOn,
     DateTime Function()? clock,
-    Future<void> Function()? onOpenPlaces,
     TodayLayoutStore? layoutStore,
   }) async {
     phoneReads = 0;
@@ -88,12 +82,9 @@ void main() {
               return phoneEvents;
             },
             memories: memories,
-            openPerson: openPerson,
             routineRunsChanged: routineRunsChanged,
             onOpenThread: (id) => calls.add('thread $id'),
             layoutStore: layoutStore ?? TodayLayoutStore(),
-            placesOn: placesOn,
-            onOpenPlaces: onOpenPlaces,
           ),
         ),
       ),
@@ -406,7 +397,7 @@ void main() {
       uploads.add(null);
       await tester.pumpAndSettle();
 
-      expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false', 'people']));
+      expect(api.calls.skip(before), unorderedEquals(['list 30 0', 'tasks false']));
     });
   });
 
@@ -690,50 +681,6 @@ void main() {
       expect(find.byKey(const Key('your-day')), findsOneWidget);
     });
 
-    testWidgets('people today, and All for everyone', (tester) async {
-      final opened = <String>[];
-      final api = FakeTodayApi(conversations: [card('c1', startedAt: DateTime(2026, 10, 14, 9))])
-        ..people = [
-          PersonSummary(id: 'p1', name: 'Marco Rossi', lastSeen: DateTime(2026, 10, 14, 9),
-              conversationCount: 3),
-          PersonSummary(id: 'p2', name: 'Ada', lastSeen: DateTime(2026, 10, 12, 9)),
-        ];
-      await pumpToday(tester, api: api, openPerson: (context, id) async => opened.add(id));
-      await tester.pumpAndSettle();
-
-      Finder onPanel(String text) =>
-          find.descendant(of: find.byKey(const Key('people-panel')), matching: find.text(text));
-      expect(find.text('People today'), findsOneWidget);
-      expect(onPanel('Marco'), findsOneWidget);
-      expect(onPanel('Ada'), findsNothing); // not today
-      await tester.ensureVisible(find.byKey(const Key('person-p1')));
-      await tester.tap(find.byKey(const Key('person-p1')));
-      await tester.pumpAndSettle();
-      expect(opened, ['p1']);
-
-      await tester.tap(find.byKey(const Key('people-all')));
-      await tester.pumpAndSettle();
-      expect(find.text('Ada'), findsOneWidget);
-      expect(find.text('Marco Rossi'), findsOneWidget);
-    });
-
-    testWidgets('a Saved row with how many and the latest list, opening Saved', (tester) async {
-      final api = _SavedTodayApi(const SavedOverview(
-        total: 3,
-        latestList: 'Wines',
-        places: [],
-        lists: [],
-      ));
-      await pumpToday(tester, api: api);
-      await tester.pumpAndSettle();
-
-      expect(find.text('3 things · latest in Wines'), findsOneWidget);
-      await tester.ensureVisible(find.byKey(const Key('saved-row')));
-      await tester.tap(find.byKey(const Key('saved-row')));
-      await tester.pumpAndSettle();
-      expect(find.text('Things to find again, each with its moment.'), findsOneWidget);
-    });
-
     testWidgets('past the speech budget: a quiet line, opening the plan', (tester) async {
       await pumpToday(tester, api: _PlanTodayApi(PlanInfo.fromJson(planJson(
         plan: 'free',
@@ -763,53 +710,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('plan-line')), findsNothing);
-    });
-
-    testWidgets('nothing saved: no Saved row', (tester) async {
-      await pumpToday(tester, api: _SavedTodayApi(const SavedOverview(total: 0, places: [], lists: [])));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('saved-row')), findsNothing);
-    });
-
-    testWidgets('earlier: the week, then each day with its count and main topic',
-        (tester) async {
-      final api = FakeTodayApi(
-        conversations: [
-          card('t1', startedAt: DateTime(2026, 10, 14, 9)),
-          card('y1', startedAt: DateTime(2026, 10, 13, 18), title: 'Dinner plans',
-              duration: const Duration(minutes: 10)),
-          card('y2', startedAt: DateTime(2026, 10, 13, 10), title: 'The Atlas kickoff',
-              duration: const Duration(minutes: 50)),
-          card('m1', startedAt: DateTime(2026, 10, 12, 9), title: 'Dentist'),
-        ],
-        week: WeeklySummary(weekStart: DateTime(2026, 10, 12), summary: 'Atlas took the week.',
-            highlights: const ['The kickoff on Tuesday']),
-      )..digests[DateTime(2026, 10, 13)] =
-            DailySummary(date: DateTime(2026, 10, 13), summary: 'Atlas kicked off; dinner on Friday.');
-      await pumpToday(tester, api: api);
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.byKey(const Key('earlier')));
-      expect(find.text('This week'), findsOneWidget);
-      expect(find.text('Yesterday'), findsOneWidget);
-      expect(find.text('2 conversations · The Atlas kickoff'), findsOneWidget);
-      expect(find.text('1 conversation · Dentist'), findsOneWidget);
-      // Today is not "earlier"
-      expect(find.byKey(const Key('earlier-2026-10-14')), findsNothing);
-
-      await tester.tap(find.text('Yesterday'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('day-digest')), findsOneWidget);
-      expect(find.text('Atlas kicked off; dinner on Friday.'), findsOneWidget);
-      expect(find.text('Dinner plans'), findsOneWidget);
-      Navigator.of(tester.element(find.byKey(const Key('day-screen')))).pop();
-      await tester.pumpAndSettle();
-
-      await tester.ensureVisible(find.text('This week'));
-      await tester.tap(find.text('This week'));
-      await tester.pumpAndSettle();
-      expect(find.text('• The kickoff on Tuesday'), findsOneWidget);
     });
 
     testWidgets('a photo of the day shows its thumbnail and title', (tester) async {
@@ -870,19 +770,14 @@ void main() {
         api: full(),
         size: const Size(375, 2400),
         layout: const TodayLayout(order: [
-          TodaySection.people,
           TodaySection.yourDay,
           TodaySection.todo,
           TodaySection.routines,
           TodaySection.comingUp,
-          TodaySection.saved,
-          TodaySection.places,
-          TodaySection.earlier,
         ]),
       );
       await tester.pumpAndSettle();
 
-      expect(top(tester, 'people-panel'), lessThan(top(tester, 'your-day')));
       expect(top(tester, 'your-day'), lessThan(top(tester, 'todo-panel')));
     });
 
@@ -970,14 +865,14 @@ void main() {
               of: find.byKey(const Key('today')), matching: find.byType(Scrollable)).first);
       await tester.tap(find.byKey(const Key('today-edit')));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('edit-today-switch-people')));
+      await tester.tap(find.byKey(const Key('edit-today-switch-todo')));
       await tester.pumpAndSettle();
       await tester.pageBack();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('people-panel')), findsNothing);
+      expect(find.byKey(const Key('todo-panel')), findsNothing);
       final saved = (await SharedPreferences.getInstance()).getString(TodayLayoutStore.key);
-      expect(TodayLayout.fromJson(saved).isHidden(TodaySection.people), isTrue);
+      expect(TodayLayout.fromJson(saved).isHidden(TodaySection.todo), isTrue);
     });
 
     testWidgets('the agenda lists what is still to come today', (tester) async {
@@ -1007,26 +902,6 @@ void main() {
       expect(find.text('Last time: the budget'), findsOneWidget);
     });
 
-    testWidgets("today's stays are on Today when places are on", (tester) async {
-      final on = ValueNotifier(true);
-      addTearDown(on.dispose);
-      final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
-        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20),
-            leftAt: DateTime(2026, 10, 13, 23), name: 'Cinema'),
-      ]);
-      await pumpToday(tester, api: api, placesOn: on);
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('places-today')), findsOneWidget);
-      expect(find.text('Office'), findsOneWidget);
-      expect(find.text('Cinema'), findsNothing);
-
-      on.value = false;
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('places-today')), findsNothing);
-    });
-
     testWidgets('the next morning, yesterday is gone and today loads when the app comes back',
         (tester) async {
       var clock = DateTime(2026, 10, 14, 18);
@@ -1035,12 +910,7 @@ void main() {
         {'id': 'E1', 'title': 'Holiday', 'start': at(DateTime(2026, 10, 14)), 'all_day': true},
         {'id': 'E2', 'title': 'Dinner', 'start': at(DateTime(2026, 10, 14, 20))},
       ];
-      final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9),
-            leftAt: DateTime(2026, 10, 14, 17, 30), name: 'Office'),
-      ]);
-      final on = ValueNotifier(true);
-      addTearDown(on.dispose);
+      final api = FakeTodayApi();
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light,
         home: Scaffold(
@@ -1051,23 +921,17 @@ void main() {
             clock: () => clock,
             phoneEvents: () async => phone,
             layoutStore: TodayLayoutStore(),
-            placesOn: on,
           ),
         ),
       ));
       await tester.pumpAndSettle();
       expect(find.text('Holiday'), findsOneWidget);
-      expect(find.text('Office'), findsOneWidget);
 
       // The next morning: nothing of yesterday, even before anything reloads
       clock = DateTime(2026, 10, 15, 8);
       phone = [
         {'id': 'E3', 'title': 'Dentist', 'start': at(DateTime(2026, 10, 15, 15))},
       ];
-      api.visits
-        ..clear()
-        ..add(PlaceVisit(id: 'v2', arrivedAt: DateTime(2026, 10, 15, 7, 30), name: 'Gym'));
-      on.value = on.value; // no change: only a rebuild is due
       await tester.pumpWidget(MaterialApp(
         theme: AppTheme.light,
         home: Scaffold(
@@ -1078,14 +942,12 @@ void main() {
             clock: () => clock,
             phoneEvents: () async => phone,
             layoutStore: TodayLayoutStore(),
-            placesOn: on,
           ),
         ),
       ));
       expect(find.text('Holiday'), findsNothing);
-      expect(find.text('Office'), findsNothing);
 
-      // Back in the app: today's agenda and stays
+      // Back in the app: today's agenda
       for (final state in [
         AppLifecycleState.inactive,
         AppLifecycleState.hidden,
@@ -1098,47 +960,8 @@ void main() {
       }
       await tester.pumpAndSettle();
       expect(find.text('Dentist'), findsOneWidget);
-      expect(find.text('Gym'), findsOneWidget);
     });
 
-    testWidgets("after See all, today's stays load again", (tester) async {
-      final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
-      ]);
-      await pumpToday(tester, api: api, placesOn: ValueNotifier(true), onOpenPlaces: () async {
-        api.visits.clear(); // deleted on Places visited
-      });
-      await tester.pumpAndSettle();
-      expect(find.text('Office'), findsOneWidget);
-
-      await tester.ensureVisible(find.byKey(const Key('places-see-all')));
-      await tester.tap(find.byKey(const Key('places-see-all')));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Office'), findsNothing);
-    });
-
-    testWidgets('places off, no panel', (tester) async {
-      final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v1', arrivedAt: DateTime(2026, 10, 14, 9), name: 'Office'),
-      ]);
-      await pumpToday(tester, api: api, placesOn: ValueNotifier(false));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('places-today')), findsNothing);
-      expect(api.listed, 0);
-    });
-
-    testWidgets('no stays today, no panel', (tester) async {
-      final api = _PlacesTodayApi([
-        PlaceVisit(id: 'v0', arrivedAt: DateTime(2026, 10, 13, 20),
-            leftAt: DateTime(2026, 10, 13, 23), name: 'Cinema'),
-      ]);
-      await pumpToday(tester, api: api, placesOn: ValueNotifier(true));
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(const Key('places-today')), findsNothing);
-    });
   });
 
   testWidgets('the daily and weekly summaries live in Memories now', (tester) async {
@@ -1245,19 +1068,6 @@ final class _PlanTodayApi extends FakeTodayApi implements PlanApi {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-/// Today's API with Saved.
-final class _SavedTodayApi extends FakeTodayApi implements SavedApi {
-  _SavedTodayApi(this.overview);
-
-  final SavedOverview overview;
-
-  @override
-  Future<SavedOverview> getSaved() async => overview;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
 /// Today's API with routines and their runs.
 final class _RoutinesTodayApi extends FakeTodayApi implements RoutinesApi {
   _RoutinesTodayApi(this.runs, {super.openTasks});
@@ -1287,23 +1097,6 @@ final class _RoutinesTodayApi extends FakeTodayApi implements RoutinesApi {
 
   @override
   Future<List<Routine>> listRoutines() async => const [];
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// Today's API with the places visited.
-final class _PlacesTodayApi extends FakeTodayApi implements PlacesApi {
-  _PlacesTodayApi(this.visits);
-
-  final List<PlaceVisit> visits;
-  int listed = 0;
-
-  @override
-  Future<VisitPage> listVisits({DateTime? before}) async {
-    listed++;
-    return VisitPage(visits: visits, more: false);
-  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

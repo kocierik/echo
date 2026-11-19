@@ -12,6 +12,8 @@ final class PersonRequestListener extends StatefulWidget {
     required this.child,
     this.onAsk,
     this.api,
+    this.navigator,
+    this.onShow,
     super.key,
   });
 
@@ -19,6 +21,12 @@ final class PersonRequestListener extends StatefulWidget {
   final Widget child;
   final AskCallback? onAsk;
   final MemoryApi? api;
+
+  /// Where the page opens; the app's navigator unless given.
+  final GlobalKey<NavigatorState>? navigator;
+
+  /// Called just before the page opens (the tab it opens in gets selected).
+  final VoidCallback? onShow;
 
   @override
   State<PersonRequestListener> createState() => _PersonRequestListenerState();
@@ -56,7 +64,8 @@ final class _PersonRequestListenerState extends State<PersonRequestListener> {
     if (!mounted || id == null) return;
     widget.request.value = null;
     final api = widget.api ?? (_ownedApi ??= ApiService());
-    Navigator.of(context).push<void>(MaterialPageRoute(
+    widget.onShow?.call();
+    (widget.navigator?.currentState ?? Navigator.of(context)).push<void>(MaterialPageRoute(
       builder: (_) => PersonScreen(personId: id, api: api, onAsk: widget.onAsk),
     ));
   }
