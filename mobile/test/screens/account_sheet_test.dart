@@ -365,6 +365,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  widgetTest('fits 320 wide at 2.0 text scale', (tester) async {
+    tester.view.physicalSize = const Size(320, 900);
+    await pumpAccountSheet(tester, textScale: 2.0);
+    expect(tester.takeException(), isNull);
+  });
+
   widgetTest('appearance persists system light and dark selections', (tester) async {
     await pumpAccountSheet(tester);
     expect(find.text('System: light by day, dark at night'), findsOneWidget);

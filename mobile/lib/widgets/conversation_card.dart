@@ -148,9 +148,9 @@ final class ConversationRow extends StatelessWidget {
       else if (c.isProcessing)
         _Chip(label: 'Processing', color: palette.surface2, text: palette.amber),
       if (c.people.isNotEmpty)
-        _Chip(label: c.people.join(', '), color: palette.surface2, text: palette.text2),
+        _Chip(label: c.people.join(', '), color: palette.surface2, text: palette.text),
       if (c.place?.label case final place?)
-        _Chip(label: place, color: palette.surface2, text: palette.text2),
+        _Chip(label: place, color: palette.surface2, text: palette.text),
       if (c.taskCount > 0)
         _Chip(
           label: c.taskCount == 1 ? '1 task' : '${c.taskCount} tasks',
@@ -161,10 +161,10 @@ final class ConversationRow extends StatelessWidget {
         _Chip(
           label: c.photoCount == 1 ? '1 photo' : '${c.photoCount} photos',
           color: palette.surface2,
-          text: palette.text2,
+          text: palette.text,
         ),
       if (c.duration.inSeconds >= 60)
-        _Chip(label: formatDuration(c.duration), color: palette.surface2, text: palette.text2),
+        _Chip(label: formatDuration(c.duration), color: palette.surface2, text: palette.text),
     ];
     return Semantics(
       button: true,

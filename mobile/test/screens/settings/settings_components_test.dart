@@ -109,4 +109,24 @@ void main() {
     ));
     expect(tester.widget<Text>(find.text('On')).style?.color, EchoPalette.dark.text2);
   });
+
+  testWidgets('section and group headers are headings for VoiceOver', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.dark,
+      home: Scaffold(
+        body: ListView(children: [
+          const SettingsSection('KEPT'),
+          SettingsGroup(header: 'GROUP', children: [
+            SettingsRow(icon: CupertinoIcons.lock, title: 'Audio', onTap: () {}),
+          ]),
+        ]),
+      ),
+    ));
+    for (final text in ['KEPT', 'GROUP']) {
+      // The group's rows may merge into the header's node, so check the flag only
+      expect(tester.getSemantics(find.text(text)).flagsCollection.isHeader, isTrue, reason: text);
+    }
+    handle.dispose();
+  });
 }

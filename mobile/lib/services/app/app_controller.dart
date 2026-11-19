@@ -54,6 +54,16 @@ final class AppController extends ValueNotifier<AppViewState> {
   /// shell opens it on each change.
   final ValueNotifier<int> openTasksRequests = ValueNotifier(0);
 
+  /// Counts the requests to show [topTab] at its first page, with nothing over it (a
+  /// notification, or dictation); the shell closes sheets and pops that tab on each change.
+  final ValueNotifier<int> topRequests = ValueNotifier(0);
+  int topTab = todayTab;
+
+  void _showTop(int tab) {
+    topTab = tab;
+    topRequests.value++;
+  }
+
   /// True while the Ask button is held: Ask dictates into its question.
   final ValueNotifier<bool> askDictation = ValueNotifier(false);
 
@@ -167,6 +177,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     routinesFilter.value = routineId;
     askView.value = AskView.routines;
     unawaited(setSelectedTab(askTab));
+    _showTop(askTab);
   }
 
   /// Selects Ask on Chat and opens the thread with Echo, [sessionId] ("Ask about this"
@@ -195,6 +206,7 @@ final class AppController extends ValueNotifier<AppViewState> {
   void requestOpenTasks() {
     if (_disposed) return;
     unawaited(setSelectedTab(libraryTab));
+    _showTop(libraryTab);
     openTasksRequests.value++;
   }
 
@@ -204,6 +216,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     if (holding) {
       askView.value = AskView.chat;
       unawaited(setSelectedTab(askTab));
+      _showTop(askTab);
     }
     askDictation.value = holding;
   }
@@ -220,6 +233,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     }
     if (payload == 'today') {
       unawaited(setSelectedTab(todayTab));
+      _showTop(todayTab);
       return;
     }
     if (payload.startsWith(NotificationService.routinesPayloadPrefix)) {
@@ -228,7 +242,10 @@ final class AppController extends ValueNotifier<AppViewState> {
     }
     if (payload.startsWith(personPayloadPrefix)) {
       final id = payload.substring(personPayloadPrefix.length).trim();
-      if (id.isNotEmpty) pendingPersonId.value = id;
+      if (id.isNotEmpty) {
+        _showTop(libraryTab);
+        pendingPersonId.value = id;
+      }
       return;
     }
     const prefix = NotificationService.voicePayloadPrefix;
@@ -237,6 +254,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     if (id.isEmpty) {
       askView.value = AskView.chat;
       unawaited(setSelectedTab(askTab));
+      _showTop(askTab);
     } else {
       requestOpenSession(id);
     }
@@ -282,6 +300,7 @@ final class AppController extends ValueNotifier<AppViewState> {
     pendingPersonId.dispose();
     pendingChatQuestion.dispose();
     openTasksRequests.dispose();
+    topRequests.dispose();
     askDictation.dispose();
     threadUpdates.dispose();
     askView.dispose();

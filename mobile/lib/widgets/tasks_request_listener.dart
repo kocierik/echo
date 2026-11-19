@@ -24,8 +24,9 @@ final class _TasksRequestListenerState extends State<TasksRequestListener> {
   @override
   void initState() {
     super.initState();
-    _seen = widget.requests.value;
     widget.requests.addListener(_onRequest);
+    // A tap that launched the app arrived before this widget existed
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onRequest());
   }
 
   @override

@@ -395,7 +395,7 @@ final class _SearchField extends StatelessWidget {
           child: AbsorbPointer(
             child: CupertinoSearchTextField(
               placeholder: 'Search what you heard',
-              backgroundColor: palette.surface2,
+              backgroundColor: palette.surface,
               itemColor: palette.text2,
               placeholderStyle: TextStyle(color: palette.text2),
               style: TextStyle(color: palette.text),

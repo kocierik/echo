@@ -93,4 +93,27 @@ void main() {
       expect((a > b ? a + 0.05 : b + 0.05) / (a > b ? b + 0.05 : a + 0.05), greaterThanOrEqualTo(4.5));
     }
   });
+
+  test('text on the fills it is drawn on reads (4.5:1) in both themes', () {
+    double lum(Color c) => c.computeLuminance();
+    double contrast(Color a, Color b) {
+      final (hi, lo) = lum(a) > lum(b) ? (lum(a), lum(b)) : (lum(b), lum(a));
+      return (hi + 0.05) / (lo + 0.05);
+    }
+
+    for (final theme in [AppTheme.dark, AppTheme.light]) {
+      final p = theme.extension<EchoPalette>()!;
+      // Each text colour with the fill it is drawn on (chips, tiles, the Library search)
+      final pairs = {
+        'text on surface2 (chips, day tiles)': (p.text, p.surface2),
+        'amber on surface2 (Processing chip)': (p.amber, p.surface2),
+        'onAccentSoft on accentSoft (marked tiles)': (p.onAccentSoft, p.accentSoft),
+        'text2 on surface (Library search)': (p.text2, p.surface),
+        'text2 on background': (p.text2, p.background),
+      };
+      pairs.forEach((name, pair) {
+        expect(contrast(pair.$1, pair.$2), greaterThanOrEqualTo(4.5), reason: name);
+      });
+    }
+  });
 }

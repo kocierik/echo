@@ -31,7 +31,7 @@ final class PrivacyStep extends StatelessWidget {
               const _PrivacyRow(
                 sample: _Pill(DeviceConnectionState.listening),
                 text:
-                    'The pill at the top of every screen glows orange while Echo listens.',
+                    'The pill at the top of Today and Ask glows blue while Echo listens.',
               ),
               Divider(height: 33, color: palette.border),
               const _PrivacyRow(

@@ -177,7 +177,7 @@ final class DeviceProblemPanel extends StatelessWidget {
   }
 }
 
-/// "Needs you": an orange panel per action waiting for a Confirm.
+/// "Needs you": a panel per action waiting for a Confirm.
 final class NeedsYouSection extends StatelessWidget {
   const NeedsYouSection({
     required this.actions,
@@ -641,12 +641,9 @@ final class _ConversationBlock extends StatelessWidget {
         place == null &&
         c.duration < const Duration(minutes: 10);
     final marked = c.taskCount > 0;
-    final color = brief
-        ? palette.surface2
-        : marked
-            ? palette.accentSoft
-            : palette.accentSoft;
-    final muted = marked ? palette.onAccentSoft : palette.text2;
+    final color = marked ? palette.accentSoft : palette.surface2;
+    // text2 is under 4.5:1 on surface2
+    final muted = marked ? palette.onAccentSoft : palette.text;
     final meta = [
       if (c.people.isNotEmpty) c.people.take(2).join(', '),
       // Where it happened, when Places visited is on: "Cena con Marco — Trattoria da Mario"
@@ -740,7 +737,7 @@ final class _PhotoBlock extends StatelessWidget {
       label: [title, if (c.summary != null) c.summary!].join(', '),
       excludeSemantics: true,
       child: Material(
-        color: palette.accentSoft,
+        color: palette.surface2,
         borderRadius: radius,
         child: InkWell(
           key: Key('day-${c.id}'),
@@ -788,7 +785,7 @@ final class _PhotoBlock extends StatelessWidget {
                           summary,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                          style: textTheme.bodySmall?.copyWith(color: palette.text),
                         ),
                       ],
                     ],

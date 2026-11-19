@@ -9,6 +9,7 @@ import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/tasks_request_listener.dart';
 import 'package:echo_app/widgets/account_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,6 +94,72 @@ void main() {
     expect(find.text('History'), findsNothing);
     expect(ask.canPop(), isFalse);
     expect(appController.value.selectedTab, AppController.askTab);
+  });
+
+  testWidgets('a routines notification lands on Ask, not under History', (tester) async {
+    await pumpShell(tester);
+    final ask = TabNavigators.keys[AppController.askTab].currentState!;
+    ask.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('History'))));
+    await appController.setSelectedTab(AppController.askTab);
+    await settle(tester);
+
+    appController.handleNotificationPayload('routines:run-1');
+    await settle(tester);
+
+    expect(find.text('History'), findsNothing);
+    expect(ask.canPop(), isFalse);
+  });
+
+  testWidgets('a person notification closes the account sheet over the tabs', (tester) async {
+    await pumpShell(tester);
+    Navigator.of(tester.element(find.byType(HomeScreen)), rootNavigator: true).push(
+        MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('Sheet'))));
+    await settle(tester);
+    expect(find.text('Sheet'), findsOneWidget);
+
+    appController.handleNotificationPayload('person:person-1');
+    await settle(tester);
+
+    expect(find.text('Sheet'), findsNothing);
+    expect(find.byType(PersonScreen), findsOneWidget);
+  });
+
+  testWidgets('holding Ask to dictate shows Ask, not History', (tester) async {
+    await pumpShell(tester);
+    final ask = TabNavigators.keys[AppController.askTab].currentState!;
+    ask.push(MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('History'))));
+    await appController.setSelectedTab(AppController.askTab);
+    await settle(tester);
+
+    appController.setAskDictation(true);
+    await settle(tester);
+
+    expect(find.text('History'), findsNothing);
+    expect(ask.canPop(), isFalse);
+  });
+
+  testWidgets('a second tasks request does not stack Tasks pages', (tester) async {
+    await pumpShell(tester);
+    appController.requestOpenTasks();
+    await settle(tester);
+    appController.requestOpenTasks();
+    await settle(tester);
+
+    final library = TabNavigators.keys[AppController.libraryTab].currentState!;
+    library.pop();
+    await settle(tester);
+    expect(library.canPop(), isFalse);
+  });
+
+  testWidgets('a tasks request made before the listener existed still opens', (tester) async {
+    final requests = ValueNotifier<int>(1);
+    var opened = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: TasksRequestListener(
+          requests: requests, onOpen: () => opened++, child: const SizedBox()),
+    ));
+    await tester.pump();
+    expect(opened, 1);
   });
 
   testWidgets('a question for Ask also lands on its first page', (tester) async {

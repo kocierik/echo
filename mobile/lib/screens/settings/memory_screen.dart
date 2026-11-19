@@ -34,6 +34,7 @@ final class MemoryScreen extends StatefulWidget {
 
 final class _MemoryScreenState extends State<MemoryScreen> {
   AccountInfo? _info;
+  bool _failed = false;
 
   @override
   void initState() {
@@ -43,10 +44,13 @@ final class _MemoryScreenState extends State<MemoryScreen> {
   }
 
   Future<void> _load() async {
+    if (_failed) setState(() => _failed = false);
     try {
       final info = await widget.account.me();
       if (mounted) setState(() => _info = info);
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
   }
 
   Future<void> _editInstructions() async {
@@ -73,10 +77,14 @@ final class _MemoryScreenState extends State<MemoryScreen> {
           title: 'Instructions',
           // Not editable until the account is known: an empty editor would save over them
           subtitle: _info == null
-              ? 'Loading…'
+              ? (_failed ? 'Could not load. Tap to try again.' : 'Loading…')
               : _info!.instructions?.split('\n').first ??
                   'How Echo talks to you.',
-          onTap: _info == null ? null : _editInstructions,
+          onTap: _info != null
+              ? _editInstructions
+              : _failed
+                  ? () => unawaited(_load())
+                  : null,
         ),
         SettingsRow(
           key: const Key('memory-about-you'),

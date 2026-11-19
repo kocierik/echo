@@ -309,6 +309,24 @@ void main() {
           card('yesterday', startedAt: DateTime(2026, 10, 13, 20), title: 'Dinner plans'),
         ]);
 
+    testWidgets('a conversation with tasks is azure, the others are not', (tester) async {
+      await pumpToday(
+        tester,
+        api: FakeTodayApi(conversations: [
+          card('marked', startedAt: DateTime(2026, 10, 14, 12), taskCount: 2),
+          card('plain', startedAt: DateTime(2026, 10, 14, 9), taskCount: 0),
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      Color? fill(String id) => tester
+          .widget<Material>(find
+              .ancestor(of: find.byKey(Key('day-$id')), matching: find.byType(Material))
+              .first)
+          .color;
+      expect(fill('marked'), isNot(fill('plain')));
+    });
+
     testWidgets("puts today's conversations on a timeline, ending with now",
         (tester) async {
       await pumpToday(tester, api: withConversations());

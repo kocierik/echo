@@ -89,13 +89,17 @@ class SettingsGroup extends StatelessWidget {
     return CupertinoListSection.insetGrouped(
       backgroundColor: palette.background,
       separatorColor: palette.border,
+      margin: const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 10),
       decoration: BoxDecoration(
         color: palette.surface,
-        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
       ),
       header: header == null
           ? null
-          : Text(header!, style: TextStyle(color: palette.text2, fontSize: 13)),
+          : Semantics(
+              header: true,
+              child: Text(header!, style: TextStyle(color: palette.text2, fontSize: 13)),
+            ),
       children: children,
     );
   }
@@ -111,7 +115,10 @@ class SettingsSection extends StatelessWidget {
     final palette = EchoPalette.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(32, 16, 20, 8),
-      child: Text(label, style: TextStyle(color: palette.text2, fontSize: 13)),
+      child: Semantics(
+        header: true,
+        child: Text(label, style: TextStyle(color: palette.text2, fontSize: 13)),
+      ),
     );
   }
 }

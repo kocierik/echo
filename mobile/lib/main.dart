@@ -413,6 +413,7 @@ class _MainShellState extends State<MainShell> {
     TabNavigators.keys = tabNavigators;
     widget.appController.pendingChatSessionId.addListener(_showAskFirstPage);
     widget.appController.pendingChatQuestion.addListener(_showAskFirstPage);
+    widget.appController.topRequests.addListener(_showTabTop);
     unawaited(_loadInitial());
   }
 
@@ -441,10 +442,17 @@ class _MainShellState extends State<MainShell> {
     tabNavigators[AppController.askTab].currentState?.popUntil((route) => route.isFirst);
   }
 
+  /// A notification or dictation lands on its tab's first page, with no sheet over it.
+  void _showTabTop() {
+    Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    tabNavigators[widget.appController.topTab].currentState?.popUntil((route) => route.isFirst);
+  }
+
   @override
   void dispose() {
     widget.appController.pendingChatSessionId.removeListener(_showAskFirstPage);
     widget.appController.pendingChatQuestion.removeListener(_showAskFirstPage);
+    widget.appController.topRequests.removeListener(_showTabTop);
     if (identical(TabNavigators.keys, tabNavigators)) TabNavigators.keys = const [];
     _memories.dispose();
     _api.dispose();
@@ -502,7 +510,10 @@ class _MainShellState extends State<MainShell> {
   void _openTasksInLibrary() {
     unawaited(widget.appController.setSelectedTab(AppController.libraryTab));
     final navigator = tabNavigators[AppController.libraryTab].currentState;
-    if (navigator != null) _pushTasks(navigator);
+    if (navigator != null) {
+      navigator.popUntil((route) => route.isFirst);
+      _pushTasks(navigator);
+    }
   }
 
   /// The pill's long press: mute, or resume listening.
