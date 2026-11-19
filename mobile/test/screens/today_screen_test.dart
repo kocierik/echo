@@ -9,6 +9,7 @@ import 'package:echo_app/models/plan.dart';
 import 'package:echo_app/models/routine.dart';
 import 'package:echo_app/models/routine_run.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
+import 'package:echo_app/widgets/echo_large_title.dart';
 import 'package:echo_app/widgets/panel.dart';
 import 'package:echo_app/models/today_insights.dart';
 import 'package:echo_app/models/today_layout.dart';
@@ -18,6 +19,7 @@ import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -165,7 +167,9 @@ void main() {
     testWidgets('the day as the title, no greeting', (tester) async {
       await pumpToday(tester);
       await tester.pumpAndSettle();
-      expect(find.text('Wednesday 14 October'), findsOneWidget);
+      // A large title: the page's title and its collapsed copy in the bar
+      expect(find.text('Wednesday 14 October'), findsWidgets);
+      expect(find.byType(EchoLargeTitlePage), findsOneWidget);
       expect(find.text('Good evening'), findsNothing);
     });
 
@@ -413,7 +417,21 @@ void main() {
           text: status == 'reported' ? 'Domani piove dalle 15' : null,
         );
 
-    testWidgets("today's runs, above To do today", (tester) async {
+    testWidgets('the default order: coming up, to do, routines, your day', (tester) async {
+      final api = _RoutinesTodayApi([run('r1')], openTasks: [
+        task('today', 'Call Ada', due: DateTime(2026, 10, 14)),
+      ]);
+      await pumpToday(tester, api: api, phoneEvents: [
+        {'title': 'Standup', 'start': DateTime(2026, 10, 14, 19).toIso8601String()},
+      ]);
+      await tester.pumpAndSettle();
+
+      double top(String key) => tester.getTopLeft(find.byKey(Key(key))).dy;
+      expect(top('coming-up-today'), lessThan(top('todo-panel')));
+      expect(top('todo-panel'), lessThan(top('routines-today')));
+    });
+
+    testWidgets("today's runs, below To do today", (tester) async {
       final api = _RoutinesTodayApi([run('r1')], openTasks: [
         task('today', 'Call Ada', due: DateTime(2026, 10, 14)),
       ]);
@@ -425,7 +443,7 @@ void main() {
       expect(panel, findsOneWidget);
       expect(
         tester.getTopLeft(panel).dy,
-        lessThan(tester.getTopLeft(find.byKey(const Key('todo-panel'))).dy),
+        greaterThan(tester.getTopLeft(find.byKey(const Key('todo-panel'))).dy),
       );
     });
 
@@ -601,6 +619,32 @@ void main() {
       expect(find.text('Email sent.'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
       expect(find.byKey(const Key('action-confirm-a1')), findsNothing);
+    });
+
+    testWidgets('the accent Done chip, 44 pt, with a light haptic', (tester) async {
+      final haptics = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'HapticFeedback.vibrate') haptics.add(call.arguments as String);
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final api = FakeTodayApi(pending: [voice])
+        ..confirmResult = const ConfirmResult(status: 'executed', message: 'Email sent.');
+      await pumpToday(tester, api: api);
+      await tester.pumpAndSettle();
+
+      final chip = find.byKey(const Key('action-confirm-a1'));
+      expect(find.descendant(of: chip, matching: find.text('Done')), findsOneWidget);
+      expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
+      final fill = tester.widget<DecoratedBox>(
+          find.descendant(of: chip, matching: find.byType(DecoratedBox)).first);
+      expect((fill.decoration as BoxDecoration).color, EchoPalette.light.accent);
+
+      await tester.tap(chip);
+      await tester.pumpAndSettle();
+
+      expect(haptics, ['HapticFeedbackType.lightImpact']);
     });
 
     testWidgets('cancels, and reports a failed confirm', (tester) async {

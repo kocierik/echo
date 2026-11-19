@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/today_insights.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
-import 'panel.dart';
+import 'echo_grouped.dart';
 
 /// An appointment of today from the iPhone's calendar.
 @immutable
@@ -85,52 +85,46 @@ final class ComingUpTodayPanel extends StatelessWidget {
     if (events.isEmpty) return const SizedBox.shrink();
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Panel(
-        key: const Key('coming-up-today'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const PanelHeader(title: 'Coming up today'),
-            for (final event in events)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 60,
-                      child: Text(
-                        event.allDay
-                            ? 'All day'
-                            : now != null && event.isUnderWay(now!)
-                                ? 'Now'
-                                : formatTime(event.start),
-                        style: textTheme.labelMedium?.copyWith(color: palette.accent),
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(event.title, style: textTheme.bodyMedium),
-                          if (_recapFor(event)) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              recap!.recap!,
-                              style: textTheme.bodySmall?.copyWith(color: palette.text2),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
+    return EchoGroup(
+      key: const Key('coming-up-today'),
+      header: 'Coming up today',
+      children: [
+        for (final event in events)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 60,
+                  child: Text(
+                    event.allDay
+                        ? 'All day'
+                        : now != null && event.isUnderWay(now!)
+                            ? 'Now'
+                            : formatTime(event.start),
+                    style: textTheme.labelMedium?.copyWith(color: palette.accent),
+                  ),
                 ),
-              ),
-          ],
-        ),
-      ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(event.title, style: textTheme.bodyMedium),
+                      if (_recapFor(event)) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          recap!.recap!,
+                          style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

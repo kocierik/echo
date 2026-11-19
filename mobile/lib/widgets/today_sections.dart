@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/action_models.dart';
 import '../models/photo.dart';
@@ -12,6 +13,7 @@ import '../utils/formatting.dart';
 import 'action_card.dart';
 import 'conversation_card.dart';
 import 'device_readings.dart';
+import 'echo_grouped.dart';
 import 'panel.dart';
 import 'photo_thumbnail.dart';
 import 'sections.dart';
@@ -198,14 +200,11 @@ final class NeedsYouSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (final action in actions)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _NeedsYouPanel(
-              action: action,
-              busy: busyIds.contains(action.id),
-              onConfirm: () => onConfirm(action),
-              onCancel: () => onCancel(action),
-            ),
+          _NeedsYouPanel(
+            action: action,
+            busy: busyIds.contains(action.id),
+            onConfirm: () => onConfirm(action),
+            onCancel: () => onCancel(action),
           ),
       ],
     );
@@ -241,74 +240,115 @@ final class _NeedsYouPanel extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     final label = ActionCard.statusLabel(action.status);
-    return Panel(
+    return EchoGroup(
       key: Key('action-card-${action.id}'),
-      color: palette.attention,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Needs you',
-            style: textTheme.labelMedium?.copyWith(
-              color: palette.onAttention,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            action.summary,
-            style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          if (_caption case final caption?) ...[
-            const SizedBox(height: 3),
-            Text(
-              caption,
-              style: textTheme.bodySmall?.copyWith(color: palette.onAttention2),
-            ),
-          ],
-          const SizedBox(height: 12),
-          if (_pending)
-            // Wraps on narrow screens with large text instead of overflowing
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton(
-                  key: Key('action-confirm-${action.id}'),
-                  onPressed: busy ? null : onConfirm,
-                  child: const Text('Confirm'),
-                ),
-                TextButton(
-                  key: Key('action-cancel-${action.id}'),
-                  onPressed: busy ? null : onCancel,
-                  style: TextButton.styleFrom(foregroundColor: palette.onAttention2),
-                  child: const Text('Cancel'),
-                ),
-                if (busy)
-                  SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: palette.onAttention,
-                    ),
-                  ),
+      header: 'Needs you',
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                action.summary,
+                style: textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              if (_caption case final caption?) ...[
+                const SizedBox(height: 3),
+                Text(caption, style: textTheme.bodySmall?.copyWith(color: palette.text2)),
               ],
-            )
-          else if (label != null)
-            Text(
-              label,
-              key: Key('action-status-${action.id}'),
-              style: textTheme.labelLarge?.copyWith(
-                color: switch (action.status) {
-                  'executed' => palette.green,
-                  'failed' => palette.red,
-                  'unknown' => palette.amber,
-                  _ => palette.onAttention2,
-                },
+              const SizedBox(height: 12),
+              if (_pending)
+                // Wraps on narrow screens with large text instead of overflowing
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    _DoneChip(
+                      key: Key('action-confirm-${action.id}'),
+                      onTap: busy
+                          ? null
+                          : () {
+                              HapticFeedback.lightImpact();
+                              onConfirm();
+                            },
+                    ),
+                    TextButton(
+                      key: Key('action-cancel-${action.id}'),
+                      onPressed: busy ? null : onCancel,
+                      style: TextButton.styleFrom(
+                        foregroundColor: palette.text2,
+                        minimumSize: const Size(44, 44),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                    if (busy)
+                      SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: palette.accent),
+                      ),
+                  ],
+                )
+              else if (label != null)
+                Text(
+                  label,
+                  key: Key('action-status-${action.id}'),
+                  style: textTheme.labelLarge?.copyWith(
+                    color: switch (action.status) {
+                      'executed' => palette.green,
+                      'failed' => palette.red,
+                      'unknown' => palette.amber,
+                      _ => palette.text2,
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The accent chip that confirms an action: 44 pt tall.
+final class _DoneChip extends StatelessWidget {
+  const _DoneChip({required this.onTap, super.key});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      excludeSemantics: true,
+      label: 'Done',
+      onTap: onTap,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Opacity(
+          opacity: onTap == null ? 0.5 : 1,
+          child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.accent,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Text(
+                'Done',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: palette.onAccent, fontWeight: FontWeight.w600),
               ),
             ),
-        ],
+          ),
+        ),
+        ),
       ),
     );
   }
@@ -345,56 +385,71 @@ final class TodoPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final hidden = tasks.length - maxVisible;
     final textTheme = Theme.of(context).textTheme;
-    // The checkboxes' touch targets reach into the panel's margin, so their
-    // circles line up with the title
-    return Panel(
+    return EchoGroup(
       key: const Key('todo-panel'),
-      padding: const EdgeInsets.fromLTRB(6, 10, 6, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 10, right: 10),
-            child: PanelHeader(
-              title: 'To do today',
-              actionLabel: 'See all',
-              onAction: onSeeAll,
-              actionKey: const Key('tasks-see-all'),
+      header: 'To do today',
+      children: [
+        if (loading)
+          const _Inset(child: SectionLoading(key: Key('tasks-loading'), label: 'Loading tasks'))
+        else if (error != null)
+          _Inset(
+            child: SectionError(
+              message: error!,
+              retryKey: const Key('tasks-retry'),
+              onRetry: onRetry,
             ),
-          ),
-          if (loading)
-            const _Inset(child: SectionLoading(key: Key('tasks-loading'), label: 'Loading tasks'))
-          else if (error != null)
+          )
+        else if (tasks.isEmpty)
+          const _Inset(child: SectionEmpty(message: 'Nothing due today.'))
+        else ...[
+          for (final task in tasks.take(maxVisible))
+            TaskTile(
+              task: task,
+              now: now,
+              busy: busy(task),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              showSource: false,
+              onToggle: () => onToggle(task),
+              onDismiss: task.done ? null : () => onDismiss(task),
+            ),
+          if (hidden > 0)
             _Inset(
-              child: SectionError(
-                message: error!,
-                retryKey: const Key('tasks-retry'),
-                onRetry: onRetry,
+              child: Text(
+                hidden == 1 ? '1 more in Tasks' : '$hidden more in Tasks',
+                key: const Key('tasks-more'),
+                style: textTheme.bodySmall,
               ),
-            )
-          else if (tasks.isEmpty)
-            const _Inset(child: SectionEmpty(message: 'Nothing due today.'))
-          else ...[
-            for (final task in tasks.take(maxVisible))
-              TaskTile(
-                task: task,
-                now: now,
-                busy: busy(task),
-                padding: EdgeInsets.zero,
-                showSource: false,
-                onToggle: () => onToggle(task),
-                onDismiss: task.done ? null : () => onDismiss(task),
-              ),
-            if (hidden > 0)
-              _Inset(
-                child: Text(
-                  hidden == 1 ? '1 more in Tasks' : '$hidden more in Tasks',
-                  key: const Key('tasks-more'),
-                  style: textTheme.bodySmall,
-                ),
-              ),
-          ],
+            ),
         ],
+        _SeeAllRow(actionKey: const Key('tasks-see-all'), label: 'See all', onTap: onSeeAll),
+      ],
+    );
+  }
+}
+
+/// The last row of a group: an accent link, a 44 pt target.
+final class _SeeAllRow extends StatelessWidget {
+  const _SeeAllRow({required this.label, required this.onTap, this.actionKey});
+
+  final String label;
+  final VoidCallback onTap;
+  final Key? actionKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    return InkWell(
+      key: actionKey,
+      onTap: onTap,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Text(label, style: TextStyle(color: palette.accent, fontSize: 15)),
+          ),
+        ),
       ),
     );
   }
@@ -407,7 +462,7 @@ final class _Inset extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      Padding(padding: const EdgeInsets.symmetric(horizontal: 10), child: child);
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), child: child);
 }
 
 /// "Your day": the totals, who was there, and today's conversations on a
@@ -462,77 +517,75 @@ final class YourDayPanel extends StatelessWidget {
     final visible = earlier > 0 ? finished.sublist(earlier) : finished;
     final people = peopleLine(conversations);
     final ready = !loading && error == null && conversations.isNotEmpty;
-    return Panel(
+    return EchoGroup(
       key: const Key('your-day'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelHeader(
-            title: 'Your day',
-            trailing: ready ? dayTotals(conversations) : null,
+      header: 'Your day',
+      children: [
+        if (ready)
+          _Inset(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(dayTotals(conversations), style: textTheme.bodySmall),
+                if (people != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      people,
+                      key: const Key('recap-line'),
+                      style: textTheme.bodyMedium?.copyWith(color: palette.text2),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          if (ready && people != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
+        if (loading)
+          const _Inset(
+              child: SectionLoading(key: Key('recap-loading'), label: "Loading today's conversations"))
+        else if (error != null)
+          _Inset(
+              child: SectionError(
+                  message: error!, retryKey: const Key('recap-retry'), onRetry: onRetry))
+        else if (conversations.isEmpty)
+          const _Inset(child: SectionEmpty(message: 'No conversations yet today.'))
+        else ...[
+          if (earlier > 0)
+            _Inset(
               child: Text(
-                people,
-                key: const Key('recap-line'),
-                style: textTheme.bodyMedium?.copyWith(color: palette.text2),
+                earlier == 1 ? '1 earlier today' : '$earlier earlier today',
+                style: textTheme.bodySmall,
               ),
             ),
-          const SizedBox(height: 8),
-          if (loading)
-            const SectionLoading(key: Key('recap-loading'), label: "Loading today's conversations")
-          else if (error != null)
-            SectionError(message: error!, retryKey: const Key('recap-retry'), onRetry: onRetry)
-          else if (conversations.isEmpty)
-            const SectionEmpty(message: 'No conversations yet today.')
-          else ...[
-            if (earlier > 0)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  earlier == 1 ? '1 earlier today' : '$earlier earlier today',
-                  style: textTheme.bodySmall,
-                ),
+          for (final conversation in visible)
+            _Inset(
+              child: _TimelineRow(
+                label: formatTime(conversation.startedAt),
+                child: conversation.isPhoto && loadPhoto != null
+                    ? _PhotoBlock(
+                        conversation: conversation,
+                        loadPhoto: loadPhoto!,
+                        onTap: () => onOpen(conversation),
+                      )
+                    : _ConversationBlock(
+                        conversation: conversation,
+                        onTap: () => onOpen(conversation),
+                      ),
               ),
-            for (final conversation in visible)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _TimelineRow(
-                  label: formatTime(conversation.startedAt),
-                  child: conversation.isPhoto && loadPhoto != null
-                      ? _PhotoBlock(
-                          conversation: conversation,
-                          loadPhoto: loadPhoto!,
-                          onTap: () => onOpen(conversation),
-                        )
-                      : _ConversationBlock(
-                          conversation: conversation,
-                          onTap: () => onOpen(conversation),
-                        ),
-                ),
-              ),
-            for (final conversation in open)
-              _NowRow(
+            ),
+          for (final conversation in open)
+            _Inset(
+              child: _NowRow(
                 conversation: conversation,
                 recording: recording,
                 now: now,
                 liveLines: liveLines,
                 onTap: () => onOpen(conversation),
               ),
-          ],
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const Key('recap-see-all'),
-              onPressed: onSeeAll,
-              style: TextButton.styleFrom(padding: EdgeInsets.zero),
-              child: const Text('See the whole day'),
             ),
-          ),
         ],
-      ),
+        _SeeAllRow(
+            actionKey: const Key('recap-see-all'), label: 'See the whole day', onTap: onSeeAll),
+      ],
     );
   }
 }
@@ -775,7 +828,7 @@ final class _NowRow extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     final style = textTheme.labelSmall?.copyWith(
-      color: palette.liveText,
+      color: palette.accent,
       fontWeight: FontWeight.w600,
     );
     final label = recording ? 'Recording' : 'In progress';
@@ -803,7 +856,7 @@ final class _NowRow extends StatelessWidget {
                     style: style,
                   ),
                   const SizedBox(width: 8),
-                  Expanded(child: Container(height: 2, color: palette.live)),
+                  Expanded(child: Container(height: 2, color: palette.accent)),
                   const SizedBox(width: 8),
                   Text(label, style: style),
                 ],

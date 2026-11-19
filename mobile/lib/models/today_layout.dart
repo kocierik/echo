@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart';
 /// A section of Today the user can move or hide (Edit Today). What needs the user, the
 /// device's warnings and the plan line are not sections: they keep their place.
 enum TodaySection {
-  routines('From your routines'),
-  todo('To do today'),
   comingUp('Coming up today'),
+  todo('To do today'),
+  routines('From your routines'),
   yourDay('Your day');
 
   const TodaySection(this.label);

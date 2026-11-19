@@ -8,9 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   test("defaults are the user's order, all visible", () {
     expect(TodayLayout.defaults.order, [
-      TodaySection.routines,
-      TodaySection.todo,
       TodaySection.comingUp,
+      TodaySection.todo,
+      TodaySection.routines,
       TodaySection.yourDay,
     ]);
     expect(TodayLayout.defaults.visible, TodayLayout.defaults.order);
@@ -20,10 +20,10 @@ void main() {
   test('moved and toggled', () {
     // As ReorderableListView reports it: Your day (3) dropped at the top (0)
     final moved = TodayLayout.defaults.moved(3, 0);
-    expect(moved.order.take(2), [TodaySection.yourDay, TodaySection.routines]);
-    // Routines (0) dropped below To do (index 2 before removal)
+    expect(moved.order.take(2), [TodaySection.yourDay, TodaySection.comingUp]);
+    // Coming up (0) dropped below To do (index 2 before removal)
     final down = TodayLayout.defaults.moved(0, 2);
-    expect(down.order.take(2), [TodaySection.todo, TodaySection.routines]);
+    expect(down.order.take(2), [TodaySection.todo, TodaySection.comingUp]);
 
     final hidden = TodayLayout.defaults.toggled(TodaySection.yourDay);
     expect(hidden.isHidden(TodaySection.yourDay), isTrue);
@@ -42,7 +42,7 @@ void main() {
 
   test('missing sections are added at their default place', () {
     final saved = jsonEncode({
-      'order': ['routines', 'todo', 'yourDay'],
+      'order': ['todo', 'routines', 'yourDay'],
       'hidden': ['todo'],
     });
 
@@ -68,7 +68,7 @@ void main() {
       'hidden': <String>[],
     }));
 
-    expect(layout.order.first, TodaySection.routines);
+    expect(layout.order.first, TodaySection.comingUp);
     expect(layout.order.indexOf(TodaySection.yourDay), lessThan(layout.order.indexOf(TodaySection.todo)));
     expect(layout.order.toSet().length, TodaySection.values.length);
   });

@@ -55,7 +55,7 @@ final class TodayTopCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: const Key('today-top-card'),
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 4),
       child: switch (moment) {
         ConfirmMoment(:final action, :final more) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

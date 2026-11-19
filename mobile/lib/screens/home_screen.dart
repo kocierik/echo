@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -17,12 +18,11 @@ import '../services/app/app_runtime.dart';
 import '../services/app/today_layout_store.dart';
 import '../services/device/firmware_update.dart';
 import '../services/phone/phone_actions.dart';
-import '../theme/app_theme.dart';
 import '../widgets/coming_up_today.dart';
-import '../widgets/echo_nav_bar.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/routine_run_sheet.dart';
 import '../widgets/routine_sections.dart';
-import '../widgets/screen_header.dart';
+import '../widgets/screen_header.dart' show HeaderIconButton;
 import '../widgets/tip_card.dart';
 import '../widgets/today_sections.dart';
 import '../widgets/today_top_card.dart';
@@ -688,7 +688,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
               onDismiss: (t) => unawaited(dismissTask(t)),
               onSeeAll: widget.onOpenTasks,
             ),
-            const SizedBox(height: 12),
           ],
         ],
       TodaySection.comingUp => [
@@ -712,7 +711,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
               now: now,
               liveLines: _liveLines,
             ),
-            const SizedBox(height: 12),
           ],
         ],
     };
@@ -739,7 +737,6 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
     final device = widget.deviceStatus;
     final now = widget.clock();
     final todo = editedTasks(todayTodo(_openTasks, now));
@@ -750,115 +747,99 @@ final class _HomeScreenState extends State<HomeScreen> with TaskEditing {
     final todayError = memory.conversations.isEmpty && _cachedToday.isEmpty ? memory.error : null;
     final moment = pickMoment(pending: _pending);
 
-    // A Material, not a ColoredBox: row ink splashes paint on it
-    return Material(
-      color: palette.background,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // The day, no greeting
-            ScreenHeader(
-              title: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}',
-              compact: true,
-              actions: [
-                HeaderIconButton(
-                  key: const Key('today-search'),
-                  icon: Icons.search_rounded,
-                  tooltip: 'Search your memory',
-                  onPressed: () => unawaited(_openSearch()),
-                ),
-                if (widget.headerAction != null) widget.headerAction!,
-                if (widget.accountAction != null) widget.accountAction!,
-              ],
-            ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refreshAll,
-                child: ListView(
-                  key: const Key('today'),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: EdgeInsets.fromLTRB(
-                    16,
-                    4,
-                    16,
-                    24 + EchoShellInsets.bottomOf(context),
-                  ),
-                  children: [
-                    if (DeviceProblemPanel.shows(device.connectionState)) ...[
-                      DeviceProblemPanel(
-                        state: device.connectionState,
-                        pendingBytes: device.bufferBytes,
-                        onAction: _deviceAction(device.connectionState),
-                        busy: _deviceBusy,
-                        error: _deviceError,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    if (_ownVoiceMissing)
-                      TipCard(
-                        tipKey: 'record_voice',
-                        text:
-                            'Record your voice once, so Echo knows when you are the one speaking.',
-                        actionLabel: 'Record my voice',
-                        onAction: () => unawaited(_recordVoice()),
-                      ),
-                    if (widget.firmwareUpdate != null)
-                      ValueListenableBuilder<FirmwareUpdateState>(
-                        valueListenable: widget.firmwareUpdate!,
-                        builder: (context, update, _) {
-                          final release = update.release;
-                          if (update.phase != FirmwareUpdatePhase.available || release == null) {
-                            return const SizedBox.shrink();
-                          }
-                          return TipCard(
-                            key: ValueKey('firmware-tip-${release.version}'),
-                            tipKey: 'firmware_${release.version}',
-                            text: 'A new firmware for Echo (${release.version}) is ready. '
-                                'Installing it takes about a minute.',
-                            actionLabel: 'Open Echo',
-                            onAction: widget.onOpenDevice,
-                          );
-                        },
-                      ),
-                    if (moment != null)
-                      TodayTopCard(
-                        moment: moment,
-                        busyIds: _pendingBusy,
-                        onConfirm: (a) => unawaited(_confirm(a)),
-                        onCancel: (a) => unawaited(_cancel(a)),
-                        onMore: () => unawaited(_openPending()),
-                      ),
-                    // Near and past the speech budget: why the day may come in later
-                    if (PlanLine.shows(_plan)) ...[
-                      PlanLine(plan: _plan!, onOpen: () => unawaited(_openPlan())),
-                      const SizedBox(height: 4),
-                    ],
-                    for (final section in _layoutReady ? _layout.visible : const <TodaySection>[])
-                      ..._section(
-                        section,
-                        now: now,
-                        todo: todo,
-                        today: today,
-                        todayLoading: todayLoading,
-                        todayError: todayError,
-                      ),
-                    Center(
-                      child: TextButton.icon(
-                        key: const Key('today-edit'),
-                        onPressed: () => unawaited(_editToday()),
-                        icon: const Icon(Icons.tune_rounded, size: 18),
-                        label: const Text('Edit Today'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+    Widget inset(Widget child, {double vertical = 4}) => Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: vertical),
+          child: child,
+        );
+
+    return EchoLargeTitlePage(
+      key: const Key('today'),
+      title: '${_weekdays[now.weekday - 1]} ${now.day} ${_months[now.month - 1]}',
+      onRefresh: _refreshAll,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          HeaderIconButton(
+            key: const Key('today-search'),
+            icon: CupertinoIcons.search,
+            tooltip: 'Search your memory',
+            onPressed: () => unawaited(_openSearch()),
+          ),
+          if (widget.accountAction != null) widget.accountAction!,
+        ],
       ),
+      slivers: [
+        // The pendant pill under the title, then what is wrong with it
+        if (widget.headerAction != null)
+          SliverToBoxAdapter(
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: inset(widget.headerAction!),
+            ),
+          ),
+        SliverList.list(children: [
+          if (DeviceProblemPanel.shows(device.connectionState))
+            inset(DeviceProblemPanel(
+              state: device.connectionState,
+              pendingBytes: device.bufferBytes,
+              onAction: _deviceAction(device.connectionState),
+              busy: _deviceBusy,
+              error: _deviceError,
+            )),
+          if (_ownVoiceMissing)
+            inset(TipCard(
+              tipKey: 'record_voice',
+              text: 'Record your voice once, so Echo knows when you are the one speaking.',
+              actionLabel: 'Record my voice',
+              onAction: () => unawaited(_recordVoice()),
+            )),
+          if (widget.firmwareUpdate != null)
+            ValueListenableBuilder<FirmwareUpdateState>(
+              valueListenable: widget.firmwareUpdate!,
+              builder: (context, update, _) {
+                final release = update.release;
+                if (update.phase != FirmwareUpdatePhase.available || release == null) {
+                  return const SizedBox.shrink();
+                }
+                return inset(TipCard(
+                  key: ValueKey('firmware-tip-${release.version}'),
+                  tipKey: 'firmware_${release.version}',
+                  text: 'A new firmware for Echo (${release.version}) is ready. '
+                      'Installing it takes about a minute.',
+                  actionLabel: 'Open Echo',
+                  onAction: widget.onOpenDevice,
+                ));
+              },
+            ),
+          if (moment != null)
+            TodayTopCard(
+              moment: moment,
+              busyIds: _pendingBusy,
+              onConfirm: (a) => unawaited(_confirm(a)),
+              onCancel: (a) => unawaited(_cancel(a)),
+              onMore: () => unawaited(_openPending()),
+            ),
+          // Near and past the speech budget: why the day may come in later
+          if (PlanLine.shows(_plan)) inset(PlanLine(plan: _plan!, onOpen: () => unawaited(_openPlan()))),
+          for (final section in _layoutReady ? _layout.visible : const <TodaySection>[])
+            ..._section(
+              section,
+              now: now,
+              todo: todo,
+              today: today,
+              todayLoading: todayLoading,
+              todayError: todayError,
+            ),
+          Center(
+            child: TextButton.icon(
+              key: const Key('today-edit'),
+              onPressed: () => unawaited(_editToday()),
+              icon: const Icon(CupertinoIcons.slider_horizontal_3, size: 18),
+              label: const Text('Edit Today'),
+            ),
+          ),
+        ]),
+      ],
     );
   }
 }

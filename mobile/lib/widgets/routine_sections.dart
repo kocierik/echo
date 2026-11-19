@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/routine_run.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
-import 'panel.dart';
+import 'echo_grouped.dart';
 import 'routine_run_sheet.dart';
 
 /// "N checked, nothing new": the runs that had nothing to say.
@@ -32,29 +32,22 @@ final class RoutinesTodayPanel extends StatelessWidget {
     final quiet = newest.where((run) => run.status == 'nothing').length;
     final missed = newest.where((run) => run.status == 'skipped');
     final muted = textTheme.bodySmall?.copyWith(color: palette.text2);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Panel(
-        key: const Key('routines-today'),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const PanelHeader(title: 'From your routines'),
-            for (final run in spoke) _RunRow(run: run, onTap: () => onOpen(run)),
-            if (quiet > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(quietRunsLine(quiet), key: const Key('routines-quiet'), style: muted),
-              ),
-            for (final run in missed)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(routineMissedLine(run), style: muted),
-              ),
-          ],
-        ),
-      ),
+    return EchoGroup(
+      key: const Key('routines-today'),
+      header: 'From your routines',
+      children: [
+        for (final run in spoke) _RunRow(run: run, onTap: () => onOpen(run)),
+        if (quiet > 0)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(quietRunsLine(quiet), key: const Key('routines-quiet'), style: muted),
+          ),
+        for (final run in missed)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(routineMissedLine(run), style: muted),
+          ),
+      ],
     );
   }
 }
@@ -73,9 +66,8 @@ final class _RunRow extends StatelessWidget {
     return InkWell(
       key: Key('routine-run-${run.id}'),
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

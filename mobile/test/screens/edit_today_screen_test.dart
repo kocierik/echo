@@ -49,7 +49,7 @@ void main() {
     await pump(tester);
 
     final handle = find.byKey(const Key('edit-today-handle-yourDay'));
-    final top = tester.getCenter(find.byKey(const Key('edit-today-handle-routines')));
+    final top = tester.getCenter(find.byKey(const Key('edit-today-handle-comingUp')));
     final gesture = await tester.startGesture(tester.getCenter(handle));
     await tester.pump(kLongPressTimeout);
     for (var i = 0; i < 20; i++) {
