@@ -1,5 +1,6 @@
 import 'package:echo_app/models/memory.dart';
 import 'package:echo_app/models/today_insights.dart';
+import 'package:echo_app/screens/conversation_detail_screen.dart';
 import 'package:echo_app/screens/day_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/screens/library_screen.dart';
@@ -8,6 +9,7 @@ import 'package:echo_app/screens/people_screen.dart';
 import 'package:echo_app/services/library_counts.dart';
 import 'package:echo_app/services/memory/memories_controller.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/panel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,12 +37,13 @@ void main() {
     void Function()? onLoad,
     DateTime? at,
     bool active = true,
+    MemoriesController? controller,
   }) async {
     tester.view.physicalSize = const Size(400, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final fake = api ?? FakeMemoryApi();
-    final memories = MemoriesController(api: fake);
+    final memories = controller ?? MemoriesController(api: fake);
     await memories.initialize();
     addTearDown(memories.dispose);
     await tester.pumpWidget(MaterialApp(
@@ -106,6 +109,71 @@ void main() {
     await tester.tap(find.text('Search what you heard'), warnIfMissed: false);
     await tester.pumpAndSettle();
     expect(find.byType(MemorySearchScreen), findsOneWidget);
+  });
+
+  testWidgets('search over the whole memory, from the Library', (tester) async {
+    final api = FakeMemoryApi()
+      ..conversations = [ConversationCard(id: 'c1', startedAt: DateTime(2026, 11, 17, 9))]
+      ..searchResults = MemorySearchResults(
+        conversations: [
+          ConversationCard(
+              id: 'hit', startedAt: DateTime(2026, 11, 12, 9), title: 'Atlas kickoff'),
+        ],
+        entities: const [
+          MemoryEntity(
+            id: 'e1',
+            type: 'idea',
+            name: 'Atlas dashboard',
+            sourceText: '[Tu] Facciamo una dashboard per Atlas.',
+            conversationId: 'hit',
+          ),
+        ],
+      );
+    late void Function() runSearch;
+    final memories = MemoriesController(
+      api: api,
+      debounceScheduler: (delay, callback) {
+        runSearch = callback;
+        return () {};
+      },
+    );
+    await pumpLibrary(tester,
+        counts: const LibraryCounts(), api: api, controller: memories);
+    expect(find.byKey(const Key('memories-search')), findsNothing);
+    await tester.tap(find.text('Search what you heard'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('memories-search')), 'atlas');
+    await tester.pump();
+    expect(find.byKey(const Key('search-loading')), findsOneWidget);
+    runSearch();
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(PanelHeader, 'Conversations'), findsOneWidget);
+    expect(find.text('Atlas kickoff'), findsOneWidget);
+    expect(find.text('Atlas dashboard'), findsOneWidget);
+    await tester.tap(find.text('Atlas dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ConversationDetailScreen), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    api.searchResults = const MemorySearchResults(conversations: [], entities: []);
+    await tester.enterText(find.byKey(const Key('memories-search')), 'zzz');
+    await tester.pump();
+    runSearch();
+    await tester.pumpAndSettle();
+    expect(find.text('No results'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('memories-search-clear')));
+    await tester.pumpAndSettle();
+    expect(find.text('No results'), findsNothing);
+
+    // Back in the Library, the search is over
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(memories.state.query, isEmpty);
+    expect(find.byType(MemorySearchScreen), findsNothing);
   });
 
   testWidgets(
