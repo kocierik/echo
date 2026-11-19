@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -202,7 +203,7 @@ final class _PlacesVisitedScreenState extends State<PlacesVisitedScreen> {
           ),
           const SizedBox(height: 12),
           SettingsRow(
-            icon: Icons.place_outlined,
+            icon: CupertinoIcons.location,
             title: 'Places visited',
             subtitle: on ? 'On · kept for 90 days' : 'Off',
             trailing: Switch(
@@ -272,7 +273,7 @@ final class _PlacesVisitedScreenState extends State<PlacesVisitedScreen> {
         for (final visit in visits.reversed)
           SettingsRow(
             key: Key('visit-${visit.id}'),
-            icon: Icons.place_outlined,
+            icon: CupertinoIcons.location,
             title: visit.label,
             subtitle: [
               _span(visit),
@@ -283,7 +284,7 @@ final class _PlacesVisitedScreenState extends State<PlacesVisitedScreen> {
             trailing: IconButton(
               key: Key('visit-delete-${visit.id}'),
               tooltip: 'Delete this visit',
-              icon: const Icon(Icons.delete_outline_rounded),
+              icon: const Icon(CupertinoIcons.trash),
               onPressed: () => unawaited(_deleteVisit(visit)),
             ),
           ),
@@ -298,7 +299,7 @@ final class _PlacesVisitedScreenState extends State<PlacesVisitedScreen> {
         ),
       SettingsRow(
         key: const Key('places-delete-all'),
-        icon: Icons.delete_sweep_outlined,
+        icon: CupertinoIcons.trash,
         title: 'Delete all places',
         destructive: true,
         onTap: () => unawaited(_deleteAll()),
@@ -372,26 +373,26 @@ final class _OptInScreenState extends State<_OptInScreen> {
     final always = PhoneWords.isIPhone ? '"Always"' : '"Allow all the time"';
     final points = [
       (
-        Icons.place_outlined,
+        CupertinoIcons.location,
         'Echo notes where you stay 10 minutes or more: when you arrived, when you left, '
             'the address and, when the ${PhoneWords.phone} knows it, the name of the place.',
       ),
       (
-        Icons.route_outlined,
+        CupertinoIcons.arrow_branch,
         'Only the stays: no routes, and no positions in between.',
       ),
       (
-        Icons.history_rounded,
+        CupertinoIcons.clock,
         'Kept for 90 days, then deleted. Delete a visit, a day or all of them here, '
             'at any time.',
       ),
       (
-        Icons.lock_outline_rounded,
+        CupertinoIcons.lock,
         'Never shared with other people, or with the assistants you connect to your '
             'memory.',
       ),
       (
-        Icons.battery_std_rounded,
+        CupertinoIcons.battery_full,
         'Your ${PhoneWords.phone} will ask to use your location $always: Echo needs it '
             'to notice a visit while the ${PhoneWords.phone} is in your pocket. It uses the '
             'low-power location of the ${PhoneWords.phone}, not continuous GPS.',

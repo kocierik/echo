@@ -1,14 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../models/task_item.dart';
 import '../services/api/api_service.dart';
 import '../services/memory/tasks_controller.dart';
 import '../theme/app_theme.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/sections.dart';
-import '../widgets/panel.dart';
-import '../widgets/screen_header.dart';
 import '../widgets/task_tile.dart';
 import 'conversation_detail_screen.dart';
 import 'navigation.dart';
@@ -128,129 +129,110 @@ final class _TasksScreenState extends State<TasksScreen> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final state = _controller.state;
-    // A Material, not a ColoredBox: row ink splashes paint on it
-    return Material(
-      color: palette.background,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            ScreenHeader(
-              title: 'Tasks',
-              overline: !state.loading && state.open.isNotEmpty ? '${state.open.length} open' : null,
+    return EchoLargeTitlePage(
+      title: 'To do',
+      onRefresh: _controller.refresh,
+      slivers: [
+        if (!state.loading && state.open.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text(
+                '${state.open.length} open',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: palette.text2),
+              ),
             ),
-            Expanded(child: _body(state)),
-          ],
-        ),
-      ),
+          ),
+        ..._body(state, palette),
+      ],
     );
   }
 
-  Widget _body(TasksState state) {
+  List<Widget> _body(TasksState state, EchoPalette palette) {
     if (state.loading) {
-      return const Center(child: CircularProgressIndicator(key: Key('tasks-loading')));
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator(key: Key('tasks-loading'))),
+        ),
+      ];
     }
     if (state.error != null && state.open.isEmpty && state.done.isEmpty) {
-      return FullScreenMessage(
-        icon: Icons.cloud_off_rounded,
-        title: 'Could not load your tasks',
-        message: state.error!,
-        actionKey: const Key('tasks-retry'),
-        actionLabel: 'Retry',
-        onAction: _controller.refresh,
-        onRefresh: _controller.refresh,
-      );
+      return [
+        FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.cloud_bolt,
+          title: 'Could not load your tasks',
+          message: state.error!,
+          actionKey: const Key('tasks-retry'),
+          actionLabel: 'Retry',
+          onAction: _controller.refresh,
+        ),
+      ];
     }
     if (state.open.isEmpty && state.done.isEmpty) {
-      return FullScreenMessage(
-        icon: Icons.check_circle_outline_rounded,
-        title: 'No tasks yet',
-        message: 'When you say you will do something, Echo adds it here.',
-        onRefresh: _controller.refresh,
-      );
+      return [
+        const FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.check_mark_circled,
+          title: 'No tasks yet',
+          message: 'When you say you will do something, Echo adds it here.',
+        ),
+      ];
     }
 
     final now = widget.clock();
-    final palette = EchoPalette.of(context);
-    return RefreshIndicator(
-      onRefresh: _controller.refresh,
-      child: ListView(
+    return [
+      SliverList.list(
         key: const Key('tasks-list'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(top: 4, bottom: 48),
         children: [
           if (state.open.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: SectionEmpty(message: 'All done. Nothing open right now.'),
             ),
-          // A panel per group: overdue, today, this week, later, no date
+          // A group per bucket: overdue, today, this week, later, no date
           for (final group in groupTasks(state.open, now))
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Panel(
-                padding: const EdgeInsets.only(top: 14, bottom: 6),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Semantics(
-                        header: true,
-                        child: Text(
-                          '${group.bucket.label.toUpperCase()} · ${group.tasks.length}',
-                          key: Key('task-group-${group.bucket.name}'),
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                fontSize: 12,
-                                letterSpacing: 0.6,
-                                fontWeight: FontWeight.w600,
-                                color: group.bucket == TaskBucket.overdue ? palette.red : null,
-                              ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    for (final task in group.tasks) _tile(task, state, now),
-                  ],
-                ),
-              ),
+            EchoGroup(
+              key: Key('task-group-${group.bucket.name}'),
+              header: '${group.bucket.label} · ${group.tasks.length}',
+              children: [for (final task in group.tasks) _tile(task, state, now)],
             ),
           if (state.done.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Panel(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ListTile(
-                      key: const Key('tasks-done-toggle'),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppTheme.panelRadius),
+            EchoGroup(
+              children: [
+                InkWell(
+                  key: const Key('tasks-done-toggle'),
+                  onTap: () => setState(() => _showDone = !_showDone),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Done · ${state.done.length}',
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                          ),
+                          Icon(
+                            _showDone ? CupertinoIcons.chevron_up : CupertinoIcons.chevron_down,
+                            size: 18,
+                            color: palette.text2,
+                          ),
+                        ],
                       ),
-                      title: Text(
-                        'Done · ${state.done.length}',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      trailing: Icon(
-                        _showDone ? Icons.expand_less_rounded : Icons.expand_more_rounded,
-                        color: palette.text2,
-                      ),
-                      onTap: () => setState(() => _showDone = !_showDone),
                     ),
-                    if (_showDone) ...[
-                      for (final task in state.done) _tile(task, state, now),
-                      const SizedBox(height: 6),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
+                if (_showDone)
+                  for (final task in state.done) _tile(task, state, now),
+              ],
             ),
         ],
       ),
-    );
+    ];
   }
 
   Widget _tile(TaskItem task, TasksState state, DateTime now) {
@@ -278,10 +260,6 @@ final class TasksPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: EchoPalette.of(context).background,
-      appBar: AppBar(),
-      body: TasksScreen(segmentUploadedStream: segmentUploadedStream, onAsk: onAsk),
-    );
+    return TasksScreen(segmentUploadedStream: segmentUploadedStream, onAsk: onAsk);
   }
 }

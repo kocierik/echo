@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../models/saved.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
+import 'echo_grouped.dart';
 import 'panel.dart';
 import 'photo_thumbnail.dart';
 
@@ -23,7 +25,7 @@ final class SavedRow extends StatelessWidget {
       onTap: onOpen,
       child: Row(
         children: [
-          Icon(Icons.bookmark_outline_rounded, color: palette.accent),
+          Icon(CupertinoIcons.bookmark, color: palette.accent),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -43,7 +45,7 @@ final class SavedRow extends StatelessWidget {
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: palette.text2),
+          Icon(CupertinoIcons.chevron_forward, size: 18, color: palette.text2),
         ],
       ),
     );
@@ -162,22 +164,14 @@ final class SavedListPanel extends StatelessWidget {
     final grid = loadPhoto != null && list.items.any((i) => i.photoId != null);
     final shown = list.items.take(grid ? gridShown : rowsShown).toList();
     final more = list.count > shown.length;
-    return Panel(
+    return EchoGroup(
       key: Key('saved-list-${list.id}'),
-      padding: EdgeInsets.fromLTRB(16, 12, 16, grid ? 16 : 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PanelHeader(
-            title: list.name,
-            trailing: more ? null : '${list.count}',
-            actionLabel: more ? 'All ${list.count}' : null,
-            onAction: more ? onAll : null,
-            actionKey: Key('saved-all-${list.id}'),
-          ),
-          const SizedBox(height: 8),
-          if (grid)
-            Row(
+      header: more ? list.name : '${list.name} · ${list.count}',
+      children: [
+        if (grid)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final (index, item) in shown.indexed) ...[
@@ -189,14 +183,32 @@ final class SavedListPanel extends StatelessWidget {
                   const Expanded(child: SizedBox()),
                 ],
               ],
-            )
-          else
-            for (final (index, item) in shown.indexed) ...[
-              if (index > 0) Divider(height: 1, color: palette.border),
-              SavedItemRow(item: item, now: now, onTap: () => onOpenItem(item)),
-            ],
-        ],
-      ),
+            ),
+          )
+        else
+          for (final item in shown)
+            SavedItemRow(item: item, now: now, onTap: () => onOpenItem(item)),
+        if (more)
+          InkWell(
+            key: Key('saved-all-${list.id}'),
+            onTap: onAll,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 44),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text('All ${list.count}',
+                          style: TextStyle(color: palette.accent, fontSize: 16)),
+                    ),
+                    Icon(CupertinoIcons.chevron_forward, size: 18, color: palette.text2),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -233,7 +245,7 @@ final class _Tile extends StatelessWidget {
                 child: item.photoId == null
                     ? ColoredBox(
                         color: palette.surface2,
-                        child: Icon(Icons.bookmark_outline_rounded, color: palette.text2),
+                        child: Icon(CupertinoIcons.bookmark, color: palette.text2),
                       )
                     : IgnorePointer(
                         child: PhotoThumbnail(
@@ -292,7 +304,7 @@ final class SavedItemRow extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 52),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -323,24 +335,31 @@ final class SavedSumCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    return Panel(
+    return EchoGroup(
       key: Key('saved-sum-${list.id}'),
-      onTap: onOpen,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
-                Text(list.name, style: textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(list.weekSum!.label(), style: textTheme.bodyLarge),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(list.name, style: textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(list.weekSum!.label(), style: textTheme.bodyLarge),
+                    ],
+                  ),
+                ),
+                Icon(CupertinoIcons.chevron_forward, size: 18, color: palette.text2),
               ],
             ),
           ),
-          Icon(Icons.chevron_right_rounded, color: palette.text2),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../models/saved.dart';
@@ -7,7 +8,8 @@ import '../services/api/api_exception.dart';
 import '../services/api/saved_api.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatting.dart';
-import '../widgets/panel.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/photo_thumbnail.dart';
 import '../widgets/sections.dart';
 import 'navigation.dart';
@@ -92,7 +94,7 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
               ),
             ListTile(
               key: const Key('move-new-list'),
-              leading: const Icon(Icons.add_rounded),
+              leading: const Icon(CupertinoIcons.add),
               title: const Text('New list…'),
               onTap: () async {
                 final name = await _askName(context);
@@ -156,34 +158,50 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
     final detail = _detail;
-    return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(title: Text(detail?.item.list ?? 'Saved')),
-      body: detail == null
-          ? (_error == null
-              ? const Center(child: CircularProgressIndicator(key: Key('saved-item-loading')))
-              : FullScreenMessage(
-                  icon: Icons.cloud_off_rounded,
-                  title: 'Could not load this thing',
-                  message: _error!,
-                  actionLabel: 'Retry',
-                  onAction: _load,
-                ))
-          : _content(context, detail),
+    if (detail != null) {
+      return EchoLargeTitlePage(
+        title: detail.item.list,
+        onRefresh: _load,
+        slivers: _content(context, detail),
+      );
+    }
+    return EchoLargeTitlePage(
+      title: 'Saved',
+      slivers: [
+        _error == null
+            ? const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator(key: Key('saved-item-loading'))),
+              )
+            : FullScreenMessage(
+                sliver: true,
+                icon: CupertinoIcons.cloud_bolt,
+                title: 'Could not load this thing',
+                message: _error!,
+                actionLabel: 'Retry',
+                onAction: _load,
+              ),
+      ],
     );
   }
 
-  Widget _content(BuildContext context, SavedItemDetail detail) {
+  List<Widget> _content(BuildContext context, SavedItemDetail detail) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     final item = detail.item;
     final ask = widget.onAsk;
-    return ListView(
-      key: const Key('saved-item'),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 48),
-      children: [
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.only(top: 4, bottom: 16),
+        sliver: SliverList.list(
+          key: const Key('saved-item'),
+          children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
         if (item.photoId != null && widget.loadPhoto != null)
           PhotoThumbnail(
             photoId: item.photoId!,
@@ -211,22 +229,27 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
           Text(fields, style: textTheme.bodyMedium?.copyWith(color: palette.text2)),
         ],
         const SizedBox(height: 16),
+            ],
+          ),
+        ),
         _moment(context, detail),
         if (detail.photoText != null) ...[
-          const SizedBox(height: 12),
-          Panel(
+          EchoGroup(
             key: const Key('saved-photo-text'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const PanelHeader(title: 'What Echo read'),
-                const SizedBox(height: 6),
-                Text(detail.photoText!, style: textTheme.bodyMedium?.copyWith(height: 1.45)),
-              ],
-            ),
+            header: 'What Echo read',
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(detail.photoText!, style: textTheme.bodyMedium?.copyWith(height: 1.45)),
+              ),
+            ],
           ),
         ],
-        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
         if (ask != null)
           FilledButton.icon(
             key: const Key('saved-ask'),
@@ -236,7 +259,7 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
               'Tell me about "${item.title}" that I saved in ${item.list}: what it is, '
               'and when and with whom I saved it.',
             ),
-            icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+            icon: const Icon(CupertinoIcons.sparkles, size: 18),
             label: const Text('Ask about it'),
           ),
         const SizedBox(height: 8),
@@ -252,8 +275,13 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
           style: TextButton.styleFrom(foregroundColor: palette.red),
           child: const Text('Remove from Saved'),
         ),
-      ],
-    );
+            ],
+          ),
+        ),
+          ],
+        ),
+      ),
+    ];
   }
 
   Widget _moment(BuildContext context, SavedItemDetail detail) {
@@ -265,7 +293,7 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
     final openConversation = widget.openConversation;
     Widget line(IconData icon, String text, {Key? key}) => Padding(
           key: key,
-          padding: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -275,19 +303,17 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
             ],
           ),
         );
-    return Panel(
+    return EchoGroup(
       key: const Key('saved-moment'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const PanelHeader(title: 'The moment'),
-          line(Icons.schedule_rounded, longDate(detail.at)),
+      header: 'The moment',
+      children: [
+          line(CupertinoIcons.clock, longDate(detail.at)),
           if (place != null)
-            line(Icons.place_outlined, place.address ?? 'A place without an address',
+            line(CupertinoIcons.location, place.address ?? 'A place without an address',
                 key: const Key('saved-moment-place')),
           if (detail.people.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.all(16),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -305,7 +331,7 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
             ),
           if (conversation != null)
             Padding(
-              padding: const EdgeInsets.only(top: 10),
+              padding: const EdgeInsets.all(16),
               child: Material(
                 color: palette.surface2,
                 borderRadius: BorderRadius.circular(AppTheme.tileRadius),
@@ -334,9 +360,8 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
               ),
             )
           else if (detail.request != null)
-            line(Icons.format_quote_rounded, '"${detail.request}"'),
-        ],
-      ),
+            line(CupertinoIcons.quote_bubble, '"${detail.request}"'),
+      ],
     );
   }
 }

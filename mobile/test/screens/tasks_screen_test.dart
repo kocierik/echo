@@ -50,13 +50,13 @@ void main() {
     await pump(tester, sample());
 
     expect(find.text('3 open'), findsOneWidget);
-    expect(find.text('OVERDUE · 1'), findsOneWidget);
-    expect(find.text('TODAY · 1'), findsOneWidget);
-    expect(find.text('NO DATE · 1'), findsOneWidget);
+    expect(find.text('Overdue · 1'), findsOneWidget);
+    expect(find.text('Today · 1'), findsOneWidget);
+    expect(find.text('No date · 1'), findsOneWidget);
     expect(find.text('Overdue · Oct 10'), findsOneWidget);
     expect(find.text('“Oggi devo chiamare Ada.”'), findsOneWidget);
-    final overdueY = tester.getTopLeft(find.text('OVERDUE · 1')).dy;
-    final todayY = tester.getTopLeft(find.text('TODAY · 1')).dy;
+    final overdueY = tester.getTopLeft(find.text('Overdue · 1')).dy;
+    final todayY = tester.getTopLeft(find.text('Today · 1')).dy;
     expect(overdueY, lessThan(todayY));
     expect(find.text('Book the flight'), findsNothing); // Done is collapsed
   });
@@ -69,12 +69,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.calls, contains('done today true'));
     expect(find.text('Done: Call Ada'), findsOneWidget);
-    expect(find.text('TODAY · 1'), findsNothing);
+    expect(find.text('Today · 1'), findsNothing);
 
     await tester.tap(find.byKey(const Key('task-undo')));
     await tester.pumpAndSettle();
     expect(api.calls, contains('done today false'));
-    expect(find.text('TODAY · 1'), findsOneWidget);
+    expect(find.text('Today · 1'), findsOneWidget);
   });
 
   testWidgets('Not a task removes it; a failure brings it back', (tester) async {
@@ -126,6 +126,11 @@ void main() {
     await tester.tap(find.byKey(const Key('tasks-retry')));
     await tester.pumpAndSettle();
     expect(find.text('Call Ada'), findsOneWidget);
+  });
+
+  testWidgets('at 2.0 text scale To do does not overflow', (tester) async {
+    await pump(tester, sample(), size: const Size(375, 812), textScale: 2.0);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('fits 320 wide at 1.3 text scale in light and dark', (tester) async {

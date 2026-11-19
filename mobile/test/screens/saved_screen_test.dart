@@ -126,6 +126,13 @@ Future<List<Uri>> _show(WidgetTester tester, _FakeSavedApi api) async {
 }
 
 void main() {
+  testWidgets('at 2.0 text scale Saved does not overflow', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _show(tester, _FakeSavedApi(_overview()));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('places first, then the lists and a list with amounts as its total',
       (tester) async {
     await _show(tester, _FakeSavedApi(_overview()));

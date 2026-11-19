@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons, CupertinoSearchTextField;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -11,7 +12,8 @@ import '../services/device/phone_words.dart';
 import '../services/phone/phone_location.dart';
 import '../theme/app_theme.dart';
 import '../utils/directions.dart';
-import '../widgets/panel.dart';
+import '../widgets/echo_grouped.dart';
+import '../widgets/echo_large_title.dart';
 import '../widgets/photo_thumbnail.dart';
 import '../widgets/saved_sections.dart';
 import '../widgets/sections.dart';
@@ -178,131 +180,133 @@ final class _SavedScreenState extends State<SavedScreen> {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(title: const Text('Saved')),
-      body: SafeArea(
-        top: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-              child: Text(
-                'Things to find again, each with its moment.',
-                style: textTheme.bodyMedium?.copyWith(color: palette.text2),
-              ),
+    return EchoLargeTitlePage(
+      title: 'Saved',
+      onRefresh: _load,
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text(
+              'Things to find again, each with its moment.',
+              style: textTheme.bodyMedium?.copyWith(color: palette.text2),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: TextField(
-                key: const Key('saved-search'),
-                controller: _search,
-                onChanged: _onSearch,
-                textInputAction: TextInputAction.search,
-                decoration: const InputDecoration(
-                  hintText: 'Search saved things',
-                  prefixIcon: Icon(Icons.search_rounded),
-                ),
-              ),
-            ),
-            Expanded(child: _body()),
-          ],
+          ),
         ),
-      ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: CupertinoSearchTextField(
+              key: const Key('saved-search'),
+              controller: _search,
+              onChanged: _onSearch,
+              placeholder: 'Search saved things',
+            ),
+          ),
+        ),
+        ..._body(),
+      ],
     );
   }
 
-  Widget _body() {
+  List<Widget> _body() {
     final now = widget.clock();
     if (_results case final results?) {
       if (results.isEmpty) {
-        return FullScreenMessage(
-          icon: Icons.search_off_rounded,
-          title: 'Nothing matches',
-          message: 'Nothing saved says "${_search.text.trim()}".',
-        );
-      }
-      return ListView(
-        key: const Key('saved-results'),
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-        children: [
-          Panel(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Column(
-              children: [
-                for (final item in results)
-                  SavedItemRow(item: item, now: now, onTap: () => unawaited(_openItem(item))),
-              ],
-            ),
+        return [
+          FullScreenMessage(
+            sliver: true,
+            icon: CupertinoIcons.search,
+            title: 'Nothing matches',
+            message: 'Nothing saved says "${_search.text.trim()}".',
           ),
-        ],
-      );
+        ];
+      }
+      return [
+        SliverToBoxAdapter(
+          child: EchoGroup(
+            key: const Key('saved-results'),
+            children: [
+              for (final item in results)
+                SavedItemRow(item: item, now: now, onTap: () => unawaited(_openItem(item))),
+            ],
+          ),
+        ),
+      ];
     }
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(key: Key('saved-loading')));
+      return const [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(child: CircularProgressIndicator(key: Key('saved-loading'))),
+        ),
+      ];
     }
     final overview = _overview;
     if (overview == null) {
-      return FullScreenMessage(
-        icon: Icons.cloud_off_rounded,
-        title: 'Could not load Saved',
-        message: _error ?? 'Try again.',
-        actionKey: const Key('saved-retry'),
-        actionLabel: 'Retry',
-        onAction: _load,
-        onRefresh: _load,
-      );
+      return [
+        FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.cloud_bolt,
+          title: 'Could not load Saved',
+          message: _error ?? 'Try again.',
+          actionKey: const Key('saved-retry'),
+          actionLabel: 'Retry',
+          onAction: _load,
+        ),
+      ];
     }
     if (overview.total == 0) {
-      return FullScreenMessage(
-        icon: Icons.bookmark_outline_rounded,
-        title: 'Nothing saved yet',
-        message: _hint,
-        onRefresh: _load,
-      );
+      return [
+        const FullScreenMessage(
+          sliver: true,
+          icon: CupertinoIcons.bookmark,
+          title: 'Nothing saved yet',
+          message: _hint,
+        ),
+      ];
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        key: const Key('saved'),
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-        children: [
-          for (final item in overview.places) ...[
-            SavedPlaceCard(
-              item: item,
-              now: now,
-              distance: _distances[item.id],
-              busy: _busy.contains(item.id),
-              onOpen: () => unawaited(_openItem(item)),
-              onFound: () => unawaited(_found(item)),
-              onDirections: () => unawaited(
-                widget.openLink(directionsUri(item.place!, iOS: PhoneWords.isIPhone)),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-          for (final list in overview.lists) ...[
-            if (list.weekSum != null)
-              SavedSumCard(list: list, onOpen: () => unawaited(_openList(list.id)))
-            else
-              SavedListPanel(
-                list: list,
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.only(top: 4, bottom: 16),
+        sliver: SliverList.list(
+          key: const Key('saved'),
+          children: [
+            for (final item in overview.places) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: SavedPlaceCard(
+                item: item,
                 now: now,
-                loadPhoto: widget.loadPhoto,
-                onOpenItem: (item) => unawaited(_openItem(item)),
-                onAll: () => unawaited(_openList(list.id)),
+                distance: _distances[item.id],
+                busy: _busy.contains(item.id),
+                onOpen: () => unawaited(_openItem(item)),
+                onFound: () => unawaited(_found(item)),
+                onDirections: () => unawaited(
+                  widget.openLink(directionsUri(item.place!, iOS: PhoneWords.isIPhone)),
+                ),
+                ),
               ),
-            const SizedBox(height: 12),
+            ],
+            // The groups bring their own 16 pt margin; the page's padding is for the rest
+            for (final list in overview.lists)
+              list.weekSum != null
+                  ? SavedSumCard(list: list, onOpen: () => unawaited(_openList(list.id)))
+                  : SavedListPanel(
+                      list: list,
+                      now: now,
+                      loadPhoto: widget.loadPhoto,
+                      onOpenItem: (item) => unawaited(_openItem(item)),
+                      onAll: () => unawaited(_openList(list.id)),
+                    ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(_hint, style: Theme.of(context).textTheme.bodySmall),
+            ),
           ],
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(_hint, style: Theme.of(context).textTheme.bodySmall),
-          ),
-        ],
+        ),
       ),
-    );
+    ];
   }
 
   static const _hint =
@@ -349,46 +353,44 @@ final class _SavedListScreenState extends State<SavedListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
     final detail = _detail;
     final now = widget.clock();
-    return Scaffold(
-      backgroundColor: palette.background,
-      appBar: AppBar(title: Text(detail?.list.name ?? 'Saved')),
-      body: detail == null
-          ? (_error == null
-              ? const Center(child: CircularProgressIndicator())
+    return EchoLargeTitlePage(
+      title: detail?.list.name ?? 'Saved',
+      onRefresh: detail == null ? null : _load,
+      slivers: [
+        if (detail == null)
+          _error == null
+              ? const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
               : FullScreenMessage(
-                  icon: Icons.cloud_off_rounded,
+                  sliver: true,
+                  icon: CupertinoIcons.cloud_bolt,
                   title: 'Could not load this list',
                   message: _error!,
                   actionLabel: 'Retry',
                   onAction: _load,
-                ))
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView.builder(
-                key: const Key('saved-list'),
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(top: 4, bottom: 24),
-                itemCount: detail.items.length,
-                itemBuilder: (context, index) => PanelListRow(
-                  index: index,
-                  count: detail.items.length,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: SavedItemRow(
-                      item: detail.items[index],
-                      now: now,
-                      onTap: () async {
-                        await widget.onOpenItem(detail.items[index]);
-                        if (mounted) await _load();
-                      },
-                    ),
+                )
+        else
+          SliverToBoxAdapter(
+            child: EchoGroup(
+              key: const Key('saved-list'),
+              children: [
+                for (final item in detail.items)
+                  SavedItemRow(
+                    item: item,
+                    now: now,
+                    onTap: () async {
+                      await widget.onOpenItem(item);
+                      if (mounted) await _load();
+                    },
                   ),
-                ),
-              ),
+              ],
             ),
+          ),
+      ],
     );
   }
 }
