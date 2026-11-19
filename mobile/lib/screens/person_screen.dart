@@ -163,6 +163,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
             children: [
               ExpansionTile(
                 title: const Text('Before'),
+                trailing: const Icon(CupertinoIcons.chevron_down, size: 18),
                 shape: const Border(),
                 collapsedShape: const Border(),
                 children: [
@@ -285,7 +286,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
             ),
           ),
         if (tasks.isNotEmpty)
-          EchoGroup(header: 'Open tasks', children: [
+          EchoGroup(header: 'Open tasks · ${tasks.length}', children: [
             for (final task in tasks)
               TaskTile(
                 task: task,
@@ -300,7 +301,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
               ),
           ]),
         if (detail.events.isNotEmpty)
-          EchoGroup(header: 'Events', children: [
+          EchoGroup(header: 'Events · ${detail.events.length}', children: [
             for (final event in detail.events)
               MemoryEntityRow(
                 entity: event,
@@ -314,7 +315,7 @@ final class _PersonScreenState extends State<PersonScreen> with TaskEditing {
               ),
           ]),
         if (detail.conversations.isNotEmpty)
-          EchoGroup(header: 'Conversations', children: [
+          EchoGroup(header: 'Conversations · ${detail.conversations.length}', children: [
             for (final conversation in detail.conversations)
               ConversationCardTile(
                 conversation: conversation,
@@ -409,8 +410,11 @@ final class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           PersonAvatar(initials: person.initials, size: 64),
+          // The large title is one line; the whole name wraps here
+          const SizedBox(height: 12),
+          Text(person.name, style: textTheme.displayLarge?.copyWith(fontSize: 28)),
           if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 2),
             Text(subtitle, style: textTheme.bodySmall),
           ],
           if (person.about != null) ...[

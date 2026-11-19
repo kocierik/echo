@@ -276,15 +276,15 @@ final class _SavedScreenState extends State<SavedScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: SavedPlaceCard(
-                item: item,
-                now: now,
-                distance: _distances[item.id],
-                busy: _busy.contains(item.id),
-                onOpen: () => unawaited(_openItem(item)),
-                onFound: () => unawaited(_found(item)),
-                onDirections: () => unawaited(
-                  widget.openLink(directionsUri(item.place!, iOS: PhoneWords.isIPhone)),
-                ),
+                  item: item,
+                  now: now,
+                  distance: _distances[item.id],
+                  busy: _busy.contains(item.id),
+                  onOpen: () => unawaited(_openItem(item)),
+                  onFound: () => unawaited(_found(item)),
+                  onDirections: () => unawaited(
+                    widget.openLink(directionsUri(item.place!, iOS: PhoneWords.isIPhone)),
+                  ),
                 ),
               ),
             ],
@@ -374,6 +374,7 @@ final class _SavedListScreenState extends State<SavedListScreen> {
                   onAction: _load,
                 )
         else
+          // shortcut: one non-lazy group, fine for a list of a few hundred things; make it lazy if lists grow large.
           SliverToBoxAdapter(
             child: EchoGroup(
               key: const Key('saved-list'),

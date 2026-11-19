@@ -197,87 +197,78 @@ final class _SavedItemScreenState extends State<SavedItemScreen> {
         sliver: SliverList.list(
           key: const Key('saved-item'),
           children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-        if (item.photoId != null && widget.loadPhoto != null)
-          PhotoThumbnail(
-            photoId: item.photoId!,
-            loadSource: widget.loadPhoto!,
-            height: 240,
-            padding: const EdgeInsets.only(bottom: 16),
-            caption: 'Photo from Echo · ${formatTime(item.savedAt)}',
-          ),
-        Text(
-          item.list.toUpperCase(),
-          style: textTheme.labelSmall?.copyWith(
-            color: palette.accent,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(item.title, style: textTheme.headlineSmall),
-        if (item.details != null) ...[
-          const SizedBox(height: 4),
-          Text(item.details!, style: textTheme.bodyLarge),
-        ],
-        if (item.fieldsLine case final fields?) ...[
-          const SizedBox(height: 4),
-          Text(fields, style: textTheme.bodyMedium?.copyWith(color: palette.text2)),
-        ],
-        const SizedBox(height: 16),
-            ],
-          ),
-        ),
-        _moment(context, detail),
-        if (detail.photoText != null) ...[
-          EchoGroup(
-            key: const Key('saved-photo-text'),
-            header: 'What Echo read',
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(detail.photoText!, style: textTheme.bodyMedium?.copyWith(height: 1.45)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (item.photoId != null && widget.loadPhoto != null)
+                    PhotoThumbnail(
+                      photoId: item.photoId!,
+                      loadSource: widget.loadPhoto!,
+                      height: 240,
+                      padding: const EdgeInsets.only(bottom: 16),
+                      caption: 'Photo from Echo · ${formatTime(item.savedAt)}',
+                    ),
+                  Text(item.title, style: textTheme.headlineSmall),
+                  if (item.details != null) ...[
+                    const SizedBox(height: 4),
+                    Text(item.details!, style: textTheme.bodyLarge),
+                  ],
+                  if (item.fieldsLine case final fields?) ...[
+                    const SizedBox(height: 4),
+                    Text(fields, style: textTheme.bodyMedium?.copyWith(color: palette.text2)),
+                  ],
+                  const SizedBox(height: 16),
+                ],
               ),
-            ],
-          ),
-        ],
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-        if (ask != null)
-          FilledButton.icon(
-            key: const Key('saved-ask'),
-            onPressed: () => askFromAnywhere(
-              context,
-              ask,
-              'Tell me about "${item.title}" that I saved in ${item.list}: what it is, '
-              'and when and with whom I saved it.',
             ),
-            icon: const Icon(CupertinoIcons.sparkles, size: 18),
-            label: const Text('Ask about it'),
-          ),
-        const SizedBox(height: 8),
-        OutlinedButton(
-          key: const Key('saved-move'),
-          onPressed: _busy ? null : () => unawaited(_move()),
-          child: const Text('Move to…'),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          key: const Key('saved-remove'),
-          onPressed: _busy ? null : () => unawaited(_remove()),
-          style: TextButton.styleFrom(foregroundColor: palette.red),
-          child: const Text('Remove from Saved'),
-        ),
-            ],
-          ),
-        ),
+            _moment(context, detail),
+            if (detail.photoText != null)
+              EchoGroup(
+                key: const Key('saved-photo-text'),
+                header: 'What Echo read',
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(detail.photoText!,
+                        style: textTheme.bodyMedium?.copyWith(height: 1.45)),
+                  ),
+                ],
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (ask != null)
+                    FilledButton.icon(
+                      key: const Key('saved-ask'),
+                      onPressed: () => askFromAnywhere(
+                        context,
+                        ask,
+                        'Tell me about "${item.title}" that I saved in ${item.list}: what it is, '
+                        'and when and with whom I saved it.',
+                      ),
+                      icon: const Icon(CupertinoIcons.sparkles, size: 18),
+                      label: const Text('Ask about it'),
+                    ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    key: const Key('saved-move'),
+                    onPressed: _busy ? null : () => unawaited(_move()),
+                    child: const Text('Move to…'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    key: const Key('saved-remove'),
+                    onPressed: _busy ? null : () => unawaited(_remove()),
+                    style: TextButton.styleFrom(foregroundColor: palette.red),
+                    child: const Text('Remove from Saved'),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

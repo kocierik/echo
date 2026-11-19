@@ -236,7 +236,8 @@ void main() {
       final api = _FakeSavedApi(_overview())..detail = detail();
       final (_, people) = await showItem(tester, api);
 
-      expect(find.text('WINES'), findsOneWidget);
+      expect(find.text('Wines'), findsWidgets); // large title and its collapsed twin
+      expect(find.text('WINES'), findsNothing); // no overline repeating the list
       expect(find.text('Sunday 18 October, 21:40'), findsOneWidget);
       expect(find.text('Via Roma 12, Milano'), findsOneWidget);
       expect(find.text('Cena con Marco'), findsOneWidget);

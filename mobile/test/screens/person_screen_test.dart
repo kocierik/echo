@@ -13,13 +13,14 @@ void main() {
   final now = DateTime(2026, 10, 14, 18);
 
   PersonDetail marco({
+    String name = 'Marco Rossi',
     bool linked = true,
     List<PersonFact> facts = const [],
     List<PersonFact> earlierFacts = const [],
   }) => PersonDetail(
         person: PersonSummary(
           id: 'p1',
-          name: 'Marco Rossi',
+          name: name,
           role: 'designer',
           about: 'Leads the Atlas design.',
           lastSeen: DateTime(2026, 10, 13, 9),
@@ -114,6 +115,18 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await pump(tester, FakeMemoryApi()..personDetails = {'p1': marco()}, height: 2400);
 
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a long name is whole in the header at 2.0 text scale', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    const name = 'Alessandra Bianchi-Montefiore';
+    await pump(tester, FakeMemoryApi()..personDetails = {'p1': marco(name: name)}, height: 2400);
+
+    final header = find.byWidgetPredicate(
+        (w) => w is Text && w.data == name && w.style?.fontSize == 28);
+    expect(header, findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

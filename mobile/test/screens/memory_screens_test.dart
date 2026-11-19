@@ -1,4 +1,5 @@
 import 'package:echo_app/models/memory_items.dart';
+import 'package:echo_app/models/person.dart';
 import 'package:echo_app/screens/settings/about_you_screen.dart';
 import 'package:echo_app/screens/settings/documents_screen.dart';
 import 'package:echo_app/screens/people_screen.dart';
@@ -127,7 +128,17 @@ void main() {
   testWidgets('at 2.0 text scale People does not overflow', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 2.0;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    final controller = MemoriesController(api: FakeMemoryApi());
+    final api = FakeMemoryApi()
+      ..people = [
+        const PersonSummary(
+            id: 'p1',
+            name: 'Alessandra Bianchi-Montefiore',
+            role: 'architect and neighbour',
+            conversationCount: 12,
+            openTaskCount: 3),
+        const PersonSummary(id: 'p2', name: 'Marco Rossi', conversationCount: 1),
+      ];
+    final controller = MemoriesController(api: api);
     addTearDown(controller.dispose);
     await _pump(tester, PeopleScreen(
       controller: controller,
@@ -135,6 +146,7 @@ void main() {
       onOpenMap: () async {},
       now: DateTime(2026, 11, 10),
     ));
+    expect(find.text('Marco Rossi'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -40,6 +40,8 @@ class EchoLargeTitlePage extends StatelessWidget {
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           CupertinoSliverNavigationBar(
+            // A title that arrives late (a person's name once loaded) must replace the first
+            key: ValueKey(title),
             largeTitle: Text(title),
             trailing: trailing,
             backgroundColor: palette.chrome,

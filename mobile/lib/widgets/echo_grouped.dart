@@ -20,8 +20,11 @@ class EchoGroup extends StatelessWidget {
           if (header != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-              child: Text(header!,
-                  style: TextStyle(color: palette.text2, fontSize: 13)),
+              child: Semantics(
+                header: true,
+                child: Text(header!,
+                    style: TextStyle(color: palette.text2, fontSize: 13)),
+              ),
             ),
           // A Material, so the rows' InkWell splashes show on the group's surface
           Material(

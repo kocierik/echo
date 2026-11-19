@@ -123,4 +123,17 @@ void main() {
         find.ancestor(of: find.byType(InkWell), matching: find.byType(Material)).first);
     expect(material.color, EchoPalette.dark.surface);
   });
+
+  testWidgets('an EchoGroup header is a screen-reader heading', (tester) async {
+    final handle = tester.ensureSemantics();
+    await tester.pumpWidget(_app(const Scaffold(
+      body: EchoGroup(header: 'Overdue · 1', children: [Text('row')]),
+    )));
+
+    expect(
+      tester.getSemantics(find.text('Overdue · 1')),
+      matchesSemantics(label: 'Overdue · 1', isHeader: true),
+    );
+    handle.dispose();
+  });
 }
