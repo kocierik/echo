@@ -8,6 +8,7 @@ final class AccountInfo {
     this.name,
     this.instructions,
     this.otherLanguages = const [],
+    this.hasPassword = true,
   });
 
   factory AccountInfo.fromJson(Map<String, dynamic> json) {
@@ -24,6 +25,7 @@ final class AccountInfo {
       otherLanguages: List.unmodifiable(
         (json['other_languages'] as List<dynamic>? ?? const []).whereType<String>(),
       ),
+      hasPassword: json['has_password'] as bool? ?? true,
     );
   }
 
@@ -40,6 +42,9 @@ final class AccountInfo {
   /// Other languages spoken around the user ("en", "es"): Echo recognises which one each
   /// segment is in, and the app can translate them.
   final List<String> otherLanguages;
+
+  /// False for an account made with Google: deleting it asks Google, not a password.
+  final bool hasPassword;
 }
 
 abstract interface class AccountApi {

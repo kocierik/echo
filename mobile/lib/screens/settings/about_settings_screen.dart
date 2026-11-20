@@ -12,6 +12,7 @@ class AboutSettingsScreen extends StatelessWidget {
     required this.sessionController,
     required this.onLoggedOut,
     this.deleteAccount,
+    this.deleteWithGoogle = false,
     super.key,
   });
 
@@ -20,7 +21,11 @@ class AboutSettingsScreen extends StatelessWidget {
   final VoidCallback onLoggedOut;
 
   /// Deletes the account on the server; without it the row is not shown.
-  final Future<void> Function(String password)? deleteAccount;
+  /// The password is null for an account made with Google ([deleteWithGoogle]).
+  final Future<void> Function(String? password)? deleteAccount;
+
+  /// The account has no password: Google confirms the deletion.
+  final bool deleteWithGoogle;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +54,7 @@ class AboutSettingsScreen extends StatelessWidget {
             sessionController: sessionController,
             deleteAccount: delete,
             onLoggedOut: onLoggedOut,
+            withGoogle: deleteWithGoogle,
           ),
       ],
     );

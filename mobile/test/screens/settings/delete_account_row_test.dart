@@ -18,7 +18,7 @@ final class _Step implements ActiveBleStopper, ApiCredentialsClearer, DeviceIden
 
 void main() {
   late List<String> calls;
-  late List<String> passwords;
+  late List<String?> passwords;
   late SessionController session;
   late int loggedOut;
   Object? failure;
@@ -36,7 +36,8 @@ void main() {
     );
   });
 
-  Future<void> pump(WidgetTester tester) => tester.pumpWidget(MaterialApp(
+  Future<void> pump(WidgetTester tester, {bool withGoogle = false}) =>
+      tester.pumpWidget(MaterialApp(
         theme: AppTheme.light,
         home: Scaffold(
           body: DeleteAccountRow(
@@ -47,6 +48,7 @@ void main() {
               if (error != null) throw error;
             },
             onLoggedOut: () => loggedOut++,
+            withGoogle: withGoogle,
           ),
         ),
       ));
@@ -81,6 +83,33 @@ void main() {
     expect(passwords, ['correct horse']);
     expect(calls, containsAll(['api', 'identity', 'cache']));
     expect(loggedOut, 1);
+  });
+
+  testWidgets('an account made with Google: Google confirms, no password asked', (tester) async {
+    await pump(tester, withGoogle: true);
+
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('delete-account-password')), findsNothing);
+    await tester.tap(find.byKey(const Key('delete-account-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(passwords, [null]);
+    expect(loggedOut, 1);
+  });
+
+  testWidgets('backing out of Google deletes nothing and leaves the dialog', (tester) async {
+    failure = const DeletionCancelled();
+    await pump(tester, withGoogle: true);
+
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('delete-account-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('delete-account-confirm')), findsOneWidget);
+    expect(calls, isEmpty);
+    expect(loggedOut, 0);
   });
 
   testWidgets('cancel asks nothing of the server', (tester) async {

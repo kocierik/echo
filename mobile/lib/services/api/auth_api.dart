@@ -75,7 +75,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     required String password,
     String? deviceName,
   }) =>
-      _signInPhone('/api/auth/login', email, password, deviceName);
+      _signInPhone('/api/auth/login', {'email': email.trim(), 'password': password}, deviceName);
 
   /// Creates an account and keeps the key this phone was given in it. [language], the
   /// one the user speaks, defaults to the phone's.
@@ -85,8 +85,23 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     String? deviceName,
     String? language,
   }) =>
-      _signInPhone('/api/auth/register', email, password, deviceName,
-          language: language ?? PlatformDispatcher.instance.locale.languageCode);
+      _signInPhone(
+        '/api/auth/register',
+        {
+          'email': email.trim(),
+          'password': password,
+          'language': language ?? PlatformDispatcher.instance.locale.languageCode,
+        },
+        deviceName,
+      );
+
+  /// Signs in with the ID token Google gave for the person (GoogleIdentity): their account,
+  /// linked by email, or a new one.
+  Future<void> signInWithGoogle(String idToken, {String? deviceName}) => _signInPhone(
+        '/api/auth/google',
+        {'id_token': idToken, 'language': PlatformDispatcher.instance.locale.languageCode},
+        deviceName,
+      );
 
   /// The account behind this phone's key.
   @override
@@ -115,13 +130,7 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     return parse(response.data, (data) => AccountInfo.fromJson(data as Map<String, dynamic>));
   }
 
-  Future<void> _signInPhone(
-    String path,
-    String email,
-    String password,
-    String? deviceName, {
-    String? language,
-  }) async {
+  Future<void> _signInPhone(String path, Map<String, String> fields, String? deviceName) async {
     // Signing in again (back from the next step): the key it replaces goes first, so
     // no ghost phone stays in Devices
     if (await credentials.configured) {
@@ -140,14 +149,12 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
           Uri.parse('$server$path'),
           headers: const {'Content-Type': 'application/json'},
           body: jsonEncode({
-            'email': email.trim(),
-            'password': password,
+            ...fields,
             'device_name': name,
             'platform': kIsWeb ? 'web' : Platform.isIOS ? 'ios' : 'android',
-            if (language != null) 'language': language,
           }),
         ),
-        expect: const {200, 400, 401, 403, 409, 429},
+        expect: const {200, 400, 401, 403, 409, 429, 503},
         shape: JsonShape.map,
       );
     } on ApiException catch (error) {
@@ -166,7 +173,9 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     String said(String fallback) => detail is String && detail.isNotEmpty ? detail : fallback;
     switch (response.statusCode) {
       case 401:
-        throw const SignInException(SignInFailure.wrongCredentials, 'Wrong email or password.');
+        throw SignInException(SignInFailure.wrongCredentials, said('Wrong email or password.'));
+      case 503:
+        throw SignInException(SignInFailure.noConnection, said('Try again in a moment.'));
       case 429:
         throw SignInException(
           SignInFailure.tooManyAttempts,
@@ -192,12 +201,16 @@ mixin AuthEndpoints on ApiClient implements DevicesApi, AccountApi, Instructions
     await credentials.configure(server, key);
   }
 
-  /// Deletes the account and everything Echo keeps of it, once [password] confirms it.
-  /// A wrong password is a 403 (a 401 would read as a revoked key).
-  Future<void> deleteAccount(String password) async {
+  /// Deletes the account and everything Echo keeps of it, once [password] confirms it, or
+  /// for an account made with Google a fresh [googleIdToken]. A refusal is a 403 (a 401
+  /// would read as a revoked key).
+  Future<void> deleteAccount({String? password, String? googleIdToken}) async {
     await post(
       '/api/auth/me/delete',
-      body: {'password': password},
+      body: {
+        if (password != null) 'password': password,
+        if (googleIdToken != null) 'google_id_token': googleIdToken,
+      },
       expect: const {204},
       decode: false,
     );

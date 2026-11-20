@@ -19,6 +19,9 @@ final class ApiServiceOnboardingApi implements OnboardingApi {
   Future<void> register(String email, String password) {
     return _api.register(email: email, password: password);
   }
+
+  @override
+  Future<void> signInWithGoogle(String idToken) => _api.signInWithGoogle(idToken);
 }
 
 final class DeviceControllerOnboardingPairing implements OnboardingPairing {

@@ -17,6 +17,10 @@ abstract interface class OnboardingApi {
 
   /// A new account, this phone signed in to it; throws [SignInException].
   Future<void> register(String email, String password);
+
+  /// The account Google vouches for (found, linked by email, or new); throws
+  /// [SignInException].
+  Future<void> signInWithGoogle(String idToken);
 }
 
 abstract interface class OnboardingPermissions {
@@ -245,12 +249,16 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
     value = value.copyWith(creatingAccount: false, error: null);
   }
 
-  Future<void> signIn(String email, String password) => _enter(email, password, _api.signIn);
+  Future<void> signIn(String email, String password) =>
+      _withEmail(email, password, _api.signIn);
 
   Future<void> createAccount(String email, String password) =>
-      _enter(email, password, _api.register);
+      _withEmail(email, password, _api.register);
 
-  Future<void> _enter(
+  /// With the ID token Google gave (the welcome's Google button).
+  Future<void> signInWithGoogle(String idToken) => _enter(() => _api.signInWithGoogle(idToken));
+
+  Future<void> _withEmail(
     String email,
     String password,
     Future<void> Function(String email, String password) call,
@@ -261,9 +269,14 @@ final class OnboardingController extends ValueNotifier<OnboardingState> {
       value = value.copyWith(error: 'Enter your email and password.');
       return;
     }
+    return _enter(() => call(address, password));
+  }
+
+  Future<void> _enter(Future<void> Function() call) async {
+    if (value.busy || _disposed) return;
     _setBusy();
     try {
-      await call(address, password);
+      await call();
       if (_disposed) return;
       await _persistHighest(OnboardingStep.signIn);
       if (_disposed) return;

@@ -269,6 +269,44 @@ void main() {
     expect(store.saved?.$2, 'new-account-key');
   });
 
+  test('Google: the token goes to /api/auth/google and the key is kept', () async {
+    final store = _Store();
+    late http.Request sent;
+    final api = _api(store, (request) async {
+      sent = request;
+      return http.Response(
+        '{"api_key":"google-key","device_id":"d","user":{"id":"u","email":"ada@example.com"}}',
+        200,
+      );
+    });
+
+    await api.signInWithGoogle('id-token', deviceName: 'iPhone');
+
+    expect(sent.url.path, '/api/auth/google');
+    final body = jsonDecode(sent.body) as Map<String, dynamic>;
+    expect(body['id_token'], 'id-token');
+    expect(body['device_name'], 'iPhone');
+    expect(body.containsKey('password'), isFalse);
+    expect(store.saved?.$2, 'google-key');
+  });
+
+  test('Google: a refused token and Google unreachable say so', () async {
+    Future<SignInException> failure(int status, String detail) async {
+      final api = _api(_Store(), (_) async => http.Response(jsonEncode({'detail': detail}), status));
+      try {
+        await api.signInWithGoogle('t', deviceName: 'x');
+      } on SignInException catch (error) {
+        return error;
+      }
+      fail('signInWithGoogle did not throw');
+    }
+
+    final refused = await failure(401, 'Google did not confirm who you are.');
+    expect(refused.message, 'Google did not confirm who you are.');
+    final down = await failure(503, 'Google could not be reached. Try again in a moment.');
+    expect(down.reason, SignInFailure.noConnection);
+  });
+
   test('register explains a taken email, a closed server and what to fix', () async {
     Future<SignInException> failure(int status, String detail) async {
       final api = _api(_Store(), (_) async => http.Response(jsonEncode({'detail': detail}), status));

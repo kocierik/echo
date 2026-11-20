@@ -11,6 +11,12 @@ abstract final class BuildDefaults {
     defaultValue: 'https://echo.man.ovh',
   );
 
+  /// Sign in with Google: the app's OAuth client IDs from Google Cloud Console (public,
+  /// not secrets). Empty: no Google button. The iOS one also goes in ios/Runner/Info.plist
+  /// (GIDClientID and its reversed form as a URL scheme).
+  static const googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+  static const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+
   /// A test account a debug build signs in with by itself, to try the app without
   /// typing it (`flutter run --dart-define-from-file=dart_defines.dev.json`, see
   /// dart_defines.dev.example.json). Never in a release build: only debug reads it.

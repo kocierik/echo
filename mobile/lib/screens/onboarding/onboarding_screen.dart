@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/google_identity.dart';
 import '../../services/onboarding/first_result_watcher.dart';
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
@@ -116,6 +117,10 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
           return WelcomeStep(
             onEmail: widget.controller.continueWithEmail,
             notice: widget.notice,
+            onGoogleToken:
+                GoogleIdentity.available ? widget.controller.signInWithGoogle : null,
+            error: state.error,
+            busy: state.busy,
           );
         }
         final setupStep = state.step == OnboardingStep.firstResult

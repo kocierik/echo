@@ -1,4 +1,5 @@
 import 'package:echo_app/screens/onboarding/onboarding_screen.dart';
+import 'package:echo_app/screens/onboarding/welcome_step.dart';
 import 'package:echo_app/services/app/app_preferences.dart';
 import 'package:echo_app/models/action_models.dart';
 import 'package:echo_app/models/chat_session.dart';
@@ -88,6 +89,53 @@ void main() {
         fixture.controller.value.error,
         'No connection. Check your internet and try again.',
       );
+    });
+
+    test('signing in with Google advances like signing in', () async {
+      final fixture = _Fixture();
+      await fixture.controller.initialize();
+
+      await fixture.controller.signInWithGoogle('id-token');
+
+      expect(fixture.api.googleTokens, ['id-token']);
+      expect(fixture.controller.value.step, OnboardingStep.permissions);
+      expect(fixture.controller.value.error, isNull);
+    });
+
+    testWidgets('the welcome\'s Google button signs in with Google\'s token; a cancel does not',
+        (tester) async {
+      final tokens = <String>[];
+      String? answer = 'tok';
+      await tester.pumpWidget(MaterialApp(
+        home: WelcomeStep(
+          onEmail: () {},
+          onGoogleToken: tokens.add,
+          askGoogle: () async => answer,
+        ),
+      ));
+
+      await tester.ensureVisible(find.byKey(const Key('welcome-google')));
+      await tester.tap(find.byKey(const Key('welcome-google')));
+      await tester.pump();
+      answer = null;
+      await tester.tap(find.byKey(const Key('welcome-google')));
+      await tester.pump();
+
+      expect(tokens, ['tok']);
+      expect(find.text('Sign in with Google is coming soon. For now, continue with email.'),
+          findsNothing);
+    });
+
+    testWidgets('the welcome shows why the last sign-in failed', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: WelcomeStep(
+          onEmail: () {},
+          onGoogleToken: (_) {},
+          error: 'Google did not confirm who you are.',
+        ),
+      ));
+
+      expect(find.text('Google did not confirm who you are.'), findsOneWidget);
     });
 
     test('creating an account advances like signing in', () async {
@@ -859,6 +907,15 @@ final class _FakeApi implements OnboardingApi {
   Future<void> register(String email, String password) async {
     registrations.add((email, password));
     if (registerError case final error?) throw error;
+    configured = true;
+  }
+
+  final googleTokens = <String>[];
+
+  @override
+  Future<void> signInWithGoogle(String idToken) async {
+    googleTokens.add(idToken);
+    if (signInError case final error?) throw error;
     configured = true;
   }
 }

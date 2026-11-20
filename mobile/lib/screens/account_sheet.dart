@@ -16,6 +16,7 @@ import '../services/app/spoken_answers_store.dart';
 import '../services/app/spoken_language.dart';
 import '../services/app/spoken_voice_store.dart';
 import '../services/device/device_controller.dart';
+import '../services/google_identity.dart';
 import '../services/device/phone_words.dart';
 import '../services/phone/phone_actions.dart';
 import '../services/phone/places_visited.dart';
@@ -29,6 +30,7 @@ import 'settings/appearance_settings_screen.dart';
 import 'settings/assistants_screen.dart';
 import 'settings/capabilities_screen.dart';
 import 'settings/connection_settings_screen.dart';
+import 'settings/delete_account_row.dart';
 import 'settings/devices_screen.dart';
 import 'settings/example_data_screen.dart';
 import 'settings/health_screen.dart';
@@ -567,10 +569,17 @@ class _AccountSheetState extends State<AccountSheet> {
                 appController: _appController,
                 sessionController: _sessionController,
                 onLoggedOut: widget.onRequireOnboarding ?? () {},
+                deleteWithGoogle: _account?.hasPassword == false,
                 deleteAccount: (password) async {
                   final api = (widget.apiServiceFactory ?? ApiService.new)();
                   try {
-                    await api.deleteAccount(password);
+                    if (password != null) {
+                      await api.deleteAccount(password: password);
+                    } else {
+                      final token = await GoogleIdentity.idToken();
+                      if (token == null) throw const DeletionCancelled();
+                      await api.deleteAccount(googleIdToken: token);
+                    }
                   } finally {
                     if (widget.apiServiceFactory == null) api.dispose();
                   }

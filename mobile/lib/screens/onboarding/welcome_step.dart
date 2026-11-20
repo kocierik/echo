@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/google_identity.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/echo_device_mark.dart';
+import '../../widgets/google_web_button.dart';
 
 /// The first screen: Echo catching a few spoken words and turning them into
 /// memories, and the ways in. Always on the graphite ground, whatever the theme.
@@ -11,6 +15,10 @@ final class WelcomeStep extends StatefulWidget {
   const WelcomeStep({
     required this.onEmail,
     this.notice,
+    this.onGoogleToken,
+    this.askGoogle = GoogleIdentity.idToken,
+    this.error,
+    this.busy = false,
     super.key,
   });
 
@@ -18,6 +26,16 @@ final class WelcomeStep extends StatefulWidget {
 
   /// Why the phone is here again ("This phone was signed out.").
   final String? notice;
+
+  /// Signs in with the ID token Google gave; null: no Google sign-in in this build.
+  final ValueChanged<String>? onGoogleToken;
+
+  /// Asks Google for the person's ID token (iOS); null when they cancel.
+  final Future<String?> Function() askGoogle;
+
+  /// Why the last sign-in failed.
+  final String? error;
+  final bool busy;
 
   @override
   State<WelcomeStep> createState() => _WelcomeStepState();
@@ -44,10 +62,40 @@ final class _WelcomeStepState extends State<WelcomeStep>
     }
   }
 
+  StreamSubscription<String>? _webTokens;
+  String? _googleError;
+
+  @override
+  void initState() {
+    super.initState();
+    // In the browser Google's own button signs in, and its tokens arrive here
+    if (kIsWeb && widget.onGoogleToken != null) {
+      _webTokens = GoogleIdentity.webIdTokens().listen(
+        (token) => widget.onGoogleToken?.call(token),
+        onError: (Object _) => _showGoogleError(),
+      );
+    }
+  }
+
   @override
   void dispose() {
+    _webTokens?.cancel();
     _clock.dispose();
     super.dispose();
+  }
+
+  void _showGoogleError() {
+    if (mounted) setState(() => _googleError = 'Google could not sign you in. Try again.');
+  }
+
+  Future<void> _google() async {
+    setState(() => _googleError = null);
+    try {
+      final token = await widget.askGoogle();
+      if (token != null) widget.onGoogleToken?.call(token);
+    } catch (_) {
+      _showGoogleError();
+    }
   }
 
   Future<void> _comingSoon(String provider) {
@@ -162,17 +210,43 @@ final class _WelcomeStepState extends State<WelcomeStep>
                         onPressed: () => _comingSoon('Apple'),
                       ),
                       const SizedBox(height: 10),
-                      _SignInButton(
-                        key: const Key('welcome-google'),
-                        label: 'Continue with Google',
-                        background: palette.bar,
-                        foreground: palette.text,
-                        icon: const SizedBox.square(
-                          dimension: 20,
-                          child: CustomPaint(painter: _GoogleMark()),
+                      if (widget.onGoogleToken == null)
+                        _SignInButton(
+                          key: const Key('welcome-google'),
+                          label: 'Continue with Google',
+                          background: palette.bar,
+                          foreground: palette.text,
+                          icon: const SizedBox.square(
+                            dimension: 20,
+                            child: CustomPaint(painter: _GoogleMark()),
+                          ),
+                          onPressed: () => _comingSoon('Google'),
+                        )
+                      else if (kIsWeb)
+                        Center(child: googleWebButton())
+                      else
+                        _SignInButton(
+                          key: const Key('welcome-google'),
+                          label: 'Continue with Google',
+                          background: palette.bar,
+                          foreground: palette.text,
+                          icon: const SizedBox.square(
+                            dimension: 20,
+                            child: CustomPaint(painter: _GoogleMark()),
+                          ),
+                          onPressed: widget.busy ? null : _google,
                         ),
-                        onPressed: () => _comingSoon('Google'),
-                      ),
+                      if (_googleError ?? widget.error case final error?) ...[
+                        const SizedBox(height: 10),
+                        Semantics(
+                          liveRegion: true,
+                          child: Text(
+                            error,
+                            key: const Key('welcome-error'),
+                            style: textTheme.bodyMedium?.copyWith(color: palette.red),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 4),
                       SizedBox(
                         height: 48,
@@ -435,7 +509,7 @@ final class _SignInButton extends StatelessWidget {
   final Color background;
   final Color foreground;
   final Widget icon;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

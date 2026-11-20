@@ -208,6 +208,9 @@ final class _FakeOnboardingApi implements OnboardingApi {
 
   @override
   Future<void> register(String email, String password) async {}
+
+  @override
+  Future<void> signInWithGoogle(String idToken) async {}
 }
 
 final class _FakeOnboardingPermissions implements OnboardingPermissions {
