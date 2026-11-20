@@ -93,6 +93,8 @@ final class _EchoAppShellState extends State<EchoAppShell> {
                   Positioned.fill(
                     child: MediaQuery.removePadding(
                       context: context,
+                      // This context is outside the SafeArea: drop the top it already applied
+                      removeTop: true,
                       removeBottom: true,
                       // Pushed pages clear the bar through their own bottom padding
                       child: Builder(

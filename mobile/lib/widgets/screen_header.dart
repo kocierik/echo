@@ -27,7 +27,7 @@ final class ScreenHeader extends StatelessWidget {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 16, 12),
+      padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
       child: LayoutBuilder(
         builder: (context, constraints) => Row(
           crossAxisAlignment: CrossAxisAlignment.center,

@@ -172,6 +172,34 @@ void main() {
       expect(covered, 0);
     });
 
+    testWidgets('a tab does not get the status bar inset a second time',
+        (tester) async {
+      EdgeInsets? padding;
+      await tester.pumpWidget(MediaQuery(
+        data: const MediaQueryData(
+          size: Size(390, 844),
+          padding: EdgeInsets.only(top: 47, bottom: 34),
+          viewPadding: EdgeInsets.only(top: 47, bottom: 34),
+        ),
+        child: _themed(EchoAppShell(
+          selectedIndex: 0,
+          onDestinationSelected: (_) {},
+          onAskHold: (_) {},
+          navigatorKeys: _keys(),
+          children: [
+            Builder(builder: (context) {
+              padding = MediaQuery.paddingOf(context);
+              return const SizedBox();
+            }),
+            const SizedBox(),
+            const SizedBox(),
+          ],
+        )),
+      ));
+      // The shell already sits below the status bar
+      expect(padding?.top, 0);
+    });
+
     testWidgets('does not overflow at 320 width and 1.3 text scale',
         (tester) async {
       tester.view.physicalSize = const Size(320, 640);
