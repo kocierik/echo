@@ -355,8 +355,19 @@ void main() {
     ]) {
       await openRow(tester, label);
       expect(find.text(shown), findsOneWidget, reason: label);
-      expect(find.text('ECHO DOES'), findsNothing, reason: label); // the sheet closed
     }
+  });
+
+  widgetTest('back from a settings page comes to the sheet, not the tab', (tester) async {
+    await openRow(tester, 'Activity');
+    expect(find.text('Activity route'), findsOneWidget);
+
+    // The system back on the page (its stand-in here has no bar)
+    Navigator.of(tester.element(find.text('Activity route'))).pop();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Activity route'), findsNothing);
+    expect(find.text('ECHO DOES'), findsOneWidget);
   });
 
   widgetTest('fits 320 wide at 1.3 text scale', (tester) async {

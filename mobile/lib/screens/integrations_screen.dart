@@ -214,97 +214,91 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> with WidgetsBin
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
+    // One list that scrolls: the apps on this phone, then the other apps and their search
     return Scaffold(
       backgroundColor: palette.background,
       appBar: AppBar(title: const Text('Apps')),
-      body: widget.extras.isEmpty
-          ? _body(palette)
-          : Column(
-              children: [
-                const SettingsSection('ON THIS PHONE'),
-                SettingsGroup(children: widget.extras),
-                const SettingsSection('OTHER APPS'),
-                Expanded(child: _body(palette)),
-              ],
-            ),
-    );
-  }
-
-  Widget _body(EchoPalette palette) {
-    if (_unavailable) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Text(
-            "Integrations aren't set up on the server yet. Add "
-            'COMPOSIO_API_KEY to the backend .env and restart it.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: palette.text2),
-          ),
-        ),
-      );
-    }
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: TextField(
-            controller: _searchController,
-            onChanged: _onQueryChanged,
-            onSubmitted: (_) {
-              _debounce?.cancel();
-              _load();
-            },
-            textInputAction: TextInputAction.search,
-            decoration: const InputDecoration(
-              hintText: 'Search other apps',
-              prefixIcon: Icon(Icons.search_rounded),
-            ),
-          ),
-        ),
-        Expanded(child: _list(palette)),
-      ],
-    );
-  }
-
-  Widget _list(EchoPalette palette) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: palette.text2),
+      body: Builder(builder: (context) {
+        final head = [
+          if (widget.extras.isNotEmpty) ...[
+            const SettingsSection('ON THIS PHONE'),
+            SettingsGroup(children: widget.extras),
+            const SettingsSection('OTHER APPS'),
+          ],
+          ..._otherApps(palette),
+        ];
+        final rows = _unavailable || _loading || _error != null ? const <Toolkit>[] : _toolkits;
+        // Built lazily: the other apps can be hundreds
+        return ListView.builder(
+          padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom + 24),
+          itemCount: head.length + rows.length,
+          itemBuilder: (_, i) {
+            if (i < head.length) return head[i];
+            final toolkit = rows[i - head.length];
+            return Padding(
+              key: ValueKey(toolkit.slug),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _ToolkitRow(
+                toolkit: toolkit,
+                pending: _pendingSlug == toolkit.slug,
+                onConnect: () => _connect(toolkit),
+                onDisconnect: () => _confirmDisconnect(toolkit),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _load,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-      itemCount: _toolkits.length,
-      itemBuilder: (_, i) {
-        final toolkit = _toolkits[i];
-        return _ToolkitRow(
-          key: ValueKey(toolkit.slug),
-          toolkit: toolkit,
-          pending: _pendingSlug == toolkit.slug,
-          onConnect: () => _connect(toolkit),
-          onDisconnect: () => _confirmDisconnect(toolkit),
+            );
+          },
         );
-      },
+      }),
     );
+  }
+
+  List<Widget> _otherApps(EchoPalette palette) {
+    Widget message(Widget child) => Padding(
+          padding: const EdgeInsets.fromLTRB(32, 32, 32, 0),
+          child: Center(child: child),
+        );
+    if (_unavailable) {
+      return [
+        message(Text(
+          "Integrations aren't set up on the server yet. Add "
+          'COMPOSIO_API_KEY to the backend .env and restart it.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: palette.text2),
+        )),
+      ];
+    }
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: TextField(
+          controller: _searchController,
+          onChanged: _onQueryChanged,
+          onSubmitted: (_) {
+            _debounce?.cancel();
+            _load();
+          },
+          textInputAction: TextInputAction.search,
+          decoration: const InputDecoration(
+            hintText: 'Search other apps',
+            prefixIcon: Icon(Icons.search_rounded),
+          ),
+        ),
+      ),
+      if (_loading)
+        message(const CircularProgressIndicator())
+      else if (_error != null)
+        message(Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              _error!,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: palette.text2),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: _load, child: const Text('Retry')),
+          ],
+        ))
+    ];
   }
 }
 
@@ -314,7 +308,6 @@ class _ToolkitRow extends StatelessWidget {
     required this.pending,
     required this.onConnect,
     required this.onDisconnect,
-    super.key,
   });
 
   final Toolkit toolkit;

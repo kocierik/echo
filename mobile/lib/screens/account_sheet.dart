@@ -187,12 +187,9 @@ class _AccountSheetState extends State<AccountSheet> {
     unawaited(_load());
   }
 
-  /// A row handed [_api] to a screen, which closes it when it is done (the sheet is gone by then).
-  bool _handedOn = false;
-
   @override
   void dispose() {
-    if (!_handedOn && widget.apiServiceFactory == null) _api.dispose();
+    if (widget.apiServiceFactory == null) _api.dispose();
     super.dispose();
   }
 
@@ -285,19 +282,15 @@ class _AccountSheetState extends State<AccountSheet> {
   }
 
   /// Closes the sheet, then opens a screen on the page it came from (under the tab bar).
-  Future<void> _pushBuilder(WidgetBuilder builder) async {
-    final navigator = Navigator.of(widget.pageContext);
-    _handedOn = true;
-    Navigator.of(context).pop();
-    await navigator.push(MaterialPageRoute<void>(builder: builder));
-    if (widget.apiServiceFactory == null) _api.dispose();
-  }
+  /// Opens a settings page over the sheet (the root navigator): back comes to the sheet,
+  /// not to the tab underneath.
+  Future<void> _pushBuilder(WidgetBuilder builder) =>
+      Navigator.of(context, rootNavigator: true).push(MaterialPageRoute<void>(builder: builder));
 
   Future<void> _push(Widget page) => _pushBuilder((_) => page);
 
-  /// From inside a screen the sheet opened, which outlives the sheet.
-  Future<void> _pushOnPage(Widget page) => Navigator.of(widget.pageContext)
-      .push(MaterialPageRoute<void>(builder: (_) => page));
+  /// From inside a page the sheet opened: on top of it, on the same navigator.
+  Future<void> _pushOnPage(Widget page) => _push(page);
 
   void _openDevice() {
     final pageContext = widget.pageContext;
