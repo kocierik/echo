@@ -69,5 +69,19 @@
 	<string>Echo connects to your wearable device via Bluetooth</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Echo connects to your wearable device via Bluetooth</string>
+	<!-- Sign in with Google: the iOS OAuth client, and its reversed form for the return -->
+	<key>GIDClientID</key>
+	<string>868413787971-t6lcimc1t55nk7qdlrssk0htirsppjkt.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.868413787971-t6lcimc1t55nk7qdlrssk0htirsppjkt</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
