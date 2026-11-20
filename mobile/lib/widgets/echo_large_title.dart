@@ -32,6 +32,9 @@ class EchoLargeTitlePage extends StatelessWidget {
           EchoShellInsets.bottomOf(context),
         ) +
         32;
+    // A tab's first page has no back button: its title and the account circle share one
+    // row, without the iOS bar's empty row above them. Pushed pages keep the bar (back).
+    final pushed = ModalRoute.of(context)?.canPop ?? false;
     return Scaffold(
       backgroundColor: palette.background,
       body: CustomScrollView(
@@ -39,16 +42,42 @@ class EchoLargeTitlePage extends StatelessWidget {
         physics: const BouncingScrollPhysics(
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          CupertinoSliverNavigationBar(
-            // A title that arrives late (a person's name once loaded) must replace the first
-            key: ValueKey(title),
-            largeTitle: Text(title),
-            trailing: trailing,
-            backgroundColor: palette.bar,
-            border:
-                Border(bottom: BorderSide(color: palette.border, width: 0.5)),
-          ),
-          if (onRefresh != null)
+          // The refresh control works only at the very top (or right under the iOS bar)
+          if (onRefresh != null && !pushed)
+            CupertinoSliverRefreshControl(onRefresh: onRefresh),
+          if (pushed)
+            CupertinoSliverNavigationBar(
+              // A title that arrives late (a person's name once loaded) must replace the first
+              key: ValueKey(title),
+              largeTitle: Text(title),
+              trailing: trailing,
+              backgroundColor: palette.bar,
+              border:
+                  Border(bottom: BorderSide(color: palette.border, width: 0.5)),
+            )
+          else
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
+                child: Row(children: [
+                  Expanded(
+                    child: Semantics(
+                      header: true,
+                      child: Text(
+                        title,
+                        key: const Key('large-title'),
+                        style: CupertinoTheme.of(context)
+                            .textTheme
+                            .navLargeTitleTextStyle
+                            .copyWith(color: palette.text),
+                      ),
+                    ),
+                  ),
+                  if (trailing case final action?) action,
+                ]),
+              ),
+            ),
+          if (onRefresh != null && pushed)
             CupertinoSliverRefreshControl(onRefresh: onRefresh),
           ...slivers,
           SliverToBoxAdapter(child: SizedBox(height: bottom)),

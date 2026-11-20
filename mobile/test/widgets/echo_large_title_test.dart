@@ -29,8 +29,17 @@ void main() {
     tester.view.physicalSize = const Size(600, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(
-        _app(EchoLargeTitlePage(title: 'Today', slivers: [_rows(30)])));
+    // A pushed page: it has the iOS bar, with its back button
+    await tester.pumpWidget(_app(Builder(
+      builder: (context) => TextButton(
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => EchoLargeTitlePage(title: 'Person', slivers: [_rows(30)]),
+        )),
+        child: const Text('open'),
+      ),
+    )));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
     double barHeight() =>
         (tester.renderObject(find.byType(CupertinoSliverNavigationBar))
                 as RenderSliver)
@@ -40,6 +49,23 @@ void main() {
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -200));
     await tester.pumpAndSettle();
     expect(barHeight(), lessThan(expanded - 30));
+  });
+
+  testWidgets('a tab\'s first page: title and circle on one row, nothing above', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_app(EchoLargeTitlePage(
+      title: 'Library',
+      trailing: const SizedBox(key: Key('circle'), width: 44, height: 44),
+      slivers: [_rows(3)],
+    )));
+
+    expect(find.byType(CupertinoSliverNavigationBar), findsNothing);
+    final title = tester.getRect(find.byKey(const Key('large-title')));
+    final circle = tester.getRect(find.byKey(const Key('circle')));
+    expect((title.center.dy - circle.center.dy).abs(), lessThan(4));
+    expect(title.top, lessThan(24));
   });
 
   testWidgets('pulling down runs onRefresh', (tester) async {

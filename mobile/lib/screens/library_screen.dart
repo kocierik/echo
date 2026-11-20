@@ -271,22 +271,15 @@ final class _LibraryScreenState extends State<LibraryScreen> {
       ),
     ];
 
-    return Material(
-      color: palette.background,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics()),
+    // EchoLargeTitlePage: its bottom space clears the floating tab bar, so the last
+    // tiles can be scrolled into view
+    return EchoLargeTitlePage(
+        title: 'Library',
+        trailing: widget.accountAction,
+        onRefresh: _reload,
         slivers: [
-          CupertinoSliverNavigationBar(
-            largeTitle: Text('Library', style: TextStyle(color: palette.text)),
-            automaticallyImplyLeading: false,
-            backgroundColor: palette.background,
-            border: Border(bottom: BorderSide(color: palette.border, width: 0)),
-            trailing: widget.accountAction,
-          ),
-          CupertinoSliverRefreshControl(onRefresh: _reload),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             sliver: SliverList.list(children: [
               _SearchField(onTap: _openSearch),
               const SizedBox(height: 20),
@@ -342,7 +335,6 @@ final class _LibraryScreenState extends State<LibraryScreen> {
             ]),
           ),
         ],
-      ),
     );
   }
 }
