@@ -11,10 +11,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('EchoNavBar', () {
-    testWidgets('shows Today, Library and the Ask button with semantics',
+    testWidgets('shows Today, Ask and Library with semantics',
         (tester) async {
       await tester.pumpWidget(_themed(
-        EchoNavBar(selectedIndex: 2, onSelect: (_) {}, onAskHold: (_) {}),
+        EchoNavBar(selectedIndex: 2, onSelect: (_) {}),
       ));
 
       expect(find.text('Today'), findsOneWidget);
@@ -33,8 +33,7 @@ void main() {
       expect(
         tester.getSemantics(find.byKey(const Key('echo-nav-1'))),
         matchesSemantics(
-          label: 'Ask Echo',
-          hint: 'Hold to dictate',
+          label: 'Ask',
           isButton: true,
           hasSelectedState: true,
           hasTapAction: true,
@@ -45,7 +44,7 @@ void main() {
     testWidgets('the bar says Today and Library, never Profile',
         (tester) async {
       await tester.pumpWidget(_themed(
-        EchoNavBar(selectedIndex: 0, onSelect: (_) {}, onAskHold: (_) {}),
+        EchoNavBar(selectedIndex: 0, onSelect: (_) {}),
       ));
       expect(find.bySemanticsLabel('Today'), findsOneWidget);
       expect(find.bySemanticsLabel('Library'), findsOneWidget);
@@ -60,7 +59,7 @@ void main() {
       await tester.pumpWidget(MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(2)),
         child: _themed(
-          EchoNavBar(selectedIndex: 0, onSelect: (_) {}, onAskHold: (_) {}),
+          EchoNavBar(selectedIndex: 0, onSelect: (_) {}),
         ),
       ));
       expect(tester.takeException(), isNull);
@@ -69,11 +68,11 @@ void main() {
     testWidgets('reports taps on every destination', (tester) async {
       final selected = <int>[];
       await tester.pumpWidget(_themed(
-        EchoNavBar(selectedIndex: 0, onSelect: selected.add, onAskHold: (_) {}),
+        EchoNavBar(selectedIndex: 0, onSelect: selected.add),
       ));
 
       await tester.tap(find.byKey(const Key('echo-nav-2')));
-      await tester.tap(find.byKey(const Key('echo-ask-button')));
+      await tester.tap(find.byKey(const Key('echo-nav-1')));
       await tester.tap(find.byKey(const Key('echo-nav-0')));
       expect(selected, [2, 1, 0]);
       for (final index in [0, 1, 2]) {
@@ -81,32 +80,6 @@ void main() {
         expect(size.width, greaterThanOrEqualTo(44));
         expect(size.height, greaterThanOrEqualTo(44));
       }
-    });
-
-    testWidgets('a held Ask button dictates until let go, without a tap',
-        (tester) async {
-      final holds = <bool>[];
-      var taps = 0;
-      await tester.pumpWidget(_themed(
-        EchoNavBar(
-          selectedIndex: 0,
-          onSelect: (_) => taps++,
-          onAskHold: holds.add,
-        ),
-      ));
-
-      final gesture = await tester.startGesture(
-        tester.getCenter(find.byKey(const Key('echo-ask-button'))),
-      );
-      await tester.pump(const Duration(milliseconds: 200));
-      expect(holds, isEmpty);
-      await tester.pump(AskButton.holdAfter);
-      expect(holds, [true]);
-
-      await gesture.up();
-      await tester.pump();
-      expect(holds, [true, false]);
-      expect(taps, 0);
     });
   });
 
@@ -146,7 +119,6 @@ void main() {
       Widget shell() => EchoAppShell(
             selectedIndex: 0,
             onDestinationSelected: (_) {},
-            onAskHold: (_) {},
             navigatorKeys: keys,
             children: [
               Builder(builder: (context) {
@@ -160,7 +132,7 @@ void main() {
 
       await tester.pumpWidget(_themed(shell()));
       expect(find.byType(EchoNavBar), findsOneWidget);
-      expect(covered, greaterThan(EchoNavBar.barHeight));
+      expect(covered, EchoNavBar.barHeight); // no home indicator here
 
       await tester.pumpWidget(_themed(
         MediaQuery(
@@ -184,7 +156,6 @@ void main() {
         child: _themed(EchoAppShell(
           selectedIndex: 0,
           onDestinationSelected: (_) {},
-          onAskHold: (_) {},
           navigatorKeys: _keys(),
           children: [
             Builder(builder: (context) {
@@ -212,9 +183,7 @@ void main() {
           data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
           child: EchoAppShell(
             selectedIndex: 1,
-            dictating: true,
             onDestinationSelected: (_) {},
-            onAskHold: (_) {},
             navigatorKeys: _keys(),
             children: const [SizedBox(), SizedBox(), SizedBox()],
           ),
@@ -460,7 +429,6 @@ final class _ShellHostState extends State<_ShellHost> {
       onDestinationSelected: (index) {
         setState(() => selectedIndex = index);
       },
-      onAskHold: (_) {},
       navigatorKeys: keys,
       children: [
         _RetainedTab(key: widget.retainedKey),
@@ -535,7 +503,6 @@ final class _StackHostState extends State<_StackHost> {
     return EchoAppShell(
       selectedIndex: selected,
       onDestinationSelected: (i) => setState(() => selected = i),
-      onAskHold: (_) {},
       navigatorKeys: keys,
       children: [
         Builder(

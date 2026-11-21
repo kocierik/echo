@@ -61,6 +61,8 @@
 	<string>With Places visited on, Echo notes the places where you stay 10 minutes or more, also with the iPhone in your pocket, using the iPhone's low-power visit detection. Turn it off in Profile → Places visited.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Echo uses the camera when you ask it about something in front of you.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Echo opens your photos when you choose one to ask about.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Echo needs microphone access for voice commands</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

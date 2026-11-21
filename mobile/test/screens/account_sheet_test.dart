@@ -9,7 +9,6 @@ import 'package:echo_app/models/voice.dart';
 import 'package:echo_app/models/whatsapp.dart';
 import 'package:echo_app/screens/account_sheet.dart';
 import 'package:echo_app/screens/echo_device_screen.dart';
-import 'package:echo_app/screens/settings/whatsapp_screen.dart';
 import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/app_controller.dart';
 import 'package:echo_app/services/device/device_ble_port.dart';
@@ -23,6 +22,7 @@ import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/services/phone/places_visited.dart';
 import 'package:echo_app/theme/app_theme.dart';
 import 'package:echo_app/widgets/account_button.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -106,7 +106,6 @@ void main() {
         body: Builder(
           builder: (context) => Center(
             child: AccountButton(
-              initial: name?.characters.first,
               onTap: () => showAccountSheet(
                 context,
                 appController: appController,
@@ -171,18 +170,17 @@ void main() {
     await tapRow(tester, find.text('About'));
   }
 
-  testWidgets('the sheet lists the pendant, then Echo does, You and Settings', (tester) async {
+  testWidgets('the sheet lists the pendant, then Echo, You, Your data and App', (tester) async {
     tester.view.physicalSize = const Size(1200, 8000); // every row built at once
     addTearDown(tester.view.reset);
     await pumpAccountSheet(tester);
-    const order = ['ECHO DOES', 'Routines', 'Apps', 'WhatsApp', 'Notifications', 'Spoken answers',
-        'Activity', 'YOU', 'About you', 'Voices', 'Assistants', 'Language', 'SETTINGS',
-        'Appearance', 'Privacy', 'Places visited', 'Health', 'Plan', 'Devices',
-        'Server connection', 'Diagnostics', 'What Echo can do', 'Example data', 'About'];
+    const order = ['ECHO', 'Routines', 'Assistants', 'Apps', 'Notifications', 'Spoken answers',
+        'YOU', 'About you', 'Voices', 'Language', 'YOUR DATA', 'Privacy', 'Places visited',
+        'Health', 'APP', 'Appearance', 'Devices', 'Plan', 'About'];
     final shown = tester
         .widgetList<Text>(find.descendant(of: find.byType(AccountSheet), matching: find.byType(Text)))
         .map((t) => t.data)
-        .where(order.contains)
+        .where([...order, 'WhatsApp', 'Activity', 'Server connection', 'Diagnostics'].contains)
         .toList();
     expect(shown, order);
     expect(find.byKey(const Key('account-pendant')), findsOneWidget); // the pendant card, first
@@ -195,12 +193,12 @@ void main() {
     expect(find.text('Instructions'), findsOneWidget);
   });
 
-  widgetTest('the circle shows the initial and opens the sheet', (tester) async {
+  widgetTest('the person icon opens the sheet', (tester) async {
     await pumpWithAccountButton(tester, name: 'Erik');
-    expect(find.text('E'), findsOneWidget);
+    expect(find.byIcon(CupertinoIcons.person_crop_circle), findsOneWidget);
     await tester.tap(find.bySemanticsLabel('Account'));
     await tester.pumpAndSettle();
-    expect(find.text('ECHO DOES'), findsOneWidget);
+    expect(find.text('YOUR DATA'), findsOneWidget);
   });
 
   widgetTest('the pendant card says the state, battery, segments and firmware', (tester) async {
@@ -224,7 +222,7 @@ void main() {
     await tester.tap(find.byKey(const Key('account-pendant-open')));
     await tester.pumpAndSettle();
     expect(find.byType(EchoDeviceScreen), findsOneWidget);
-    expect(find.text('ECHO DOES'), findsNothing); // the sheet closed
+    expect(find.text('YOUR DATA'), findsNothing); // the sheet closed
   });
 
   widgetTest('the Plan row names the plan and opens it', (tester) async {
@@ -238,7 +236,7 @@ void main() {
     api.plan = null;
     await pumpAccountSheet(tester);
     expect(find.byKey(const Key('account-plan')), findsNothing);
-    expect(find.text('ECHO DOES'), findsOneWidget);
+    expect(find.text('YOUR DATA'), findsOneWidget);
   });
 
   widgetTest('Places visited: off by default, in Settings', (tester) async {
@@ -268,7 +266,7 @@ void main() {
 
   widgetTest('Example data opens its switch', (tester) async {
     api.exampleData = true;
-    await pumpAccountSheet(tester);
+    await openAbout(tester);
     await tapRow(tester, find.byKey(const Key('account-example-data')));
     expect(tester.widget<Switch>(find.byKey(const Key('example-data-switch'))).value, isTrue);
   });
@@ -336,20 +334,17 @@ void main() {
     expect(find.byKey(const Key('assistants-new')), findsOneWidget);
   });
 
-  widgetTest('WhatsApp is a row of Echo does, and shows among the connected apps', (tester) async {
+  widgetTest('WhatsApp is inside Apps, and shows among the connected apps', (tester) async {
     api.whatsapp =
         const WhatsAppStatus(available: true, state: 'linked', phone: '+393330000000');
     await pumpAccountSheet(tester);
     expect(find.text('WhatsApp, Gmail, Google Calendar'), findsOneWidget);
-    await tapRow(tester, find.byKey(const Key('account-whatsapp')));
-    expect(find.byType(WhatsAppScreen), findsOneWidget);
+    expect(find.byKey(const Key('account-whatsapp')), findsNothing);
   });
 
   widgetTest('the rows open their screens', (tester) async {
     for (final (label, shown) in [
-      ('Activity', 'Activity route'),
       ('Apps', 'Integrations route'),
-      ('Diagnostics', 'Diagnostics route'),
       ('Devices', 'Devices route'),
       ('Privacy', '24 hours'),
     ]) {
@@ -358,16 +353,25 @@ void main() {
     }
   });
 
+  widgetTest('About keeps the pages opened once in a while', (tester) async {
+    await openAbout(tester);
+    for (final label in ['What Echo can do', 'Example data', 'Diagnostics', 'Server connection']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    await tapRow(tester, find.text('Diagnostics'));
+    expect(find.text('Diagnostics route'), findsOneWidget);
+  });
+
   widgetTest('back from a settings page comes to the sheet, not the tab', (tester) async {
-    await openRow(tester, 'Activity');
-    expect(find.text('Activity route'), findsOneWidget);
+    await openRow(tester, 'Devices');
+    expect(find.text('Devices route'), findsOneWidget);
 
     // The system back on the page (its stand-in here has no bar)
-    Navigator.of(tester.element(find.text('Activity route'))).pop();
+    Navigator.of(tester.element(find.text('Devices route'))).pop();
     await tester.pumpAndSettle();
 
-    expect(find.text('Activity route'), findsNothing);
-    expect(find.text('ECHO DOES'), findsOneWidget);
+    expect(find.text('Devices route'), findsNothing);
+    expect(find.text('YOUR DATA'), findsOneWidget);
   });
 
   widgetTest('fits 320 wide at 1.3 text scale', (tester) async {
@@ -394,17 +398,23 @@ void main() {
     }
   });
 
-  widgetTest('cellular toggle mutates the shared policy and persists', (tester) async {
-    await openRow(tester, 'Server connection');
+  widgetTest("cellular toggle, on the pendant's page, mutates the shared policy and persists",
+      (tester) async {
+    await pumpAccountSheet(tester);
+    await tester.tap(find.byKey(const Key('account-pendant-open')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const Key('allow-cellular-switch')), 200,
+        scrollable: find.byType(Scrollable).last);
     await tester.tap(find.byKey(const Key('allow-cellular-switch')));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(networkPolicy.allowCellular, isFalse);
     expect(preferences.getBool('echo_allow_cellular'), isFalse);
   });
 
   widgetTest('backend rejects an invalid URL before calling the API', (tester) async {
-    await openRow(tester, 'Server connection');
+    await openAbout(tester);
+    await tapRow(tester, find.text('Server connection'));
     await tester.enterText(find.byKey(const Key('server-url-field')), 'not a URL');
     await tester.enterText(find.byKey(const Key('api-key-field')), 'secret');
     await tester.tap(find.byKey(const Key('save-connection')));

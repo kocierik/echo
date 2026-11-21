@@ -300,6 +300,7 @@ class _AccountSheetState extends State<AccountSheet> {
       appController: _appController,
       deviceController: _deviceController,
       preferences: _preferences,
+      networkPolicy: _networkPolicy,
       onRequireOnboarding: widget.onRequireOnboarding,
     ));
   }
@@ -328,7 +329,7 @@ class _AccountSheetState extends State<AccountSheet> {
               onMute: _setMuted,
             ),
           ),
-          const SettingsSection('ECHO DOES'),
+          const SettingsSection('ECHO'),
           SettingsGroup(children: [
             SettingsRow(
               key: const Key('account-routines'),
@@ -342,6 +343,17 @@ class _AccountSheetState extends State<AccountSheet> {
               )),
             ),
             SettingsRow(
+              key: const Key('account-assistants'),
+              icon: Icons.smart_toy_outlined,
+              title: 'Assistants',
+              subtitle: 'Echo for work, diet, sleep, or what you choose.',
+              onTap: () => _push(AssistantsScreen(
+                api: _api,
+                documents: _api,
+                onChanged: _appController.assistantsEdited,
+              )),
+            ),
+            SettingsRow(
               icon: Icons.extension_outlined,
               title: 'Apps',
               subtitle: _appsLine == null
@@ -350,17 +362,18 @@ class _AccountSheetState extends State<AccountSheet> {
               value: _appsLine,
               onTap: () => _pushBuilder(
                 widget.integrationsBuilder ??
-                    (_) => IntegrationsScreen(extras: _phoneApps(phoneActions)),
+                    (_) => IntegrationsScreen(
+                          extras: _phoneApps(phoneActions),
+                          activity: SettingsRow(
+                            icon: Icons.history_rounded,
+                            title: 'Activity',
+                            subtitle: 'What Echo did in your apps.',
+                            onTap: () => _pushBuilder(
+                                widget.activityBuilder ?? (_) => const ActionLogScreen()),
+                          ),
+                        ),
               ),
             ),
-            if (_whatsapp case final whatsapp? when whatsapp.available)
-              SettingsRow(
-                key: const Key('account-whatsapp'),
-                icon: Icons.chat_outlined,
-                title: 'WhatsApp',
-                subtitle: whatsAppText(whatsapp),
-                onTap: () => _push(WhatsAppScreen(api: _api)),
-              ),
             SettingsRow(
               icon: Icons.notifications_none_rounded,
               title: 'Notifications',
@@ -398,13 +411,6 @@ class _AccountSheetState extends State<AccountSheet> {
                   )),
                 ),
               ),
-            SettingsRow(
-              icon: Icons.history_rounded,
-              title: 'Activity',
-              subtitle: 'What Echo did in your apps.',
-              onTap: () => _pushBuilder(
-                  widget.activityBuilder ?? (_) => const ActionLogScreen()),
-            ),
           ]),
           const SettingsSection('YOU'),
           SettingsGroup(children: [
@@ -431,17 +437,6 @@ class _AccountSheetState extends State<AccountSheet> {
               )),
             ),
             SettingsRow(
-              key: const Key('account-assistants'),
-              icon: Icons.smart_toy_outlined,
-              title: 'Assistants',
-              subtitle: 'Echo for work, diet, sleep, or what you choose.',
-              onTap: () => _push(AssistantsScreen(
-                api: _api,
-                documents: _api,
-                onChanged: _appController.assistantsEdited,
-              )),
-            ),
-            SettingsRow(
               key: const Key('account-language'),
               icon: Icons.translate_rounded,
               title: 'Language',
@@ -453,23 +448,8 @@ class _AccountSheetState extends State<AccountSheet> {
               )),
             ),
           ]),
-          const SettingsSection('SETTINGS'),
+          const SettingsSection('YOUR DATA'),
           SettingsGroup(children: [
-            ValueListenableBuilder<AppViewState>(
-              valueListenable: _appController,
-              builder: (context, state, _) => SettingsRow(
-                icon: Icons.contrast_rounded,
-                title: 'Appearance',
-                subtitle: switch (state.themePreference) {
-                  ThemePreference.system =>
-                    'System: light by day, dark at night',
-                  ThemePreference.light => 'Light',
-                  ThemePreference.dark => 'Dark',
-                },
-                onTap: () => _push(
-                    AppearanceSettingsScreen(appController: _appController)),
-              ),
-            ),
             SettingsRow(
               icon: Icons.shield_outlined,
               title: 'Privacy',
@@ -500,6 +480,31 @@ class _AccountSheetState extends State<AccountSheet> {
               subtitle: 'Sleep, steps and workouts, from the Health app.',
               onTap: () => _push(HealthScreen(api: _api)),
             ),
+          ]),
+          const SettingsSection('APP'),
+          SettingsGroup(children: [
+            ValueListenableBuilder<AppViewState>(
+              valueListenable: _appController,
+              builder: (context, state, _) => SettingsRow(
+                icon: Icons.contrast_rounded,
+                title: 'Appearance',
+                subtitle: switch (state.themePreference) {
+                  ThemePreference.system =>
+                    'System: light by day, dark at night',
+                  ThemePreference.light => 'Light',
+                  ThemePreference.dark => 'Dark',
+                },
+                onTap: () => _push(
+                    AppearanceSettingsScreen(appController: _appController)),
+              ),
+            ),
+            SettingsRow(
+              icon: Icons.devices_rounded,
+              title: 'Devices',
+              subtitle: 'Phones, and assistants that read your memory.',
+              onTap: () => _pushBuilder(
+                  widget.devicesBuilder ?? (_) => const DevicesScreen()),
+            ),
             if (_plan case final plan?)
               SettingsRow(
                 key: const Key('account-plan'),
@@ -509,48 +514,6 @@ class _AccountSheetState extends State<AccountSheet> {
                 subtitle: plan.usageLine,
                 onTap: () => _push(PlanScreen(api: _api, initial: plan)),
               ),
-            SettingsRow(
-              icon: Icons.devices_rounded,
-              title: 'Devices',
-              subtitle: 'Phones, and assistants that read your memory.',
-              onTap: () => _pushBuilder(
-                  widget.devicesBuilder ?? (_) => const DevicesScreen()),
-            ),
-            SettingsRow(
-              icon: Icons.dns_outlined,
-              title: 'Server connection',
-              subtitle: 'The Echo server, and uploads over mobile data.',
-              onTap: () => _push(ConnectionSettingsScreen(
-                networkPolicy: _networkPolicy,
-                preferences: _preferences,
-                apiServiceFactory: widget.apiServiceFactory,
-              )),
-            ),
-            SettingsRow(
-              icon: Icons.monitor_heart_outlined,
-              title: 'Diagnostics',
-              subtitle: 'Bluetooth transfers and upload messages.',
-              onTap: () => _pushBuilder(
-                widget.diagnosticsBuilder ??
-                    (_) => const DeviceMessagesScreen(),
-              ),
-            ),
-            SettingsRow(
-              icon: Icons.auto_awesome_outlined,
-              title: 'What Echo can do',
-              subtitle: 'Examples to try, by chat and by voice.',
-              onTap: () => _push(CapabilitiesScreen(
-                onAsk: _appController.requestAsk,
-                onOpenVoices: () => _pushOnPage(const VoiceSettingsScreen()),
-              )),
-            ),
-            SettingsRow(
-              key: const Key('account-example-data'),
-              icon: Icons.auto_awesome_motion_outlined,
-              title: 'Example data',
-              subtitle: 'A few example days, to see Echo filled in.',
-              onTap: () => _push(ExampleDataScreen(api: _api)),
-            ),
             SettingsRow(
               icon: Icons.info_outline_rounded,
               title: 'About',
@@ -563,6 +526,39 @@ class _AccountSheetState extends State<AccountSheet> {
                 sessionController: _sessionController,
                 onLoggedOut: widget.onRequireOnboarding ?? () {},
                 deleteWithGoogle: _account?.hasPassword == false,
+                more: [
+                  SettingsRow(
+                    icon: Icons.auto_awesome_outlined,
+                    title: 'What Echo can do',
+                    subtitle: 'Examples to try, by chat and by voice.',
+                    onTap: () => _pushOnPage(CapabilitiesScreen(
+                      onAsk: _appController.requestAsk,
+                      onOpenVoices: () => _pushOnPage(const VoiceSettingsScreen()),
+                    )),
+                  ),
+                  SettingsRow(
+                    key: const Key('account-example-data'),
+                    icon: Icons.auto_awesome_motion_outlined,
+                    title: 'Example data',
+                    subtitle: 'A few example days, to see Echo filled in.',
+                    onTap: () => _pushOnPage(ExampleDataScreen(api: _api)),
+                  ),
+                  SettingsRow(
+                    icon: Icons.monitor_heart_outlined,
+                    title: 'Diagnostics',
+                    subtitle: 'Bluetooth transfers and upload messages.',
+                    onTap: () => _pushBuilder(
+                      widget.diagnosticsBuilder ??
+                          (_) => const DeviceMessagesScreen(),
+                    ),
+                  ),
+                  SettingsRow(
+                    icon: Icons.dns_outlined,
+                    title: 'Server connection',
+                    subtitle: 'The Echo server this app talks to.',
+                    onTap: () => _pushOnPage(ConnectionSettingsScreen(apiServiceFactory: widget.apiServiceFactory)),
+                  ),
+                ],
                 deleteAccount: (password) async {
                   final api = (widget.apiServiceFactory ?? ApiService.new)();
                   try {

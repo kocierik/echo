@@ -21,7 +21,13 @@ const notConfiguredDetail = 'Composio is not configured';
 const refreshFailedMessage = "Couldn't refresh the list.";
 
 class IntegrationsScreen extends StatefulWidget {
-  const IntegrationsScreen({this.api, this.launcher, this.extras = const [], super.key});
+  const IntegrationsScreen({
+    this.api,
+    this.launcher,
+    this.extras = const [],
+    this.activity,
+    super.key,
+  });
 
   /// Injected API (not disposed by the screen); a private one is created when
   /// omitted.
@@ -30,6 +36,9 @@ class IntegrationsScreen extends StatefulWidget {
 
   /// Above the apps to connect: the phone's own apps and WhatsApp (Profile's rows).
   final List<Widget> extras;
+
+  /// What Echo did in these apps (Profile's Activity row), first.
+  final Widget? activity;
 
   @override
   State<IntegrationsScreen> createState() => _IntegrationsScreenState();
@@ -220,6 +229,10 @@ class _IntegrationsScreenState extends State<IntegrationsScreen> with WidgetsBin
       appBar: AppBar(title: const Text('Apps')),
       body: Builder(builder: (context) {
         final head = [
+          if (widget.activity case final activity?) ...[
+            const SizedBox(height: 8),
+            SettingsGroup(children: [activity]),
+          ],
           if (widget.extras.isNotEmpty) ...[
             const SettingsSection('ON THIS PHONE'),
             SettingsGroup(children: widget.extras),

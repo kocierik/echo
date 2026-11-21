@@ -36,7 +36,7 @@ void main() {
     expect(_fillBehind(tester, find.text('theirs')), palette.surface);
   });
 
-  testWidgets('the input bar is on surface and Send is the accent', (tester) async {
+  testWidgets('the input capsule is on translucent surface and Send is the accent', (tester) async {
     final c = TextEditingController(text: 'hi');
     addTearDown(c.dispose);
     await tester.pumpWidget(_app(ChatComposer(
@@ -45,22 +45,24 @@ void main() {
       onChanged: (_) {},
       onSend: () {},
     )));
-    expect(tester.widget<Material>(find.byKey(const Key('chat-composer'))).color, palette.surface);
+    final capsule = tester.widget<Container>(find.descendant(
+        of: find.byKey(const Key('chat-composer')), matching: find.byType(Container)).first);
+    expect((capsule.decoration as BoxDecoration).color, palette.surface.withValues(alpha: 0.82));
     final send = tester.widget<IconButton>(find.descendant(of: find.byKey(const Key('chat-send')), matching: find.byType(IconButton)));
     expect(send.style!.backgroundColor!.resolve({}), palette.accent);
   });
 
-  testWidgets('the Ask button is an accent fill with an onAccent icon, at rest too',
-      (tester) async {
-    await tester.pumpWidget(_app(Align(
+  testWidgets('the selected tab takes the accent, the others stay quiet', (tester) async {
+    await tester.pumpWidget(_app(const Align(
       alignment: Alignment.bottomCenter,
-      child: EchoNavBar(selectedIndex: 0, onSelect: (_) {}, onAskHold: (_) {}),
+      child: EchoNavBar(selectedIndex: 1, onSelect: _ignore),
     )));
-    final button = find.byKey(const Key('echo-ask-button'));
-    final disc = tester.widget<AnimatedContainer>(
-        find.descendant(of: button, matching: find.byType(AnimatedContainer)).first);
-    expect((disc.decoration as BoxDecoration).color, palette.accent);
-    final icon = tester.widget<Icon>(find.descendant(of: button, matching: find.byType(Icon)));
-    expect(icon.color, palette.onAccent);
+    Color? iconOf(int index) => tester
+        .widget<Icon>(find.descendant(of: find.byKey(Key('echo-nav-$index')), matching: find.byType(Icon)))
+        .color;
+    expect(iconOf(1), palette.accent);
+    expect(iconOf(0), palette.text2);
   });
 }
+
+void _ignore(int _) {}

@@ -1,13 +1,11 @@
-import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 
-/// How much of the bottom of a tab the floating navigation covers: lists and the
+/// How much of the bottom of a tab the navigation bar covers: lists and the
 /// Ask composer keep this much space free. Zero outside the shell (and in tests).
 final class EchoShellInsets extends InheritedWidget {
   const EchoShellInsets(
@@ -24,86 +22,62 @@ final class EchoShellInsets extends InheritedWidget {
       bottom != oldWidget.bottom;
 }
 
-/// The translucent bar: Today on the left, Library on the right and, in the middle,
-/// the round Ask button. A tap on it opens Ask; held, Ask dictates until let go.
+/// The translucent bar on the bottom edge: Today, Ask and Library. Dictation lives in
+/// Ask's composer (its microphone), not here.
 final class EchoNavBar extends StatelessWidget {
   const EchoNavBar({
     required this.selectedIndex,
     required this.onSelect,
-    required this.onAskHold,
-    this.dictating = false,
     super.key,
   });
 
-  static const barHeight = 66.0;
-  static const askSize = 76.0;
-
-  /// Space the bar takes above the bottom edge (its height, the Ask button rising
-  /// above it, and the gap below it).
-  static const reserved = barHeight + 20 + 24;
+  /// The bar's own height, above the home indicator.
+  static const barHeight = 52.0;
 
   /// 0 Today, 1 Ask, 2 Library.
   final int selectedIndex;
   final ValueChanged<int> onSelect;
 
-  /// True when the Ask button starts being held, false when it is let go.
-  final ValueChanged<bool> onAskHold;
-  final bool dictating;
-
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    return SizedBox(
-      height: barHeight + 30,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.bottomCenter,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(barHeight / 2),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(
-                height: barHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                decoration: BoxDecoration(
-                  color: palette.bar,
-                  // shortcut: a uniform hairline (a top-only border cannot follow the pill's radius).
-                  border: Border.all(color: palette.border, width: 0.5),
-                  borderRadius: BorderRadius.circular(barHeight / 2),
-                ),
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: palette.bar,
+            border: Border(top: BorderSide(color: palette.border, width: 0.5)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.paddingOf(context).bottom),
+            child: SizedBox(
+              height: barHeight,
+              // As iOS's tab bar: the labels grow only a little with the text size
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.2,
                 child: Row(
-                  children: [
-                    _Destination(
-                      index: 0,
-                      label: 'Today',
-                      icon: CupertinoIcons.clock,
-                      selected: selectedIndex == 0,
-                      onSelect: onSelect,
+                children: [
+                  for (final (index, label, icon) in const [
+                    (0, 'Today', CupertinoIcons.clock),
+                    (1, 'Ask', CupertinoIcons.chat_bubble),
+                    (2, 'Library', CupertinoIcons.square_stack_3d_up),
+                  ])
+                    Expanded(
+                      child: _Destination(
+                        index: index,
+                        label: label,
+                        icon: icon,
+                        selected: selectedIndex == index,
+                        onSelect: onSelect,
+                      ),
                     ),
-                    const Spacer(),
-                    _Destination(
-                      index: 2,
-                      label: 'Library',
-                      icon: CupertinoIcons.square_stack_3d_up,
-                      selected: selectedIndex == 2,
-                      onSelect: onSelect,
-                    ),
-                  ],
-                ),
+                ],
+              ),
               ),
             ),
           ),
-          Positioned(
-            top: 0,
-            child: AskButton(
-              selected: selectedIndex == 1,
-              dictating: dictating,
-              onTap: () => onSelect(1),
-              onHold: onAskHold,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -127,7 +101,7 @@ final class _Destination extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
-    final color = selected ? palette.text : palette.text2;
+    final color = selected ? palette.accent : palette.text2;
     return Semantics(
       key: Key('echo-nav-$index'),
       label: label,
@@ -138,135 +112,20 @@ final class _Destination extends StatelessWidget {
       child: InkResponse(
         onTap: () => onSelect(index),
         radius: 36,
-        child: SizedBox(
-          width: 72,
-          height: EchoNavBar.barHeight,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 22, color: color),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                maxLines: 1,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: color,
-                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The round, hardware-like Ask button. A press longer than [holdAfter] is a hold.
-final class AskButton extends StatefulWidget {
-  const AskButton({
-    required this.selected,
-    required this.dictating,
-    required this.onTap,
-    required this.onHold,
-    super.key,
-  });
-
-  static const holdAfter = Duration(milliseconds: 300);
-
-  final bool selected;
-  final bool dictating;
-  final VoidCallback onTap;
-  final ValueChanged<bool> onHold;
-
-  @override
-  State<AskButton> createState() => _AskButtonState();
-}
-
-final class _AskButtonState extends State<AskButton> {
-  Timer? _holdTimer;
-  bool _holding = false;
-  bool _pressed = false;
-
-  void _down(PointerDownEvent _) {
-    setState(() => _pressed = true);
-    _holdTimer = Timer(AskButton.holdAfter, () {
-      _holding = true;
-      unawaited(HapticFeedback.mediumImpact());
-      widget.onHold(true);
-    });
-  }
-
-  void _up(PointerEvent event) {
-    _holdTimer?.cancel();
-    setState(() => _pressed = false);
-    if (_holding) {
-      _holding = false;
-      widget.onHold(false);
-    } else if (event is PointerUpEvent) {
-      widget.onTap();
-    }
-  }
-
-  @override
-  void dispose() {
-    _holdTimer?.cancel();
-    if (_holding) widget.onHold(false);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = EchoPalette.of(context);
-    final live = widget.dictating || _holding;
-    final ring = live || widget.selected
-        ? palette.onAccent.withValues(alpha: 0.6)
-        : palette.accent;
-    return Semantics(
-      key: const Key('echo-nav-1'),
-      label: live ? 'Dictating. Let go to stop' : 'Ask Echo',
-      hint: 'Hold to dictate',
-      button: true,
-      selected: widget.selected,
-      excludeSemantics: true,
-      onTap: widget.onTap,
-      child: Listener(
-        key: const Key('echo-ask-button'),
-        onPointerDown: _down,
-        onPointerUp: _up,
-        onPointerCancel: _up,
-        child: AnimatedScale(
-          scale: _pressed ? 0.94 : 1,
-          duration: const Duration(milliseconds: 90),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: EchoNavBar.askSize,
-            height: EchoNavBar.askSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: palette.accent,
-              boxShadow: [
-                BoxShadow(color: palette.background, spreadRadius: 5),
-                if (live)
-                  BoxShadow(
-                    color: palette.accent.withValues(alpha: 0.28),
-                    spreadRadius: 14,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 24, color: color),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              maxLines: 1,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                   ),
-              ],
             ),
-            alignment: Alignment.center,
-            child: Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: ring, width: 2),
-              ),
-              alignment: Alignment.center,
-              child: Icon(Icons.mic_none_rounded,
-                  size: 26, color: palette.onAccent),
-            ),
-          ),
+          ],
         ),
       ),
     );

@@ -1,24 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
-import '../../services/app/app_lifecycle_coordinator.dart';
-import '../../services/app/network_policy.dart';
 import 'settings_components.dart';
 
 class ConnectionSettingsScreen extends StatefulWidget {
   const ConnectionSettingsScreen({
-    required this.networkPolicy,
-    required this.preferences,
     this.apiServiceFactory,
     super.key,
   });
 
-  final NetworkPolicy networkPolicy;
-  final SharedPreferences preferences;
   final ApiService Function()? apiServiceFactory;
 
   @override
@@ -65,21 +58,6 @@ class _ConnectionSettingsScreenState
       }
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _setAllowCellular(bool value) async {
-    final previous = widget.networkPolicy.allowCellular;
-    setState(() => widget.networkPolicy.setAllowCellular(value));
-    final saved = await widget.preferences.setBool(
-      AppLifecycleCoordinator.allowCellularPreferenceKey,
-      value,
-    );
-    if (!saved && mounted) {
-      setState(() {
-        widget.networkPolicy.setAllowCellular(previous);
-        _error = 'Echo could not save the network preference.';
-      });
     }
   }
 
@@ -206,21 +184,6 @@ class _ConnectionSettingsScreenState
               ],
             ),
           ),
-        const SettingsSection('NETWORK'),
-        SettingsRow(
-          icon: Icons.cell_tower_rounded,
-          title: 'Use cellular data',
-          subtitle: 'When off, uploads wait for Wi-Fi or Ethernet.',
-          trailing: Switch(
-            key: const Key('allow-cellular-switch'),
-            value: widget.networkPolicy.allowCellular,
-            onChanged: _setAllowCellular,
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(20, 12, 20, 0),
-          child: Text('Roaming access follows your system network settings.'),
-        ),
       ],
     );
   }

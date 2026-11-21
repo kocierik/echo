@@ -99,6 +99,17 @@ void main() {
       expect(service.pendingPhotoId, isNull);
     });
 
+    test("Ask's camera and photos use the phone, even with a ready wearable", () async {
+      final shot = await service.phonePhoto(fromLibrary: false, question: 'Cos\'è?');
+      final picked = await service.phonePhoto(fromLibrary: true, chatSessionId: 's1');
+
+      expect(device.takePhotos, 0);
+      expect(camera.sources, [false, true]);
+      expect(api.sources, ['phone', 'phone']);
+      expect(api.uploads.map((upload) => upload.$1), [shot.id, picked.id]);
+      expect(api.requests, [('Cos\'è?', null), (null, 's1')]);
+    });
+
     test('a cancelled camera asks nothing of the server', () async {
       device.connected = false;
       camera.cancel = true;
@@ -254,9 +265,12 @@ final class _FakeCamera implements PhoneCamera {
   int captures = 0;
   bool cancel = false;
 
+  final sources = <bool>[];
+
   @override
-  Future<Uint8List?> capture() async {
+  Future<Uint8List?> capture({bool fromLibrary = false}) async {
     captures++;
+    sources.add(fromLibrary);
     return cancel ? null : Uint8List.fromList([1, 2, 3]);
   }
 }

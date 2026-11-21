@@ -52,6 +52,10 @@ abstract interface class PhotoTaker {
   /// [PhotoUnavailableException] when the wearable cannot take one now.
   Future<PhotoInfo> takePhoto({String? question, String? chatSessionId});
 
+  /// A photo taken with the phone's camera, or picked from its library, sent as the
+  /// wearable's would be. Throws [PhotoCancelledException] when none is chosen.
+  Future<PhotoInfo> phonePhoto({required bool fromLibrary, String? question, String? chatSessionId});
+
   /// Waits until the photo is answered or failed (polling the backend).
   Future<PhotoInfo> waitForAnswer(String photoId);
 }
@@ -139,14 +143,26 @@ final class PhotoService implements PhotoTaker {
     return photo;
   }
 
+  @override
+  Future<PhotoInfo> phonePhoto({
+    required bool fromLibrary,
+    String? question,
+    String? chatSessionId,
+  }) {
+    final camera = _phoneCamera;
+    if (camera == null) throw const PhotoUnavailableException('no_camera');
+    return _takeWithPhone(camera, question, chatSessionId, fromLibrary: fromLibrary);
+  }
+
   /// The phone's camera first, so closing it leaves nothing behind; then the request
   /// and the upload, as the wearable's photo would go.
   Future<PhotoInfo> _takeWithPhone(
     PhoneCamera camera,
     String? question,
-    String? chatSessionId,
-  ) async {
-    final jpeg = await camera.capture();
+    String? chatSessionId, {
+    bool fromLibrary = false,
+  }) async {
+    final jpeg = await camera.capture(fromLibrary: fromLibrary);
     if (jpeg == null) throw const PhotoCancelledException();
     final photo = await _api.requestPhoto(
       question: question,

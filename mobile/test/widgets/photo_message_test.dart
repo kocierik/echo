@@ -101,8 +101,7 @@ void main() {
     expect(find.byType(PhotoThumbnail), findsNothing);
   });
 
-  testWidgets('the camera button is there only with a camera action',
-      (tester) async {
+  testWidgets('the + offers only what the screen can do', (tester) async {
     var taken = 0;
     final controller = TextEditingController();
     addTearDown(controller.dispose);
@@ -116,19 +115,24 @@ void main() {
         ));
 
     await tester.pumpWidget(composer());
-    expect(find.byKey(const Key('chat-camera')), findsNothing);
+    expect(find.byKey(const Key('chat-add')), findsNothing);
 
     await tester.pumpWidget(composer(onCamera: () => taken++));
+    await tester.tap(find.byKey(const Key('chat-add')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('chat-photos')), findsNothing);
     await tester.tap(find.byKey(const Key('chat-camera')));
+    await tester.pumpAndSettle();
     expect(taken, 1);
 
     await tester.pumpWidget(composer(onCamera: () => taken++, sending: true));
-    await tester.tap(find.byKey(const Key('chat-camera')));
-    expect(taken, 1); // disabled while Echo is answering
+    await tester.tap(find.byKey(const Key('chat-add')));
+    await tester.pump(const Duration(milliseconds: 500)); // the spinner never settles
+    expect(find.byKey(const Key('chat-camera')), findsNothing); // disabled while Echo answers
   });
 
-  testWidgets('a document can be added beside the camera', (tester) async {
-    var added = 0;
+  testWidgets('the + menu has Camera, Photos, Files and Apps', (tester) async {
+    final picked = <String>[];
     final controller = TextEditingController();
     addTearDown(controller.dispose);
 
@@ -137,12 +141,41 @@ void main() {
       sending: false,
       onChanged: (_) {},
       onSend: () {},
-      onCamera: () {},
-      onDocument: () => added++,
+      onCamera: () => picked.add('camera'),
+      onPhotos: () => picked.add('photos'),
+      onDocument: () => picked.add('files'),
+      onApps: () => picked.add('apps'),
     )));
-    await tester.tap(find.byKey(const Key('chat-document')));
+    for (final item in ['camera', 'photos', 'files', 'apps']) {
+      await tester.tap(find.byKey(const Key('chat-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(Key('chat-$item')));
+      await tester.pumpAndSettle();
+    }
 
-    expect(added, 1);
-    expect(find.byKey(const Key('chat-camera')), findsOneWidget);
+    expect(picked, ['camera', 'photos', 'files', 'apps']);
+  });
+
+  testWidgets('the microphone dictates, and becomes Send once there is text', (tester) async {
+    var dictated = 0;
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    Widget composer() => _app(ChatComposer(
+          controller: controller,
+          sending: false,
+          onChanged: (_) {},
+          onSend: () {},
+          onDictate: () => dictated++,
+        ));
+
+    await tester.pumpWidget(composer());
+    await tester.tap(find.byKey(const Key('chat-dictate')));
+    expect(dictated, 1);
+    expect(find.byKey(const Key('chat-send')), findsNothing);
+
+    controller.text = 'Cosa devo fare domani';
+    await tester.pumpWidget(composer());
+    expect(find.byKey(const Key('chat-send')), findsOneWidget);
+    expect(find.byKey(const Key('chat-dictate')), findsNothing);
   });
 }

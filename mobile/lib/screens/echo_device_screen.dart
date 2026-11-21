@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/device_status.dart';
 import '../services/app/app_controller.dart';
+import '../services/app/app_lifecycle_coordinator.dart';
+import '../services/app/network_policy.dart';
 import '../services/app/app_runtime.dart';
 import '../services/onboarding/onboarding_controller.dart';
 import '../services/device/device_controller.dart';
@@ -22,6 +24,7 @@ Future<void> openEchoDevice(
   required AppController appController,
   DeviceController? deviceController,
   SharedPreferences? preferences,
+  NetworkPolicy? networkPolicy,
   VoidCallback? onRequireOnboarding,
 }) async {
   final coordinator = AppRuntime.maybeCoordinator;
@@ -35,6 +38,7 @@ Future<void> openEchoDevice(
       resetOnboarding: () => clearOnboardingProgress(prefs),
       onRequireOnboarding: onRequireOnboarding,
       firmwareUpdate: coordinator?.firmwareUpdate,
+      networkPolicy: networkPolicy ?? coordinator?.networkPolicy,
     ),
   ));
 }
@@ -62,6 +66,7 @@ class EchoDeviceScreen extends StatefulWidget {
     this.onForgot,
     this.onRequireOnboarding,
     this.firmwareUpdate,
+    this.networkPolicy,
     super.key,
   });
 
@@ -73,6 +78,9 @@ class EchoDeviceScreen extends StatefulWidget {
 
   /// Null in tests that do not exercise updates.
   final FirmwareUpdateController? firmwareUpdate;
+
+  /// Whether what Echo heard uploads over cellular data; no switch without it.
+  final NetworkPolicy? networkPolicy;
 
   @override
   State<EchoDeviceScreen> createState() => _EchoDeviceScreenState();
@@ -101,6 +109,23 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
       if (saved != null && mounted) setState(() => _micGain = saved);
     } catch (_) {
       // No saved gain: the default, as on Echo
+    }
+  }
+
+  /// Off: what Echo heard waits for Wi-Fi. Kept across restarts.
+  Future<void> _setAllowCellular(NetworkPolicy policy, bool value) async {
+    final previous = policy.allowCellular;
+    setState(() => policy.setAllowCellular(value));
+    var saved = false;
+    try {
+      saved = await (await SharedPreferences.getInstance())
+          .setBool(AppLifecycleCoordinator.allowCellularPreferenceKey, value);
+    } catch (_) {}
+    if (!saved && mounted) {
+      setState(() {
+        policy.setAllowCellular(previous);
+        _error = 'Echo could not save the network preference.';
+      });
     }
   }
 
@@ -352,6 +377,17 @@ class _EchoDeviceScreenState extends State<EchoDeviceScreen> {
                 icon: Icons.sd_card_outlined,
                 title: 'microSD',
                 subtitle: microSdLabel(status.microSd!),
+              ),
+            if (widget.networkPolicy case final policy?)
+              SettingsRow(
+                icon: Icons.cell_tower_rounded,
+                title: 'Upload over cellular data',
+                subtitle: 'When off, what Echo heard waits for Wi-Fi.',
+                trailing: Switch(
+                  key: const Key('allow-cellular-switch'),
+                  value: policy.allowCellular,
+                  onChanged: (value) => unawaited(_setAllowCellular(policy, value)),
+                ),
               ),
             if (reconnectAvailable) ...[
               const SettingsSection('CONNECTION'),

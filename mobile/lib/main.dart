@@ -400,9 +400,6 @@ class _MainShellState extends State<MainShell> {
   /// One navigator per tab; Library's takes the pages the requests open.
   final tabNavigators = List.generate(3, (_) => GlobalKey<NavigatorState>());
 
-  /// The user's initial, on every circle: their name, else their email.
-  String? _initial;
-
   /// One server connection and one memory for Today and the Library.
   final ApiService _api = ApiService();
   late final MemoriesController _memories = MemoriesController(api: _api);
@@ -414,22 +411,8 @@ class _MainShellState extends State<MainShell> {
     widget.appController.pendingChatSessionId.addListener(_showAskFirstPage);
     widget.appController.pendingChatQuestion.addListener(_showAskFirstPage);
     widget.appController.topRequests.addListener(_showTabTop);
-    unawaited(_loadInitial());
   }
 
-  Future<void> _loadInitial() async {
-    ApiService? api;
-    try {
-      api = (widget.apiServiceFactory ?? ApiService.new)();
-      final account = await api.me();
-      final who = account.name ?? account.email;
-      if (mounted && who != null) setState(() => _initial = who);
-    } catch (_) {
-      // No circle letter is fine
-    } finally {
-      if (widget.apiServiceFactory == null) api?.dispose();
-    }
-  }
 
   /// A session or a question asked for lands on Ask's first page, never under History
   /// or a saved item left open there.
@@ -462,7 +445,6 @@ class _MainShellState extends State<MainShell> {
   /// The user's circle: opens the account sheet.
   Widget _account() => Builder(
         builder: (context) => AccountButton(
-          initial: _initial,
           onTap: () => showAccountSheet(
             context,
             appController: widget.appController,
@@ -555,15 +537,11 @@ class _MainShellState extends State<MainShell> {
                   : () => unawaited(_toggleMute(context, state.device)),
             );
             return Scaffold(
-              body: ValueListenableBuilder<bool>(
-                valueListenable: widget.appController.askDictation,
-                builder: (context, dictating, _) => EchoAppShell(
+              body: EchoAppShell(
                   selectedIndex: state.selectedTab,
-                  dictating: dictating,
                   onDestinationSelected: (index) {
                     unawaited(widget.appController.setSelectedTab(index));
                   },
-                  onAskHold: widget.appController.setAskDictation,
                   navigatorKeys: tabNavigators,
                   children: [
                     HomeScreen(
@@ -590,6 +568,7 @@ class _MainShellState extends State<MainShell> {
                       headerAction: pill,
                       accountAction: _account(),
                       dictation: widget.appController.askDictation,
+                      onDictate: widget.appController.setAskDictation,
                       openSessionRequest: widget.appController.pendingChatSessionId,
                       composerFocusRequest: widget.appController.composerFocusRequest,
                       threadUpdates: widget.appController.threadUpdates,
@@ -621,7 +600,6 @@ class _MainShellState extends State<MainShell> {
                     ),
                   ],
                 ),
-              ),
             );
           },
         ),

@@ -529,9 +529,10 @@ final class ChatController extends ChangeNotifier {
     await send(request);
   }
 
-  /// The camera button: the wearable takes a photo; the text in the composer, if
-  /// any, is the question about it. The answer is loaded with the photo.
-  Future<void> takePhoto() async {
+  /// Camera or Photos in the + menu: the phone's camera, or a photo from its library;
+  /// the text in the composer, if any, is the question about it. The answer is loaded
+  /// with the photo.
+  Future<void> takePhoto({bool fromLibrary = false}) async {
     final taker = _photoTaker;
     if (taker == null || _state.sending) return;
     final generation = _generation;
@@ -551,7 +552,8 @@ final class ChatController extends ChangeNotifier {
     ));
 
     try {
-      final photo = await taker.takePhoto(
+      final photo = await taker.phonePhoto(
+        fromLibrary: fromLibrary,
         question: question.isEmpty ? null : question,
         chatSessionId: _state.sessionId,
       );

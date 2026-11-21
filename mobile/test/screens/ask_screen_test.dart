@@ -293,6 +293,20 @@ void main() {
     expect(find.byKey(const Key('chat-send')), findsOneWidget);
   });
 
+  testWidgets("the composer's microphone dictates, and Done stops it", (tester) async {
+    final harness = _Harness();
+    await harness.pump(tester);
+
+    await tester.tap(find.byKey(const Key('chat-dictate')));
+    await tester.pump();
+    expect(find.byKey(const Key('dictation-panel')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dictation-done')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('dictation-panel')), findsNothing);
+    expect(harness.controller.state.composerText, 'ciao Echo');
+  });
+
   testWidgets('Send shows only with something to send; buttons are 44 or more',
       (tester) async {
     final harness = _Harness();

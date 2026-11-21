@@ -63,12 +63,13 @@ void main() {
     launched = [];
   });
 
-  Future<void> pumpScreen(WidgetTester tester) async {
+  Future<void> pumpScreen(WidgetTester tester, {Widget? activity}) async {
     await tester.pumpWidget(MaterialApp(
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       home: IntegrationsScreen(
         api: api,
+        activity: activity,
         launcher: (uri) async {
           launched.add(uri);
           return true;
@@ -96,6 +97,12 @@ void main() {
     expect(find.text('Connected'), findsOneWidget);
     expect(find.text('Connect'), findsNWidgets(5));
     expect(find.text('Search other apps'), findsOneWidget);
+  });
+
+  testWidgets('Activity, when given, comes before the apps', (tester) async {
+    await pumpScreen(tester, activity: const Text('Activity'));
+    expect(tester.getTopLeft(find.text('Activity')).dy,
+        lessThan(tester.getTopLeft(find.text('Gmail')).dy));
   });
 
   testWidgets('Connect opens the returned URL and reloads on resume',

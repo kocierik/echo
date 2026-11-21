@@ -30,6 +30,7 @@ import '../utils/chat_suggestions.dart';
 import '../utils/formatting.dart';
 import 'chat_history_screen.dart';
 import 'conversation_detail_screen.dart';
+import 'integrations_screen.dart';
 import 'routine_runs_view.dart';
 import 'saved_item_screen.dart';
 
@@ -46,6 +47,7 @@ final class ChatScreen extends StatefulWidget {
     this.headerAction,
     this.accountAction,
     this.dictation,
+    this.onDictate,
     this.threadUpdates,
     this.assistantsChanged,
     this.askView,
@@ -66,10 +68,14 @@ final class ChatScreen extends StatefulWidget {
   /// The user's circle, beside the pill.
   final Widget? accountAction;
 
-  /// True while the navigation's Ask button is held: dictate into the question.
+  /// True while dictating into the question (the app's, so the phone stops talking).
   final ValueListenable<bool>? dictation;
 
-  /// The wearable camera; no camera button without it.
+  /// Starts (true) or stops (false) dictation through the app; without it the
+  /// microphone dictates on its own.
+  final ValueChanged<bool>? onDictate;
+
+  /// Photos from the phone's camera and library; no Camera or Photos without it.
   final PhotoTaker? photoTaker;
   final ChatApi? api;
   final VoiceInput? voiceInput;
@@ -278,6 +284,25 @@ final class _ChatScreenState extends State<ChatScreen> {
     _dictating = holding;
     unawaited(holding ? _controller.startVoice() : _controller.stopVoice());
   }
+
+  /// The composer's microphone, and Done while dictating.
+  void _dictate(bool on) {
+    final set = widget.onDictate;
+    if (set == null) {
+      unawaited(on ? _controller.startVoice() : _controller.stopVoice());
+      return;
+    }
+    // A dictation that ended by itself is still on in the app: reset it first
+    if (on && (widget.dictation?.value ?? false)) set(false);
+    set(on);
+  }
+
+  Future<void> _openApps() => Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => IntegrationsScreen(api: switch (_api) {
+          final ApiService api => api,
+          _ => null,
+        }),
+      ));
 
   void _onAskRequest() {
     final request = widget.askRequest;
@@ -534,68 +559,126 @@ final class _ChatScreenState extends State<ChatScreen> {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final routinesApi = _routinesApi;
     final routines = routinesApi != null && _view.value == AskView.routines;
+    final working = [
+      if (!routines && state.isThread)
+        for (final item in _working)
+          // Not what was asked in another chat (a photo asked about there)
+          if (item.sessionId == null || item.sessionId == state.sessionId) _WorkingBubble(item),
+      if (!routines && state.photoContext != null && !state.listening)
+        _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
+    ];
     return Scaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: palette.background,
-      body: SafeArea(
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          // Above the keyboard, or above the navigation bar
-          padding: EdgeInsets.only(
-            bottom: keyboardInset > 0 ? keyboardInset : EchoShellInsets.bottomOf(context),
-          ),
-          child: Column(
-            children: [
-              ScreenHeader(
-                title: 'Ask',
-                actions: [
-                  if (!routines) ...[
-                    HeaderIconButton(
-                      key: const Key('chat-history'),
-                      icon: CupertinoIcons.clock,
-                      tooltip: 'Chat history',
-                      onPressed: () => unawaited(_openHistory()),
-                    ),
-                    HeaderIconButton(
-                      key: const Key('chat-new'),
-                      icon: CupertinoIcons.add,
-                      tooltip: 'New chat',
-                      onPressed: _newChat,
-                    ),
-                  ],
-                  if (widget.headerAction != null) widget.headerAction!,
-                  if (widget.accountAction != null) widget.accountAction!,
-                ],
+      // The messages run on under the composer; their list keeps its height free
+      extendBody: true,
+      bottomNavigationBar: routines
+          ? null
+          : AnimatedPadding(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOut,
+              // Above the keyboard, or above the navigation bar
+              padding: EdgeInsets.only(
+                bottom: keyboardInset > 0 ? keyboardInset : EchoShellInsets.bottomOf(context),
               ),
-              if (routinesApi != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: SegmentedButton<AskView>(
-                      key: const Key('ask-view'),
-                      showSelectedIcon: false,
-                      segments: const [
-                        ButtonSegment(value: AskView.chat, label: Text('Chat')),
-                        ButtonSegment(value: AskView.routines, label: Text('Routines')),
-                      ],
-                      selected: {_view.value},
-                      onSelectionChanged: (selected) => _view.value = selected.first,
-                    ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [palette.background.withValues(alpha: 0), palette.background],
+                    stops: const [0, 0.6],
                   ),
                 ),
-              // Echo and each assistant, one tap away; each with its own history
-              if (!routines && _assistants.isNotEmpty)
-                _AssistantSwitcher(
-                  assistants: _assistants,
-                  selected: state.assistant?.id,
-                  onSelected: (choice) => unawaited(_controller.openAssistant(choice)),
-                )
-              else if (!routines && state.assistant != null && state.messages.isNotEmpty)
-                _AssistantBar(state.assistant!),
-              if (routines)
-                Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ...working,
+                    if (state.listening)
+                      DictationPanel(text: state.composerText, onStop: () => _dictate(false))
+                    else
+                      ChatComposer(
+                        focusNode: _composerFocus,
+                        hintText: state.photoContext != null
+                            ? 'Ask about this photo'
+                            : 'Ask about your day',
+                        controller: _textController,
+                        sending: state.sending,
+                        enabled: !state.loadingSession,
+                        onChanged: _controller.setComposerText,
+                        onSend: _send,
+                        onCamera: _controller.canTakePhotos
+                            ? () => unawaited(_controller.takePhoto())
+                            : null,
+                        onPhotos: _controller.canTakePhotos
+                            ? () => unawaited(_controller.takePhoto(fromLibrary: true))
+                            : null,
+                        onDocument: switch (_api) {
+                          final DocumentsApi documents => () => unawaited(_addDocument(documents)),
+                          _ => null,
+                        },
+                        onApps: () => unawaited(_openApps()),
+                        onDictate: () => _dictate(true),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            ScreenHeader(
+              title: 'Ask',
+              actions: [
+                if (!routines) ...[
+                  HeaderIconButton(
+                    key: const Key('chat-history'),
+                    icon: CupertinoIcons.clock,
+                    tooltip: 'Chat history',
+                    onPressed: () => unawaited(_openHistory()),
+                  ),
+                  HeaderIconButton(
+                    key: const Key('chat-new'),
+                    icon: CupertinoIcons.add,
+                    tooltip: 'New chat',
+                    onPressed: _newChat,
+                  ),
+                ],
+                if (widget.headerAction != null) widget.headerAction!,
+                if (widget.accountAction != null) widget.accountAction!,
+              ],
+            ),
+            if (routinesApi != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<AskView>(
+                    key: const Key('ask-view'),
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(value: AskView.chat, label: Text('Chat')),
+                      ButtonSegment(value: AskView.routines, label: Text('Routines')),
+                    ],
+                    selected: {_view.value},
+                    onSelectionChanged: (selected) => _view.value = selected.first,
+                  ),
+                ),
+              ),
+            // Echo and each assistant, one tap away; each with its own history
+            if (!routines && _assistants.isNotEmpty)
+              _AssistantSwitcher(
+                assistants: _assistants,
+                selected: state.assistant?.id,
+                onSelected: (choice) => unawaited(_controller.openAssistant(choice)),
+              )
+            else if (!routines && state.assistant != null && state.messages.isNotEmpty)
+              _AssistantBar(state.assistant!),
+            if (routines)
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: EchoShellInsets.bottomOf(context)),
                   child: RoutineRunsView(
                     api: routinesApi,
                     routineId: _filter.value,
@@ -603,45 +686,24 @@ final class _ChatScreenState extends State<ChatScreen> {
                     onAskAbout: _askAbout,
                     changes: widget.routineRunsChanged,
                   ),
-                )
-              else
-                Expanded(child: _messageArea(state, palette)),
-              if (!routines && state.isThread)
-                for (final item in _working)
-                  // Not what was asked in another chat (a photo asked about there)
-                  if (item.sessionId == null || item.sessionId == state.sessionId)
-                    _WorkingBubble(item),
-              if (!routines && state.photoContext != null && !state.listening)
-                _PhotoContextChip(onClear: () => _controller.setPhotoContext(null)),
-              if (routines)
-                const SizedBox.shrink()
-              else if (state.listening)
-                DictationPanel(text: state.composerText)
-              else
-                ChatComposer(
-                  focusNode: _composerFocus,
-                  hintText:
-                      state.photoContext != null ? 'Ask about this photo' : 'Ask about your day',
-                  controller: _textController,
-                  sending: state.sending,
-                  enabled: !state.loadingSession,
-                  onChanged: _controller.setComposerText,
-                  onSend: _send,
-                  onCamera:
-                      _controller.canTakePhotos ? () => unawaited(_controller.takePhoto()) : null,
-                  onDocument: switch (_api) {
-                    final DocumentsApi documents => () => unawaited(_addDocument(documents)),
-                    _ => null,
-                  },
                 ),
-            ],
-          ),
+              )
+            else
+              // Inside the Scaffold: its padding includes the composer floating over the list
+              Expanded(
+                child: Builder(
+                  builder: (inner) =>
+                      _messageArea(state, palette, MediaQuery.paddingOf(inner).bottom),
+                ),
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _messageArea(ChatState state, EchoPalette palette) {
+  /// [clear]: the height of the composer over the list's end, kept free.
+  Widget _messageArea(ChatState state, EchoPalette palette, double clear) {
     if (state.loadingSession) {
       return Center(
         key: const Key('chat-session-loading'),
@@ -655,7 +717,7 @@ final class _ChatScreenState extends State<ChatScreen> {
     if (state.messages.isEmpty) {
       final assistant = state.assistant;
       return ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + clear),
         children: [
           Text(
             assistant == null ? 'Ask what your memory knows' : assistant.label,
@@ -673,8 +735,8 @@ final class _ChatScreenState extends State<ChatScreen> {
           const SizedBox(height: 6),
           Text(
             _controller.canTakePhotos
-                ? 'Hold the Ask button to dictate. The camera asks Echo about what you see.'
-                : 'Hold the Ask button to dictate.',
+                ? 'Tap the microphone to dictate. With + you ask about a photo or add a file.'
+                : 'Tap the microphone to dictate.',
             key: const Key('chat-input-hint'),
             style: Theme.of(context).textTheme.bodySmall,
           ),
@@ -719,7 +781,8 @@ final class _ChatScreenState extends State<ChatScreen> {
       controller: _scrollController,
       // Opens on the latest message, however long the thread
       reverse: true,
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      // Under the composer: the latest message starts above it
+      padding: EdgeInsets.only(top: 6, bottom: 6 + clear),
       itemCount: count,
       itemBuilder: (context, fromEnd) {
         final row = count - 1 - fromEnd;

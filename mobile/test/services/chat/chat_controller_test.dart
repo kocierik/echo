@@ -879,10 +879,21 @@ final class _FakePhotoTaker implements PhotoTaker {
   final questions = <String?>[];
   Object? error;
 
+  final fromLibrary = <bool>[];
+
   @override
-  Future<PhotoInfo> takePhoto({String? question, String? chatSessionId}) async {
+  Future<PhotoInfo> takePhoto({String? question, String? chatSessionId}) =>
+      throw UnimplementedError('Ask uses the phone');
+
+  @override
+  Future<PhotoInfo> phonePhoto({
+    required bool fromLibrary,
+    String? question,
+    String? chatSessionId,
+  }) async {
     if (error != null) throw error!;
     questions.add(question);
+    this.fromLibrary.add(fromLibrary);
     return PhotoInfo(id: 'p1', status: 'requested', chatSessionId: chatSessionId ?? 'voice');
   }
 

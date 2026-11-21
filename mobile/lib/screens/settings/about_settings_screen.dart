@@ -13,6 +13,7 @@ class AboutSettingsScreen extends StatelessWidget {
     required this.onLoggedOut,
     this.deleteAccount,
     this.deleteWithGoogle = false,
+    this.more = const [],
     super.key,
   });
 
@@ -26,6 +27,9 @@ class AboutSettingsScreen extends StatelessWidget {
 
   /// The account has no password: Google confirms the deletion.
   final bool deleteWithGoogle;
+
+  /// Pages opened once in a while (examples, diagnostics, the server), after the app's.
+  final List<Widget> more;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +51,10 @@ class AboutSettingsScreen extends StatelessWidget {
             applicationVersion: '0.1.0',
           ),
         ),
+        if (more.isNotEmpty) ...[
+          const SettingsSection('MORE'),
+          ...more,
+        ],
         const SettingsSection('ACCOUNT'),
         LogoutRow(sessionController: sessionController, onLoggedOut: onLoggedOut),
         if (deleteAccount case final delete?)

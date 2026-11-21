@@ -174,21 +174,13 @@ void main() {
     expect(ask.canPop(), isFalse);
   });
 
-  testWidgets("the circle in Today shows the user's initial", (tester) async {
+  testWidgets('Today has the person icon for account and settings', (tester) async {
     await pumpShell(tester, account: const AccountInfo(email: 'a@x.io', language: 'en', name: 'Erik'));
 
     expect(
-      find.descendant(
-          of: find.byType(HomeScreen),
-          matching: find.descendant(of: find.byType(AccountButton), matching: find.text('E'))),
+      find.descendant(of: find.byType(HomeScreen), matching: find.byType(AccountButton)),
       findsOneWidget,
     );
-  });
-
-  testWidgets('without a name the email gives the initial', (tester) async {
-    await pumpShell(tester, account: const AccountInfo(email: 'marta@x.io', language: 'en'));
-
-    expect(find.text('M'), findsOneWidget); // Today's circle; the other tabs are offstage
   });
 }
 

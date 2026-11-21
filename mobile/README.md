@@ -57,7 +57,7 @@ flutter run --dart-define-from-file=dart_defines.json
 flutter build ios --dart-define-from-file=dart_defines.json
 ```
 
-No key is ever compiled in. Settings → Server connection can point a development build elsewhere.
+No key is ever compiled in. Settings → About → Server connection can point a development build elsewhere.
 
 To try the app without signing in each time, a **debug** build can sign in by itself with a test
 account: create it on the server (`make create-user EMAIL=test@example.com NEW=1`), copy
@@ -72,8 +72,8 @@ request ("Echo, remind me to …") and its answer.
 
 ## Features
 
-- **Three tabs, Today | Ask | Memories**, with the round Ask button in the middle (hold it to dictate a
-  question) and the device pill in every header (tap: Settings; long press: mute).
+- **Three tabs, Today | Ask | Library**, in a bar on the bottom edge; the device pill in the headers
+  (tap: the Echo screen; long press: mute) and the person icon (account and settings).
 - **Today:** the device only when something is wrong (offline, not paired, Bluetooth off); **Needs
   you** with actions waiting for a Confirm (voice requests too); **To do today** (promises and tasks,
   at most three; the Tasks page from there); **Your day**, today's conversations on a timeline;
@@ -88,19 +88,21 @@ request ("Echo, remind me to …") and its answer.
   up in, and **Ask about** them (a new chat with the question already sent).
 - **Tasks:** open tasks by due day (Overdue, Today, Tomorrow, This week, Later, No date), complete
   with Undo, **Not a task** to drop a wrong one, open the conversation it came from; Done below.
-- **Ask:** chat with your memory (text or voice) in any language; the answer appears while Echo
+- **Ask:** chat with your memory (text, or the microphone in the box) in any language; the + adds a
+  photo from the camera or the library, a file, or an app to connect; the answer appears while Echo
   writes it; sources say which conversation they come from and open it; suggestions come from
   your latest conversations and people; follow-ups, resumable history, feedback;
   requests to connected apps with Confirm/Cancel cards; the pinned **Voice requests**
   conversation collects answers to "Echo, …" requests spoken to the wearable.
-- **Settings:** the device at the top (Mute Echo, Device details), Apps (Composio), On this iPhone,
-  Activity, Notifications, Voices, Language (the language you speak: transcription and
-  dictation; the other languages you hear, recognised and translatable), Spoken answers (Off, Headphones, Always: the phone reads answers to "Echo, …"
-  aloud), Appearance (System, Light, Dark), Privacy, What Echo can do,
-  Server connection (Wi-Fi only uploads), Diagnostics, Devices (signed-in phones; connected apps:
+- **Settings:** the device at the top (Mute Echo; its page has uploads over cellular data).
+  **Echo:** Routines, Assistants, Apps (Activity, On this iPhone, WhatsApp, Composio), Notifications,
+  Spoken answers (Off, Headphones, Always: the phone reads answers to "Echo, …" aloud).
+  **You:** About you, Voices, Language (the language you speak: transcription and dictation; the
+  other languages you hear, recognised and translatable). **Your data:** Privacy, Places visited,
+  Health. **App:** Appearance (System, Light, Dark), Devices (signed-in phones; connected apps:
   **Connect an assistant** gives Claude Code or Cursor a read-only key and the lines to paste;
-  revoke either), About
-  (sign out).
+  revoke either), Plan, About (What Echo can do, Example data, Diagnostics, Server connection,
+  sign out, delete account).
 - BLE relay with automatic reconnect and iOS state restoration; local notifications
   for disconnection, audio loss, repeated upload failures and new voice-request answers
   (shown the next time the app wakes up).

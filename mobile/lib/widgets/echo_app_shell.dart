@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 
@@ -8,16 +6,14 @@ import '../theme/app_theme.dart';
 import 'echo_nav_bar.dart';
 import 'offline_banner.dart';
 
-/// The three tabs under the floating navigation. Each tab draws its own header
+/// The three tabs above the navigation bar. Each tab draws its own header
 /// (with the device pill); the bar hides while the keyboard is up.
 final class EchoAppShell extends StatefulWidget {
   const EchoAppShell({
     required this.selectedIndex,
     required this.onDestinationSelected,
-    required this.onAskHold,
     required this.children,
     required this.navigatorKeys,
-    this.dictating = false,
     super.key,
   })  : assert(selectedIndex >= 0 && selectedIndex < AppViewState.tabCount),
         assert(children.length == AppViewState.tabCount),
@@ -25,8 +21,6 @@ final class EchoAppShell extends StatefulWidget {
 
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
-  final ValueChanged<bool> onAskHold;
-  final bool dictating;
   final List<Widget> children;
 
   /// One navigator per tab: pages opened in a tab stay in it, under the bar.
@@ -74,12 +68,8 @@ final class _EchoAppShellState extends State<EchoAppShell> {
     final palette = EchoPalette.of(context);
     final media = MediaQuery.of(context);
     final keyboardUp = media.viewInsets.bottom > 0;
-    // The bar sits just above the home indicator (or 16 pt from the edge)
-    final barBottom = media.padding.bottom > 0
-        ? math.max(media.padding.bottom - 6, 12.0)
-        : 16.0;
-    final covered =
-        keyboardUp ? 0.0 : barBottom + EchoNavBar.barHeight + 30 + 8;
+    // The bar sits on the bottom edge, over the home indicator's strip
+    final covered = keyboardUp ? 0.0 : EchoNavBar.barHeight + media.padding.bottom;
     return ColoredBox(
       color: palette.background,
       child: SafeArea(
@@ -139,14 +129,12 @@ final class _EchoAppShellState extends State<EchoAppShell> {
                   ),
                   if (!keyboardUp)
                     Positioned(
-                      left: 16,
-                      right: 16,
-                      bottom: barBottom,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       child: EchoNavBar(
                         selectedIndex: widget.selectedIndex,
                         onSelect: _select,
-                        onAskHold: widget.onAskHold,
-                        dictating: widget.dictating,
                       ),
                     ),
                 ],
