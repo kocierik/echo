@@ -23,6 +23,8 @@
     {"id": "todo-named-app", "request": "Aggiungi su Todoist: comprare il latte", "first": ["TODOIST_CREATE_TASK"]},
     {"id": "saved-wine-it", "request": "Tienimi questo vino: Nebbiolo di Gattinara, l'abbiamo bevuto ieri sera", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Vini"}},
     {"id": "saved-parking-it", "request": "Ricorda dove ho lasciato la macchina", "first": ["ECHO_SAVE_ITEM"], "args": {"with_place": true}},
+    {"id": "saved-this-place-it", "request": "Echo, salvami questo posto", "first": ["ECHO_SAVE_ITEM"], "args": {"with_place": true}},
+    {"id": "saved-where-i-am-it", "request": "Salva il posto in cui mi trovo adesso", "first": ["ECHO_SAVE_ITEM"], "args": {"with_place": true}},
     {"id": "saved-object-it", "request": "Le chiavi di riserva le ho messe nella scatola blu in corridoio, tienilo a mente", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Dove sono le cose"}, "not_args": {"with_place": true}},
     {"id": "saved-book-en", "request": "Keep this book for me: Project Hail Mary, Ada loved it", "first": ["ECHO_SAVE_ITEM"], "args": {"list": "Books"}},
     {"id": "saved-receipt-en", "request": "Save this receipt: 23.40 euros at Carrefour", "first": ["ECHO_SAVE_ITEM"]},

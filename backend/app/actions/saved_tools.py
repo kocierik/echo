@@ -76,7 +76,9 @@ _THING_PROPERTIES = {
     "with_place": {
         "type": "boolean",
         "description": "Read the phone's position now and keep it: only when the user asks "
-        "to remember the place itself (where they parked, 'save this place').",
+        "to remember the place itself (where they parked, 'save this place'). 'This place', "
+        "'here', 'where I am' ('questo posto', 'qui', 'dove mi trovo') are where the user "
+        "is now: save it with this, never ask which place they mean.",
     },
     "with_photo": {
         "type": "boolean",
