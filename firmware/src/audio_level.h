@@ -28,23 +28,45 @@ inline uint32_t acRms(const int16_t* samples, size_t count) {
 }
 
 /**
- * The frame without its constant offset, `gain` times louder, clipped to 16 bits.
+ * The microphone's samples without their offset and rumble, `gain` times louder, clipped
+ * to 16 bits: a first-order high-pass at ~100 Hz (16 kHz), its state kept across frames.
  *
- * The Sense microphone is quiet: speech a metre away peaked at about a tenth of full
- * scale, under the VAD's threshold, and reached the transcription in fragments. The
- * offset goes first, or the gain would multiply it too.
+ * The Sense microphone reads with an offset (~1400) and is quiet: speech a metre away
+ * peaked at about a tenth of full scale. Taking each 32 ms frame's own mean away left a
+ * step at every frame boundary (a 31 Hz buzz under the voice) and let steps, clothes and
+ * knocks through whole; the filter removes the offset continuously and keeps the voice
+ * (its lowest fundamentals, ~85 Hz, lose a little; speech recognition needs none of it).
  */
-inline void amplify(int16_t* samples, size_t count, int32_t gain) {
-    if (samples == nullptr || count == 0) return;
+class HighPass {
+public:
+    /** exp(-2*pi*100/16000) in Q15. */
+    static constexpr int32_t COEFFICIENT = 31508;
 
-    int64_t total = 0;
-    for (size_t i = 0; i < count; i++) total += samples[i];
-    const int32_t mean = (int32_t)(total / (int64_t)count);
+    /** The microphone restarted: the next sample is the new start, without a jump. */
+    void reset() { _primed = false; }
 
-    for (size_t i = 0; i < count; i++) {
-        int32_t value = ((int32_t)samples[i] - mean) * gain;
-        if (value > 32767) value = 32767;
-        if (value < -32768) value = -32768;
-        samples[i] = (int16_t)value;
+    void process(int16_t* samples, size_t count, int32_t gain) {
+        if (samples == nullptr) return;
+        for (size_t i = 0; i < count; i++) {
+            const int32_t x = samples[i];
+            if (!_primed) {
+                _previousIn = x;
+                _previousOut = 0;
+                _primed = true;
+            }
+            const int64_t y =
+                (static_cast<int64_t>(COEFFICIENT) * (_previousOut + x - _previousIn)) >> 15;
+            _previousIn = x;
+            _previousOut = static_cast<int32_t>(y);
+            int64_t value = y * gain;
+            if (value > 32767) value = 32767;
+            if (value < -32768) value = -32768;
+            samples[i] = static_cast<int16_t>(value);
+        }
     }
-}
+
+private:
+    int32_t _previousIn = 0;
+    int32_t _previousOut = 0;
+    bool _primed = false;
+};

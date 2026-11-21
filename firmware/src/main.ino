@@ -75,6 +75,8 @@ ButtonGesture button(BUTTON_DEBOUNCE_MS, BUTTON_LONG_PRESS_MS, BUTTON_POWER_OFF_
 PowerOffPolicy powerOff;
 OtaHealthCheck otaHealth(OTA_CONFIRM_TIMEOUT_MS);
 WakeWindow wakeWindow(WAKE_WINDOW_MS);
+// The microphone's offset and rumble out, continuously across frames (audio_level.h)
+HighPass highPass;
 #if WAKE_WORD_ENABLED
 WakeDetector wakeDetector;
 #endif
@@ -218,6 +220,7 @@ void syncMicrophone() {
     }
     if (audio.begin()) {
         vad.reset();
+        highPass.reset();
 #if WAKE_WORD_ENABLED
         wakeDetector.reset();
 #endif
@@ -540,7 +543,7 @@ void loop() {
     int samplesRead = audio.readSamples(pcmBuffer, PCM_BUFFER_SIZE);
     if (samplesRead <= 0) return;
     const uint32_t frameStartedUs = micros();
-    amplify(pcmBuffer, samplesRead, micGain);
+    highPass.process(pcmBuffer, samplesRead, micGain);
     // Every frame while listening, idle or recording: the features' noise estimate needs
     // the audio around the phrase too
 #if WAKE_WORD_ENABLED
