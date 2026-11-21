@@ -23,7 +23,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import async_session
 from app.models import Segment, Transcription, TranscriptionEdit
-from app.services.adpcm_decoder import adpcm_to_wav
+from app.services.segment_audio import segment_to_wav
 from app.services.stt_deepgram import DeepgramSTTService
 from app.services.stt_openai import OpenAISTTService
 from app.services.transcription_enhancer import build_stt_context, clean_transcription
@@ -75,7 +75,7 @@ async def collect(limit: int) -> None:
             reference = _strip_speaker(edit.new_text if edit else transcription.text)
             if not normalize_words(reference):
                 continue
-            (DATA / f"{segment.id}.wav").write_bytes(adpcm_to_wav(audio.read_bytes()))
+            (DATA / f"{segment.id}.wav").write_bytes(segment_to_wav(audio.read_bytes()))
             (DATA / f"{segment.id}.ref.txt").write_text(reference + "\n", encoding="utf-8")
             (DATA / f"{segment.id}.json").write_text(
                 json.dumps(
