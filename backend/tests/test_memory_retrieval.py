@@ -65,6 +65,10 @@ async def test_context_has_summary_entities_chunk_and_sources():
             AsyncMock(return_value=[]),
         ),
         patch(
+            "app.services.memory_retrieval.topics_named_in",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
             "app.services.memory_retrieval.find_relevant_entities",
             AsyncMock(return_value="- [TASK] Ship demo"),
         ),
@@ -98,6 +102,10 @@ async def test_empty_memory_gives_empty_context():
     with (
         patch(
             "app.services.memory_retrieval.people_named_in",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.services.memory_retrieval.topics_named_in",
             AsyncMock(return_value=[]),
         ),
         patch(

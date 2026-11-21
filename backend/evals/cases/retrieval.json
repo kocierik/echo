@@ -1,0 +1,206 @@
+{
+  "now": "2026-11-20T18:00:00+01:00",
+  "conversations": [
+    {
+      "key": "atlas_lunch",
+      "started_at": "2026-11-10T12:30:00+01:00",
+      "title": "Pranzo con Ada su Atlas",
+      "summary": "Ada vuole lanciare Atlas a gennaio; l'utente le manda il budget entro venerdì e coinvolge Marco per il design.",
+      "people": ["Ada", "Marco"],
+      "text": "Allora Ada, per Atlas io punterei a gennaio, novembre è troppo presto. Sì, sono d'accordo, a novembre non ce la facciamo con i test. Il budget te lo mando entro venerdì, ci metto dentro anche le licenze del cloud. Perfetto. Per il design sentirei Marco, ha fatto un buon lavoro sull'app della palestra. Ok, lo chiamo io domani. Ah, e il nome resta Atlas o lo cambiamo? Resta Atlas, al cliente piace."
+    },
+    {
+      "key": "marco_preventivo",
+      "started_at": "2026-11-11T10:00:00+01:00",
+      "title": "Chiamata con Marco sul preventivo di design",
+      "summary": "Marco chiede 4.800 euro per il design di Atlas, consegna in tre settimane; vuole un acconto del 30%.",
+      "people": ["Marco"],
+      "text": "Ciao Marco, ti ha detto Ada di Atlas? Sì, ho guardato le schermate. Per il design completo dell'app ti chiederei 4.800 euro, consegna in tre settimane. Mi servirebbe un acconto del trenta per cento all'inizio. Va bene, lo giro ad Ada. Le icone le rifai tu o usiamo quelle di sistema? Le rifaccio io, così è tutto coerente."
+    },
+    {
+      "key": "dentista",
+      "started_at": "2026-11-12T09:15:00+01:00",
+      "minutes": 5,
+      "title": "Telefonata allo studio dentistico",
+      "summary": "Fissata la pulizia dei denti per il 3 dicembre alle 15:30 con la dottoressa Ferri.",
+      "people": ["Ferri"],
+      "text": "Buongiorno, studio Ferri. Buongiorno, vorrei prenotare la pulizia dei denti, è passato un anno. Allora, la dottoressa ha posto il 3 dicembre alle quindici e trenta, le va bene? Sì perfetto. Le ricordo di portare la tessera sanitaria. Grazie, a presto."
+    },
+    {
+      "key": "giulia_cena",
+      "started_at": "2026-11-13T20:10:00+01:00",
+      "title": "Cena con Giulia",
+      "summary": "Giulia racconta del nuovo lavoro in Zefiro, una startup di batterie; pensa di trasferirsi a Torino in primavera.",
+      "people": ["Giulia"],
+      "text": "Allora com'è il nuovo lavoro? Bellissimo, Zefiro è piccola ma si muove veloce, facciamo batterie al sodio per le bici. Wow. Il problema è che la sede è a Torino, quindi in primavera probabilmente mi trasferisco. E Luca? Luca viene con me, può lavorare da remoto. Mi mancherai però. Dai, Torino è a un'ora di treno."
+    },
+    {
+      "key": "casa_mutuo",
+      "started_at": "2026-11-02T18:30:00+01:00",
+      "title": "Banca: mutuo per la casa",
+      "summary": "La banca propone un mutuo a tasso fisso del 3,1% a 25 anni; serve la busta paga degli ultimi tre mesi.",
+      "people": ["Rossi"],
+      "text": "Buonasera, sono il signor Rossi della banca. Per il mutuo vi proponiamo un tasso fisso del tre virgola uno per cento a venticinque anni. Il budget massimo che possiamo finanziare è l'ottanta per cento del valore della casa. Mi servono le buste paga degli ultimi tre mesi e l'atto di provenienza. Le mando tutto via mail entro la settimana."
+    },
+    {
+      "key": "palestra",
+      "started_at": "2026-11-16T07:30:00+01:00",
+      "minutes": 10,
+      "title": "Allenamento con il personal trainer",
+      "summary": "Il trainer Davide cambia la scheda: tre giorni a settimana, più squat e meno corsa per il ginocchio.",
+      "people": ["Davide"],
+      "text": "Allora, visto il ginocchio facciamo meno corsa. Tre giorni a settimana: lunedì, mercoledì e venerdì. Aumentiamo gli squat ma con poco carico, e stretching alla fine. Se il ginocchio fa ancora male dopo due settimane senti l'ortopedico. Ok Davide, grazie."
+    },
+    {
+      "key": "auto_tagliando",
+      "started_at": "2026-11-17T08:45:00+01:00",
+      "minutes": 5,
+      "title": "Officina: tagliando della macchina",
+      "summary": "Il tagliando costa 340 euro; vanno cambiate le pastiglie dei freni anteriori. Ritiro giovedì.",
+      "text": "Buongiorno, per il tagliando sono trecentoquaranta euro. Abbiamo visto che le pastiglie dei freni davanti sono consumate, conviene cambiarle adesso. Va bene, fatelo. La macchina è pronta giovedì dopo le cinque."
+    },
+    {
+      "key": "mamma_natale",
+      "started_at": "2026-11-15T11:00:00+01:00",
+      "title": "Telefonata con la mamma per Natale",
+      "summary": "La mamma organizza il pranzo di Natale da lei; l'utente porta il tiramisù e passa a prendere la nonna.",
+      "people": ["mamma", "nonna"],
+      "text": "Ciao amore, per Natale facciamo il pranzo da me come sempre. Tu porti il tiramisù? Certo mamma. E puoi passare a prendere la nonna? Lei non guida più. Sì, la prendo alle undici. Ci sono anche gli zii di Bologna quest'anno. Ah bene, allora faccio due teglie."
+    },
+    {
+      "key": "standup_bug",
+      "started_at": "2026-11-18T09:30:00+01:00",
+      "title": "Stand-up del team",
+      "summary": "Il bug PRJ-4471 sul login con Google blocca il rilascio; Sara lo prende in carico, rilascio spostato a lunedì.",
+      "people": ["Sara", "Paolo"],
+      "text": "Ok, partiamo. Il problema grosso è il PRJ-4471, il login con Google fallisce su iPhone dopo l'aggiornamento. Lo prendo io, dice Sara, credo sia lo schema dell'URL. Allora il rilascio lo spostiamo a lunedì. Paolo, tu intanto finisci la pagina delle impostazioni. Sì, entro domani."
+    },
+    {
+      "key": "standup_old",
+      "started_at": "2026-11-04T09:30:00+01:00",
+      "title": "Stand-up del team",
+      "summary": "Paolo ha finito la migrazione del database; Sara lavora alle notifiche push.",
+      "people": ["Sara", "Paolo"],
+      "text": "Buongiorno. Paolo, la migrazione del database? Fatta ieri sera, è andato tutto liscio. Sara? Io sto sulle notifiche push, mi manca la parte Android. Ok, ci risentiamo domani."
+    },
+    {
+      "key": "libro_club",
+      "started_at": "2026-11-14T21:00:00+01:00",
+      "title": "Club del libro",
+      "summary": "Il club discute Il nome della rosa; il prossimo libro è Le città invisibili di Calvino, incontro il 12 dicembre.",
+      "people": ["Elena"],
+      "text": "Allora, Il nome della rosa vi è piaciuto? A me la parte sulla biblioteca tantissimo. Elena propone per il prossimo mese Le città invisibili di Calvino, è corto e si legge bene. Votiamo? Ok, tutti d'accordo. Ci vediamo il 12 dicembre da Elena."
+    },
+    {
+      "key": "vacanze_giappone",
+      "started_at": "2026-10-28T19:30:00+01:00",
+      "title": "Viaggio in Giappone",
+      "summary": "Con Luca e Giulia si pianifica il Giappone ad aprile: Tokyo, Kyoto e Osaka, voli da prenotare entro gennaio.",
+      "people": ["Luca", "Giulia"],
+      "text": "Allora il Giappone ad aprile si fa? Sì, per i ciliegi. Io farei Tokyo cinque giorni, poi Kyoto e chiudiamo a Osaka. I voli conviene prenotarli entro gennaio, poi salgono. Luca si occupa del JR Pass. Io guardo gli alberghi a Kyoto, magari un ryokan una notte."
+    },
+    {
+      "key": "condominio",
+      "started_at": "2026-11-19T20:45:00+01:00",
+      "title": "Riunione di condominio",
+      "summary": "Approvato il rifacimento del tetto: 2.300 euro a testa in due rate; l'amministratore manda i bollettini.",
+      "text": "Passiamo al punto due, il rifacimento del tetto. Il preventivo è di sessantanovemila euro, quindi circa duemilatrecento euro a appartamento. Proponiamo due rate, a gennaio e a giugno. Chi è favorevole? Approvato. L'amministratore manderà i bollettini via mail."
+    },
+    {
+      "key": "veterinario",
+      "started_at": "2026-11-09T17:00:00+01:00",
+      "minutes": 10,
+      "title": "Veterinario per Birba",
+      "summary": "Birba deve fare il richiamo del vaccino a marzo; per il prurito una crema due volte al giorno per una settimana.",
+      "people": ["Birba"],
+      "text": "Allora Birba sta bene, il cuore è a posto. Il prurito è una piccola dermatite, le diamo una crema due volte al giorno per una settimana. Il richiamo del vaccino è a marzo, le mando un promemoria. Mangia regolare? Sì, forse anche troppo."
+    },
+    {
+      "key": "english_call",
+      "started_at": "2026-11-12T16:00:00+01:00",
+      "title": "Call with Tom from the Berlin office",
+      "summary": "Tom asks for the Q4 sales report by December 5th; the Berlin offsite moves to February.",
+      "people": ["Tom"],
+      "text": "Hi, thanks for joining. So I need the Q4 sales report by December fifth, the board meets the week after. Sure, I'll have it ready. Also, the Berlin offsite is moving to February, the venue cancelled on us. Okay, I'll tell the team."
+    },
+    {
+      "key": "idea_app",
+      "started_at": "2026-11-06T23:10:00+01:00",
+      "minutes": 3,
+      "title": "Idea: app per le piante",
+      "summary": "Idea di un'app che riconosce le piante dalla foto e ricorda quando annaffiarle.",
+      "text": "Mi è venuta un'idea, la registro. Un'app che fotografi la pianta, ti dice che pianta è e ti ricorda quando annaffiarla in base alla stagione. Potrebbe usare la fotocamera del ciondolo. Da approfondire."
+    },
+    {
+      "key": "medico",
+      "started_at": "2026-11-05T10:20:00+01:00",
+      "minutes": 10,
+      "title": "Visita dal medico di base",
+      "summary": "Il dottor Bianchi prescrive analisi del sangue a digiuno; colesterolo da ricontrollare tra tre mesi.",
+      "people": ["Bianchi"],
+      "text": "Le prescrivo le analisi del sangue complete, da fare a digiuno. L'anno scorso il colesterolo era un po' alto, lo ricontrolliamo tra tre mesi. Intanto meno formaggi e più camminate. Le ricette le trova sul fascicolo sanitario."
+    },
+    {
+      "key": "ada_follow",
+      "started_at": "2026-11-19T15:00:00+01:00",
+      "title": "Aggiornamento con Ada su Atlas",
+      "summary": "Ada ha approvato il budget; il preventivo di Marco va bene ma chiede di togliere l'acconto. Demo al cliente il 2 dicembre.",
+      "people": ["Ada", "Marco"],
+      "text": "Ho visto il budget, per me va bene. Il preventivo di Marco è ok, però l'acconto del trenta per cento non lo possiamo fare, il cliente paga a fine progetto. Glielo dico io a Marco. La demo al cliente la fissiamo il 2 dicembre, ce la facciamo? Sì, con le schermate di Marco sì."
+    },
+    {
+      "key": "spesa",
+      "started_at": "2026-11-18T18:40:00+01:00",
+      "minutes": 3,
+      "title": "Lista della spesa",
+      "summary": "Da comprare: latte, uova, mascarpone e savoiardi per il tiramisù, caffè.",
+      "text": "Allora, ricordati: latte, uova, il mascarpone e i savoiardi per il tiramisù, e il caffè che è finito. Ah, e i sacchetti della spazzatura."
+    },
+    {
+      "key": "luca_corsa",
+      "started_at": "2026-11-08T08:00:00+01:00",
+      "title": "Corsa al parco con Luca",
+      "summary": "Luca si allena per la mezza maratona di Milano di aprile; propone di correre insieme la domenica.",
+      "people": ["Luca"],
+      "text": "Dai che manca poco. Sto preparando la mezza maratona di Milano ad aprile, l'obiettivo è stare sotto l'ora e cinquanta. Perché non corri con me la domenica? Ci provo, ma col ginocchio vado piano. Ok, facciamo il giro lungo del parco."
+    }
+  ],
+  "questions": [
+    {"q": "Quanto chiede Marco per il design?", "expect": ["marco_preventivo"]},
+    {"q": "Cosa ha detto Marco dell'acconto?", "expect": ["marco_preventivo"]},
+    {"q": "Ada ha accettato l'acconto per Marco?", "expect": ["ada_follow"]},
+    {"q": "Quando è la demo di Atlas al cliente?", "expect": ["ada_follow"]},
+    {"q": "Quando lanciamo Atlas?", "expect": ["atlas_lunch"]},
+    {"q": "Entro quando devo mandare il budget ad Ada?", "expect": ["atlas_lunch"]},
+    {"q": "Quando ho il dentista?", "expect": ["dentista"]},
+    {"q": "A che ora è la pulizia dei denti?", "expect": ["dentista"]},
+    {"q": "Dove lavora Giulia adesso?", "expect": ["giulia_cena"]},
+    {"q": "Cos'è Zefiro?", "expect": ["giulia_cena"]},
+    {"q": "Giulia si trasferisce?", "expect": ["giulia_cena"]},
+    {"q": "Che tasso mi ha proposto la banca?", "expect": ["casa_mutuo"]},
+    {"q": "Quali documenti servono per il mutuo?", "expect": ["casa_mutuo"]},
+    {"q": "Quanti giorni a settimana devo allenarmi?", "expect": ["palestra"]},
+    {"q": "Cosa mi ha detto il trainer sul ginocchio?", "expect": ["palestra"]},
+    {"q": "Quanto costa il tagliando?", "expect": ["auto_tagliando"]},
+    {"q": "Quando è pronta la macchina?", "expect": ["auto_tagliando"]},
+    {"q": "Cosa devo portare al pranzo di Natale?", "expect": ["mamma_natale"]},
+    {"q": "A che ora prendo la nonna?", "expect": ["mamma_natale"]},
+    {"q": "Chi si occupa del PRJ-4471?", "expect": ["standup_bug"]},
+    {"q": "Perché è slittato il rilascio?", "expect": ["standup_bug"]},
+    {"q": "Paolo ha finito la migrazione del database?", "expect": ["standup_old"]},
+    {"q": "Qual è il prossimo libro del club?", "expect": ["libro_club"]},
+    {"q": "Quando dobbiamo prenotare i voli per il Giappone?", "expect": ["vacanze_giappone"]},
+    {"q": "Chi pensa al JR Pass?", "expect": ["vacanze_giappone"]},
+    {"q": "Quanto pago per il tetto?", "expect": ["condominio"]},
+    {"q": "Quando va fatto il vaccino di Birba?", "expect": ["veterinario"]},
+    {"q": "Entro quando Tom vuole il report?", "expect": ["english_call"]},
+    {"q": "Quando si fa l'offsite di Berlino?", "expect": ["english_call"]},
+    {"q": "Avevo avuto un'idea su un'app per le piante?", "expect": ["idea_app"]},
+    {"q": "Cosa devo fare per il colesterolo?", "expect": ["medico"]},
+    {"q": "Cosa devo comprare per il tiramisù?", "expect": ["spesa", "mamma_natale"]},
+    {"q": "Di cosa ho parlato ieri?", "expect": ["condominio", "ada_follow"]},
+    {"q": "Cosa si è detto allo stand-up del 18 novembre?", "expect": ["standup_bug"]},
+    {"q": "Che obiettivo ha Luca per la mezza maratona?", "expect": ["luca_corsa"]},
+    {"q": "Cosa ci siamo detti martedì scorso?", "expect": ["auto_tagliando"]}
+  ]
+}

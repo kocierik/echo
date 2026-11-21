@@ -1,7 +1,7 @@
 # Echo — Development Commands
 .PHONY: help up down build logs logs-api logs-worker test test-all lint fmt deploy db-reset db-migrate \
 	db-new-migration shell worker create-key create-user set-password set-plan revoke-example-key \
-	eval-llm eval-stt-collect eval-stt usage runs coverage-new
+	eval-llm eval-retrieval eval-stt-collect eval-stt usage runs coverage-new
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -75,6 +75,9 @@ runs: ## Tracked runs: make runs CID=<correlation id>, or make runs USER=<email 
 eval-llm: ## Evaluate an LLM (real API calls): make eval-llm MODEL=gpt-6-luna EFFORT=none SUITE=all
 	$(DEV) dev python -m evals.llm --model "$(MODEL)" --suite "$(or $(SUITE),all)" \
 		--reasoning-effort "$(EFFORT)" --api "$(or $(API),chat)"
+
+eval-retrieval: ## Does memory search find the right conversation (real embedding calls): make eval-retrieval
+	$(DEV) dev python -m evals.retrieval $(if $(ONLY),--only "$(ONLY)") $(if $(MINE),--mine "$(MINE)")
 
 eval-stt-collect: ## Save recent transcribed clips for the STT comparison (git-ignored)
 	$(DEV) dev python -m evals.stt collect --limit "$(or $(LIMIT),50)"

@@ -14,8 +14,8 @@ import '../support/fake_memory_api.dart';
 
 final class _Memory implements AboutYouApi, DocumentsApi {
   List<UserFact> kept = [
-    const UserFact(id: 'f1', text: 'Lavora come sviluppatore a Milano', status: 'kept',
-        source: 'you'),
+    UserFact(id: 'f1', text: 'Lavora come sviluppatore a Milano', status: 'kept',
+        source: 'you', noted: DateTime(2026, 3, 12)),
   ];
   List<UserFact> suggestions = [
     const UserFact(id: 's1', text: 'Gioca a padel il giovedì', status: 'suggested',
@@ -182,6 +182,7 @@ void main() {
       await _pump(tester, AboutYouScreen(api: api));
 
       expect(find.text('Lavora come sviluppatore a Milano'), findsOneWidget);
+      expect(find.text('Noted 12 March 2026'), findsOneWidget); // an old one may have changed
       expect(find.text('Gioca a padel il giovedì'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('fact-keep-s1')));

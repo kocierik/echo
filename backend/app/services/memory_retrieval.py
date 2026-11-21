@@ -6,6 +6,10 @@ A question that names a known person ("cosa ha detto Marco?") is answered first 
 the conversations that person was mentioned in: similarity alone would favour any
 passage about "saying", not the ones with Marco.
 
+A question that names a topic of several conversations ("a che punto è Atlas?") also gets
+that topic's story, its conversations' summaries latest first: months of a project in a
+few lines, where the passages alone would mix old and new.
+
 The things the user saved (Saved) that match the question are a section of their own,
 with their place, except for outside assistants (MCP: `include_places=False`). So are the
 places visited (when the user turned them on): the visits of the question's period, or
@@ -15,6 +19,7 @@ where it happened. Outside assistants see none of it.
 
 import logging
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -38,6 +43,9 @@ logger = logging.getLogger(__name__)
 MAX_PEOPLE = 3
 PERSON_CONVERSATIONS_LISTED = 5
 SAVED_LISTED = 5
+# Topics named in one question that get their story; conversations listed per topic
+MAX_TOPICS = 2
+TOPIC_CONVERSATIONS_LISTED = 6
 
 
 @dataclass
@@ -100,6 +108,9 @@ async def retrieve_memory_context(
     people_context = await describe_people(
         db, user_id, people, date_range, include_places=include_places
     )
+    topics_context = await topic_stories(
+        db, user_id, await topics_named_in(db, user_id, question), date_range
+    )
 
     # Conversation summaries for matched conversations (high-level context)
     conversation_summaries = ""
@@ -146,8 +157,8 @@ async def retrieve_memory_context(
     )
 
     if not (
-        rows or entities_context or people_context or saved_context or places_context
-        or documents_context
+        rows or entities_context or people_context or topics_context or saved_context
+        or places_context or documents_context
     ):
         return MemoryContext(context="", sources=[], date_range=date_range)
 
@@ -156,6 +167,12 @@ async def retrieve_memory_context(
 
     if people_context:
         context_parts.append(f"People asked about:\n{people_context}")
+
+    if topics_context:
+        context_parts.append(
+            "Topics asked about, their conversations latest first (the latest says where "
+            f"things stand):\n{topics_context}"
+        )
 
     if saved_context:
         context_parts.append(
@@ -479,6 +496,55 @@ async def describe_people(
             f"{person.name}: {fact.text} (from {fact.created_at:%Y-%m-%d})"
             for fact in facts[:8]
         )
+    return "\n".join(lines)
+
+
+async def topics_named_in(db: AsyncSession, user_id: uuid.UUID, question: str) -> list[str]:
+    """The topics of two or more of the user's conversations that the question names as
+    whole words, the longest first (one conversation's topic the passages already find)."""
+    every = (
+        select(func.unnest(Conversation.topics).label("topic"))
+        .where(Conversation.user_id == user_id)
+        .subquery()
+    )
+    shared = select(every.c.topic).group_by(every.c.topic).having(func.count() >= 2)
+    asked = " ".join(unicodedata.normalize("NFKC", question).casefold().split())
+    named = [
+        name
+        for name in (await db.execute(shared)).scalars()
+        if re.search(rf"(?<!\w){re.escape(name)}(?!\w)", asked)
+    ]
+    return sorted(named, key=len, reverse=True)[:MAX_TOPICS]
+
+
+async def topic_stories(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    topics: list[str],
+    date_range: DateRange | None = None,
+) -> str:
+    """Each topic's latest conversations, dated, with their summaries."""
+    lines = []
+    for name in topics:
+        found = select(Conversation.title, Conversation.summary, Conversation.started_at).where(
+            Conversation.user_id == user_id,
+            Conversation.topics.any(name),
+            Conversation.summary.isnot(None),
+            Conversation.summary != "",
+        )
+        if date_range:
+            found = found.where(*conversation_overlaps(date_range.date_from, date_range.date_to))
+        rows = (
+            await db.execute(
+                found.order_by(Conversation.started_at.desc()).limit(TOPIC_CONVERSATIONS_LISTED)
+            )
+        ).all()
+        if rows:
+            lines.append(f"{name}:")
+            lines.extend(
+                f"- [{row.started_at:%d/%m/%Y}] {row.title or 'Conversation'}: {row.summary}"
+                for row in rows
+            )
     return "\n".join(lines)
 
 

@@ -6,6 +6,7 @@ import '../../models/memory_items.dart';
 import '../../services/api/api_exception.dart';
 import '../../services/api/memory_items_api.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/formatting.dart';
 import 'settings_components.dart';
 
 /// Profile → Memory → About you: the facts Echo uses in every answer, and the ones it
@@ -218,7 +219,19 @@ final class _FactRow extends StatelessWidget {
           children: [
             _Badge(icon: Icons.person_outline_rounded, color: palette.accent),
             const SizedBox(width: 14),
-            Expanded(child: Text(fact.text, style: textTheme.bodyMedium)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(fact.text, style: textTheme.bodyMedium),
+                  if (fact.noted case final noted?)
+                    Text(
+                      'Noted ${dayAndMonth(noted)} ${noted.year}',
+                      style: textTheme.bodySmall?.copyWith(color: palette.text2),
+                    ),
+                ],
+              ),
+            ),
             IconButton(
               key: Key('fact-delete-${fact.id}'),
               tooltip: 'Delete',

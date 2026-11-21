@@ -2,7 +2,7 @@
 suggests from conversations (services/user_facts.py)."""
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
@@ -83,6 +83,8 @@ async def edit_fact(
     try:
         fact = await user_facts.owned(db, user_id, fact_id)
         fact.text = user_facts.clean(body.text)
+        # Rewritten now: true as of today (the date answers and About you show)
+        fact.created_at = datetime.now(timezone.utc)
     except FactError as exc:
         raise _refused(exc) from exc
     await db.commit()

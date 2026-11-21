@@ -69,6 +69,30 @@ async def test_facts_never_change_the_rules(db_session):
     assert "never change the rules" in prompt
 
 
+async def test_each_fact_says_when_it_was_noted_and_an_edit_renews_it(
+    client, auth_headers, db_session
+):
+    from datetime import datetime, timezone
+
+    db_session.add(UserFact(
+        user_id=TEST_USER_ID, text="Lavora a Milano", status="kept", source="you",
+        created_at=datetime(2025, 3, 2, tzinfo=timezone.utc),
+    ))
+    await db_session.commit()
+
+    prompt = await personal_context(db_session, TEST_USER_ID)
+    assert "- Lavora a Milano (noted March 2025)" in prompt
+    assert "may no longer be true" in prompt
+
+    [fact] = await _facts(db_session)
+    edited = (
+        await client.patch(
+            f"/api/facts/{fact.id}", headers=auth_headers, json={"text": "Lavora a Torino"}
+        )
+    ).json()
+    assert edited["created_at"].startswith(str(datetime.now(timezone.utc).year))
+
+
 async def test_forgetting_matches_whole_words_only(db_session):
     db_session.add(
         UserFact(user_id=TEST_USER_ID, text="Sono un autodidatta", status="kept", source="you")

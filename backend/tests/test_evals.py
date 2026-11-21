@@ -120,3 +120,23 @@ def test_an_expected_entity_can_name_the_line_it_comes_from():
 
     assert score_extraction(case, [right]).passed
     assert not score_extraction(case, [wrong]).passed
+
+
+def test_retrieval_scores_the_first_expected_conversation():
+    from evals.retrieval import Scored, rank_of, summarize
+
+    # Several passages of one conversation count once
+    assert rank_of({"b"}, ["a", "a", "b", "c"]) == 2
+    assert rank_of({"x"}, ["a", "b"]) is None
+    totals = summarize([Scored("q1", 1), Scored("q2", 2), Scored("q3", None)])
+    assert totals["hit@1"] == pytest.approx(1 / 3)
+    assert totals["hit@5"] == pytest.approx(2 / 3)
+    assert totals["mrr"] == pytest.approx((1 + 0.5) / 3)
+
+
+def test_retrieval_questions_name_conversations_that_exist():
+    cases = json.loads((CASES / "retrieval.json").read_text())
+    keys = {conversation["key"] for conversation in cases["conversations"]}
+    assert len(keys) == len(cases["conversations"])
+    for question in cases["questions"]:
+        assert question["expect"] and set(question["expect"]) <= keys, question["q"]

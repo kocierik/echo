@@ -10,6 +10,7 @@ final class UserFact {
     required this.status,
     required this.source,
     this.conversationId,
+    this.noted,
   });
 
   factory UserFact.fromJson(Map<String, dynamic> json) => UserFact(
@@ -18,6 +19,7 @@ final class UserFact {
         status: json['status'] as String? ?? 'kept',
         source: json['source'] as String? ?? 'you',
         conversationId: json['conversation_id'] as String?,
+        noted: DateTime.tryParse(json['created_at'] as String? ?? '')?.toLocal(),
       );
 
   final String id;
@@ -28,6 +30,9 @@ final class UserFact {
 
   /// "you", "echo" (asked by voice or chat) or "conversation" (Echo noticed it).
   final String source;
+
+  /// When it was noted (or last rewritten): an old one may no longer be true.
+  final DateTime? noted;
 
   /// The conversation a suggestion came from.
   final String? conversationId;
