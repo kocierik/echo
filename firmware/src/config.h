@@ -179,7 +179,10 @@
 // 80 MHz was not enough: Opus, BLE and the card left the loop behind the microphone, whose
 // DMA (256 ms) overflowed, and every segment lost about a fifth of its audio (measured on the
 // server: 25 s declared, ~19.5 s decoded), so speech came out garbled. 240 MHz only ran hotter
+// Overridable to try another (PLATFORMIO_BUILD_FLAGS="-DCPU_FREQ_MHZ=240" pio run -t upload)
+#ifndef CPU_FREQ_MHZ
 #define CPU_FREQ_MHZ 160
+#endif
 #define FATAL_RESTART_DELAY_MS 5000    // a failed start is tried again after this
 
 static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,
