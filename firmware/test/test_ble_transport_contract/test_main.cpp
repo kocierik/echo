@@ -59,8 +59,9 @@ void test_firmware_uses_approved_latency_constants() {
     TEST_ASSERT_TRUE(configSource.find("SEGMENT_DURATION_MS 25000") != std::string::npos);
     // 45 (~1.4 s) since 0.8.1: at 25 (~0.8 s) a pause between sentences split them
     TEST_ASSERT_TRUE(configSource.find("VAD_SPEECH_END_FRAMES 45") != std::string::npos);
-    // 250 on the offset-free RMS (audio_level.h), since 0.5.1; 500 was on the raw RMS
-    TEST_ASSERT_TRUE(configSource.find("VAD_ENERGY_THRESHOLD 250") != std::string::npos);
+    // 350 on the half-second average since 0.10.4 (250 on single frames let the background
+    // keep Echo recording); 500 was on the raw RMS before 0.5.1
+    TEST_ASSERT_TRUE(configSource.find("VAD_ENERGY_THRESHOLD 350") != std::string::npos);
     TEST_ASSERT_TRUE(configSource.find("BLE_PREFERRED_MTU 247") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("WINDOW_SIZE = 32") != std::string::npos);
     TEST_ASSERT_TRUE(stateSource.find("BURST_BUDGET_US = 3000") != std::string::npos);

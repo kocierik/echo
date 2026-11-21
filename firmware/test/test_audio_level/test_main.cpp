@@ -98,6 +98,52 @@ void test_an_empty_frame_is_left_alone() {
     filter.process(nullptr, 0, 3);
 }
 
+void test_the_threshold_follows_the_background() {
+    // In a loud place the threshold rises with the background
+    NoiseFloor noise(350);
+    uint32_t threshold = 0;
+    for (int i = 0; i < 200; i++) threshold = noise.update(400);
+    TEST_ASSERT_UINT32_WITHIN(10, 560, threshold);
+    TEST_ASSERT_FALSE(400 > threshold);   // a loud background: not speech
+    TEST_ASSERT_TRUE(1300 > threshold);   // a voice
+}
+
+void test_speech_barely_lifts_the_floor() {
+    NoiseFloor noise(350);
+    for (int i = 0; i < 200; i++) noise.update(300);
+    // Ten seconds of talk with a pause between words every half second
+    for (int i = 0; i < 300; i++) noise.update(i % 15 == 0 ? 300 : 1200);
+    TEST_ASSERT_LESS_THAN_UINT32(400, noise.floor());
+}
+
+void test_a_quiet_room_keeps_the_minimum() {
+    NoiseFloor noise(350);
+    uint32_t threshold = 0;
+    for (int i = 0; i < 200; i++) threshold = noise.update(40);
+    TEST_ASSERT_EQUAL_UINT32(350, threshold);
+}
+
+void test_a_quieter_place_lowers_it_within_a_second() {
+    NoiseFloor noise(350);
+    for (int i = 0; i < 200; i++) noise.update(800);
+    for (int i = 0; i < 31; i++) noise.update(200);  // ~1 s
+    TEST_ASSERT_LESS_THAN_UINT32(220, noise.floor());
+}
+
+void test_the_average_smooths_a_swinging_background() {
+    // Frames swinging 70..420 around ~240 average out under the minimum (350)
+    EnergyAverage average;
+    uint32_t level = 0;
+    for (int i = 0; i < 64; i++) level = average.update(i % 2 == 0 ? 70 : 420);
+    TEST_ASSERT_UINT32_WITHIN(5, 245, level);
+}
+
+void test_the_average_starts_from_the_first_frames() {
+    EnergyAverage average;
+    TEST_ASSERT_EQUAL_UINT32(900, average.update(900));
+    TEST_ASSERT_EQUAL_UINT32(600, average.update(300));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_a_constant_offset_is_silence);
@@ -107,6 +153,12 @@ int main() {
     RUN_TEST(test_no_step_between_frames);
     RUN_TEST(test_loud_sound_clips_instead_of_wrapping);
     RUN_TEST(test_an_empty_frame_is_left_alone);
+    RUN_TEST(test_the_threshold_follows_the_background);
+    RUN_TEST(test_speech_barely_lifts_the_floor);
+    RUN_TEST(test_a_quiet_room_keeps_the_minimum);
+    RUN_TEST(test_a_quieter_place_lowers_it_within_a_second);
+    RUN_TEST(test_the_average_smooths_a_swinging_background);
+    RUN_TEST(test_the_average_starts_from_the_first_frames);
     RUN_TEST(test_sound_on_top_of_the_offset_is_measured_alone);
     RUN_TEST(test_a_negative_offset_too);
     RUN_TEST(test_an_empty_frame_is_silence);

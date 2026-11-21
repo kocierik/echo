@@ -35,7 +35,9 @@
 // RMS of a frame WITHOUT its constant offset (audio_level.h). Provisional: the raw RMS
 // (offset included, ~1400 on the XIAO Sense mic) made 500 meaningless; calibrate with the
 // serial log "[VAD] idle energy" in silence and while speaking
-#define VAD_ENERGY_THRESHOLD 250
+// The least speech must clear, on the half-second average energy: the threshold follows a
+// loud background (NoiseFloor, audio_level.h) at 1.4 times its level, never under this
+#define VAD_ENERGY_THRESHOLD 350
 // The microphone's samples MIC_GAIN times louder (audio_level.h amplify): speech a metre
 // away measured 45 to 250, under the threshold; three times that clears it, while
 // silence (~30) stays well below

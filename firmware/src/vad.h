@@ -53,6 +53,9 @@ private:
     uint32_t _silenceStartMs = 0;
     uint32_t _lastSilenceDurationMs = 0;
     uint32_t _lastDebugMs = 0;
+    // Kept through reset(): the place, not the segment, sets the background
+    NoiseFloor _noise{VAD_ENERGY_THRESHOLD};
+    EnergyAverage _average;
 
 };
 
@@ -64,10 +67,13 @@ bool VAD::process(const int16_t* samples, size_t count) {
 
     // Without the microphone's constant offset: silence ~0, speech what remains
     _energy = acRms(samples, count);
-    bool frameHasSpeech = (_energy > VAD_ENERGY_THRESHOLD);
+    const uint32_t level = _average.update(_energy);
+    const uint32_t threshold = _noise.update(level);
+    bool frameHasSpeech = (level > threshold);
 
     if (_state == VAD_SILENCE && millis() - _lastDebugMs > 5000) {
-        Serial.printf("[VAD] idle energy: %u (threshold: %u)\n", _energy, VAD_ENERGY_THRESHOLD);
+        Serial.printf("[VAD] idle energy: %u (floor: %u, threshold: %u)\n", _energy,
+                      _noise.floor(), threshold);
         _lastDebugMs = millis();
     }
 
@@ -119,4 +125,5 @@ void VAD::reset() {
     _silenceStartMs = millis();
     _lastSilenceDurationMs = 0;
     _lastDebugMs = 0;
+    _average.reset();
 }
