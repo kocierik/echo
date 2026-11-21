@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 10
-#define FIRMWARE_VERSION_PATCH 1
+#define FIRMWARE_VERSION_PATCH 2
 
 // ============================================================
 // Audio Configuration
@@ -176,8 +176,10 @@
 #define BUTTON_POWER_OFF_MS 5000
 #define BUTTON_WAKE_HOLD_MS 1500
 
-// 80 MHz is enough for Opus at 16 kHz mono and keeps BLE working; 240 MHz only ran hotter
-#define CPU_FREQ_MHZ 80
+// 80 MHz was not enough: Opus, BLE and the card left the loop behind the microphone, whose
+// DMA (256 ms) overflowed, and every segment lost about a fifth of its audio (measured on the
+// server: 25 s declared, ~19.5 s decoded), so speech came out garbled. 240 MHz only ran hotter
+#define CPU_FREQ_MHZ 160
 #define FATAL_RESTART_DELAY_MS 5000    // a failed start is tried again after this
 
 static_assert(SEGMENT_MAX_SIZE < PSRAM_BUFFER_SIZE,

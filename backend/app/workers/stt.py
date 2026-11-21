@@ -29,6 +29,7 @@ from app.core.database import async_session
 from app.core.logging import restore_correlation_for
 from app.models.segment import Segment
 from app.models.transcription import Transcription
+from app.services.adpcm_decoder import SAMPLE_RATE, SAMPLE_WIDTH
 from app.services.language import account_languages
 from app.services.person_brief import brief_who_is_talking, confident_voice
 from app.services.plans import may_transcribe
@@ -247,6 +248,16 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 # The voice fingerprint of where someone speaks, beside the transcription
                 # (adds no delay)
                 pcm = decode_segment(audio_data)
+                # A check for the log only: it never stops a transcription
+                declared = getattr(segment, "duration_ms", 0) or 0
+                seconds = len(pcm) / (SAMPLE_RATE * SAMPLE_WIDTH)
+                kept = seconds / (declared / 1000) if declared else 1.0
+                if kept < 0.9:
+                    # The wearable fell behind its microphone: gaps garble the transcription
+                    logger.warning(
+                        "Segment %s holds %.0f%% of its %d ms: the wearable lost audio",
+                        segment.id, kept * 100, segment.duration_ms,
+                    )
                 fingerprint = asyncio.create_task(embed_voice(pcm_to_wav(loudest_frames(pcm))))
 
                 # Known names and topics, as a prompt or keyterms depending on the provider
