@@ -160,9 +160,10 @@ class BlePacketAssembler {
 
     final data = ByteData.sublistView(packet);
     final segmentId = data.getUint32(1, Endian.little);
-    if (_segmentId != null) {
-      return _restart('unexpected segment start', segmentId: segmentId);
-    }
+    // Echo sends a start only when it (re)begins a segment, for instance after 5 s without
+    // our acknowledgement: what arrived before it is dropped and the new one followed.
+    // Asking for yet another restart here kept the two sides restarting each other.
+    reset();
     final version = data.getUint8(5);
     if (!_protocolVersions.contains(version) || (isPhoto && version < 3)) {
       return _restart('unsupported protocol version', segmentId: segmentId);
@@ -198,7 +199,9 @@ class BlePacketAssembler {
 
     final data = ByteData.sublistView(packet);
     final segmentId = data.getUint32(1, Endian.little);
-    if (_segmentId == null || segmentId != _segmentId) {
+    // Left over from a transfer already abandoned: its restart is on its way
+    if (_segmentId == null) return const [];
+    if (segmentId != _segmentId) {
       return _restart('metadata segment ID mismatch', segmentId: segmentId);
     }
     if (_recordedAt != null || _nextSequence != 0) {
@@ -224,7 +227,10 @@ class BlePacketAssembler {
     final data = ByteData.sublistView(packet);
     final segmentId = data.getUint32(1, Endian.little);
     final sequence = data.getUint16(5, Endian.little);
-    if (_segmentId == null || segmentId != _segmentId) {
+    // Left over from a transfer already abandoned (or one whose start we missed: Echo
+    // begins it again on its own after 5 s without our acknowledgement)
+    if (_segmentId == null) return const [];
+    if (segmentId != _segmentId) {
       return _restart('data segment ID mismatch', segmentId: segmentId);
     }
     if (_recordedAt == null) {

@@ -345,7 +345,8 @@ void main() {
       );
       assembler.add(_data(segmentId, 0, [1]));
       expect(assembler.add(_data(segmentId, 0, [1])), _restart);
-      expect(assembler.add(_data(segmentId, 1, [2])), _restart);
+      // The rest of the abandoned transfer is ignored: one restart is enough
+      expect(assembler.add(_data(segmentId, 1, [2])), isEmpty);
 
       assembler.add(_start(
         segmentId: segmentId,
@@ -355,7 +356,32 @@ void main() {
         crc: bleCrc32([9]),
       ));
       assembler.reset();
-      expect(assembler.add(_metadata(segmentId: segmentId, recordedAt: recordedAt)), _restart);
+      expect(assembler.add(_metadata(segmentId: segmentId, recordedAt: recordedAt)), isEmpty);
+    });
+
+    test('a start in the middle of a segment begins it again, without asking a restart', () {
+      // Echo resent the segment (no acknowledgement within 5 s): the two never loop
+      final assembler = _startedAssembler(
+        segmentId: segmentId,
+        recordedAt: recordedAt,
+        audio: [1, 2],
+        totalChunks: 2,
+      );
+      assembler.add(_data(segmentId, 0, [1]));
+
+      final again = assembler.add(_start(
+        segmentId: segmentId,
+        totalLength: 2,
+        durationMs: 100,
+        totalChunks: 2,
+        crc: bleCrc32([1, 2]),
+      ));
+      expect(again.single, isA<BleSegmentStarted>());
+      expect(assembler.add(_metadata(segmentId: segmentId, recordedAt: recordedAt)), isEmpty);
+      assembler.add(_data(segmentId, 0, [1]));
+      final done = assembler.add(_data(segmentId, 1, [2]));
+      expect(done.whereType<BleSegmentCompleted>().single.segment.adpcmBytes, [1, 2]);
+      expect(done.whereType<BleRestartRequired>(), isEmpty);
     });
   });
 }
