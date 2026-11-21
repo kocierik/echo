@@ -73,7 +73,13 @@ async def build_stt_context(db: "AsyncSession", user_id: uuid.UUID) -> STTContex
     return STTContext(
         prompt=_prompt(people_names, topic_names),
         # Places before topics: a city said once is a request ("che tempo fa a Nizza")
-        keyterms=_keyterms([ASSISTANT_NAME, *people_names, *learned, *places, *topic_names]),
+        # Of the other things, one-word names only ("Atlas"): a task or event title in
+        # everyday words ("Pulizia dentale", "Pranzo domenicale") makes Deepgram hear it
+        # in other sentences
+        keyterms=_keyterms([
+            ASSISTANT_NAME, *people_names, *learned, *places,
+            *(name for name in topic_names if len(name.split()) == 1),
+        ]),
     )
 
 

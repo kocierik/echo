@@ -115,6 +115,7 @@ async def test_context_has_a_prompt_and_short_unique_keyterms(db_session):
             make_entity(conversation, "person", "marco rossi"),  # same name
             make_entity(conversation, "idea", "Atlas"),
             make_entity(conversation, "task", "Mandare a Marco il budget di Atlas"),  # a sentence
+            make_entity(conversation, "event", "Pulizia dentale"),  # everyday words
         ]
     )
     await db_session.commit()
@@ -122,7 +123,7 @@ async def test_context_has_a_prompt_and_short_unique_keyterms(db_session):
     context = await build_stt_context(db_session, TEST_USER_ID)
 
     assert "Marco Rossi" in context.prompt
-    # One Marco however it was written; the sentence-long task name is left out
+    # One Marco however it was written; task and event titles in everyday words are left out
     assert sorted(term.lower() for term in context.keyterms) == ["atlas", "echo", "marco rossi"]
 
 
