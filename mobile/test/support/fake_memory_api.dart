@@ -272,6 +272,9 @@ class FakeTodayApi extends FakeMemoryApi
   Future<void> rejectVoice(String segmentId) => throw UnimplementedError();
 
   @override
+  Future<List<String>> heardSince(DateTime since) async => const [];
+
+  @override
   Future<WeeklySummary?> getLatestWeeklySummary() async => week;
 
   Object? digestError;

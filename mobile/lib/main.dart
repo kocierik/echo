@@ -17,6 +17,7 @@ import 'screens/onboarding/onboarding_screen.dart';
 import 'screens/account_sheet.dart';
 import 'screens/tasks_screen.dart';
 import 'services/api/api_service.dart';
+import 'services/app/spoken_language.dart';
 import 'services/api/build_defaults.dart';
 import 'services/app/app_controller.dart';
 import 'services/app/app_lifecycle_coordinator.dart';
@@ -171,6 +172,14 @@ class _AppRouterState extends State<AppRouter> {
   late OnboardingController _onboardingController;
   int _onboardingGeneration = 0;
 
+  /// Setup's spoken language: its own connection, made when setup first shows it.
+  ApiService? _languageApi;
+  SpokenLanguageStore? get _spokenLanguage => switch (widget.preferences) {
+        final preferences? =>
+          SpokenLanguageStore(api: _languageApi ??= ApiService(), preferences: preferences),
+        null => null,
+      };
+
   @override
   void initState() {
     super.initState();
@@ -232,6 +241,7 @@ class _AppRouterState extends State<AppRouter> {
   void dispose() {
     widget.appController.removeListener(_onAppState);
     _onboardingController.dispose();
+    _languageApi?.dispose();
     super.dispose();
   }
 
@@ -261,6 +271,7 @@ class _AppRouterState extends State<AppRouter> {
       return OnboardingScreen(
         controller: _onboardingController,
         notice: widget.appController.value.session.reason,
+        spokenLanguage: _spokenLanguage,
         firstResultWatcher: () {
           final api = ApiService();
           return FirstResultWatcher(working: api, updates: api, onDispose: api.dispose);

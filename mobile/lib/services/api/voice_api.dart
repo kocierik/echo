@@ -1,4 +1,6 @@
+import '../../models/segment.dart';
 import '../../models/voice.dart';
+import '../../utils/formatting.dart';
 import 'api_client.dart';
 
 /// Known voices: the user's own (recorded for it) and people named in transcripts.
@@ -24,9 +26,31 @@ abstract interface class VoiceApi {
 
   /// Not the suggested person.
   Future<void> rejectVoice(String segmentId);
+
+  /// What Echo transcribed of the speech recorded since [since], oldest first: shown
+  /// while the user records their voice, so they see Echo hears them.
+  Future<List<String>> heardSince(DateTime since);
 }
 
 mixin VoiceEndpoints on ApiClient implements VoiceApi {
+  @override
+  Future<List<String>> heardSince(DateTime since) async {
+    final response = await get('/api/segments/recent?limit=20', shape: JsonShape.list);
+    final segments = parse(
+      response.data,
+      (data) => [
+        for (final item in data as List<dynamic>)
+          RecentSegment.fromJson(item as Map<String, dynamic>),
+      ],
+    );
+    final heard = segments.where((s) => !s.recordedAt.isBefore(since)).toList()
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+    return [
+      for (final segment in heard)
+        if (cleanTranscript(segment.text ?? '') case final text when text.isNotEmpty) text,
+    ];
+  }
+
   @override
   Future<VoiceProfiles> getVoiceProfiles() async {
     final response = await getCached('/api/voice-profiles');

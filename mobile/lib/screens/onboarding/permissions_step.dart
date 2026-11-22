@@ -8,12 +8,16 @@ final class PermissionsStep extends StatelessWidget {
     required this.backgroundExplanation,
     required this.notificationDenied,
     required this.voiceDenied,
+    this.languageChoice,
     super.key,
   });
 
   final String backgroundExplanation;
   final bool notificationDenied;
   final bool voiceDenied;
+
+  /// The language the user speaks to Echo in, chosen before Echo first listens.
+  final Widget? languageChoice;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,10 @@ final class PermissionsStep extends StatelessWidget {
               ),
         ),
         const SizedBox(height: 28),
+        if (languageChoice case final choice?) ...[
+          Panel(child: choice),
+          const SizedBox(height: 16),
+        ],
         Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,7 +62,7 @@ final class PermissionsStep extends StatelessWidget {
               title: 'Microphone',
               detail: voiceDenied
                   ? 'Off. Typed Ask remains available.'
-                  : 'Only to dictate a question by holding Ask.',
+                  : 'Only to dictate a question in Ask.',
             ),
             ],
           ),

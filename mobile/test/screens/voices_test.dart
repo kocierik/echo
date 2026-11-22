@@ -53,6 +53,12 @@ final class _VoiceMemoryApi extends FakeMemoryApi implements VoiceApi {
 
   @override
   Future<void> rejectVoice(String segmentId) async => rejected.add(segmentId);
+
+  /// What the wearable's transcription has so far, newest checks see more.
+  List<String> heard = const [];
+
+  @override
+  Future<List<String>> heardSince(DateTime since) async => heard;
 }
 
 TranscriptLine _line(String id,
@@ -233,6 +239,28 @@ void main() {
       expect(
           find.text('Voice recognition is off on the server'), findsOneWidget);
       expect(find.text('Not recorded yet'), findsOneWidget);
+    });
+
+    testWidgets('while reading, what Echo hears shows up', (tester) async {
+      final api = _VoiceMemoryApi()..heard = ['Ciao, questa è la mia voce.'];
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.light,
+        home: VoiceEnrollmentScreen(
+          api: api,
+          heardEvery: const Duration(seconds: 1),
+          wait: (_) async {},
+        ),
+      ));
+
+      await tester.tap(find.byKey(const Key('enroll-start')));
+      await tester.pump();
+      expect(find.textContaining('Nothing yet'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(find.text('“Ciao, questa è la mia voce.”'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox()); // the timers stop with the screen
     });
 
     testWidgets('recording the own voice waits for the server, then reports',

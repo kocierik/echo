@@ -1,7 +1,9 @@
 import 'package:echo_app/screens/settings/language_settings_screen.dart';
 import 'package:echo_app/screens/settings/voice_settings_screen.dart';
+import 'package:echo_app/services/api/api_service.dart';
 import 'package:echo_app/services/app/spoken_language.dart';
 import 'package:echo_app/theme/app_theme.dart';
+import 'package:echo_app/widgets/spoken_language_choice.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -93,6 +95,53 @@ void main() {
         isFalse);
   });
 
+  testWidgets('before recording, the language can be chosen and the text follows it',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final account = _Account(); // a phone in English
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: VoiceEnrollmentScreen(
+        api: _NoVoices(),
+        language: 'en',
+        languageStore: SpokenLanguageStore(api: account, preferences: preferences),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Hi, this is my voice'), findsOneWidget);
+
+    await tester.tap(find.text('Italiano'));
+    await tester.pumpAndSettle();
+
+    expect(account.changes, ['it']);
+    expect(preferences.getString(SpokenLanguageStore.key), 'it');
+    expect(find.textContaining('Ciao, questa è la mia voce'), findsOneWidget);
+  });
+
+  testWidgets('a language the server refuses goes back, and says why', (tester) async {
+    SharedPreferences.setMockInitialValues({SpokenLanguageStore.key: 'en'});
+    final preferences = await SharedPreferences.getInstance();
+    final account = _Account()..failing = true;
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.light,
+      home: Scaffold(
+        body: SpokenLanguageChoice(
+          store: SpokenLanguageStore(api: account, preferences: preferences),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Italiano'));
+    await tester.pumpAndSettle();
+
+    final choice = tester.widget<SegmentedButton<String>>(find.byKey(const Key('spoken-language')));
+    expect(choice.selected, {'en'});
+    expect(preferences.getString(SpokenLanguageStore.key), 'en');
+    expect(find.textContaining('Could not change the language'), findsOneWidget);
+  });
+
   test('the voice sample is in the language the user speaks', () {
     expect(enrollmentTextFor('it'), startsWith('Ciao, questa'));
     expect(enrollmentTextFor('en'), startsWith('Hi, this'));
@@ -126,3 +175,9 @@ final class _Account implements AccountApi {
     return AccountInfo(email: 'e@x.y', language: language);
   }
 }
+
+final class _NoVoices implements VoiceApi {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+

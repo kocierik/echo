@@ -8,6 +8,7 @@ import '../../services/api/api_exception.dart';
 import '../../services/api/api_service.dart';
 import '../../services/app/spoken_language.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/spoken_language_choice.dart';
 import 'settings_components.dart';
 
 /// The text read aloud to record the user's voice (~20 s at a normal pace), in the
@@ -102,10 +103,19 @@ final class _VoiceSettingsScreenState extends State<VoiceSettingsScreen> {
   }
 
   Future<void> _record() async {
+    SpokenLanguageStore? store;
+    if (_api case final AccountApi account) {
+      try {
+        store = SpokenLanguageStore(
+            api: account, preferences: await SharedPreferences.getInstance());
+      } catch (_) {}
+    }
+    if (!mounted) return;
     final learned = await Navigator.of(context).push<bool>(MaterialPageRoute(
       builder: (_) => VoiceEnrollmentScreen(
         api: _api,
         language: _language,
+        languageStore: store,
         clock: widget.clock,
         wait: widget.wait,
       ),
@@ -234,10 +244,12 @@ final class VoiceEnrollmentScreen extends StatefulWidget {
   const VoiceEnrollmentScreen({
     required this.api,
     this.language,
+    this.languageStore,
     this.clock = DateTime.now,
     this.wait = Future<void>.delayed,
     this.minimumReading = const Duration(seconds: 15),
     this.checks = 40,
+    this.heardEvery = const Duration(seconds: 3),
     super.key,
   });
 
@@ -245,6 +257,13 @@ final class VoiceEnrollmentScreen extends StatefulWidget {
 
   /// The language the user speaks: the text to read is in it (English by default).
   final String? language;
+
+  /// Chooses that language before recording (a phone in English, Italian speech); none
+  /// without it.
+  final SpokenLanguageStore? languageStore;
+
+  /// How often what Echo heard is shown while reading.
+  final Duration heardEvery;
   final DateTime Function() clock;
   final Future<void> Function(Duration) wait;
   final Duration minimumReading;
@@ -264,11 +283,28 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
   Timer? _ticker;
   Duration _elapsed = Duration.zero;
   String? _message;
+  late String? _language = widget.language;
+
+  /// What Echo transcribed since Start: proof it hears, while the user reads.
+  List<String> _heard = const [];
+  Timer? _listening;
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _listening?.cancel();
     super.dispose();
+  }
+
+  Future<void> _checkHeard() async {
+    final since = _startedAt;
+    if (since == null) return;
+    try {
+      final heard = await widget.api.heardSince(since);
+      if (mounted) setState(() => _heard = heard);
+    } catch (_) {
+      // Offline for a moment: the next check shows it
+    }
   }
 
   void _start() {
@@ -277,7 +313,10 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
       // A little before: the wearable's segment starts with the first word
       _startedAt = widget.clock().subtract(const Duration(seconds: 2));
       _elapsed = Duration.zero;
+      _heard = const [];
     });
+    _listening?.cancel();
+    _listening = Timer.periodic(widget.heardEvery, (_) => unawaited(_checkHeard()));
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _elapsed += const Duration(seconds: 1));
     });
@@ -293,6 +332,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
         final result = await widget.api.enrollOwnVoice(_startedAt!, endedAt);
         if (!mounted) return;
         if (result.status == 'done') {
+          _listening?.cancel();
           setState(() {
             _step = _Step.done;
             _message = 'Echo learned your voice from ${result.segments} '
@@ -301,6 +341,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
           return;
         }
         if (result.status == 'no_speech') {
+          _listening?.cancel();
           setState(() {
             _step = _Step.failed;
             _message = 'Echo heard nothing. Check that it is connected and listening, '
@@ -310,6 +351,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
         }
       } catch (error) {
         if (!mounted) return;
+        _listening?.cancel();
         setState(() {
           _step = _Step.failed;
           _message = userMessage(error, 'Could not learn your voice.');
@@ -318,6 +360,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
       }
       await widget.wait(const Duration(seconds: 3));
     }
+    _listening?.cancel();
     if (mounted) {
       setState(() {
         _step = _Step.failed;
@@ -349,6 +392,13 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
             style: textTheme.bodyMedium,
           ),
           const SizedBox(height: 16),
+          if (widget.languageStore case final store? when _step == _Step.ready) ...[
+            SpokenLanguageChoice(
+              store: store,
+              onChanged: (language) => setState(() => _language = language),
+            ),
+            const SizedBox(height: 16),
+          ],
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
@@ -356,7 +406,7 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
               borderRadius: BorderRadius.circular(AppTheme.panelRadius),
             ),
             child: Text(
-              enrollmentTextFor(widget.language),
+              enrollmentTextFor(_language),
               style: textTheme.bodyLarge?.copyWith(fontSize: 18, height: 1.5),
             ),
           ),
@@ -366,6 +416,10 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
             'your voice sounds.',
             style: textTheme.bodySmall,
           ),
+          if (_step == _Step.reading || _step == _Step.learning) ...[
+            const SizedBox(height: 16),
+            _Heard(_heard),
+          ],
           const SizedBox(height: 24),
           switch (_step) {
             _Step.ready => FilledButton(
@@ -395,3 +449,43 @@ final class _VoiceEnrollmentScreenState extends State<VoiceEnrollmentScreen> {
     );
   }
 }
+
+/// What Echo has transcribed so far, or that nothing has arrived yet.
+final class _Heard extends StatelessWidget {
+  const _Heard(this.lines);
+
+  final List<String> lines;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = EchoPalette.of(context);
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      key: const Key('enroll-heard'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Echo hears', style: textTheme.labelMedium?.copyWith(color: palette.text2)),
+          const SizedBox(height: 6),
+          if (lines.isEmpty)
+            Text(
+              'Nothing yet. Your words show up here a few seconds after you pause.',
+              style: textTheme.bodySmall,
+            )
+          else
+            for (final line in lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text('“$line”', style: textTheme.bodyMedium),
+              ),
+        ],
+      ),
+    );
+  }
+}
+

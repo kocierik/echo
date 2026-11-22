@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/app/spoken_language.dart';
 import '../../services/google_identity.dart';
 import '../../services/onboarding/first_result_watcher.dart';
 import '../../services/onboarding/onboarding_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/onboarding_progress.dart';
+import '../../widgets/spoken_language_choice.dart';
 import 'email_sign_in_step.dart';
 import 'first_result_step.dart';
 import 'pairing_step.dart';
@@ -20,6 +22,7 @@ final class OnboardingScreen extends StatefulWidget {
     required this.onComplete,
     this.notice,
     this.firstResultWatcher,
+    this.spokenLanguage,
     super.key,
   });
 
@@ -32,6 +35,9 @@ final class OnboardingScreen extends StatefulWidget {
   /// Watches for the first voice request and its answer; without it the last
   /// step only explains what to try.
   final FirstResultWatcher Function()? firstResultWatcher;
+
+  /// The account's spoken language, chosen on the permissions step; none without it.
+  final SpokenLanguageStore? spokenLanguage;
 
   @override
   State<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -191,6 +197,10 @@ final class _OnboardingScreenState extends State<OnboardingScreen> {
               widget.controller.backgroundCapabilityExplanation,
           notificationDenied: state.notificationDenied,
           voiceDenied: state.voiceDenied,
+          languageChoice: switch (widget.spokenLanguage) {
+            final store? => SpokenLanguageChoice(store: store),
+            null => null,
+          },
         ),
       OnboardingStep.pairing => PairingStep(
           busy: state.busy,
