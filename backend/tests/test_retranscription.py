@@ -342,3 +342,77 @@ async def test_a_segment_with_several_voices_is_split_as_soon_as_it_is_transcrib
         ("other", None, None, "Eccoli."),
     ]
     assert one_voice is None
+
+
+def _long_words(speaker: int = 0) -> list[Word]:
+    """Six words of 4 s each: six windows, heard by the speech-to-text as one voice."""
+    return [Word(f"w{i}", i * 4.0, i * 4.0 + 4.0, speaker) for i in range(6)]
+
+
+async def test_one_voice_to_the_speech_to_text_but_two_to_the_fingerprints(monkeypatch):
+    """Deepgram heard one voice; the windows' fingerprints fall into two opposite voices:
+    me for the first three windows, a stranger for the last three."""
+    from app.models.voice_profile import VoiceProfile
+    from app.services import retranscription
+
+    other = [-0.6 * x + 0.8 * y for x, y in zip(_axis(0), _axis(1))]
+    async with test_session() as db:
+        me = VoiceProfile(user_id=TEST_USER_ID, name="You", is_self=True,
+                          embedding=_axis(0), sample_count=3)
+        db.add(me)
+        await db.commit()
+        me_id = str(me.id)
+        # Six windows, then each of the two voices from all it said
+        voices = iter([_axis(0)] * 3 + [other] * 3 + [_axis(0), other])
+
+        async def embed(_wav):
+            return next(voices)
+
+        monkeypatch.setattr(retranscription, "embed_voice", embed)
+        segment = Segment(user_id=TEST_USER_ID, speaker="self")
+        turns = await retranscription.segment_turns(db, segment, _long_words(), b"\1" * 900_000)
+
+    assert [(t["speaker"], t["profile_id"], t["text"]) for t in turns] == [
+        ("self", me_id, "W0 w1 w2"), ("other", None, "W3 w4 w5"),
+    ]
+
+
+async def test_one_voice_throughout_stays_one_voice(monkeypatch):
+    from app.services import retranscription
+
+    alike = [iter([_axis(0), _axis(0), _axis(1)] * 2)]
+
+    async def embed(_wav):
+        return next(alike[0])
+
+    monkeypatch.setattr(retranscription, "embed_voice", embed)
+    async with test_session() as db:
+        segment = Segment(user_id=TEST_USER_ID, speaker="self")
+        # Two groups at most orthogonal (0): not below the threshold, no split
+        assert await retranscription.segment_turns(
+            db, segment, _long_words(), b"\1" * 900_000
+        ) is None
+
+
+async def test_a_short_segment_is_not_split_by_fingerprints(monkeypatch):
+    from app.services import retranscription
+
+    async def embed(_wav):
+        raise AssertionError("no fingerprint for fewer than three windows")
+
+    monkeypatch.setattr(retranscription, "embed_voice", embed)
+    async with test_session() as db:
+        segment = Segment(user_id=TEST_USER_ID, speaker="self")
+        assert await retranscription.segment_turns(
+            db, segment, _long_words()[:2], b"\1" * 300_000
+        ) is None
+
+
+def test_the_most_different_split_follows_the_voices():
+    from app.services.retranscription import most_different_split
+
+    a = _axis(0)
+    b = [-0.6 * x + 0.8 * y for x, y in zip(_axis(0), _axis(1))]
+    similarity, groups = most_different_split([a, b, a, b])
+    assert abs(similarity + 0.6) < 1e-6
+    assert groups[0] == groups[2] != groups[1] == groups[3]

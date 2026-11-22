@@ -145,6 +145,12 @@ class Settings(BaseSettings):
     # A segment this loud among the user's recent ones (percentile) is most likely the
     # user's own voice, near the microphone: never given to someone else automatically
     voice_loud_percentile: float = 0.85
+    # A segment heard as one voice is cut into windows this long, and split in two when its
+    # windows fall into two groups whose voices are less alike than this (centered cosine).
+    # Measured 2026-11-22 on 4 s windows: 11 of 15 joined pairs of two people below, 7 of
+    # 55 long one-voice segments
+    voice_split_window_seconds: float = 4.0
+    voice_split_below: float = -0.10
     # Less speech than this gives an unreliable fingerprint (a short command still has one)
     voice_min_seconds: float = 1.5
 
