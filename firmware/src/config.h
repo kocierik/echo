@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 10
-#define FIRMWARE_VERSION_PATCH 4
+#define FIRMWARE_VERSION_PATCH 5
 
 // ============================================================
 // Audio Configuration
@@ -115,7 +115,7 @@
 #define PHOTO_FRAME_SIZE FRAMESIZE_UXGA
 #define PHOTO_JPEG_QUALITY 12          // 0-63, lower is better
 #define PHOTO_MAX_BYTES (768 * 1024)   // PSRAM slot for one JPEG (the server takes 1 MB)
-#define PHOTO_WARMUP_FRAMES 10         // dropped while exposure and white balance settle (3 came dark)
+#define PHOTO_WARMUP_FRAMES 20         // dropped while exposure and white balance settle (3 came dark, 10 still magenta in dim light)
 #define PHOTO_FLASH_MS 300             // LED on while a photo is taken
 
 #define CAM_PIN_PWDN -1

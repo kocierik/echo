@@ -120,6 +120,13 @@ private:
             // exposure a step brighter: photos came dark
             sensor->set_gainceiling(sensor, GAINCEILING_16X);
             sensor->set_ae_level(sensor, 1);
+            // Photos in warm, dim rooms came magenta: automatic white balance with its
+            // gains applied, and the lens correction that evens out the colour towards the
+            // corners, set explicitly rather than left to the driver's defaults
+            sensor->set_whitebal(sensor, 1);
+            sensor->set_awb_gain(sensor, 1);
+            sensor->set_wb_mode(sensor, 0);
+            sensor->set_lenc(sensor, 1);
         }
         return true;
     }
