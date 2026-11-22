@@ -77,6 +77,70 @@ def test_recognition_by_similarity():
     assert voices.recognize(Segment(), near(MARCO, STRANGER, 0.9), [marco]) == "other"
 
 
+def _through_pendant(voice: list[float], pendant=3, share=0.85) -> list[float]:
+    """A voice as the pendant records it: mostly the pendant's own sound (axis 3)."""
+    return normalize([share * p + (1 - share) * v for p, v in zip(axis(pendant), voice)])
+
+
+def test_the_pendants_sound_taken_away_tells_two_voices_apart():
+    # Through the pendant the user and Valentina scored 0.75 to each other, raw; with the
+    # mean of the recent fingerprints taken away, -0.2 (measured on 2026-11-22)
+    me, valentina = _through_pendant(axis(ME)), _through_pendant(axis(MARCO))
+    center = [(a + b) / 2 for a, b in zip(me, valentina)]
+    profiles = [_profile(ME, is_self=True), _profile(MARCO)]
+    profiles[0].embedding, profiles[1].embedding = me, valentina
+    mine = _through_pendant(near(ME, STRANGER, 0.9))
+
+    assert cosine(me, valentina) > 0.9
+    assert voices.voice_similarity(me, valentina, center) < 0
+    match = voices.best_match(profiles, mine, center)
+    assert match.profile.is_self and match.lead >= 0.3
+
+
+@pytest.mark.asyncio
+async def test_the_pendants_sound_is_the_mean_of_the_recent_fingerprints(
+    db_session: AsyncSession, monkeypatch
+):
+    monkeypatch.setattr(voices.settings, "voice_center_min_segments", 2)
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    await _segments(db_session, start, ("[You] Uno.", "[You] Due."), [axis(ME), axis(MARCO)])
+
+    context = await voices.voice_context(db_session, TEST_USER_ID)
+
+    assert context.center[ME] == pytest.approx(0.5)
+    assert context.center[MARCO] == pytest.approx(0.5)
+
+
+def test_a_loud_segment_is_never_given_to_someone_else_automatically():
+    # The user's mouth is a hand away from the microphone, everyone else a metre or more
+    marco = _profile(MARCO)
+    loud = Segment(id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=900)
+    quiet = Segment(id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=200)
+    context = voices.VoiceContext(loud_from=800)
+
+    voices.recognize(loud, axis(MARCO), [marco], context)
+    voices.recognize(quiet, axis(MARCO), [marco], context)
+
+    assert (loud.voice_match, quiet.voice_match) == ("suggested", "auto")
+
+
+def test_a_loud_segment_no_voice_is_sure_of_is_the_users():
+    profiles = [_profile(ME, is_self=True), _profile(MARCO)]
+    unsure = near(STRANGER, ME, 0.95)  # nobody's
+    context = voices.VoiceContext(loud_from=800)
+
+    loud = voices.recognize(
+        Segment(id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=900), unsure, profiles,
+        context,
+    )
+    quiet = voices.recognize(
+        Segment(id=uuid.uuid4(), user_id=TEST_USER_ID, audio_energy=200), unsure, profiles,
+        context,
+    )
+
+    assert (loud, quiet) == ("self", "other")
+
+
 def test_a_voice_between_two_profiles_is_neither():
     me, marco = _profile(ME, is_self=True), _profile(MARCO)
     between = normalize([0.8, 0.75] + [0.0] * (DIM - 2))  # ~0.73 to me, ~0.68 to Marco
@@ -238,6 +302,30 @@ async def test_naming_a_voice_links_the_person_and_labels_the_conversation(
     )
     assert again.json()["profile"]["id"] == body["profile"]["id"]
     assert again.json()["profile"]["sample_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_naming_a_voice_leaves_the_segments_nearer_another_voice(
+    client, auth_headers, db_session: AsyncSession
+):
+    # Naming Valentina once took every segment near her voice, the user's own too: through
+    # the pendant every voice is near every other
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    conversation, segments = await _segments(
+        db_session, start, ("[Others] Ciao.", "[You] Ci senti?"),
+        [near(MARCO, STRANGER, 0.97), near(ME, MARCO, 0.76)],
+    )
+    db_session.add(_profile(ME, is_self=True))
+    await db_session.commit()
+
+    named = await client.post(
+        f"/api/segments/{segments[0].id}/voice", headers=auth_headers, json={"name": "Valentina"}
+    )
+
+    assert named.status_code == 200 and named.json()["relabelled"] == 0
+    mine = await db_session.get(Segment, segments[1].id)
+    await db_session.refresh(mine)
+    assert mine.voice_match is None
 
 
 @pytest.mark.asyncio

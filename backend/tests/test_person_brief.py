@@ -15,6 +15,7 @@ from app.services import person_brief as pb
 from app.services.device_commands import DEVICE_COMMANDS_KEY
 from app.services.notifications import Notice
 from app.services.transcription_enhancer import STTContext
+from app.services.voice_profiles import VoiceContext
 from app.workers import stt as stt_worker
 from tests.conftest import TEST_USER_ID
 from tests.factories import make_conversation
@@ -277,6 +278,11 @@ async def _run_stt(
     monkeypatch.setattr(stt_worker, "classify_segment", classify)
     monkeypatch.setattr(stt_worker, "embed_voice", embed)
     monkeypatch.setattr(stt_worker, "list_profiles", profiles)
+
+    async def no_context(_db, _user_id):
+        return VoiceContext()
+
+    monkeypatch.setattr(stt_worker, "voice_context", no_context)
     monkeypatch.setattr(stt_worker, "brief_who_is_talking", record)
 
     shutdown = asyncio.Event()

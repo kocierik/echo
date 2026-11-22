@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
@@ -25,6 +26,7 @@ from app.models.entity import Entity
 from app.models.segment import Segment
 from app.models.transcription import Transcription
 from app.models.voice_profile import VoiceProfile
+from app.services.speaker_detector import CALIBRATION_SEGMENTS, compute_threshold
 from app.services.transcription_enhancer import speaker_prefix
 from app.services.voice_embedding import cosine, normalize
 
@@ -67,9 +69,80 @@ async def list_profiles(db: AsyncSession, user_id: uuid.UUID) -> list[VoiceProfi
     return list(result.scalars())
 
 
-def best_match(profiles: list[VoiceProfile], embedding) -> Match | None:
+@dataclass
+class VoiceContext:
+    """What a segment's fingerprint is read against, besides the profiles."""
+
+    # The mean of the user's recent fingerprints: the pendant's own sound, the same in
+    # every voice through it (None: too few fingerprints yet, compared raw)
+    center: list[float] | None = None
+    # From this audio energy a segment is loud: most likely the user, near the microphone
+    loud_from: int | None = None
+
+
+async def voice_context(db: AsyncSession, user_id: uuid.UUID) -> VoiceContext:
+    recent = (
+        select(Segment.voice_embedding)
+        .where(Segment.user_id == user_id, Segment.voice_embedding.isnot(None))
+        .order_by(Segment.received_at.desc())
+        .limit(300)
+        .subquery()
+    )
+    count, center = (
+        await db.execute(
+            select(func.count(), func.avg(recent.c.voice_embedding, type_=Vector(256)))
+        )
+    ).one()
+    energies = (await db.scalars(
+        select(Segment.audio_energy)
+        .where(Segment.user_id == user_id, Segment.audio_energy.isnot(None))
+        .order_by(Segment.recorded_at.desc())
+        .limit(100)
+    )).all()
+    return VoiceContext(
+        center=(
+            [float(x) for x in center]
+            if center is not None and count >= settings.voice_center_min_segments
+            else None
+        ),
+        loud_from=(
+            compute_threshold(list(energies), settings.voice_loud_percentile)
+            if len(energies) >= CALIBRATION_SEGMENTS
+            else None
+        ),
+    )
+
+
+def voice_similarity(profile_embedding, embedding, center) -> float:
+    if center is None:
+        return cosine(profile_embedding, embedding)
+    return cosine(
+        normalize([float(p) - c for p, c in zip(profile_embedding, center)]),
+        normalize([float(e) - c for e, c in zip(embedding, center)]),
+    )
+
+
+def voice_thresholds(centered: bool) -> tuple[float, float, float]:
+    """(match, suggest, margin) for raw or centered fingerprints."""
+    if centered:
+        return (
+            settings.voice_centered_match_threshold,
+            settings.voice_centered_suggest_threshold,
+            settings.voice_centered_margin,
+        )
+    return (
+        settings.voice_match_threshold,
+        settings.voice_suggest_threshold,
+        settings.voice_match_margin,
+    )
+
+
+def best_match(
+    profiles: list[VoiceProfile], embedding, center: list[float] | None = None
+) -> Match | None:
+    """The closest profile; with `center`, compared with the pendant's sound taken away."""
     scored = sorted(
-        (Match(p, cosine(p.embedding, embedding)) for p in profiles),
+        (Match(p, voice_similarity(p.embedding, embedding, center)) for p in profiles),
         key=lambda m: -m.similarity,
     )
     if not scored:
@@ -104,16 +177,30 @@ def label_speaker(segment: Segment, speaker: str) -> None:
         transcription.speaker_label = speaker
 
 
-def recognize(segment: Segment, embedding, profiles: list[VoiceProfile]) -> str | None:
+def recognize(
+    segment: Segment,
+    embedding,
+    profiles: list[VoiceProfile],
+    context: VoiceContext | None = None,
+) -> str | None:
     """Set the segment's voice fields; the speaker ("self"/"other"), or None to leave it to
     the energy rule (no own profile and no sure match)."""
+    context = context or VoiceContext()
     has_self = any(p.is_self for p in profiles)
-    match = best_match(profiles, embedding)
-    if match is not None and match.similarity >= settings.voice_suggest_threshold:
+    match = best_match(profiles, embedding, context.center)
+    match_from, suggest_from, margin = voice_thresholds(context.center is not None)
+    loud = (
+        context.loud_from is not None
+        and segment.audio_energy is not None
+        and segment.audio_energy >= context.loud_from
+    )
+    if match is not None and match.similarity >= suggest_from:
         segment.voice_similarity = round(match.similarity, 4)
         if (
-            match.similarity >= settings.voice_match_threshold
-            and match.lead >= settings.voice_match_margin
+            match.similarity >= match_from
+            and match.lead >= margin
+            # Loud is most likely the user, near the microphone: someone else only asked
+            and (match.profile.is_self or not loud)
         ):
             segment.voice_profile_id = match.profile.id
             segment.voice_match = "auto"
@@ -121,7 +208,10 @@ def recognize(segment: Segment, embedding, profiles: list[VoiceProfile]) -> str 
         if not match.profile.is_self:
             segment.voice_profile_id = match.profile.id
             segment.voice_match = "suggested"
-    return "other" if has_self else None
+    if not has_self:
+        return None
+    # No voice is sure: loud is the user's own, near the microphone
+    return "self" if loud else "other"
 
 
 def group_voices(embeddings: list, threshold: float) -> list[int]:
@@ -380,6 +470,8 @@ async def _relabel_turns(
     known voice, by the margin (through the pendant every voice is near every other);
     never a turn the user named."""
     profiles = await list_profiles(db, profile.user_id)
+    center = (await voice_context(db, profile.user_id)).center
+    match_from, _, margin = voice_thresholds(center is not None)
     transcriptions = (
         await db.execute(
             select(Transcription)
@@ -395,15 +487,15 @@ async def _relabel_turns(
         turns = []
         for turn in transcription.turns:
             match = (
-                best_match(profiles, turn["embedding"])
+                best_match(profiles, turn["embedding"], center)
                 if turn.get("embedding") and not turn.get("confirmed")
                 else None
             )
             if (
                 match is not None
                 and match.profile.id == profile.id
-                and match.similarity >= settings.voice_match_threshold
-                and match.lead >= settings.voice_match_margin
+                and match.similarity >= match_from
+                and match.lead >= margin
                 and turn.get("profile_id") != str(profile.id)
             ):
                 turn = {
@@ -432,13 +524,23 @@ async def _relabel_conversation(
             .where(func.coalesce(Segment.voice_match, "") != "confirmed")
         )
     ).scalars().all()
+    # Nearest to this voice, and clearly nearer than to any other: near this voice alone
+    # took a whole conversation, every voice through the pendant being near every other
+    profiles = await list_profiles(db, profile.user_id)
+    center = (await voice_context(db, profile.user_id)).center
+    match_from, _, margin = voice_thresholds(center is not None)
     count = 0
     for segment in others:
-        similarity = cosine(profile.embedding, segment.voice_embedding)
-        if similarity >= settings.voice_match_threshold:
+        match = best_match(profiles, segment.voice_embedding, center)
+        if (
+            match is not None
+            and match.profile.id == profile.id
+            and match.similarity >= match_from
+            and match.lead >= margin
+        ):
             segment.voice_profile_id = profile.id
             segment.voice_match = "auto"
-            segment.voice_similarity = round(similarity, 4)
+            segment.voice_similarity = round(match.similarity, 4)
             label_speaker(segment, "self" if profile.is_self else "other")
             count += 1
     return count

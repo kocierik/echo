@@ -36,8 +36,15 @@ from app.services.transcription_enhancer import (
     clean_transcription,
     speaker_prefix,
 )
-from app.services.voice_embedding import cosine, embed_voice
-from app.services.voice_profiles import label_speaker, list_profiles, number_unknown_voices
+from app.services.voice_embedding import embed_voice
+from app.services.voice_profiles import (
+    label_speaker,
+    list_profiles,
+    number_unknown_voices,
+    voice_context,
+    voice_similarity,
+    voice_thresholds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +101,9 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
     say whose voice one turn is (voice_profiles.assign_voice)."""
     profiles = await list_profiles(db, conversation.user_id)
     has_self = any(p.is_self for p in profiles)
+    # Compared with the pendant's own sound taken away (services/voice_profiles.py)
+    center = (await voice_context(db, conversation.user_id)).center
+    match_from, _, margin = voice_thresholds(center is not None)
     words = [w for part in parts for w in part]
     speakers = list(dict.fromkeys(w.speaker for w in words))  # in the order they spoke
     embeddings = {}
@@ -104,7 +114,7 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
     # own voice): each profile goes to one voice only, the closest first
     pairs = sorted(
         (
-            (cosine(profile.embedding, embedding), index, profile)
+            (voice_similarity(profile.embedding, embedding, center), index, profile)
             for index, embedding in enumerate(embeddings.values())
             if embedding is not None
             for profile in profiles
@@ -117,11 +127,11 @@ async def _voices(db, conversation, segments, parts, pcm) -> dict:
         ranked.setdefault(index, []).append(similarity)
     ambiguous = {
         index for index, sims in ranked.items()
-        if len(sims) > 1 and sims[0] - sims[1] < settings.voice_match_margin
+        if len(sims) > 1 and sims[0] - sims[1] < margin
     }
     matched: dict = {}
     for similarity, index, profile in pairs:
-        if similarity < settings.voice_match_threshold:
+        if similarity < match_from:
             break
         if index not in ambiguous and index not in matched and profile not in matched.values():
             matched[index] = profile

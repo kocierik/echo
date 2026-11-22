@@ -1,9 +1,9 @@
 """The catalog of ready-made routines: added from the app with one tap (Ask → Routines).
 
 Each entry is a routine written well once, in the user's language, with a default time the
-user can change before adding it, or run after each conversation (no time). Added, it is an ordinary routine of theirs (source
-"catalog", its `catalog_key` kept so the app shows it as added and can remove it). They
-read only Echo's own memory: none needs an app.
+user can change before adding it, or run after each conversation (no time). Added, it is an
+ordinary routine of theirs (source "catalog", its `catalog_key` kept so the app shows it as
+added and can remove it). They read only Echo's own memory: none needs an app.
 """
 
 from dataclasses import dataclass

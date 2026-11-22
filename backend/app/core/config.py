@@ -133,6 +133,18 @@ class Settings(BaseSettings):
     # ...and only this far ahead of the next closest voice: one between two is no one's
     # (Omi's margin, the same WeSpeaker model)
     voice_match_margin: float = 0.10
+    # The same three on fingerprints with the pendant's own sound taken away (the mean of
+    # the user's recent fingerprints, services/voice_profiles.channel_center). Raw, every
+    # voice through the pendant scored ~0.75 to every other; taken away, the user and
+    # another voice scored -0.2, confirmed segments 0.23-1.0 to their own (2026-11-22)
+    voice_centered_match_threshold: float = 0.35
+    voice_centered_suggest_threshold: float = 0.15
+    voice_centered_margin: float = 0.30
+    # Fingerprints the pendant's sound is taken from; fewer and fingerprints stay raw
+    voice_center_min_segments: int = 30
+    # A segment this loud among the user's recent ones (percentile) is most likely the
+    # user's own voice, near the microphone: never given to someone else automatically
+    voice_loud_percentile: float = 0.85
     # Less speech than this gives an unreliable fingerprint (a short command still has one)
     voice_min_seconds: float = 1.5
 

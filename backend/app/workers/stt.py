@@ -45,7 +45,7 @@ from app.services.transcription_enhancer import (
 )
 from app.services.usage import usage_owner
 from app.services.voice_embedding import embed_voice, loudest_frames
-from app.services.voice_profiles import list_profiles, recognize
+from app.services.voice_profiles import list_profiles, recognize, voice_context
 from app.workers.dead_letter import push_to_dead_letter
 from app.workers.lifecycle import sleep_or_shutdown
 from app.workers.retry import RetryExhaustedError, retry_with_backoff
@@ -292,7 +292,8 @@ async def process_stt(redis_client: redis.Redis, shutdown_event: asyncio.Event):
                 if embedding is not None and cleaned_text:
                     segment.voice_embedding = embedding
                     profiles = await list_profiles(db, segment.user_id)
-                    speaker = recognize(segment, embedding, profiles)
+                    context = await voice_context(db, segment.user_id)
+                    speaker = recognize(segment, embedding, profiles, context)
                     known = confident_voice(segment, profiles)
                 if speaker is None:
                     speaker = await classify_segment(db, segment.user_id, segment.audio_energy)
