@@ -26,9 +26,10 @@ ROUTINE_TOOLS = [
         "function": {
             "name": CREATE,
             "description": (
-                "Make Echo do something on its own at a regular time (at most once a day) "
-                "and tell the user the result as a notification: 'every morning at 7 tell me "
-                "the weather in Milan'. Only when the user gave both what and when."
+                "Make Echo do something on its own at a regular time (at most once a day), or "
+                "after each conversation, and tell the user the result as a notification: "
+                "'every morning at 7 tell me the weather in Milan', 'after every meeting list "
+                "the decisions'. Only when the user gave both what and when."
             ),
             "parameters": {
                 "type": "object",
@@ -40,8 +41,19 @@ ROUTINE_TOOLS = [
                             "every detail it needs (the city, the app, ...), without the time."
                         ),
                     },
-                    "kind": {"type": "string", "enum": ["daily", "weekdays", "weekly", "monthly"]},
-                    "time": {"type": "string", "description": "Local time, HH:MM, 24-hour."},
+                    "kind": {
+                        "type": "string",
+                        "enum": ["daily", "weekdays", "weekly", "monthly", "after_conversation"],
+                        "description": (
+                            "after_conversation: on each of the user's conversations once it "
+                            "ends ('dopo ogni riunione', 'whenever someone asks me a favour'); "
+                            "it gets that conversation, needs no time, and is usually only_if."
+                        ),
+                    },
+                    "time": {
+                        "type": "string",
+                        "description": "Local time, HH:MM, 24-hour (not for after_conversation).",
+                    },
                     "days": {
                         "type": "array",
                         "items": {"type": "integer", "minimum": 1, "maximum": 7},
@@ -65,7 +77,7 @@ ROUTINE_TOOLS = [
                         ),
                     },
                 },
-                "required": ["instruction", "kind", "time"],
+                "required": ["instruction", "kind"],
             },
         },
     },

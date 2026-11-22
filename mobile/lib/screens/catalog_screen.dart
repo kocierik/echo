@@ -192,6 +192,7 @@ final class _CatalogScreenState extends State<CatalogScreen> {
     final groups = <String, List<CatalogRoutine>>{};
     for (final entry in _catalog!) {
       final heading = switch (entry.kind) {
+        'after_conversation' => 'AFTER EACH CONVERSATION',
         'weekly' => 'EVERY WEEK',
         'monthly' => 'EVERY MONTH',
         _ => 'EVERY DAY',
@@ -373,9 +374,11 @@ final class _RoutineSheetState extends State<_RoutineSheet> {
               contentPadding: EdgeInsets.zero,
               title: const Text('When'),
               subtitle: Text(entry.scheduleText),
-              trailing: entry.added
-                  ? Text(_time)
-                  : TextButton(onPressed: _pickTime, child: Text('$_time ›')),
+              trailing: entry.afterConversation
+                  ? null
+                  : entry.added
+                      ? Text(_time)
+                      : TextButton(onPressed: _pickTime, child: Text('$_time ›')),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,

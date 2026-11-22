@@ -45,6 +45,10 @@ class Routine(UUIDPrimaryKey, Base):
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     # The catalog entry it was added from (services/routine_catalog.py); none when asked for
     catalog_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # A routine run by conversations: the end of the last one it ran on (from its creation)
+    last_conversation_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

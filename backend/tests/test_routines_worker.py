@@ -542,3 +542,52 @@ async def test_a_routine_runs_inside_a_tracked_run(monkeypatch):
     assert await _run(_LLM()) == 1
 
     assert [(run.source, run.user_id) for run in seen] == [("routine", TEST_USER_ID)]
+
+
+async def test_a_routine_run_by_conversations_runs_once_on_each_new_one():
+    # "Dopo ogni riunione scrivimi le decisioni": each conversation closed after it was
+    # made, with that conversation, once; never one from before
+    from app.models.conversation import Conversation
+    from app.services.routines import NEVER, validate_schedule
+
+    made = datetime.now(timezone.utc) - timedelta(hours=1)
+    routine = Routine(
+        id=uuid.uuid4(), user_id=TEST_USER_ID, instruction="Scrivimi le decisioni.",
+        schedule=validate_schedule({"kind": "after_conversation", "time": "09:00"}),
+        timezone="Europe/Rome", active=True, next_run_at=NEVER, source="catalog",
+        mode="always", created_at=made,
+    )
+
+    def conversation(minutes_after: int, title: str, summary: str | None):
+        ended = made + timedelta(minutes=minutes_after)
+        return Conversation(
+            id=uuid.uuid4(), user_id=TEST_USER_ID, started_at=ended - timedelta(minutes=10),
+            ended_at=ended, title=title, summary=summary, analysis_status="completed",
+        )
+
+    async with test_session() as db:
+        db.add_all([
+            routine,
+            conversation(-30, "Vecchia", "Prima della routine."),
+            conversation(10, "Riunione Atlas", "Demo il 2 dicembre."),
+            conversation(20, "Non ancora riassunta", None),
+        ])
+        await db.commit()
+    llm = _LLM(answer="Demo il 2 dicembre.")
+
+    first = await worker.run_conversation_routines(
+        session_factory=test_session, redis_client=InMemoryRedis(), llm=llm, provider=NO_APPS
+    )
+    again = await worker.run_conversation_routines(
+        session_factory=test_session, redis_client=InMemoryRedis(), llm=llm, provider=NO_APPS
+    )
+
+    assert routine.schedule == {"kind": "after_conversation"}
+    assert (first, again) == (1, 0)
+    request = llm.call_log[0][-1].content
+    assert "Riunione Atlas" in request and "Demo il 2 dicembre." in request
+    assert "Vecchia" not in request
+    [run] = await _runs(routine)
+    assert run.status == "reported"
+    # Never picked by the clock
+    assert await _run(llm, now=NOW) == 0

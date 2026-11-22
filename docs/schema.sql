@@ -403,6 +403,7 @@ CREATE TABLE routines (
     last_answer TEXT,
     source VARCHAR(10) NOT NULL,       -- chat | voice | catalog
     catalog_key VARCHAR(40),           -- the catalog entry it was added from (Migration 045)
+    last_conversation_at TIMESTAMPTZ,  -- after_conversation: the last conversation run on (045)
     created_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX ix_routines_user_id ON routines(user_id);

@@ -1,7 +1,7 @@
 """The catalog of ready-made routines: added from the app with one tap (Ask → Routines).
 
 Each entry is a routine written well once, in the user's language, with a default time the
-user can change before adding it. Added, it is an ordinary routine of theirs (source
+user can change before adding it, or run after each conversation (no time). Added, it is an ordinary routine of theirs (source
 "catalog", its `catalog_key` kept so the app shows it as added and can remove it). They
 read only Echo's own memory: none needs an app.
 """
@@ -165,6 +165,56 @@ CATALOG: tuple[CatalogRoutine, ...] = (
                 "the biggest items. If I saved none, write nothing.",
                 "November: €412 across 9 receipts. Biggest: groceries (€186), dinners "
                 "(€94).",
+            ),
+        },
+    ),
+    CatalogRoutine(
+        key="meeting_decisions",
+        emoji="📝",
+        schedule={"kind": "after_conversation"},
+        mode="only_if",
+        texts={
+            "it": (
+                "Decisioni dopo ogni riunione",
+                "Chi fa cosa, appena finisce",
+                "Se la conversazione appena finita era una riunione o una discussione di "
+                "lavoro, scrivimi le decisioni prese e chi fa cosa, con le scadenze. Se non "
+                "lo era o non è stato deciso niente, non scrivere niente.",
+                "Riunione Atlas: demo il 2 dicembre. Sara sistema il login, Marco le "
+                "schermate entro venerdì.",
+            ),
+            "en": (
+                "Decisions after each meeting",
+                "Who does what, as soon as it ends",
+                "If the conversation that just ended was a meeting or a work discussion, "
+                "write me the decisions made and who does what, with deadlines. If it was "
+                "not, or nothing was decided, write nothing.",
+                "Atlas meeting: demo on December 2. Sara fixes the login, Marco the screens "
+                "by Friday.",
+            ),
+        },
+    ),
+    CatalogRoutine(
+        key="favours_and_promises",
+        emoji="🙋",
+        schedule={"kind": "after_conversation"},
+        mode="only_if",
+        texts={
+            "it": (
+                "Favori e promesse",
+                "Cosa hai promesso o ti hanno chiesto",
+                "Se nella conversazione appena finita ho promesso qualcosa a qualcuno, o "
+                "qualcuno mi ha chiesto un favore, scrivimelo in una riga con chi e per "
+                "quando. Altrimenti non scrivere niente.",
+                "Hai promesso a Giulia di mandarle le foto del viaggio entro domenica.",
+            ),
+            "en": (
+                "Favours and promises",
+                "What you promised or were asked",
+                "If in the conversation that just ended I promised someone something, or "
+                "someone asked me a favour, write it in one line with who and by when. "
+                "Otherwise write nothing.",
+                "You promised Giulia the photos from the trip by Sunday.",
             ),
         },
     ),

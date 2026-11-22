@@ -92,7 +92,7 @@ async def test_a_bad_schedule_is_told_to_the_model(db_session):
     await _run(db_session, "ogni ora dimmi l'ora", llm)
 
     assert await _routines(db_session) == []
-    assert "daily, weekdays, weekly or monthly" in llm.call_log[-1][-1].content
+    assert "daily, weekdays, weekly, monthly or after_conversation" in llm.call_log[-1][-1].content
 
 
 async def _create_until_refused(db_session, count: int) -> str:

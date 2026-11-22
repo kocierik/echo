@@ -43,4 +43,7 @@ final class CatalogRoutine {
   bool get added => routineId != null;
   String get kind => schedule['kind'] as String? ?? 'daily';
   String get time => schedule['time'] as String? ?? '09:00';
+
+  /// Run on each conversation once it ends: no time to choose.
+  bool get afterConversation => kind == 'after_conversation';
 }

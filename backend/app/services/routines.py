@@ -20,7 +20,11 @@ from app.models.routine import Routine
 from app.services.plans import user_plan
 from app.services.routine_results import MODES
 
-KINDS = ("daily", "weekdays", "weekly", "monthly")
+KINDS = ("daily", "weekdays", "weekly", "monthly", "after_conversation")
+# "after_conversation": run on each conversation once it is closed and summarized
+# (workers/routines.run_conversation_routines), never by the clock
+AFTER_CONVERSATION = "after_conversation"
+NEVER = datetime(9999, 1, 1, tzinfo=timezone.utc)
 
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 _DAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
@@ -32,7 +36,11 @@ def validate_schedule(schedule) -> dict:
         raise ValueError("The schedule must be an object with a kind and a time.")
     kind = schedule.get("kind")
     if kind not in KINDS:
-        raise ValueError("The schedule kind must be daily, weekdays, weekly or monthly.")
+        raise ValueError(
+            "The schedule kind must be daily, weekdays, weekly, monthly or after_conversation."
+        )
+    if kind == AFTER_CONVERSATION:
+        return {"kind": kind}
     match = _TIME.match(str(schedule.get("time", "")).strip())
     if not match:
         raise ValueError("The time must be HH:MM, 24-hour.")
@@ -74,7 +82,9 @@ def _runs_on(schedule: dict, day: date) -> bool:
 
 
 def next_run(schedule: dict, tz: str, after: datetime) -> datetime:
-    """The first run strictly after `after` (UTC)."""
+    """The first run strictly after `after` (UTC); never for one run by conversations."""
+    if schedule["kind"] == AFTER_CONVERSATION:
+        return NEVER
     zone = ZoneInfo(tz)
     hour, minute = (int(part) for part in schedule["time"].split(":"))
     start = after.astimezone(zone).date()
@@ -98,6 +108,8 @@ def _ordinal(n: int) -> str:
 
 def describe_schedule(schedule: dict) -> str:
     """The schedule in words, as the app shows it (English)."""
+    if schedule["kind"] == AFTER_CONVERSATION:
+        return "After each conversation"
     at = schedule["time"]
     kind = schedule["kind"]
     if kind == "daily":

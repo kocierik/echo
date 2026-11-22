@@ -30,6 +30,7 @@ final class _Catalog implements RoutineCatalogApi, AssistantsApi {
   Future<List<CatalogRoutine>> routineCatalog() async => [
         _entry('morning_brief', 'Morning briefing', 'daily'),
         _entry('weekly_summary', 'Week in review', 'weekly'),
+        _entry('meeting_decisions', 'Decisions after each meeting', 'after_conversation'),
       ];
 
   @override
@@ -83,6 +84,7 @@ void main() {
 
     expect(find.text('EVERY DAY'), findsOneWidget);
     expect(find.text('EVERY WEEK'), findsOneWidget);
+    expect(find.text('AFTER EACH CONVERSATION'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('catalog-add-morning_brief')));
     await tester.pumpAndSettle();
@@ -120,6 +122,16 @@ void main() {
     await tester.tap(find.byKey(const Key('catalog-sheet-add')));
     await tester.pumpAndSettle();
     expect(api.added.keys, ['morning_brief']);
+  });
+
+  testWidgets('one run after each conversation has no time to choose', (tester) async {
+    await _pump(tester);
+    await tester.scrollUntilVisible(find.text('Decisions after each meeting'), 200);
+    await tester.tap(find.text('Decisions after each meeting'));
+    await tester.pumpAndSettle();
+
+    final when = tester.widget<ListTile>(find.byKey(const Key('catalog-time')));
+    expect(when.trailing, isNull);
   });
 
   testWidgets('an assistant is added as it is, and once', (tester) async {

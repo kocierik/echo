@@ -304,9 +304,12 @@ final class _RoutineTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = EchoPalette.of(context);
     final textTheme = Theme.of(context).textTheme;
-    final next = routine.active
-        ? 'Next: ${dayLabel(routine.nextRunAt, now)} at ${formatTime(routine.nextRunAt)}'
-        : 'Paused';
+    final next = !routine.active
+        ? 'Paused'
+        // Run by conversations, never by the clock (the server's next run is year 9999)
+        : routine.nextRunAt.year >= 9999
+            ? routine.scheduleText
+            : 'Next: ${dayLabel(routine.nextRunAt, now)} at ${formatTime(routine.nextRunAt)}';
     final last = _last;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
