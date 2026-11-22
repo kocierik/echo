@@ -10,6 +10,7 @@
 #include "ble_transport_events.h"
 #include "ble_transfer_state.h"
 #include "config.h"
+#include "link_watch.h"
 #include "ota_flash_esp.h"
 #include "ota_public_key.h"
 #include "ota_receiver.h"
@@ -168,6 +169,7 @@ public:
         const uint32_t burstStartedUs = micros();
         const uint32_t deadlineUs = burstStartedUs + BleBurstDecision::BURST_BUDGET_US;
         uint8_t notificationsSent = 0;
+        watchLink();
         if (processPendingDisconnect()) return;
         while (beforeBurstDeadline(deadlineUs) && processNextEvent(buffer)) {}
         if (takeEventOverflow()) restartActive();
@@ -740,6 +742,26 @@ private:
         return true;
     }
 
+    /** Never out of the phone's reach (link_watch.h). */
+    void watchLink() {
+        if (_server == nullptr) return;
+        NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+        switch (_linkWatch.update(millis(), _server->getConnectedCount() > 0,
+                                  _connected && _state.isReady(),
+                                  advertising->isAdvertising())) {
+            case LinkWatch::Action::ADVERTISE:
+                Serial.println("[BLE] no phone and not advertising: advertising again");
+                NimBLEDevice::startAdvertising();
+                break;
+            case LinkWatch::Action::DROP_LINK:
+                Serial.println("[BLE] link never became ready: dropping it");
+                for (const uint16_t handle : _server->getPeerDevices()) _server->disconnect(handle);
+                break;
+            case LinkWatch::Action::NONE:
+                break;
+        }
+    }
+
     bool takeEventOverflow() {
         portENTER_CRITICAL(&_eventMux);
         const bool pending = _eventOverflowPending;
@@ -891,6 +913,7 @@ private:
     }
 
     NimBLEServer* _server = nullptr;
+    LinkWatch _linkWatch{BLE_LINK_STUCK_MS};
     NimBLECharacteristic* _audioCharacteristic = nullptr;
     NimBLECharacteristic* _controlCharacteristic = nullptr;
     NimBLECharacteristic* _otaCharacteristic = nullptr;

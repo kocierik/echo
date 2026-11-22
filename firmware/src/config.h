@@ -4,7 +4,7 @@
 // raise it for every release, or the app will not offer the update
 #define FIRMWARE_VERSION_MAJOR 0
 #define FIRMWARE_VERSION_MINOR 10
-#define FIRMWARE_VERSION_PATCH 5
+#define FIRMWARE_VERSION_PATCH 6
 
 // ============================================================
 // Audio Configuration
@@ -97,6 +97,9 @@
 // Firmware updates: [offset u32, bytes] written with response, in order (ota_receiver.h)
 #define BLE_OTA_CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26aa"
 #define BLE_PREFERRED_MTU 247
+// A link not ready after this long is dropped so the phone retries; long enough for the
+// iPhone's pairing prompt the first time
+#define BLE_LINK_STUCK_MS 60000
 #define BLE_STATUS_ERROR_NONE 0
 #define BLE_STATUS_ERROR_BUFFER_FULL 1
 
