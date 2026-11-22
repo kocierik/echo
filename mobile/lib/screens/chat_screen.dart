@@ -29,6 +29,7 @@ import '../widgets/typing_indicator.dart';
 import '../utils/chat_suggestions.dart';
 import '../utils/formatting.dart';
 import 'chat_history_screen.dart';
+import 'catalog_screen.dart';
 import 'conversation_detail_screen.dart';
 import 'integrations_screen.dart';
 import 'routine_runs_view.dart';
@@ -295,6 +296,25 @@ final class _ChatScreenState extends State<ChatScreen> {
     // A dictation that ended by itself is still on in the app: reset it first
     if (on && (widget.dictation?.value ?? false)) set(false);
     set(on);
+  }
+
+  /// Ready-made routines and assistants can be added from here (a real connection).
+  bool get _canBrowse => _api is AssistantsApi && _api is RoutineCatalogApi;
+
+  /// Counts the catalog's visits: Ask → Routines is built again after one (a routine
+  /// added or removed there).
+  int _catalogVisits = 0;
+
+  Future<void> _openCatalog(CatalogTab tab) async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+      builder: (_) => CatalogScreen(
+        routines: _api as RoutineCatalogApi,
+        assistants: _api as AssistantsApi,
+        initialTab: tab,
+        onAssistantsChanged: () => unawaited(_loadAssistants()),
+      ),
+    ));
+    if (mounted) setState(() => _catalogVisits++);
   }
 
   Future<void> _openApps() => Navigator.of(context).push<void>(MaterialPageRoute(
@@ -667,11 +687,12 @@ final class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
             // Echo and each assistant, one tap away; each with its own history
-            if (!routines && _assistants.isNotEmpty)
+            if (!routines && (_assistants.isNotEmpty || _canBrowse))
               _AssistantSwitcher(
                 assistants: _assistants,
                 selected: state.assistant?.id,
                 onSelected: (choice) => unawaited(_controller.openAssistant(choice)),
+                onBrowse: _canBrowse ? () => unawaited(_openCatalog(CatalogTab.assistants)) : null,
               )
             else if (!routines && state.assistant != null && state.messages.isNotEmpty)
               _AssistantBar(state.assistant!),
@@ -680,7 +701,10 @@ final class _ChatScreenState extends State<ChatScreen> {
                 child: Padding(
                   padding: EdgeInsets.only(bottom: EchoShellInsets.bottomOf(context)),
                   child: RoutineRunsView(
+                    key: ValueKey(_catalogVisits),
                     api: routinesApi,
+                    onBrowseCatalog:
+                        _canBrowse ? () => unawaited(_openCatalog(CatalogTab.routines)) : null,
                     routineId: _filter.value,
                     onFilter: (id) => _filter.value = id,
                     onAskAbout: _askAbout,
@@ -884,9 +908,13 @@ final class _AssistantSwitcher extends StatelessWidget {
     required this.assistants,
     required this.selected,
     required this.onSelected,
+    this.onBrowse,
   });
 
   final List<ChatAssistant> assistants;
+
+  /// "+": the catalog's ready-made assistants.
+  final VoidCallback? onBrowse;
 
   /// The assistant of the chat shown; null: Echo.
   final String? selected;
@@ -916,6 +944,14 @@ final class _AssistantSwitcher extends StatelessWidget {
               selected: selected == choice.id,
               showCheckmark: false,
               onSelected: (_) => onSelected(choice),
+            ),
+          if (onBrowse case final browse?)
+            ActionChip(
+              key: const Key('ask-assistant-add'),
+              avatar: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('More'),
+              tooltip: 'Ready-made assistants',
+              onPressed: browse,
             ),
         ],
       ),

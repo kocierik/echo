@@ -401,7 +401,8 @@ CREATE TABLE routines (
     mode VARCHAR(10) NOT NULL,         -- always | only_if | only_new (Migration 026)
     last_status VARCHAR(10),           -- reported | nothing | failed | skipped
     last_answer TEXT,
-    source VARCHAR(10) NOT NULL,       -- chat | voice
+    source VARCHAR(10) NOT NULL,       -- chat | voice | catalog
+    catalog_key VARCHAR(40),           -- the catalog entry it was added from (Migration 045)
     created_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX ix_routines_user_id ON routines(user_id);

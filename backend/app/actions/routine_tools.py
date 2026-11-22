@@ -5,18 +5,16 @@ user, who sees and stops it in Profile → Routines). Results are what the model
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.actions.provider import ToolResult
-from app.core.config import settings
 from app.models.routine import Routine
-from app.services.plans import user_plan
 from app.services.routine_results import MODES
-from app.services.routines import describe_schedule, next_run, validate_schedule
+from app.services.routines import add_routine, describe_schedule
 
 CREATE = "ECHO_CREATE_ROUTINE"
 LIST = "ECHO_LIST_ROUTINES"
@@ -127,48 +125,22 @@ async def run_routine_tool(
     """Run one routine tool; the caller logs it and commits. A routine made in an
     assistant's chat belongs to it (`assistant_id`) and runs with it."""
     if name == CREATE:
-        instruction = str(arguments.get("instruction") or "").strip()
-        if not instruction:
-            return ToolResult(ok=False, error="instruction is required")
         try:
-            schedule = validate_schedule({
-                key: arguments[key]
-                for key in ("kind", "time", "days", "day_of_month")
-                if key in arguments
-            })
-        except ValueError as exc:
-            return ToolResult(ok=False, error=str(exc))
-        mode = arguments.get("mode") or "always"
-        if mode not in MODES:
-            return ToolResult(ok=False, error="mode must be always, only_if or only_new")
-        count = await db.scalar(
-            select(func.count()).select_from(Routine).where(Routine.user_id == user_id)
-        )
-        # As many as the plan has (services/plans.py); a lowered plan keeps the ones made
-        limit = (await user_plan(db, user_id)).routines
-        if count >= limit:
-            return ToolResult(
-                ok=False,
-                error=(
-                    f"At most {limit} routines on your plan. "
-                    "Delete one first (Profile → Routines)."
-                ),
+            routine = await add_routine(
+                db,
+                user_id,
+                instruction=str(arguments.get("instruction") or ""),
+                schedule={
+                    key: arguments[key]
+                    for key in ("kind", "time", "days", "day_of_month")
+                    if key in arguments
+                },
+                mode=arguments.get("mode") or "always",
+                source=source if source in ("chat", "voice") else "chat",
+                assistant_id=assistant_id,
             )
-        tz = settings.user_timezone
-        routine = Routine(
-            id=uuid.uuid4(),
-            user_id=user_id,
-            instruction=instruction,
-            schedule=schedule,
-            timezone=tz,
-            active=True,
-            next_run_at=next_run(schedule, tz, datetime.now(timezone.utc)),
-            source=source if source in ("chat", "voice") else "chat",
-            mode=mode,
-            assistant_id=assistant_id,
-        )
-        db.add(routine)
-        await db.flush()
+        except ValueError as exc:  # RoutineError too
+            return ToolResult(ok=False, error=str(exc))
         return ToolResult(ok=True, data={"created": _described(routine)})
 
     if name == LIST:

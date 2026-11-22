@@ -23,10 +23,14 @@ final class RoutineRunsView extends StatefulWidget {
     this.routineId,
     this.changes,
     this.openLink,
+    this.onBrowseCatalog,
     super.key,
   });
 
   final RoutinesApi api;
+
+  /// Opens the catalog of ready-made routines ("+ Add"); no button without it.
+  final VoidCallback? onBrowseCatalog;
 
   /// The routine shown; null: all of them.
   final String? routineId;
@@ -155,11 +159,12 @@ final class _RoutineRunsViewState extends State<RoutineRunsView> {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       children: [
         // A filter set from elsewhere can always be cleared, even on a routine now gone
-        if (_routines.length > 1 || widget.routineId != null)
+        if (_routines.length > 1 || widget.routineId != null || widget.onBrowseCatalog != null)
           _Filters(
-            routines: _routines,
+            routines: _routines.length > 1 || widget.routineId != null ? _routines : const [],
             selected: widget.routineId,
             onSelected: widget.onFilter,
+            onAdd: widget.onBrowseCatalog,
           ),
         if (_loading)
           const SectionLoading(label: 'Loading results')
@@ -169,8 +174,17 @@ final class _RoutineRunsViewState extends State<RoutineRunsView> {
             retryKey: const Key('routines-retry'),
             onRetry: () => unawaited(_load()),
           )
-        else if (_runs.isEmpty)
-          const SectionEmpty(message: "Your routines' results show up here.")
+        else if (_runs.isEmpty) ...[
+          const SectionEmpty(message: "Your routines' results show up here."),
+          if (widget.onBrowseCatalog case final browse?)
+            Center(
+              child: FilledButton.tonal(
+                key: const Key('routines-browse'),
+                onPressed: browse,
+                child: const Text('Browse ready-made routines'),
+              ),
+            ),
+        ]
         else ...[
           ...rows,
           if (_nextBefore != null)
@@ -188,11 +202,18 @@ final class _RoutineRunsViewState extends State<RoutineRunsView> {
 }
 
 final class _Filters extends StatelessWidget {
-  const _Filters({required this.routines, required this.selected, required this.onSelected});
+  const _Filters({
+    required this.routines,
+    required this.selected,
+    required this.onSelected,
+    this.onAdd,
+  });
 
+  /// Empty: only "+ Add" (one routine needs no filter).
   final List<Routine> routines;
   final String? selected;
   final ValueChanged<String?> onSelected;
+  final VoidCallback? onAdd;
 
   @override
   Widget build(BuildContext context) {
@@ -202,12 +223,22 @@ final class _Filters extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          ChoiceChip(
-            key: const Key('routines-filter-all'),
-            label: const Text('All'),
-            selected: selected == null,
-            onSelected: (_) => onSelected(null),
-          ),
+          if (onAdd case final add?) ...[
+            ActionChip(
+              key: const Key('routines-add'),
+              avatar: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add'),
+              onPressed: add,
+            ),
+            if (routines.isNotEmpty) const SizedBox(width: 8),
+          ],
+          if (routines.isNotEmpty)
+            ChoiceChip(
+              key: const Key('routines-filter-all'),
+              label: const Text('All'),
+              selected: selected == null,
+              onSelected: (_) => onSelected(null),
+            ),
           for (final routine in routines) ...[
             const SizedBox(width: 8),
             ChoiceChip(

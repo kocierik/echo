@@ -10,6 +10,7 @@ import '../../theme/app_theme.dart';
 import '../../utils/formatting.dart';
 import '../../widgets/panel.dart';
 import '../../widgets/routine_run_sheet.dart';
+import '../catalog_screen.dart';
 import '../navigation.dart';
 
 /// Profile → Routines: what Echo does on its own, when, and when it speaks. Routines are
@@ -211,17 +212,38 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
         style: textTheme.bodySmall?.copyWith(color: palette.text2),
       ),
     );
+    final browse = switch (_api) {
+      final AssistantsApi assistants when _api is RoutineCatalogApi => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: OutlinedButton.icon(
+            key: const Key('routines-browse-catalog'),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Browse ready-made routines'),
+            onPressed: () async {
+              await Navigator.of(context).push<void>(MaterialPageRoute(
+                builder: (_) => CatalogScreen(
+                  routines: _api as RoutineCatalogApi,
+                  assistants: assistants,
+                ),
+              ));
+              if (mounted) await _load();
+            },
+          ),
+        ),
+      _ => null,
+    };
     if (_routines.isEmpty) {
       return ListView(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
             child: Text(
-              "No routines yet. Ask Echo to set one up: 'Hey Echo, every morning at 7 "
-              "tell me the weather in Milan.'",
+              "No routines yet. Add a ready-made one, or ask Echo to set one up: 'Hey Echo, "
+              "every morning at 7 tell me the weather in Milan.'",
               style: textTheme.bodyMedium?.copyWith(color: palette.text2),
             ),
           ),
+          if (browse != null) browse,
           note,
         ],
       );
@@ -229,6 +251,7 @@ class _RoutinesScreenState extends State<RoutinesScreen> {
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 8),
       children: [
+        if (browse != null) browse,
         for (final (index, routine) in _routines.indexed)
           PanelListRow(
             index: index,

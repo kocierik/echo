@@ -53,6 +53,7 @@ class ApiService extends ApiClient
         VoiceEndpoints,
         NotificationEndpoints,
         RoutineEndpoints,
+        RoutineCatalogEndpoints,
         SavedEndpoints,
         PlacesEndpoints,
         PlanEndpoints,

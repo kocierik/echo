@@ -41,8 +41,10 @@ class Routine(UUIDPrimaryKey, Base):
     # The latest run's status: "reported" | "nothing" | "failed" | "skipped" ("ok" before 026)
     last_status: Mapped[str | None] = mapped_column(String(10), nullable=True)
     last_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Where it was asked for: "chat" | "voice"
+    # Where it was asked for: "chat" | "voice" | "catalog"
     source: Mapped[str] = mapped_column(String(10), nullable=False)
+    # The catalog entry it was added from (services/routine_catalog.py); none when asked for
+    catalog_key: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )

@@ -1,4 +1,5 @@
 import '../../models/routine.dart';
+import '../../models/routine_catalog.dart';
 import '../../models/routine_run.dart';
 import 'api_client.dart';
 
@@ -21,6 +22,40 @@ abstract interface class RoutinesApi {
 
   /// Puts the run into the thread with Echo ("Ask about this"); returns the thread's id.
   Future<String> askAboutRoutineRun(String runId);
+}
+
+/// The catalog of ready-made routines (services/routine_catalog.py on the server).
+abstract interface class RoutineCatalogApi {
+  Future<List<CatalogRoutine>> routineCatalog();
+
+  /// Adds the entry as one of the user's routines, at [time] ("HH:MM") or its own.
+  Future<Routine> addCatalogRoutine(String key, {String? time});
+
+  Future<void> deleteRoutine(String id);
+}
+
+mixin RoutineCatalogEndpoints on ApiClient implements RoutineCatalogApi {
+  @override
+  Future<List<CatalogRoutine>> routineCatalog() async {
+    final response = await get('/api/routines/catalog', shape: JsonShape.list);
+    return parse(
+      response.data,
+      (data) => [
+        for (final item in data as List<dynamic>)
+          CatalogRoutine.fromJson(item as Map<String, dynamic>),
+      ],
+    );
+  }
+
+  @override
+  Future<Routine> addCatalogRoutine(String key, {String? time}) async {
+    final response = await post(
+      '/api/routines/catalog/$key',
+      body: {if (time != null) 'time': time},
+      expect: const {201},
+    );
+    return parse(response.data, (data) => Routine.fromJson(data as Map<String, dynamic>));
+  }
 }
 
 mixin RoutineEndpoints on ApiClient implements RoutinesApi {

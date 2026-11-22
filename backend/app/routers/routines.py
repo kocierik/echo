@@ -1,6 +1,7 @@
 """Routines API: the user's routines, to see, pause, resume and remove.
 
-They are created by asking Echo (the action agent's routine tools), never here.
+They are created by asking Echo (the action agent's routine tools), or added from the
+catalog of ready-made ones (services/routine_catalog.py).
 """
 
 import uuid
@@ -15,7 +16,15 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.models.assistant import Assistant
 from app.models.routine import Routine
-from app.services.routines import describe_schedule, next_run
+from app.models.user import User
+from app.services.language import SUPPORTED_LANGUAGES
+from app.services.routine_catalog import BY_KEY, CATALOG, DEFAULT_LANGUAGE
+from app.services.routines import (
+    add_routine,
+    describe_schedule,
+    next_run,
+    validate_schedule,
+)
 
 router = APIRouter(prefix="/routines", tags=["routines"])
 
@@ -39,6 +48,28 @@ class RoutineOut(BaseModel):
     assistant_id: uuid.UUID | None = None
     assistant_name: str | None = None
     assistant_emoji: str | None = None
+    # The catalog entry it was added from; none when asked for in words
+    catalog_key: str | None = None
+
+
+class CatalogEntryOut(BaseModel):
+    key: str
+    emoji: str
+    title: str
+    summary: str
+    instruction: str
+    # What a run could say, to show before adding it
+    example: str
+    schedule: dict
+    schedule_text: str
+    mode: str
+    # Already added: that routine (to show it as added, or remove it)
+    routine_id: uuid.UUID | None = None
+
+
+class CatalogAdd(BaseModel):
+    # "HH:MM" in place of the entry's own time
+    time: str | None = None
 
 
 class RoutineUpdate(BaseModel):
@@ -63,6 +94,7 @@ def _out(routine: Routine, assistant: Assistant | None = None) -> RoutineOut:
         assistant_id=assistant.id if assistant else None,
         assistant_name=assistant.name if assistant else None,
         assistant_emoji=assistant.emoji if assistant else None,
+        catalog_key=routine.catalog_key,
     )
 
 
@@ -123,3 +155,67 @@ async def delete_routine(
     await db.delete(routine)
     await db.commit()
     return Response(status_code=204)
+
+
+async def _language(db: AsyncSession, user_id: uuid.UUID) -> str:
+    user = await db.get(User, user_id)
+    language = user.language if user is not None else DEFAULT_LANGUAGE
+    return language if language in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
+async def _added(db: AsyncSession, user_id: uuid.UUID) -> dict[str, Routine]:
+    rows = await db.scalars(
+        select(Routine).where(Routine.user_id == user_id, Routine.catalog_key.isnot(None))
+    )
+    return {routine.catalog_key: routine for routine in rows}
+
+
+@router.get("/catalog", response_model=list[CatalogEntryOut])
+async def list_catalog(
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """The ready-made routines, in the user's language, with the ones already added."""
+    language = await _language(db, user_id)
+    added = await _added(db, user_id)
+    entries = []
+    for entry in CATALOG:
+        title, summary, instruction, example = entry.text(language)
+        routine = added.get(entry.key)
+        entries.append(CatalogEntryOut(
+            key=entry.key, emoji=entry.emoji, title=title, summary=summary,
+            instruction=instruction, example=example, schedule=entry.schedule,
+            schedule_text=describe_schedule(entry.schedule), mode=entry.mode,
+            routine_id=routine.id if routine else None,
+        ))
+    return entries
+
+
+@router.post("/catalog/{key}", response_model=RoutineOut, status_code=201)
+async def add_from_catalog(
+    key: str,
+    body: CatalogAdd,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Adds a catalog entry as one of the user's routines (once: added again, the same)."""
+    entry = BY_KEY.get(key)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Not in the catalog")
+    existing = (await _added(db, user_id)).get(key)
+    if existing is not None:
+        return _out(existing)
+    schedule = dict(entry.schedule)
+    if body.time:
+        schedule["time"] = body.time
+    _, _, instruction, _ = entry.text(await _language(db, user_id))
+    try:
+        routine = await add_routine(
+            db, user_id, instruction=instruction, schedule=validate_schedule(schedule),
+            mode=entry.mode, source="catalog", catalog_key=key,
+        )
+    except ValueError as exc:  # a wrong time, or the plan's limit
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await db.commit()
+    return _out(routine)
+

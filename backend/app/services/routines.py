@@ -8,8 +8,17 @@ routine stays at 07:00 across daylight saving. Never more often than once a day.
 """
 
 import re
+import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.models.routine import Routine
+from app.services.plans import user_plan
+from app.services.routine_results import MODES
 
 KINDS = ("daily", "weekdays", "weekly", "monthly")
 
@@ -100,3 +109,55 @@ def describe_schedule(schedule: dict) -> str:
         days = names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
         return f"Every {days} at {at}"
     return f"On the {_ordinal(schedule['day_of_month'])} of every month at {at}"
+
+
+class RoutineError(ValueError):
+    """A routine that cannot be added: the reason, said to the user."""
+
+
+async def add_routine(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    instruction: str,
+    schedule: dict,
+    mode: str = "always",
+    source: str = "chat",
+    assistant_id: uuid.UUID | None = None,
+    catalog_key: str | None = None,
+) -> Routine:
+    """A new routine (no commit), checked: its schedule, its mode, the plan's limit.
+    Asked for in words (the agent's tool) or added from the catalog."""
+    instruction = instruction.strip()
+    if not instruction:
+        raise RoutineError("instruction is required")
+    schedule = validate_schedule(schedule)
+    if mode not in MODES:
+        raise RoutineError("mode must be always, only_if or only_new")
+    count = await db.scalar(
+        select(func.count()).select_from(Routine).where(Routine.user_id == user_id)
+    )
+    # As many as the plan has (services/plans.py); a lowered plan keeps the ones made
+    limit = (await user_plan(db, user_id)).routines
+    if count >= limit:
+        raise RoutineError(
+            f"At most {limit} routines on your plan. Delete one first (Profile → Routines)."
+        )
+    tz = settings.user_timezone
+    routine = Routine(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        instruction=instruction,
+        schedule=schedule,
+        timezone=tz,
+        active=True,
+        next_run_at=next_run(schedule, tz, datetime.now(timezone.utc)),
+        source=source,
+        mode=mode,
+        assistant_id=assistant_id,
+        catalog_key=catalog_key,
+    )
+    db.add(routine)
+    await db.flush()
+    return routine
+
