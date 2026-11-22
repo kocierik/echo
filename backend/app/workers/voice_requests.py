@@ -33,12 +33,13 @@ from app.actions.saved_tools import SavedContext
 from app.actions.voice import (
     WORKING_KEY,
     WORKING_TTL_S,
+    _match_wake,
     collect_command,
-    find_wake,
     get_or_create_voice_session,
     is_assistant_request,
     is_direct_address,
     strip_speaker_tag,
+    utterance_start,
 )
 from app.actions.whatsapp_provider import with_whatsapp
 from app.core.database import async_session
@@ -120,8 +121,8 @@ def _parse_segment_id(raw) -> uuid.UUID | None:
 
 def _heard_text(wake_text: str, command: str) -> str:
     """The whole utterance (what came before the name, the name, the command)."""
-    command_start = find_wake(wake_text)
-    lead = wake_text[:command_start] if command_start is not None else ""
+    match = _match_wake(wake_text)
+    lead = wake_text[utterance_start(wake_text, match[0]):match[1]] if match else ""
     return f"{strip_speaker_tag(lead).strip()} {command}".strip()
 
 

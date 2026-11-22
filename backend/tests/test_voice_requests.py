@@ -91,6 +91,18 @@ def test_find_wake_only_near_the_start():
     assert voice.find_wake("ieri sera abbiamo parlato a lungo di Echo e del progetto") is None
 
 
+def test_find_wake_counts_from_the_start_of_the_sentence():
+    """A segment runs up to 25 s: the request may come after other talk (2026-11-22)."""
+    text = ("[You] 2 colonie. Okay, va bene. Fa niente. So come si fa. Io so come si fa. "
+            "6 cocco? Echo, che giorno è domani?")
+    assert _command(text) == "che giorno è domani?"
+    assert _command("Abbiamo finito di mangiare. Ok Echo, segnami il conto") == "segnami il conto"
+    # Still far into its own sentence: a mention
+    assert voice.find_wake(
+        "Bene. Ieri sera abbiamo parlato a lungo di Echo e del progetto"
+    ) is None
+
+
 def test_find_wake_bare_name_waits_for_following_segments():
     # Addressed by name with the command in the next segment
     assert _command("Echo.") == ""
@@ -598,9 +610,10 @@ async def test_worker_answers_with_the_agent_and_stores_both_messages(worker):
     assert "pending_action" not in answer
     assert _iso(user_msg["timestamp"]) <= _iso(answer["timestamp"])
     assert worker.db.commits == 1
-    # The cheap check saw the whole utterance, not only the command
+    # The cheap check saw the sentence calling Echo, not only the command; the talk before
+    # it ("Ok.") is left out
     check_text = worker.llm.call_log[0][-1].content
-    assert "Ok. Echo, riassumimi le ultime mail" in check_text
+    assert "Echo, riassumimi le ultime mail" in check_text and "Ok." not in check_text
     assert worker.rag_calls == []
 
 

@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 # Ask's one thread with Echo: voice, photo and typed requests, and routine answers
 VOICE_SESSION_TITLE = "Echo"
 
-# The name must be one of the first WAKE_MAX_POSITION words of the utterance.
+# The name must be one of the first WAKE_MAX_POSITION words of its sentence: a segment
+# runs up to 25 s, and "Echo, che giorno è domani?" may come after other talk.
 WAKE_MAX_POSITION = 4
+_SENTENCE_END = re.compile(r"[.?!]")
 # Command window (Global Constraints): a pause of 3 s or 15 s after the wake segment start.
 PAUSE_MS = 3000
 COMMAND_WINDOW = timedelta(seconds=15)
@@ -87,13 +89,29 @@ def _match_wake(text: str) -> tuple[int, int] | None:
         return None
     tag = _SPEAKER_TAG.match(text)
     body_start = tag.end() if tag else 0
-    match = _WAKE.search(text, body_start)
-    if match is None:
-        return None
-    words_before = len(text[body_start:match.start()].split())
-    if words_before >= WAKE_MAX_POSITION:
-        return None
+    for match in _WAKE.finditer(text, body_start):
+        sentence = _sentence_start(text, body_start, match.start())
+        words_before = len(text[sentence:match.start()].split())
+        if words_before < WAKE_MAX_POSITION:
+            found = _address(text, match, words_before)
+            if found is not None:
+                return found
+    return None
 
+
+def _sentence_start(text: str, body_start: int, position: int) -> int:
+    """Where the sentence holding `position` starts (after the last . ? ! before it)."""
+    ends = [m.end() for m in _SENTENCE_END.finditer(text, body_start, position)]
+    return ends[-1] if ends else body_start
+
+
+def utterance_start(text: str, name_start: int) -> int:
+    """Where the sentence calling Echo starts: what was said before it is other talk."""
+    tag = _SPEAKER_TAG.match(text)
+    return _sentence_start(text, tag.end() if tag else 0, name_start)
+
+
+def _address(text: str, match: re.Match, words_before: int) -> tuple[int, int] | None:
     separator = _AFTER_NAME.match(text, match.end())
     command_start = separator.end()
     if any(c.isalnum() for c in text[command_start:]):
