@@ -23,7 +23,7 @@ from app.core.database import async_session
 from app.models.conversation import Conversation
 from app.models.segment import Segment
 from app.models.transcription import Transcription
-from app.services.conversation_close import write_summary
+from app.services.conversation_close import with_photos, write_summary
 from app.services.llm_openai import get_llm_analysis_service
 from app.services.retranscription import (
     conversations_to_retranscribe,
@@ -74,21 +74,26 @@ async def summarize_closed_conversations(
         for conversation in conversations:
             usage_owner.set(conversation.user_id)
             texts_result = await db.execute(
-                select(Transcription.text)
+                select(Segment.recorded_at, Transcription.text)
                 .join(Segment, Segment.id == Transcription.segment_id)
                 .where(Segment.conversation_id == conversation.id)
                 .order_by(Segment.recorded_at)
             )
-            full_text = " ".join(
-                text.strip() for (text,) in texts_result.all() if text and text.strip()
-            )
+            lines = [
+                (recorded_at, text.strip())
+                for recorded_at, text in texts_result.all()
+                if text and text.strip()
+            ]
+            full_text = " ".join(text for _, text in lines)
 
             if len(full_text.split()) <= settings.summary_min_words:
                 conversation.summary = ""  # nothing to summarize: don't pick it again
                 continue
 
             try:
-                await write_summary(db, llm, conversation, full_text)
+                await write_summary(
+                    db, llm, conversation, await with_photos(db, conversation.id, lines)
+                )
             except RetryExhaustedError as exc:
                 # Left as None: retried on the next run
                 logger.error(

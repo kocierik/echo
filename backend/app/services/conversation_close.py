@@ -7,6 +7,7 @@ its topics or its facts.
 """
 
 import logging
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.conversation import Conversation
 from app.models.entity import Entity
 from app.models.entity_mention import EntityMention
+from app.models.photo import Photo
 from app.services.analysis_pipeline import generate_conversation_summary
 from app.services.fact_suggestions import suggest_facts
 from app.services.llm_base import LLMService
@@ -22,6 +24,27 @@ from app.services.topics import normalize_topics
 from app.workers.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+
+async def with_photos(
+    db: AsyncSession, conversation_id, lines: list[tuple[datetime, str]]
+) -> str:
+    """The transcript's lines with what the conversation's photos showed, each where it was
+    taken: a whiteboard or a slide photographed during a meeting reaches its summary."""
+    photos = (
+        await db.execute(
+            select(Photo.captured_at, Photo.created_at, Photo.description)
+            .where(Photo.conversation_id == conversation_id)
+            .where(Photo.description.isnot(None))
+        )
+    ).all()
+    items = list(lines) + [
+        (row.captured_at or row.created_at, f"[Photo the user took: {row.description.strip()}]")
+        for row in photos
+        if row.description.strip()
+    ]
+    items.sort(key=lambda item: item[0])
+    return " ".join(text for _, text in items)
 
 
 async def write_summary(

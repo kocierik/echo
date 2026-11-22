@@ -47,9 +47,11 @@ class _FakeSession:
             return _Rows(self.conversations)
         if "entity_mentions" in str(query):
             return _Rows([])  # the conversation's people, kept out of its topics
+        if "FROM photos" in str(query):
+            return _Rows([])  # no photo taken during it
         texts_asked = sum("transcriptions" in str(q) for q in self.queries)
         conversation = self.conversations[texts_asked - 1]
-        return _Rows([(text,) for text in self.texts[conversation.id]])
+        return _Rows([(NOW, text) for text in self.texts[conversation.id]])
 
     async def commit(self):
         self.committed = True
@@ -163,3 +165,37 @@ def test_query_selects_only_unsummarized_closed_completed_conversations():
 def test_query_requires_aware_now():
     with pytest.raises(ValueError):
         summaries._build_closed_conversations_query(datetime(2026, 10, 13))
+
+
+@pytest.mark.asyncio
+async def test_a_photo_taken_during_it_reaches_the_summary_where_it_was_taken(db_session):
+    # A whiteboard photographed in a meeting: its text belongs in the meeting's summary
+    from app.models.photo import Photo
+    from tests.conftest import TEST_USER_ID
+    from tests.factories import make_conversation
+
+    start = datetime(2026, 11, 20, 10, 0, tzinfo=timezone.utc)
+    conversation, _ = await make_conversation(db_session, started_at=start, texts=())
+    db_session.add_all([
+        Photo(
+            user_id=TEST_USER_ID, source="voice", status="done",
+            conversation_id=conversation.id, captured_at=start + timedelta(minutes=5),
+            description="Lavagna: rilascio 2 dicembre, Sara fa il login",
+        ),
+        Photo(  # not analysed yet: nothing to add
+            user_id=TEST_USER_ID, source="voice", status="received",
+            conversation_id=conversation.id, captured_at=start + timedelta(minutes=6),
+        ),
+    ])
+    await db_session.flush()
+
+    text = await conversation_close.with_photos(
+        db_session,
+        conversation.id,
+        [(start, "Allora, i tempi."), (start + timedelta(minutes=8), "Ok, ci siamo.")],
+    )
+
+    assert text == (
+        "Allora, i tempi. [Photo the user took: Lavagna: rilascio 2 dicembre, Sara fa il "
+        "login] Ok, ci siamo."
+    )

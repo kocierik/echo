@@ -22,7 +22,7 @@ from app.services.analysis_pipeline import (
     save_entities,
 )
 from app.services.chunking import chunk_text
-from app.services.conversation_close import write_summary
+from app.services.conversation_close import with_photos, write_summary
 from app.services.embedding_base import EmbeddingService
 from app.services.entity_mentions import record_mentions, release_conversation
 from app.services.llm_base import LLMService
@@ -166,7 +166,14 @@ async def reanalyse_conversation(
         if len(full_text.split()) > settings.summary_min_words:
             try:
                 # Summary, topics, and the facts: as for any closed conversation
-                await write_summary(db, llm_service, conversation, full_text)
+                await write_summary(
+                    db,
+                    llm_service,
+                    conversation,
+                    await with_photos(
+                        db, conversation.id, [(at, text) for _, text, at in rows]
+                    ),
+                )
             except RetryExhaustedError:
                 # Left without one: the summaries loop tries again (workers/summaries.py)
                 logger.warning("[Reanalysis] No summary yet for %s", conversation_id)
