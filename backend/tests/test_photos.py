@@ -710,6 +710,13 @@ def test_vision_prompt_does_what_was_asked_and_names_the_date():
     assert "translate" in prompt and "explain" in prompt
 
 
+def test_vision_prompt_never_guesses_in_a_poor_photo_and_notices_a_turned_pendant():
+    # A dark photo's pale monstera leaf came back as "a hand holding banknotes"
+    prompt = photo_service.VISION_PROMPT.format(language="Italian")
+    assert "never guess" in prompt
+    assert "not facing forward" in prompt
+
+
 @pytest.mark.asyncio
 async def test_a_follow_up_is_answered_from_the_same_image(
     client, auth_headers, db_session, monkeypatch

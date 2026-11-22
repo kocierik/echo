@@ -89,7 +89,12 @@ briefly, in the language of the question: asked to explain it, explain what it m
 translate it, translate its text; to read it, read the text; asked a price, a name or a \
 detail, give it. Never answer a request with only a description. Without a question, say \
 in one or two sentences what the photo shows, in {language}. Say so when the photo is too \
-dark or blurred, or does not show what was asked.
+dark or blurred, or does not show what was asked. In a dark, blurred or tilted photo name \
+only what you see clearly: never guess a small object, a person's gesture or a text you \
+cannot make out (a pale leaf is not "a hand holding banknotes"): call an unclear shape \
+by how it looks ("a pale shape on the left") or leave it out, and say what is unclear. The camera hangs on the user's chest and is sometimes turned the wrong way: \
+when the photo shows mostly the user's own chin or face from below, or only the ceiling, \
+say the pendant was not facing forward and ask them to straighten it and try again.
 - description: what the photo shows, to find it again later: the place, the objects, \
 any people (describe them, never guess who they are) and every readable text, verbatim. \
 In {language}.
