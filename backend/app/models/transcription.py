@@ -27,7 +27,8 @@ class Transcription(UUIDPrimaryKey, Base):
     stt_model: Mapped[str] = mapped_column(String(50), nullable=False)
     # Several voices in the segment (told apart once the conversation closed):
     # [{"speaker": "self"|"other", "profile_id": str|None, "group": int|None, "text": str}]
-    turns: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # none_as_null: None is SQL NULL, not the JSON null that `isnot(None)` lets through
+    turns: Mapped[list | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
 
     # Relationships
     segment: Mapped["Segment"] = relationship(back_populates="transcription")

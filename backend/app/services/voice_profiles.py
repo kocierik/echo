@@ -390,6 +390,8 @@ async def _relabel_turns(
     ).scalars().all()
     count = 0
     for transcription in transcriptions:
+        if not transcription.turns:  # a JSON null written before none_as_null
+            continue
         turns = []
         for turn in transcription.turns:
             match = (

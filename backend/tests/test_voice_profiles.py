@@ -334,6 +334,43 @@ async def test_naming_one_turn_teaches_that_voice_and_finds_its_other_turns(
 
 
 @pytest.mark.asyncio
+async def test_naming_a_turn_skips_segments_whose_turns_were_cleared(
+    client, auth_headers, db_session: AsyncSession
+):
+    # Cleared turns were once written as JSON null, which `turns IS NOT NULL` lets
+    # through: naming a voice then failed on the whole conversation
+    from sqlalchemy import text
+
+    start = datetime.now(timezone.utc) - timedelta(hours=1)
+    conversation, segments = await _segments(
+        db_session, start, ("[You] Hai i numeri? Sì.", "[You] Va bene."),
+        [near(ME, MARCO, 0.8), near(ME, MARCO, 0.8)],
+    )
+    first = (await db_session.execute(
+        select(Transcription).where(Transcription.segment_id == segments[0].id)
+    )).scalar_one()
+    first.turns = [
+        {"speaker": "self", "profile_id": None, "group": None, "text": "Hai i numeri?",
+         "embedding": near(ME, STRANGER, 0.97)},
+        {"speaker": "other", "profile_id": None, "group": None, "text": "Sì.",
+         "embedding": near(MARCO, STRANGER, 0.97)},
+    ]
+    await db_session.commit()
+    await db_session.execute(
+        text("UPDATE transcriptions SET turns = 'null'::jsonb WHERE segment_id = :id"),
+        {"id": segments[1].id},
+    )
+    await db_session.commit()
+
+    named = await client.post(
+        f"/api/segments/{segments[0].id}/voice", headers=auth_headers,
+        json={"name": "Marco", "turn": 1},
+    )
+
+    assert named.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_a_segment_without_fingerprint_cannot_start_a_profile(
     client, auth_headers, db_session: AsyncSession
 ):
