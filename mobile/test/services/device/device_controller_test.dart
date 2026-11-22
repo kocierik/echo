@@ -251,6 +251,7 @@ void main() {
       final forgotten = Completer<void>();
       fixture.ble.forgetResult = forgotten.future;
       await fixture.controller.start();
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
 
       final operation = fixture.controller.forget();
       await _flush();
@@ -259,6 +260,19 @@ void main() {
       forgotten.complete();
       await operation;
 
+      expect(fixture.store.clearCalls, 1);
+      expect(fixture.controller.state.connectionState,
+          DeviceConnectionState.unpaired);
+    });
+
+    test('an Echo out of reach is forgotten on the phone alone', () async {
+      final fixture = _Fixture(savedId: 'saved-echo');
+      fixture.ble.forgetResult = Completer<void>().future; // never answers
+      await fixture.controller.start();
+
+      await fixture.controller.forget();
+
+      expect(fixture.ble.disconnectCalls, 1);
       expect(fixture.store.clearCalls, 1);
       expect(fixture.controller.state.connectionState,
           DeviceConnectionState.unpaired);
@@ -274,6 +288,7 @@ void main() {
         droppedSegments: 4,
       ));
       fixture.ble.forgetResult = Future<void>.error(StateError('no ack'));
+      fixture.ble.emitPhase(DeviceBlePhase.ready);
 
       await expectLater(fixture.controller.forget(), throwsStateError);
 

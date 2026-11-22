@@ -182,7 +182,13 @@ final class DeviceController {
     _cancelRetry();
     final generation = ++_generation;
     try {
-      await _ble.forgetBond();
+      // Echo forgets the phone only while connected; one out of reach is forgotten here
+      // alone (it takes back the same phone, so pairing again works)
+      if (_ble.phase == DeviceBlePhase.ready) {
+        await _ble.forgetBond();
+      } else {
+        await _ble.disconnect();
+      }
       if (!_isCurrent(generation)) return;
       await _identityStore.clear();
       if (!_isCurrent(generation)) return;

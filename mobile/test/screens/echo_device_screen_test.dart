@@ -552,7 +552,7 @@ final class _FakeBlePort implements DeviceBlePort {
   @override
   Stream<DeviceAdapterState> get adapterStateStream => const Stream.empty();
   @override
-  DeviceBlePhase get phase => DeviceBlePhase.disconnected;
+  DeviceBlePhase phase = DeviceBlePhase.ready;
   @override
   Stream<DeviceBlePhase> get phaseStream => const Stream.empty();
   @override
