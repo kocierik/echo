@@ -802,3 +802,136 @@ def test_a_brightened_upload_is_still_recognised_when_sent_again():
 
     assert photo.image != dark and photo.size_bytes == len(photo.image)
     assert photo.image_sha256 == hashlib.sha256(dark).hexdigest()
+
+
+def _two_pixels() -> bytes:
+    """A real JPEG 2x1: white on the left, black on the right."""
+    import io
+
+    from PIL import Image
+
+    image = Image.new("L", (2, 1))
+    image.putpixel((0, 0), 255)
+    image.putpixel((1, 0), 0)
+    out = io.BytesIO()
+    image.save(out, "JPEG", quality=100)
+    return out.getvalue()
+
+
+class _Replies:
+    """A vision model answering each call with the next reply."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls = []
+
+    async def complete_json(self, messages, temperature=0.1):
+        self.calls.append(messages)
+        return self.replies.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_a_photo_upside_down_is_turned_upright_and_looked_at_again(
+    client, auth_headers, db_session
+):
+    import io
+
+    from PIL import Image
+    from sqlalchemy.orm import undefer
+
+    photo = await _request(client, auth_headers, question="Cosa ho davanti?")
+    await _upload(client, auth_headers, photo["id"], data=_two_pixels())
+    llm = _Replies(
+        {"answer": "Non si capisce.", "description": "Capovolta.", "upright": 180},
+        {"answer": "Una porta.", "description": "Una porta bianca.", "title": "Porta",
+         "upright": 180},  # asked again it never turns twice
+    )
+
+    assert await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), llm, Embeddings()
+    ) is True
+
+    assert len(llm.calls) == 2
+    stored = (await db_session.execute(
+        select(Photo).options(undefer(Photo.image))
+        .where(Photo.id == uuid.UUID(photo["id"])).execution_options(populate_existing=True)
+    )).scalar_one()
+    assert llm.calls[1][-1].images == [stored.image]
+    turned = Image.open(io.BytesIO(stored.image))
+    assert turned.getpixel((0, 0)) < 60 and turned.getpixel((1, 0)) > 200  # black left now
+    assert stored.answer == "Una porta." and stored.size_bytes == len(stored.image)
+    assert (await _last_voice_message(db_session))["content"] == "Una porta."
+
+
+def test_nothing_to_turn_leaves_the_photo_as_it_is():
+    assert photo_service.turned_upright(_two_pixels(), 0) is None
+    assert photo_service.turned_upright(_two_pixels(), "sideways") is None
+    assert photo_service.turned_upright(b"not a jpeg", 90) is None
+
+
+class _SearchLLM:
+    can_search = True
+
+    def __init__(self):
+        self.calls = []
+
+    async def complete(self, messages, temperature=0.3, hosted_tools=None):
+        from app.services.llm_base import LLMResponse
+
+        self.calls.append((messages, hosted_tools))
+        return LLMResponse(
+            content="È il monumento a Garibaldi, di Antonio Bozzi, del 1891.",
+            model="test",
+            citations=[{"title": "Monumento a Garibaldi", "url": "https://example.org/g"}],
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_question_about_a_statue_is_answered_with_a_web_search(
+    client, auth_headers, db_session, monkeypatch
+):
+    async def tool(llm, user_id, session_factory=None):
+        return {"type": "web_search"}
+
+    monkeypatch.setattr(photo_service, "search_tool_for", tool)
+    photo = await _request(client, auth_headers, question="Spiegami che statua ho davanti")
+    await _upload(client, auth_headers, photo["id"])
+    vision = VisionLLM({
+        "answer": "Una statua in bronzo di un uomo in piedi.",
+        "description": "Statua in bronzo su piedistallo, scritta 'GARIBALDI'.",
+        "title": "Statua",
+        "search": "statua bronzo Garibaldi piazza Nizza",
+    })
+    search = _SearchLLM()
+
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), vision, Embeddings(), search_llm=search
+    )
+
+    messages, tools = search.calls[0]
+    assert tools == [{"type": "web_search"}]
+    assert "statua bronzo Garibaldi piazza Nizza" in messages[-1].content
+    assert "Italian" in messages[0].content
+    message = await _last_voice_message(db_session)
+    assert message["content"].startswith("È il monumento a Garibaldi")
+    assert message["citations"][0]["url"] == "https://example.org/g"
+    # Memory keeps what the photo showed, never the web's answer
+    stored = await _photo(db_session, photo["id"])
+    chunk = (
+        await db_session.execute(select(Chunk).where(Chunk.photo_id == stored.id))
+    ).scalar_one()
+    assert "Bozzi" not in chunk.text and "GARIBALDI" in chunk.text
+
+
+@pytest.mark.asyncio
+async def test_a_photo_without_a_question_is_not_searched(client, auth_headers, db_session):
+    photo = await _request(client, auth_headers)
+    await _upload(client, auth_headers, photo["id"])
+    vision = VisionLLM({"answer": "Una statua.", "description": "Statua.", "search": "statua"})
+    search = _SearchLLM()
+
+    await photo_service.analyse_photo(
+        db_session, uuid.UUID(photo["id"]), vision, Embeddings(), search_llm=search
+    )
+
+    assert search.calls == []

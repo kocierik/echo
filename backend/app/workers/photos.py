@@ -80,6 +80,8 @@ async def _analyse_once(photo_id: uuid.UUID, session_factory, redis_client=None)
             get_llm_vision_service(),
             get_embedding_service(),
             analysis_llm=get_llm_analysis_service(),
+            # Questions about what the web knows (a statue, a monument): searched
+            search_llm=get_llm_query_service(),
             save_with=lambda db, photo: save_photo_request(db, photo, redis_client=redis_client),
             answered=(
                 None if redis_client is None
