@@ -35,7 +35,12 @@ from app.models.user import User
 from app.services.account_deleter import delete_account
 from app.services.google_sign_in import GoogleIdentity, GoogleUnavailableError, verify_id_token
 from app.services.google_sign_in import client_ids as google_client_ids
-from app.services.language import HEARD_LANGUAGES, MAX_OTHER_LANGUAGES, SUPPORTED_LANGUAGES
+from app.services.language import (
+    HEARD_LANGUAGES,
+    MAX_OTHER_LANGUAGES,
+    SUPPORTED_LANGUAGES,
+    set_language,
+)
 from app.services.passwords import (
     DUMMY_PASSWORD_HASH,
     create_google_user,
@@ -251,7 +256,7 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="An account with this email already exists. Sign in instead.",
         ) from error
-    user.language = _spoken_language(body.language)
+    set_language(user, _spoken_language(body.language))
     return await _sign_in_phone(db, user, body, request)
 
 
@@ -439,7 +444,7 @@ async def update_me(
             detail="This key has no account yet: create one with make create-user.",
         )
     if body.language is not None:
-        user.language = body.language
+        set_language(user, body.language)
     others = body.other_languages if body.other_languages is not None else user.other_languages
     kept = [code for code in dict.fromkeys(others or []) if code != user.language]
     if len(kept) > MAX_OTHER_LANGUAGES:

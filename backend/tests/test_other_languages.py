@@ -28,8 +28,22 @@ async def _key(client, email, language="it"):
     return {"X-API-Key": response.json()["api_key"]}
 
 
-async def test_none_until_chosen(client):
-    key = await _key(client, "a@x.io")
+async def test_the_other_of_italian_and_english_is_heard_by_default(client):
+    italian = await _key(client, "a@x.io")
+    english = await _key(client, "a2@x.io", language="en")
+
+    assert (await client.get("/api/auth/me", headers=italian)).json()["other_languages"] == [
+        "en"
+    ]
+    assert (await client.get("/api/auth/me", headers=english)).json()["other_languages"] == [
+        "it"
+    ]
+
+
+async def test_removed_it_stays_removed(client):
+    key = await _key(client, "a3@x.io")
+
+    await client.patch("/api/auth/me", headers=key, json={"other_languages": []})
 
     assert (await client.get("/api/auth/me", headers=key)).json()["other_languages"] == []
 
@@ -57,13 +71,13 @@ async def test_an_unknown_language_or_more_than_four_is_refused(client, language
     assert response.status_code == 422
 
 
-async def test_a_new_main_language_leaves_the_others(client):
+async def test_a_new_main_language_swaps_places_with_the_old_one(client):
     key = await _key(client, "d@x.io")
     await client.patch("/api/auth/me", headers=key, json={"other_languages": ["en", "es"]})
 
     changed = await client.patch("/api/auth/me", headers=key, json={"language": "en"})
 
-    assert changed.json()["other_languages"] == ["es"]
+    assert changed.json()["other_languages"] == ["it", "es"]
 
 
 async def test_account_languages_reads_both(db_session):

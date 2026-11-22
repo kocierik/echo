@@ -48,6 +48,15 @@ HEARD_LANGUAGES = ("en", "it", "es", "fr", "de", "pt")
 MAX_OTHER_LANGUAGES = 4
 
 
+def set_language(user, language: str) -> None:
+    """The new main language; when it was among the others, the old one takes its place
+    (Italian with English heard becomes English with Italian heard)."""
+    old = user.language
+    user.language = language
+    if language != old:
+        user.other_languages = [old if c == language else c for c in user.other_languages or []]
+
+
 async def account_language(db, user_id) -> Language:
     """The language this account speaks; the server's default without an account row."""
     from sqlalchemy import select

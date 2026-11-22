@@ -5,6 +5,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
+def default_others(language: str) -> list[str]:
+    """Heard by default besides the main language: the other of Italian and English, so
+    speech in it is recognised (even switching mid-sentence) without a setting."""
+    return ["it"] if language == "en" else ["en"]
+
+
 class User(UUIDPrimaryKey, TimestampMixin, Base):
     """An account: signing in with it gives a phone its own API key."""
 
@@ -24,7 +30,12 @@ class User(UUIDPrimaryKey, TimestampMixin, Base):
     # Other languages the user hears around them (services/language.py HEARD_LANGUAGES):
     # with any, transcription recognises which one each segment is in
     other_languages: Mapped[list[str]] = mapped_column(
-        JSONB, nullable=False, server_default="[]", default=list
+        JSONB,
+        nullable=False,
+        server_default="[]",
+        default=lambda context: default_others(
+            context.get_current_parameters().get("language") or "it"
+        ),
     )
     # What the app calls the user ("Good afternoon, Erik"); none until they give one
     name: Mapped[str | None] = mapped_column(String(100), nullable=True)

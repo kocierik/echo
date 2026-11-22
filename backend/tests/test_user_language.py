@@ -53,7 +53,7 @@ async def test_me_reads_and_changes_the_language(client):
     me = await client.get("/api/auth/me", headers=key)
     assert me.json() == {
         "email": "ada@x.io", "language": "en", "name": None, "instructions": None,
-        "other_languages": [], "has_password": True,
+        "other_languages": ["it"], "has_password": True,
     }
 
     changed = await client.patch("/api/auth/me", headers=key, json={"language": "it"})
@@ -72,7 +72,7 @@ async def test_me_reads_and_changes_the_name(client):
     me = (await client.get("/api/auth/me", headers=key)).json()
     assert me == {
         "email": "erik@x.io", "language": "en", "name": "Erik", "instructions": None,
-        "other_languages": [], "has_password": True,
+        "other_languages": ["it"], "has_password": True,
     }
 
     cleared = await client.patch("/api/auth/me", headers=key, json={"name": "   "})
