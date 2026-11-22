@@ -137,3 +137,36 @@ async def test_a_photo_not_to_save_is_only_answered(db_session):
 
     assert calls == []
     assert (await _last_voice_message(db_session))["content"] == LABEL["answer"]
+
+
+async def test_parking_with_the_camera_keeps_the_photo_and_the_phones_place(db_session):
+    # "Ricordati dove ho parcheggiato": the photo of the column and where the phone is.
+    # The photo's save once had no way to the phone: "the phone did not answer", always
+    import asyncio
+
+    from tests.test_phone_actions import WaitingRedis
+    from tests.test_saved_tools import PLACE, _phone
+
+    redis = WaitingRedis()
+    phone = asyncio.create_task(_phone(redis, {"ok": True, "data": PLACE}))
+    photo = await _voice_photo(db_session, "ricordati dove ho parcheggiato", save=True)
+    agent = _ScriptedLLM([
+        _call("ECHO_SAVE_ITEM", list="La macchina", title="Macchina", with_place=True,
+              details="Piano -2, colonna B4"),
+        _text("Ho salvato la macchina al piano -2, colonna B4: Via Roma 12, Milano."),
+    ])
+
+    async def save(db, taken):
+        return await photo_worker.save_photo_request(
+            db, taken, llm=agent, embedding_service=MockEmbeddingService(), redis_client=redis
+        )
+
+    column = {"answer": "Piano -2, colonna B4.", "description": "Colonna: -2 B4", "title": "Garage"}
+    await photo_service.analyse_photo(
+        db_session, photo.id, VisionLLM(column), Embeddings(), save_with=save
+    )
+    await phone
+
+    [car] = list(await db_session.scalars(select(SavedItem)))
+    assert car.photo_id == photo.id
+    assert car.place["address"] == "Via Roma 12, Milano"

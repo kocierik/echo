@@ -43,11 +43,13 @@ POP_TIMEOUT_S = 2
 
 
 async def save_photo_request(
-    db: AsyncSession, photo: Photo, llm=None, embedding_service=None
+    db: AsyncSession, photo: Photo, llm=None, embedding_service=None, redis_client=None
 ) -> tuple[str, dict]:
     """"Echo, save this" once the photo is described: the agent saves it (or adds it to
     a thing already saved, such as the car) knowing what the photo shows. The answer and
-    the thread message's extra keys."""
+    the thread message's extra keys. `redis_client` reaches the phone for its place (where
+    the user parked): without it the place was refused at once as "the phone did not
+    answer"."""
     outcome = await run_action_agent(
         db,
         photo.user_id,
@@ -63,6 +65,8 @@ async def save_photo_request(
             photo_id=photo.id,
             photo_text=photo.description,
             embedding_service=embedding_service or get_embedding_service(),
+            redis_client=redis_client,
+            said_at=photo.created_at,
         ),
     )
     return outcome.answer, ({"saved": outcome.saved} if outcome.saved else {})
@@ -76,7 +80,7 @@ async def _analyse_once(photo_id: uuid.UUID, session_factory, redis_client=None)
             get_llm_vision_service(),
             get_embedding_service(),
             analysis_llm=get_llm_analysis_service(),
-            save_with=save_photo_request,
+            save_with=lambda db, photo: save_photo_request(db, photo, redis_client=redis_client),
             answered=(
                 None if redis_client is None
                 else lambda user_id: tell_phone_to_check(redis_client, user_id)

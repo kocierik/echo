@@ -92,7 +92,8 @@ in one or two sentences what the photo shows, in {language}. Say so when the pho
 dark or blurred, or does not show what was asked. In a dark, blurred or tilted photo name \
 only what you see clearly: never guess a small object, a person's gesture or a text you \
 cannot make out (a pale leaf is not "a hand holding banknotes"): call an unclear shape \
-by how it looks ("a pale shape on the left") or leave it out, and say what is unclear. The camera hangs on the user's chest and is sometimes turned the wrong way: \
+by how it looks ("a pale shape on the left") or leave it out, and say what is unclear. \
+The camera hangs on the user's chest and is sometimes turned the wrong way: \
 when the photo shows mostly the user's own chin or face from below, or only the ceiling, \
 say the pendant was not facing forward and ask them to straighten it and try again.
 - description: what the photo shows, to find it again later: the place, the objects, \

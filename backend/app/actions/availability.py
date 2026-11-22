@@ -100,9 +100,11 @@ includes a task on it ("explain this", "translate this sign", "what does this sa
 "spiegami cosa c'è scritto qui", "traducimi il cartello", "quanto costa questo?", "che \
 pianta è?"): Echo takes the photo and does the task on it. To save what the user is \
 looking at ("save this label") set both "camera" and "saved". Saving the place where the \
-user is ("salva questo posto", "salva il posto in cui mi trovo", "ricordati dove ho \
-parcheggiato", "save where I am") is a save with the phone's position, not a photo: set \
-only "saved". A request about the past, or about what someone said or wrote before \
+user is ("salva questo posto", "salva il posto in cui mi trovo", "save where I am") is a \
+save with the phone's position, not a photo: set only "saved". Where they parked \
+("ricordati dove ho parcheggiato", "remember where I parked") gets both, a photo of the \
+spot (its level, column or sign) and the phone's position: set "camera" and "saved". \
+A request about the past, or about what someone said or wrote before \
 ("explain what Marco said", "translate what Luca said in the meeting", an email), never \
 needs it."""
 
