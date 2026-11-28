@@ -34,6 +34,7 @@ test_session = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_co
 settings.openai_api_key = "sk-test-not-real"
 settings.composio_api_key = ""
 settings.deepgram_api_key = ""
+settings.pyannote_api_key = ""
 settings.metrics_token = ""
 # No real voice model: fingerprints are tested with fakes (the model takes ~2 s a segment)
 settings.voice_model_path = "/nonexistent/voice_embedding.onnx"

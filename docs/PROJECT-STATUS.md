@@ -13,8 +13,8 @@ Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
   con il ciondolo irraggiungibile, e non si riavviano più a vicenda i segmenti (fix dell'assemblatore BLE).
 - **Voci** (22/11): impronte confrontate togliendo la media degli ultimi 300 segmenti (il suono del ciondolo),
   soglie ricalibrate; un segmento forte non va mai da solo a un'altra persona; niente più rinomina in massa di
-  una conversazione; un segmento sentito da Deepgram come una voce sola si divide in due blocchi quando le
-  impronte di finestre di 4 s sentono due voci (misurato: 11/15 coppie unite, 7/55 segmenti lunghi divisi).
+  una conversazione. Dal 28/11 chi parla quando lo dice pyannoteAI a conversazione chiusa (sotto); la
+  divisione con le impronte di finestre di 4 s (22/11) è stata tolta: su riunioni vere peggiorava.
 - **Routine e catalogo** (22/11): routine dopo ogni conversazione (migrazioni 045 e 046); catalogo di routine e
   assistenti pronti, in Ask → Routines, nel selettore degli assistenti e in Account → Routines.
 - **Foto** (21–23/11): niente oggetti indovinati in una foto scura; il ciondolo girato viene detto; le foto entrano
@@ -389,8 +389,11 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 Aperti dal lavoro del 17–23/11:
 - **Bluetooth bloccato il 22/11:** il ciondolo registrava ma per 30 minuti non si faceva trovare, fino al reset;
   la causa non è nota (nessun log del seriale). Dal 0.10.6 torna visibile da solo, ma è provato solo nei test.
-- **Voci:** soglie (`voice_centered_*`, `voice_split_below`) tarate su poche correzioni e due voci; servono
-  correzioni a mano su conversazioni con più persone per misurarle davvero.
+- **Voci:** soglie (`voice_centered_*`) tarate su poche correzioni e due voci. Il 28/11 una prova su due
+  riunioni AMI (microfono da tavolo, 4 persone, parole alla persona sbagliata): Deepgram 9-17%, pyannoteAI
+  precision-2 0,9-2,2%, il nostro raggruppamento per impronte 37-52%. Da qui pyannoteAI a conversazione chiusa
+  (`services/diarization.py`); da rimisurare su conversazioni vere col ciondolo e nomi confermati. L'audio va
+  a pyannoteAI (Francia), che lo tiene 24-48 ore.
 - **Segmenti con testo vuoto:** molti segmenti tornano da Deepgram senza testo; non ancora indagato.
 - **Più lingue:** con un'altra lingua scelta, Deepgram rileva la lingua di ogni segmento fra quelle
   dell'account; il 28/11 su 8 segmenti un'italiana è uscita vuota (presa per inglese). Una frase che cambia

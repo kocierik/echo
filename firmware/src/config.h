@@ -74,13 +74,14 @@
 // ============================================================
 // Encoding
 // ============================================================
-// Opus at 16 kbit/s since 0.9 (opus_segment.h, opus_codec.h): 32 KB/s of PCM becomes
-// ~2 KB/s; up to 0.8 it was IMA-ADPCM at 8 KB/s
+// Opus at 32 kbit/s since 0.9.3 (opus_codec.h; 16 kbit/s in 0.9.0-0.9.2): 32 KB/s of PCM
+// becomes ~3.7 KB/s (29.5 kbit/s measured on 28/11); up to 0.8 it was IMA-ADPCM at 8 KB/s.
+// More would not help: at 16 kHz, 32 kbit/s Opus is near transparent for speech
 
 // ============================================================
 // PSRAM Buffer
 // ============================================================
-// Speech waiting for the phone: up to 6 MB (~50 minutes of speech at ~2 KB/s of Opus; only
+// Speech waiting for the phone: up to 6 MB (~27 minutes of speech at ~3.7 KB/s of Opus; only
 // speech is stored, so it covers much longer away from the phone). The rest of the 8 MB PSRAM
 // holds the segment being recorded, the photo slot and the camera's frame buffer.
 #define PSRAM_BUFFER_SIZE (6 * 1024 * 1024)

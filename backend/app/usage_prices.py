@@ -24,6 +24,10 @@ PRICES: dict[str, dict] = {
     # Spoken answers' natural voices, by seconds of audio estimated from the text (about
     # 15 characters a second); sources give about $0.015 a minute
     "gpt-4o-mini-tts": {"unit": "second", "per_minute": 0.015},
+    # pyannoteAI diarization, per second of audio (20 s minimum a job): ~0.10 EUR an hour,
+    # read on 2026-11-28 from third-party comparisons, not pyannote.ai/pricing
+    "pyannote-precision-2": {"unit": "second", "per_minute": 0.0018},
+    "pyannote-precision-3": {"unit": "second", "per_minute": 0.0019},
     # Local (voice fingerprints): no money cost, counted for the load
     "sherpa-onnx": {"unit": "second", "per_minute": 0.0},
 }

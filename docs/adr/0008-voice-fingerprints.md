@@ -62,3 +62,16 @@ Real recordings showed that through the pendant's one microphone every voice sco
 
 Thresholds are still set on few corrections and two voices; corrections by hand on
 conversations with more people are what will tune them.
+
+## Update (2026-11-28)
+
+The fingerprint split of 22/11 is gone: on two AMI meetings with known speakers (single
+distant microphone, four people) it made the error worse or left it unchanged. Measured as
+words given to the wrong person: Deepgram's diarization 9-17%, pyannoteAI precision-2
+0.9-2.2% (precision-3 about the same), segment fingerprints grouped by Echo 37-52%.
+So when a conversation closes its audio goes to pyannoteAI once
+(`services/diarization.py`), each word takes the speaker speaking while it was said, and
+each speaker is then recognised from all it said against the user's own fingerprints, which
+stay on Echo's server. Without `PYANNOTE_API_KEY`, or when pyannoteAI fails, Deepgram's
+speakers are used as before. The conversation's audio is uploaded to pyannoteAI (France)
+and kept there 24-48 hours.

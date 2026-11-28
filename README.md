@@ -76,9 +76,10 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
   ([ADR 0008](docs/adr/0008-voice-fingerprints.md)). Fingerprints are compared with the
   pendant's own sound taken away (through one microphone everyone sounds alike), and a loud
-  segment, near the microphone, is never given to someone else on its own. A segment the
-  speech-to-text heard as one voice is split in two when its 4-second windows clearly hold two
-  voices; each block of a segment can be named.
+  segment, near the microphone, is never given to someone else on its own. When a conversation
+  closes, [pyannoteAI](https://www.pyannote.ai) (Paris) says who spoke when on its whole audio
+  (`PYANNOTE_API_KEY`; without it, Deepgram's speakers), and each voice is then recognised from
+  all it said; each block of a segment can be named.
 - **Sees, when asked.** "Echo, che pianta è questa?" or a short press of the wearable's button
   (released after a long press it mutes; held 5 s it turns Echo off, after syncing; held 2 s it
   turns it on again): the wearable's camera takes one photo, Echo answers about it in the chat

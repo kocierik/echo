@@ -9,8 +9,8 @@
 
 ## Il dispositivo
 
-- Ascolta da solo quando qualcuno parla (niente wake word) e tiene fino a ~13 minuti di parlato in memoria
-  quando il telefono non c'è; con una microSD il resto va sulla scheda (circa 36 ore per GB) invece di andare
+- Ascolta da solo quando qualcuno parla (niente wake word) e tiene fino a ~27 minuti di parlato in memoria
+  quando il telefono non c'è; con una microSD il resto va sulla scheda (circa 75 ore per GB, Opus a 32 kbit/s) invece di andare
   perso, cifrato con una chiave che non lascia il dispositivo. Today mostra quanti minuti aspettano di essere
   inviati; Account → Echo mostra la scheda (spazio libero, parlato in attesa). Con la scheda il LED resta spento.
 - Invia l'audio al telefono via Bluetooth cifrato, con conferma: niente si cancella prima che il server l'abbia.
@@ -74,8 +74,9 @@
   poi scrive i nomi e chiede "Marco?" quando è incerto.
 - Le impronte si confrontano togliendo il suono del ciondolo (con un solo microfono tutti si somigliano); un
   segmento forte, vicino al microfono, non viene mai dato da solo a un'altra persona.
-- Più voci nello stesso segmento: Deepgram le separa quando può; quando sente una voce sola, le impronte di
-  finestre di 4 secondi possono dividere il segmento in due blocchi. Ogni blocco si può nominare.
+- Più voci nello stesso segmento: a conversazione chiusa pyannoteAI (Parigi) dice chi parla quando sull'audio
+  intero; nelle prove su riunioni vere sbaglia una parola su 50-100, contro una su 6-10 di Deepgram. Ogni
+  blocco si può nominare. Senza la chiave di pyannoteAI restano le voci separate da Deepgram.
 - Chi hai davanti: quando parla una voce che hai nominato, subito una notifica con le promesse nei due sensi e
   l'ultima conversazione.
 

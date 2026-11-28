@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # backend/app/core/config.py → repo root (where .env lives)
@@ -32,6 +33,15 @@ class Settings(BaseSettings):
     # Deepgram (alternative STT provider)
     deepgram_api_key: str = ""
     deepgram_model: str = "nova-3"
+
+    # pyannoteAI: who spoke when in a closed conversation (services/diarization.py); unset:
+    # Deepgram's speakers. PYNOTES_API_KEY is accepted too, the name first used in .env
+    pyannote_api_key: str = Field(
+        "", validation_alias=AliasChoices("PYANNOTE_API_KEY", "PYNOTES_API_KEY")
+    )
+    pyannote_model: str = "precision-2"
+    # A conversation not diarized by then keeps Deepgram's speakers
+    pyannote_timeout_s: int = 300
 
     # WhatsApp, read-only, through the bridge (whatsapp/); unset: no WhatsApp at all
     whatsapp_bridge_url: str = ""
@@ -145,12 +155,6 @@ class Settings(BaseSettings):
     # A segment this loud among the user's recent ones (percentile) is most likely the
     # user's own voice, near the microphone: never given to someone else automatically
     voice_loud_percentile: float = 0.85
-    # A segment heard as one voice is cut into windows this long, and split in two when its
-    # windows fall into two groups whose voices are less alike than this (centered cosine).
-    # Measured 2026-11-22 on 4 s windows: 11 of 15 joined pairs of two people below, 7 of
-    # 55 long one-voice segments
-    voice_split_window_seconds: float = 4.0
-    voice_split_below: float = -0.10
     # Less speech than this gives an unreliable fingerprint (a short command still has one)
     voice_min_seconds: float = 1.5
 

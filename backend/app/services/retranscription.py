@@ -11,13 +11,13 @@ correction by hand.
 
 Asked with each word's speaker, it also tells apart the voices of a segment (up to 25 s,
 several people can speak in it): each voice is recognised from its own audio, and a
-segment where more than one spoke keeps its turns, who said what.
+segment where more than one spoke keeps its turns, who said what. Who spoke when comes
+from pyannoteAI when it answers (services/diarization.py), else from Deepgram.
 """
 
 import json
 import logging
 import uuid
-from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.models.conversation import Conversation
 from app.models.segment import Segment
 from app.services.adpcm_decoder import CHANNELS, SAMPLE_RATE, SAMPLE_WIDTH
+from app.services.diarization import diarize, with_speakers
 from app.services.language import account_languages
 from app.services.segment_audio import decode_segment, pcm_to_wav
 from app.services.stt_base import STTService, Word
@@ -37,7 +38,7 @@ from app.services.transcription_enhancer import (
     clean_transcription,
     speaker_prefix,
 )
-from app.services.voice_embedding import embed_voice, loudest_frames, normalize
+from app.services.voice_embedding import embed_voice
 from app.services.voice_profiles import (
     label_speaker,
     list_profiles,
@@ -53,8 +54,6 @@ logger = logging.getLogger(__name__)
 GAP_SECONDS = 0.5
 # A conversation of one segment shorter than this is left as it is: one voice, most likely
 LONE_SEGMENT_MS = 10_000
-# Fewer windows than this (12 s of speech) are too few to tell two voices apart
-SPLIT_MIN_WINDOWS = 3
 BYTES_PER_SECOND = SAMPLE_RATE * SAMPLE_WIDTH * CHANNELS
 
 
@@ -180,87 +179,15 @@ def _turns(words: list[Word], voices: dict) -> list[dict]:
     return turns
 
 
-def _windows(words: list[Word], seconds: float) -> list[list[Word]]:
-    """Words in a row, cut between words into windows of at least `seconds`; a shorter
-    rest goes with the last window."""
-    windows: list[list[Word]] = []
-    current: list[Word] = []
-    for word in words:
-        current.append(word)
-        if current[-1].end - current[0].start >= seconds:
-            windows.append(current)
-            current = []
-    if current:
-        if windows:
-            windows[-1].extend(current)
-        else:
-            windows.append(current)
-    return windows
-
-
-def _mean(vectors: list[list[float]]) -> list[float]:
-    return normalize([sum(column) for column in zip(*vectors)])
-
-
-def most_different_split(vectors: list[list[float]]) -> tuple[float, list[int]]:
-    """Of every way to put the windows in two groups, the one whose two average voices
-    are least alike: (their cosine, the group, 0 or 1, of each window). Few windows (a
-    segment is at most ~25 s): every way is tried."""
-    best, groups = 2.0, [0] * len(vectors)
-    for mask in range(1, 2 ** (len(vectors) - 1)):
-        labels = [(mask >> i) & 1 for i in range(len(vectors))]
-        first = [v for v, label in zip(vectors, labels) if label == 0]
-        second = [v for v, label in zip(vectors, labels) if label == 1]
-        similarity = sum(a * b for a, b in zip(_mean(first), _mean(second)))
-        if similarity < best:
-            best, groups = similarity, labels
-    return best, groups
-
-
-async def split_by_voice(words: list[Word], pcm: bytes, center) -> list[Word] | None:
-    """The words of a segment the speech-to-text heard as one voice, with speaker 0 or
-    1 when its windows' fingerprints fall into two clearly different voices; else None.
-    The speech-to-text separates voices only now and then (93 of 1252 segments): through
-    the pendant's one microphone they sound alike to it."""
-    windows = _windows(words, settings.voice_split_window_seconds)
-    if len(windows) < SPLIT_MIN_WINDOWS:
-        return None
-    vectors: dict[int, list[float]] = {}
-    for index, window in enumerate(windows):
-        audio = loudest_frames(pcm[_at(window[0].start):_at(window[-1].end)])
-        embedding = await embed_voice(pcm_to_wav(audio))
-        if embedding is None:
-            continue  # too little speech in it: it goes with the window before
-        if center is not None:
-            embedding = normalize([float(e) - c for e, c in zip(embedding, center)])
-        vectors[index] = embedding
-    if len(vectors) < SPLIT_MIN_WINDOWS:
-        return None
-    similarity, groups = most_different_split(list(vectors.values()))
-    if similarity >= settings.voice_split_below:
-        return None
-    group_of = dict(zip(vectors, groups))
-    split: list[Word] = []
-    group = group_of[min(group_of)]
-    for index, window in enumerate(windows):
-        group = group_of.get(index, group)
-        split += [replace(word, speaker=group) for word in window]
-    return split
-
-
 async def segment_turns(db: AsyncSession, segment: Segment, words: list[Word], pcm: bytes):
-    """A segment where several spoke, split into its turns: each voice recognised from
-    what it said in this segment. None with one voice. The speech-to-text tells the
-    voices apart; when it heard one, the fingerprints may still find two (`split_by_voice`).
+    """A segment where several spoke, split into its turns as soon as it is transcribed:
+    each voice recognised from what it said in this segment. None with one voice.
 
     Unknown voices are told apart but not numbered: "Person 2" is the same person only
     across a whole conversation, which is read again when it closes (`retranscribe`).
     """
     if any(w.speaker is None for w in words) or len({w.speaker for w in words}) < 2:
-        center = (await voice_context(db, segment.user_id)).center
-        words = await split_by_voice(words, pcm, center)
-        if words is None:
-            return None
+        return None
     voices = await _voices(db, segment, [segment], [words], pcm)
     turns = [t for t in _turns(words, voices) if clean_transcription(t["text"])]
     if len(turns) < 2:
@@ -312,7 +239,11 @@ async def _transcribe_again(db, conversation, stt) -> tuple[bool, bool]:
     if not result.words:
         return False, False  # a service without word times (OpenAI): the segments stay
 
-    parts = assign_words(result.words, spans)
+    # Who spoke when: pyannoteAI when it answers (far fewer words to the wrong person),
+    # else Deepgram's own speakers
+    turns = await diarize(pcm_to_wav(pcm))
+    words = with_speakers(result.words, turns) if turns else result.words
+    parts = assign_words(words, spans)
     changed = False
     for segment, part in zip(segments, parts):
         text = clean_transcription(" ".join(w.text for w in part))
@@ -324,7 +255,7 @@ async def _transcribe_again(db, conversation, stt) -> tuple[bool, bool]:
             segment.transcription.language = result.language
             changed = True
 
-    if any(w.speaker is None for w in result.words):
+    if any(w.speaker is None for w in words):
         return changed, False
     voices = await _voices(db, conversation, segments, parts, pcm)
     for segment, part in zip(segments, parts):
@@ -333,11 +264,6 @@ async def _transcribe_again(db, conversation, stt) -> tuple[bool, bool]:
             for turn in turns:
                 turn["text"] = clean_transcription(turn["text"])
             segment.transcription.turns = turns
-            continue
-        # One voice to the speech-to-text: the fingerprints may still hear two
-        by_voice = await segment_turns(db, segment, part, pcm) if turns else None
-        if by_voice:
-            segment.transcription.turns = by_voice
             continue
         segment.transcription.turns = None
         if not turns or segment.voice_match == "confirmed":
