@@ -46,19 +46,17 @@ async def test_deepgram_without_other_languages_asks_as_before(monkeypatch):
     assert result.language == "it"
 
 
-async def test_deepgram_follows_italian_and_english_within_a_sentence(monkeypatch):
-    """Code-switching ("Vado in palestra since five years"): one language per word."""
+async def test_deepgram_never_picks_among_all_its_languages(monkeypatch):
+    """language=multi heard "Prova prova uno due tre" as Croatian: detection stays within
+    the account's languages, even for Italian with English."""
     seen: list[httpx.Request] = []
-    multi = httpx.Response(200, json={"results": {"channels": [{"alternatives": [{
-        "transcript": "Vado in palestra since five years", "languages": ["it", "en"],
-    }]}]}})
-    service = _deepgram(monkeypatch, [multi], seen)
+    service = _deepgram(monkeypatch, [_heard("Prova prova 1 2 3", "it")], seen)
 
     result = await service.transcribe(b"wav", language="it", keyterms=["Marco"], also=["en"])
 
     params = seen[0].url.params
-    assert params["language"] == "multi"
-    assert params.get_list("detect_language") == []
+    assert "language" not in params
+    assert params.get_list("detect_language") == ["it", "en"]
     assert params.get_list("keyterm") == ["Marco"]
     assert result.language == "it"
 

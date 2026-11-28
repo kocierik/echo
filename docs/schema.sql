@@ -1,5 +1,5 @@
 -- Reference only: the database is created by Alembic (`alembic upgrade head`).
--- Do not apply this file: it shows the schema at the head revision (047) for reading.
+-- Do not apply this file: it shows the schema at the head revision (048) for reading.
 --
 -- Second Brain AI Wearable — Full Database Schema
 -- PostgreSQL 16+ with pgvector extension
@@ -239,7 +239,7 @@ CREATE TABLE users (
     name VARCHAR(100),                   -- the app's greeting; null until given (021)
     instructions TEXT,                   -- the user's own instructions to Echo (022)
     plan VARCHAR(20) NOT NULL DEFAULT 'free',  -- free | plus | unlimited (025)
-    other_languages JSONB NOT NULL DEFAULT '[]',  -- other languages heard: ["en", "es"] (027); new accounts get the other of it/en (047)
+    other_languages JSONB NOT NULL DEFAULT '[]',  -- other languages heard: ["en", "es"] (027)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

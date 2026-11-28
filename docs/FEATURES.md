@@ -35,8 +35,9 @@
 - Trascrizione correggibile, con rianalisi della conversazione.
 - La lingua che parli si sceglie nel primo avvio, prima di registrare la voce; mentre registri vedi cosa
   Echo sente.
-- Italiano e inglese insieme di default, anche nella stessa frase (modalità multilingue di Deepgram); altre
-  lingue, fino a 4, in Account → Language: riconosciute riga per riga, con "Translate" nella conversazione.
+- Altre lingue sentite intorno (fino a 4, Account → Language): Deepgram sceglie solo fra le tue, segmento per
+  segmento, con "Translate" nella conversazione. Di default solo la lingua che parli: la modalità multilingue
+  di Deepgram scriveva l'italiano in croato e persiano (28/11).
 - Le foto scattate in una conversazione entrano nel suo riassunto.
 
 ## Chiedere (Ask)

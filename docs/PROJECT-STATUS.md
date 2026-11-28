@@ -22,12 +22,13 @@ Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
   posizione; una foto storta viene raddrizzata e guardata di nuovo; le domande su ciò che il web conosce usano
   la ricerca web.
 - **Lingue e richieste** (22–23/11): la lingua si sceglie nel primo avvio, prima della voce, e durante la
-  registrazione si vede cosa Echo sente; italiano e inglese sentiti insieme di default (migrazione 047);
-  "Echo, …" riconosciuto anche dopo altre frasi nello stesso segmento.
+  registrazione si vede cosa Echo sente; "Echo, …" riconosciuto anche dopo altre frasi nello stesso segmento.
+  Italiano e inglese insieme di default (047, 23/11) sono stati tolti il 28/11 (048): la modalità `multi` di
+  Deepgram scriveva l'italiano in croato e persiano; ora mai `multi`, rilevamento solo fra le lingue dell'account.
 - **Memoria** (21/11): eval di retrieval (`make eval-retrieval`), storie per argomento, fatti su di te con la data.
 
 Test al 23/11: backend 1549 (ruff pulito), app 1091 (`flutter analyze` con 2 info già presenti), firmware 196 in
-20 suite native. Migrazioni fino alla 047; il server applica le nuove solo con `make deploy`.
+20 suite native. Migrazioni fino alla 048; il server applica le nuove solo con `make deploy`.
 
 Storia precedente:
 Aggiornamento 10/11: il worktree contiene la migrazione 039 per il recovery STT e i relativi fix
@@ -391,8 +392,9 @@ Aperti dal lavoro del 17–23/11:
 - **Voci:** soglie (`voice_centered_*`, `voice_split_below`) tarate su poche correzioni e due voci; servono
   correzioni a mano su conversazioni con più persone per misurarle davvero.
 - **Segmenti con testo vuoto:** molti segmenti tornano da Deepgram senza testo; non ancora indagato.
-- **Costo multilingue:** la modalità `language=multi` di Deepgram costa più della monolingue; `usage_prices.py`
-  ha un solo prezzo per nova-3, quindi il costo reale non è misurato.
+- **Più lingue:** con un'altra lingua scelta, Deepgram rileva la lingua di ogni segmento fra quelle
+  dell'account; il 28/11 su 8 segmenti un'italiana è uscita vuota (presa per inglese). Una frase che cambia
+  lingua a metà resta nella lingua rilevata.
 - **Dati fuori dall'UE:** trascrizione e modelli passano da Deepgram e OpenAI (USA); il server e le impronte
   vocali restano sul nostro server.
 - **Ricerca web sulle foto:** conosce solo il fuso orario, non la posizione; ogni foto storta costa una seconda

@@ -17,8 +17,9 @@ DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen"
 
 # Deepgram's keyterm limit is 500 tokens per request; it advises 20-50 terms
 MAX_KEYTERMS = 50
-# The languages Nova-3 follows switching within a sentence (language=multi)
-MULTILINGUAL = {"de", "en", "es", "fr", "hi", "it", "ja", "nl", "pt", "ru"}
+# Never language=multi: it picks among every language Nova-3 knows, and on the pendant's
+# short segments heard Italian as Croatian and Persian (2026-11-28); detection is held to the
+# account's own languages instead
 
 
 class DeepgramSTTService(STTService):
@@ -53,10 +54,7 @@ class DeepgramSTTService(STTService):
         """
         detecting = bool(also)
         params: list[tuple[str, str]] = [("model", self.model)]
-        if detecting and self.model.startswith("nova-3") and {language, *also} <= MULTILINGUAL:
-            # One language per word, not per segment: "Ho detto since five years" whole
-            params.append(("language", "multi"))
-        elif detecting:
+        if detecting:
             params += [("detect_language", code) for code in [language, *also]]
         else:
             params.append(("language", language))

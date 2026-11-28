@@ -30,8 +30,8 @@ each person has their own memory; the Android app builds from the same code but 
   "Echo, …" request aloud, also with the screen locked: in headphones only, or also on the speaker.
   Echo stops listening while the phone speaks, so it never records its own answer.
 - **Other languages, translated.** The language you speak is chosen in the setup, before Echo
-  records your voice. Italian and English are both heard by default (Deepgram's multilingual
-  mode follows a switch even mid-sentence); add others, or remove that one, in Account → Language.
+  records your voice; add the other languages spoken around you in Account → Language (Deepgram
+  then picks among yours only, segment by segment).
   Echo recognises which one each segment is in, and a conversation's lines in another language
   are tagged and can be translated into yours, under the originals.
 - **Knows you, and your documents.** Account → Memory: About you holds short facts about you, used

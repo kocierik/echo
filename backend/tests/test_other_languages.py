@@ -28,22 +28,9 @@ async def _key(client, email, language="it"):
     return {"X-API-Key": response.json()["api_key"]}
 
 
-async def test_the_other_of_italian_and_english_is_heard_by_default(client):
-    italian = await _key(client, "a@x.io")
-    english = await _key(client, "a2@x.io", language="en")
-
-    assert (await client.get("/api/auth/me", headers=italian)).json()["other_languages"] == [
-        "en"
-    ]
-    assert (await client.get("/api/auth/me", headers=english)).json()["other_languages"] == [
-        "it"
-    ]
-
-
-async def test_removed_it_stays_removed(client):
-    key = await _key(client, "a3@x.io")
-
-    await client.patch("/api/auth/me", headers=key, json={"other_languages": []})
+async def test_none_until_chosen(client):
+    """Only the main language by default: detecting among two lost Italian segments."""
+    key = await _key(client, "a@x.io")
 
     assert (await client.get("/api/auth/me", headers=key)).json()["other_languages"] == []
 
