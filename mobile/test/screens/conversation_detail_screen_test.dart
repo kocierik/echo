@@ -286,6 +286,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Lo mando stasera.'), findsOneWidget);
+    // The newest line on top
+    expect(tester.getTopLeft(find.text('Lo mando stasera.')).dy,
+        lessThan(tester.getTopLeft(find.text('Domani chiamo Ada per Atlas.')).dy));
   });
 
   testWidgets('delete asks first, then deletes and closes', (tester) async {

@@ -32,7 +32,7 @@ import '../utils/conversation_text.dart';
 enum _DetailTab { summary, transcript }
 
 /// One conversation: what it was about (summary, tasks, events, people, ideas)
-/// and what was said, line by line, each line correctable; lines heard in another
+/// and what was said, line by line, newest first, each line correctable; lines heard in another
 /// language are tagged and can be translated into the user's.
 final class ConversationDetailScreen extends StatefulWidget {
   const ConversationDetailScreen({
@@ -100,32 +100,16 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     }
   }
 
-  /// The latest lines, quietly: no spinner, no error, edits kept; at the end of the
-  /// transcript it stays at the end.
+  /// The latest lines, quietly: no spinner, no error, edits kept; they arrive on top.
   Future<void> _refreshLive() async {
     try {
       final detail = await widget.api.getConversation(widget.conversationId);
       if (!mounted) return;
-      final atEnd = _scroll.hasClients &&
-          _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
       setState(() => _detail = detail);
       _followLive(detail);
-      if (atEnd && _tab == _DetailTab.transcript) _showLatest();
     } catch (_) {
       // The next tick tries again
     }
-  }
-
-  /// The transcript opens on its last line. The list lays out lazily, so the end moves
-  /// as lines are laid out: jumped to again until it stays.
-  void _showLatest([int tries = 10]) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scroll.hasClients) return;
-      final position = _scroll.position;
-      if (position.pixels >= position.maxScrollExtent) return;
-      _scroll.jumpTo(position.maxScrollExtent);
-      if (tries > 0) _showLatest(tries - 1);
-    });
   }
 
   /// The user's language: lines heard in another one can be translated.
@@ -212,7 +196,6 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
         if (!_tabChosen && detail.card.isOpen) _tab = _DetailTab.transcript;
       });
       _followLive(detail);
-      if (_tab == _DetailTab.transcript && !_tabChosen) _showLatest();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -441,7 +424,6 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
               onSelectionChanged: (selection) {
                 _tabChosen = true;
                 setState(() => _tab = selection.single);
-                if (_tab == _DetailTab.transcript) _showLatest();
               },
             ),
           ),
@@ -534,8 +516,10 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
     }
     final loader = _photoLoader;
     final voices = _voices;
-    // Each photo where it was taken, between the lines
-    final photos = loader == null ? const <ConversationPhoto>[] : detail.photos;
+    // Newest first; each photo where it was taken, between the lines
+    final photos = loader == null
+        ? const <ConversationPhoto>[]
+        : detail.photos.reversed.toList();
     var next = 0;
     final foreign = detail.lines.where(_isForeign).toList();
     final user = _userLanguage;
@@ -574,8 +558,8 @@ final class _ConversationDetailScreenState extends State<ConversationDetailScree
                 'in other conversations too.',
           ),
         ),
-      for (final line in detail.lines) ...[
-        for (; next < photos.length && !photos[next].takenAt.isAfter(line.recordedAt); next++)
+      for (final line in detail.lines.reversed) ...[
+        for (; next < photos.length && photos[next].takenAt.isAfter(line.recordedAt); next++)
           _PhotoTile(photo: photos[next], loadSource: loader!, compact: true),
         _LineTile(
           line: line,

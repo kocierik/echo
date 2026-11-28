@@ -96,7 +96,8 @@ void main() {
         tester.getTopLeft(find.byKey(const Key('conversation-photo-ph1'))).dy;
     final before = tester.getTopLeft(find.byKey(const Key('line-s1'))).dy;
     final after = tester.getTopLeft(find.byKey(const Key('line-s2'))).dy;
-    expect(before < photo && photo < after, isTrue);
+    // Newest first: the later line above the photo, the earlier one below
+    expect(after < photo && photo < before, isTrue);
   });
 
   testWidgets('no photos without an api that serves them', (tester) async {
