@@ -64,3 +64,15 @@ the phone is in a pocket.
   instructions; sending and deleting still need a confirmation.
 - Requests the wearable never answers fail after `PHOTO_REQUEST_TIMEOUT_S` (90 s) with a message
   in the chat; a photo that arrives later is still accepted.
+
+## Update (2026-11-23)
+
+- **Upright first.** The vision model also says how many degrees the photo must turn (0, 90,
+  180, 270); a turned photo is stored upright and looked at again, once. The pendant hangs on a
+  cord and is often upside down or sideways, and then the model missed what was there.
+- **The web, for what the photo cannot say.** For a question about something the web knows (a
+  statue, a monument, an artwork, a plant, a product) the vision model proposes a search; the
+  query model answers with OpenAI's web search, within the plan's daily searches, and the chat
+  shows the pages it cites. Memory keeps only what the photo showed, never the web's answer.
+- A dark or blurred photo names only what is clearly visible, and a pendant facing the user's
+  chin or the ceiling is said so; what was photographed in a conversation reaches its summary.

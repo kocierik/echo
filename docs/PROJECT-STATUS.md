@@ -1,6 +1,35 @@
-# Echo — Stato del progetto (10/11/2026)
+# Echo — Stato del progetto (28/11/2026)
 
 Analisi della codebase: cosa c'è, cosa funziona, cosa è rotto e cosa manca.
+
+**Aggiornamento 28/11** (lavoro del 17–23/11, tutto su `main`; resoconto per l'utente in [FEATURES.md](FEATURES.md)):
+- **App ridisegnata** (17–21/11): tre schede Today · Ask · Library con barra in basso; impostazioni e ciondolo
+  dietro l'icona della persona (Account), raggruppate e ridotte; pagine in stile iOS; Ask con "+" (fotocamera e
+  galleria del telefono, file, app) e microfono; accesso con Google (API e app, 19–20/11).
+- **Firmware 0.10.2 → 0.10.6** (21–23/11): CPU a 160 MHz (a 80 MHz si perdeva il 22% dell'audio); ritorno a
+  espressif32 7.0.1 (la 8.0.0 andava in crash all'avvio del BLE); filtro passa-alto e soglia VAD adattiva (meno
+  registrazioni di solo rumore); colori della camera; dal 0.10.6 il ciondolo torna visibile da solo se il
+  Bluetooth si blocca (`link_watch.h`). 0.10.6 pubblicata via OTA il 23/11. Nell'app "Dimentica" funziona anche
+  con il ciondolo irraggiungibile, e non si riavviano più a vicenda i segmenti (fix dell'assemblatore BLE).
+- **Voci** (22/11): impronte confrontate togliendo la media degli ultimi 300 segmenti (il suono del ciondolo),
+  soglie ricalibrate; un segmento forte non va mai da solo a un'altra persona; niente più rinomina in massa di
+  una conversazione; un segmento sentito da Deepgram come una voce sola si divide in due blocchi quando le
+  impronte di finestre di 4 s sentono due voci (misurato: 11/15 coppie unite, 7/55 segmenti lunghi divisi).
+- **Routine e catalogo** (22/11): routine dopo ogni conversazione (migrazioni 045 e 046); catalogo di routine e
+  assistenti pronti, in Ask → Routines, nel selettore degli assistenti e in Account → Routines.
+- **Foto** (21–23/11): niente oggetti indovinati in una foto scura; il ciondolo girato viene detto; le foto entrano
+  nel riassunto della conversazione; il parcheggio salva foto e posizione, "salva questo posto" solo la
+  posizione; una foto storta viene raddrizzata e guardata di nuovo; le domande su ciò che il web conosce usano
+  la ricerca web.
+- **Lingue e richieste** (22–23/11): la lingua si sceglie nel primo avvio, prima della voce, e durante la
+  registrazione si vede cosa Echo sente; italiano e inglese sentiti insieme di default (migrazione 047);
+  "Echo, …" riconosciuto anche dopo altre frasi nello stesso segmento.
+- **Memoria** (21/11): eval di retrieval (`make eval-retrieval`), storie per argomento, fatti su di te con la data.
+
+Test al 23/11: backend 1549 (ruff pulito), app 1091 (`flutter analyze` con 2 info già presenti), firmware 196 in
+20 suite native. Migrazioni fino alla 047; il server applica le nuove solo con `make deploy`.
+
+Storia precedente:
 Aggiornamento 10/11: il worktree contiene la migrazione 039 per il recovery STT e i relativi fix
 di ingest; la migrazione del grafo di memoria nella specifica del 09/11 è stata spostata alla 040
 per evitare conflitti. Le modifiche locali non equivalgono a un deploy: revisione Alembic e stato
@@ -42,9 +71,9 @@ XIAO ESP32-S3 Sense ──BLE (Opus, frame + CRC)───▶ App Flutter (iOS-f
 
 | Componente | Tecnologia | Test |
 |---|---|---|
-| `firmware/` | Arduino + NimBLE 2.3.2, PlatformIO | 12 suite Unity native, 109 test (protocollo, transfer, bond, mute, pulsante, OTA, buffer, foto) |
-| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 581 test (servizi + widget, ~4 min), `flutter analyze` pulito |
-| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Composio, Argon2, MCP SDK 1.30 | 1328 test pytest al 31/10, ruff pulito |
+| `firmware/` | Arduino (espressif32 7.0.1) + NimBLE 2.3.2, PlatformIO | 20 suite Unity native, 196 test al 23/11 (protocollo, transfer, bond, mute, pulsante, OTA, buffer, foto, audio, collegamento) |
+| `mobile/` | Flutter 3.44 (flutter_blue_plus, secure storage, local notifications) | 1091 test al 23/11 (servizi + widget), `flutter analyze` con 2 info |
+| `backend/` | FastAPI async, SQLAlchemy, Redis, OpenAI, Deepgram, Composio, Argon2, MCP SDK, sherpa-onnx | 1549 test pytest al 23/11, ruff pulito |
 | `simulator/` | Python, simula il device via HTTP | — |
 
 Fase attuale: **Core Beta** ([spec](superpowers/specs/2026-10-01-core-beta-design.md)): un utente, un iPhone,
@@ -356,6 +385,19 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ### Ancora aperti
 
+Aperti dal lavoro del 17–23/11:
+- **Bluetooth bloccato il 22/11:** il ciondolo registrava ma per 30 minuti non si faceva trovare, fino al reset;
+  la causa non è nota (nessun log del seriale). Dal 0.10.6 torna visibile da solo, ma è provato solo nei test.
+- **Voci:** soglie (`voice_centered_*`, `voice_split_below`) tarate su poche correzioni e due voci; servono
+  correzioni a mano su conversazioni con più persone per misurarle davvero.
+- **Segmenti con testo vuoto:** molti segmenti tornano da Deepgram senza testo; non ancora indagato.
+- **Costo multilingue:** la modalità `language=multi` di Deepgram costa più della monolingue; `usage_prices.py`
+  ha un solo prezzo per nova-3, quindi il costo reale non è misurato.
+- **Dati fuori dall'UE:** trascrizione e modelli passano da Deepgram e OpenAI (USA); il server e le impronte
+  vocali restano sul nostro server.
+- **Ricerca web sulle foto:** conosce solo il fuso orario, non la posizione; ogni foto storta costa una seconda
+  chiamata al modello.
+
 - **Trascrizione:** questo server usa Deepgram Nova-3 (`STT_PROVIDER=deepgram`), non toccato dalle
   deprecazioni OpenAI. Solo con `STT_PROVIDER=openai` conta lo spegnimento di `gpt-4o-transcribe` (26/2/2027,
   sostituto `gpt-transcribe`); il confronto (`make eval-stt`) resta utile per scegliere il migliore, non urgente.
@@ -376,17 +418,18 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
   con `alembic current` prima del prossimo deploy. Da sistemare prima di accenderlo: il test sul p95 di `record_step` fallisce
   sotto misura della copertura, la chiusura delle esecuzioni interrotte all'avvio non ha un timeout, e le
   esecuzioni `interrupted` hanno token e costo a zero.
-- **Speaker (#11):** con il profilo vocale registrato decidono le impronte; senza, la soglia di energia (da calibrare).
+- **Speaker (#11):** con il profilo vocale registrato decidono le impronte (con il suono del ciondolo tolto e la
+  regola del volume); senza, la soglia di energia.
 - **Entità nella lingua parlata:** nomi e contenuti di task/eventi restano nella lingua della trascrizione
   (di solito italiano), quindi in Today possono comparire task in italiano dentro un'app in inglese. Scelta voluta
   (tradurre perderebbe fedeltà e confonderebbe la deduplicazione).
 - **MCP solo con chiave:** claude.ai e ChatGPT vogliono OAuth, da fare; Claude Desktop non è verificato.
 - **Account:** il server ha il suo account (creato con `make create-user`); la registrazione dall'app è provata
-  solo dai test. Mancano conferma dell'email, recupero password via email, Apple e Google.
+  solo dai test. Google c'è dal 20/11; mancano conferma dell'email, recupero password via email e Apple.
 - **Android mai compilato:** su questo Mac manca l'SDK. Non verificati: schermata di avvio Android 12+, canale
   `echo/device` in `MainActivity.kt`, tutto il resto dell'app. Promemoria/Calendario e Live Activity sono solo iOS.
 - **Nuova interfaccia vista solo nei test:** da guardare sul telefono (spaziature, tema quasi nero).
-- **Il server gira sul Mac:** se è spento o senza rete, Echo non funziona; i backup sono a mano.
+- **Il server gira su una sola macchina (serverman, Linux):** se è spenta o senza rete, Echo non funziona.
 - **Composio provato solo in parte:** il collegamento di Google Calendar funziona; restano da provare una richiesta
   in chat e una a voce, le conferme, Telegram e Todoist, e i tempi reali di una richiesta.
 - **`composio==0.22.0`:** dalla 0.24 dipende da `composio-client` 2.0 (release candidate), che si carica in ~50 s
@@ -451,9 +494,15 @@ lavoro (`.superpowers/sdd/2026-10-13-composio-actions/`, fuori da git) e nei mes
 
 ## 6. Prossimi passi consigliati
 
-**Per te:**
+**Per te** (al 28/11):
 
-Fatti entro il 04/11: deploy, il tuo account, la chiave di esempio tolta; la registrazione resta aperta per scelta.
+1. **`make deploy`** per le migrazioni fino alla 047 e il lavoro del 22–23/11 (voci, foto, lingue, "Echo, …").
+2. **Una build iOS** per l'app ridisegnata, il catalogo, la scelta della lingua e il "Dimentica" corretto.
+3. **Aggiornare il ciondolo alla 0.10.6** dall'app (Account → Echo), tenendo l'app aperta finché la conferma.
+4. **Correggere a mano una decina di nomi di voce sbagliati**, per misurare e ritoccare le soglie delle voci.
+5. Se il Bluetooth si blocca di nuovo e non torna da solo entro un minuto: log del seriale prima del reset.
+
+Elenco precedente (al 04/11), in parte superato:
 
 1. **`make deploy`** per applicare le migrazioni 031 (tracciamento, spento), 032 (documenti reindicizzati) e
    033 (dati di esempio); poi una nuova build dell'app (workflow iOS + SideStore).

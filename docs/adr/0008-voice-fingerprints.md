@@ -40,3 +40,25 @@ voices of the people around them.
   conversation.
 - Thresholds were set on synthetic voices; they must be calibrated on real recordings.
 - A segment (up to 6 s) can hold more than one voice; it gets the voice that dominates it.
+
+## Update (2026-11-22)
+
+Real recordings showed that through the pendant's one microphone every voice scores about
+0.75–0.8 against every other: the newest profile won whole days of segments. Since then:
+
+- **The pendant's sound is taken away.** Fingerprints are compared after subtracting the mean
+  of the user's last 300 segment fingerprints (`voice_context`); the user's and another voice
+  went from 0.75 to −0.20. Thresholds for centered fingerprints: `voice_centered_*` in
+  `core/config.py`.
+- **Loudness.** A segment among the user's loudest 15% is never given automatically to someone
+  else; with no sure voice, it is the user's.
+- **No mass renaming.** Naming one segment renames the others of the conversation only when
+  they sound clearly more like that voice than any other.
+- **Two voices in one segment** (segments now last up to 25 s). Deepgram's diarization splits
+  a segment into turns when it can; when it hears one voice, a segment with at least three
+  4 s windows is split in two when its windows fall into two groups whose average voices are
+  less alike than `voice_split_below` (−0.10). Measured on real audio: 11 of 15 joined pairs of
+  two people split, 7 of 55 long one-voice segments. Each turn can be named.
+
+Thresholds are still set on few corrections and two voices; corrections by hand on
+conversations with more people are what will tune them.

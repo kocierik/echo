@@ -1,6 +1,6 @@
 # Echo — Roadmap
 
-> Aggiornata al 29/10/2026. Tutto ciò che Echo fa già, in breve: [FEATURES.md](FEATURES.md). Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
+> Aggiornata al 28/11/2026. Tutto ciò che Echo fa già, in breve: [FEATURES.md](FEATURES.md). Stato dettagliato, bug noti e prossimi passi: [PROJECT-STATUS.md](PROJECT-STATUS.md).
 > Il piano nasce dal confronto con i concorrenti (Omi, Bee, Plaud, Limitless, occhiali con fotocamera) del
 > 15/10/2026: prima non perdere niente, poi sfruttare ciò che solo Echo ha (fotocamera, voci, server tuo),
 > poi far arrivare Echo da te e rendere l'app immediata.
@@ -32,6 +32,9 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
       1200 mAh, con e senza fotocamera): decidono batteria più piccola, case nuovo o un pendente
       solo-audio su Nordic come Omi (confronto nella spec)
       Codice pronto (firmware 0.10.0): da misurare sul dispositivo (checklist nella spec, "On the device").
+      21/11: la CPU è tornata a 160 MHz (0.10.2): a 80 MHz si perdeva il 22% dell'audio.
+- [x] Meno registrazioni di solo rumore (0.10.4, 21/11): filtro passa-alto e soglia VAD che segue il rumore di fondo
+- [x] Mai irraggiungibile (0.10.6, 22/11): torna visibile da solo se il Bluetooth si blocca
 
 ### Fase 2 — Fotocamera più utile
 - [x] Le foto generano task ed eventi (estrazione delle entità sulla descrizione)
@@ -84,8 +87,11 @@ Ogni fase si progetta e si costruisce a sé; l'ordine è concordato.
 - [x] Account: ogni telefono ha la sua chiave (revocabile da Settings → Devices), password Argon2, tentativi
       limitati; registrazione dall'app (chiudibile con `REGISTRATION_OPEN=false`); niente più server e chiave da
       inserire a mano
-- [ ] Accedi con Apple e Google: i pulsanti ci sono ("in arrivo"); servono l'account sviluppatore Apple a
-      pagamento e un client OAuth Google
+- [x] Accedi con Google (19–20/11): API e app, con i client ID di Echo
+- [ ] Accedi con Apple: serve l'account sviluppatore Apple a pagamento
+- [x] App ridisegnata (17–21/11, [spec](superpowers/specs/2026-11-17-app-redesign-design.md)): schede Today · Ask ·
+      Library, impostazioni dietro l'icona della persona, pagine in stile iOS, Ask con "+" e microfono
+- [x] Lingua scelta nel primo avvio, prima della voce; durante la registrazione si vede cosa Echo sente (22/11)
 
 ### Fase 6 — Piattaforma
 - [x] Aggiornamento del firmware senza cavo: `make firmware-release` → server → app → Bluetooth, con
@@ -156,8 +162,11 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
       giorni), niente più messaggi nel thread; risultati in Today ("From your routines"), in Ask → Routines per
       giorno e per incarico, testo intero con le fonti, "Ask about this" che li porta nella chat. Poi: incarichi
       che creano task o promemoria, notifiche push ad app chiusa (APNs), cambiare il modo dall'app
+- [x] Incarichi dopo ogni conversazione (22/11): un'istruzione in parole, eseguita su ogni conversazione chiusa,
+      come le app a prompt di Omi; catalogo di incarichi e assistenti pronti, aggiunti con un tocco
 - [ ] Regole a evento ("quando prometto qualcosa a un cliente, crea un task in Todoist"); azioni verso altri
-      sempre con Confirm
+      sempre con Confirm (in parte: un incarico dopo ogni conversazione copre i casi che non agiscono)
+- [ ] Condividere un incarico o un assistente con un link; suggerimenti dal catalogo in Today
 - [ ] Dati del proprio agente: quote, pausa di tutti gli incarichi (lo storico delle esecuzioni c'è dal 28/10)
 - [ ] Esecuzioni durevoli: ogni passo salvato, un incarico interrotto (riavvio, deploy) riprende da dove era
 - [ ] Decisioni veloci (instradamento, "è un comando per Echo?", scelta degli strumenti): prima misurare i tempi
@@ -291,10 +300,12 @@ senza adottarli come runtime (sono TypeScript; eve gira su Vercel):
   prima su una scheda audio a parte (es. ReSpeaker Lite con XIAO ESP32-S3) come prototipo separato.
 - Memoria: filtro per tipo di entità ("i miei task aperti con Marco"), raggruppamento per argomento.
 - Provider alternativi e locali: Whisper/LLM/embedding self-hosted, Claude, Gemini.
-- Deploy: il server su un VPS in Europa con backup notturni cifrati (oggi gira sul Mac: se è spento, Echo non
-  funziona); più avanti un Postgres gestito (backup puntuali, repliche) quando ci saranno clienti.
+- Elaborazione AI dentro l'UE (promessa del pitch deck del 25/11): residenza dei dati in Europa per Deepgram e
+  OpenAI, o modelli europei (Mistral); poi la modalità consenso qui sotto e la documentazione per GDPR e AI Act.
+- Deploy: il server su un VPS in Europa con backup notturni cifrati (oggi gira su una sola macchina: se è spenta,
+  Echo non funziona); più avanti un Postgres gestito (backup puntuali, repliche) quando ci saranno clienti.
 - Account per la vendita: verifica dell'email e recupero della password via email (serve un servizio di invio),
-  verifica in due passaggi, Accedi con Apple/Google.
+  verifica in due passaggi, Accedi con Apple.
 - Modalità consenso basata sulla voce (testo completo solo per te e per le voci registrate): utile
   quando Echo avrà altri utenti o con le voci collaudate nell'uso reale.
 - Multi-utente: account, registrazione e dati separati per utente ci sono; restano quote e costi per utente

@@ -19,26 +19,31 @@ each person has their own memory; the Android app builds from the same code but 
   in the language of the question. A question that needs live information (the weather, the news,
   today's prices) is looked up on the web, with the sites named; up to 30 searches a day per user.
   Each day and each week get a summary on Today.
+- **Three tabs.** Today (your day), Ask (the chat with Echo) and Library (everything Echo keeps:
+  days, conversations, people, to-dos, Saved, places). The settings and the pendant are behind
+  the person icon at the top, called Account below.
 - **Today, your way.** What needs you on top, then your sections in your order: what routines
   found, to do today, the appointments still to come, your day's conversations, people, Saved,
   where you've been (with Places visited on) and earlier days. Edit Today hides and moves them;
   search is the icon on top.
-- **Answers out loud.** With Spoken answers on (Profile), the phone reads the answer to an
+- **Answers out loud.** With Spoken answers on (Account), the phone reads the answer to an
   "Echo, …" request aloud, also with the screen locked: in headphones only, or also on the speaker.
   Echo stops listening while the phone speaks, so it never records its own answer.
-- **Other languages, translated.** Add the other languages spoken around you (Profile → Language):
+- **Other languages, translated.** The language you speak is chosen in the setup, before Echo
+  records your voice. Italian and English are both heard by default (Deepgram's multilingual
+  mode follows a switch even mid-sentence); add others, or remove that one, in Account → Language.
   Echo recognises which one each segment is in, and a conversation's lines in another language
   are tagged and can be translated into yours, under the originals.
-- **Knows you, and your documents.** Profile → Memory: About you holds short facts about you, used
+- **Knows you, and your documents.** Account → Memory: About you holds short facts about you, used
   in every answer; Echo suggests new ones from what you say (used only once you keep them) and
   remembers or forgets one when you ask ("Echo, ricordati che sono vegetariano"). Documents (PDF,
   Word, text, Markdown) are searched when Echo answers, naming the document; only their text is
   kept, never the file.
-- **Assistants.** Profile → Assistants: Echo focused on one part of your life, started from work,
+- **Assistants.** Account → Assistants: Echo focused on one part of your life, started from work,
   diet or sleep or from scratch, with its own instructions, notes it keeps itself ("a colazione
   yogurt e frutta") and, if you choose, only some of your documents. Start a chat with one in Ask;
   routines made in its chat run as it. Diet and sleep are coaches, never medical advice.
-- **Reads WhatsApp (optional, unofficial).** Link your number in Profile → WhatsApp and ask "cosa mi
+- **Reads WhatsApp (optional, unofficial).** Link your number in Account → WhatsApp and ask "cosa mi
   ha scritto Marco?", or make a routine of it. Private chats only, read-only, held in the bridge's
   memory for 7 days and never written to disk; the connection is not official and WhatsApp may
   block the number (see [the design](docs/superpowers/specs/2026-10-28-whatsapp-design.md)).
@@ -48,7 +53,8 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   right away; sending to other people, modifying and deleting wait for a **Confirm** tap in the app.
   Nothing happens from speech that is not addressed to Echo.
 - **Voice requests.** Start a sentence with "Ehi Echo, …" (or "Hey", "Hei", "Ei"; "Echo, …" and
-  "Eco, …" alone work too) while wearing the device. After a greeting any spelling counts, so an
+  "Eco, …" alone work too) while wearing the device, also after other talk in the same
+  recording ("… va bene. Echo, che giorno è domani?"). After a greeting any spelling counts, so an
   Italian "Echo" transcribed as "ecco" is heard; "ecco" alone is just the word. The answer appears
   in Ask, in your one thread with Echo, with a notification the next time the app wakes up.
 - **Does things on its own.** "Ehi Echo, ogni mattina alle 7 dimmi che tempo fa a Milano": a
@@ -56,23 +62,37 @@ Reminders and Calendar through the app ([ADR 0010](docs/adr/0010-iphone-reminder
   always reports, only when its condition holds ("dimmi se piove"), or only what is new ("nuove
   posizioni di lavoro"), and stays quiet otherwise. What it found shows on Today ("From your
   routines"), in Ask → Routines by day, in full with its sources, and as a notification; "Ask about
-  this" brings a result into the chat. Paused and deleted in Profile → Routines.
+  this" brings a result into the chat. A routine can also run after each conversation, on what
+  was just said ("dopo ogni riunione scrivimi chi fa cosa"), with no code: the instruction is the
+  whole routine. A catalog of ready-made routines and assistants adds one with a tap (Ask →
+  Routines → Add, the "More" of Ask's assistant switcher, or Account → Routines). Paused and
+  deleted in Account → Routines.
 - **Comes to you, rarely.** Promises you make ("ti mando il preventivo") are tracked and reminded on
   their day; 10 minutes before a meeting, a briefing on the person if there is something to know.
   When someone whose voice you named starts talking, the phone says at once what you promised
   them, what they promised you and when you last talked (at most once per person every 4 hours).
   At most three notifications a day, none at night, each kind switchable.
-- **Knows who is speaking.** Record your voice once in Settings → Voices; name the others by tapping
+- **Knows who is speaking.** Record your voice once in Account → Voices; name the others by tapping
   them in a transcript. Echo then labels lines with names, and asks "Marco?" when unsure
-  ([ADR 0008](docs/adr/0008-voice-fingerprints.md)).
-- **Sees, when asked.** "Echo, che pianta è questa?", the camera button in Ask, or a short press of the
-  wearable's button (released after a long press it mutes; held 5 s it turns Echo off, after
-  syncing; held 2 s it turns it on again): the wearable's camera
-  takes one photo, Echo answers about it in the chat and remembers what it showed. Nothing is kept on
-  the wearable ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)).
-- **Updates itself.** A firmware version published to the server is offered in Settings → Device
-  details and sent to the wearable over Bluetooth; if the new version cannot reach the app, the
+  ([ADR 0008](docs/adr/0008-voice-fingerprints.md)). Fingerprints are compared with the
+  pendant's own sound taken away (through one microphone everyone sounds alike), and a loud
+  segment, near the microphone, is never given to someone else on its own. A segment the
+  speech-to-text heard as one voice is split in two when its 4-second windows clearly hold two
+  voices; each block of a segment can be named.
+- **Sees, when asked.** "Echo, che pianta è questa?" or a short press of the wearable's button
+  (released after a long press it mutes; held 5 s it turns Echo off, after syncing; held 2 s it
+  turns it on again): the wearable's camera takes one photo, Echo answers about it in the chat
+  and remembers what it showed. A photo taken upside down or sideways is turned upright first; a
+  question about something the web knows ("spiegami che statua ho davanti") is answered with a
+  web search, its pages cited (memory keeps only what the photo showed). "Ricordati dove ho
+  parcheggiato" keeps a photo of the spot and the phone's place. Nothing is kept on the wearable
+  ([ADR 0007](docs/adr/0007-camera-photos-on-request.md)). Ask's "+" sends a photo from the
+  phone's own camera or gallery, or a file.
+- **Updates itself.** A firmware version published to the server is offered in Account → Echo
+  and sent to the wearable over Bluetooth; if the new version cannot reach the app, the
   wearable goes back to the previous one ([ADR 0009](docs/adr/0009-firmware-updates-over-ble.md)).
+  A wearable the phone cannot reach starts advertising again by itself, and drops a link that
+  never becomes ready (firmware 0.10.6).
 
 ## Architecture
 
@@ -170,10 +190,11 @@ searches a day and routines; `PLANS` in `.env` changes the numbers. Past the mon
 budget Echo keeps the audio and transcribes the first 10 minutes of each day at once; the
 rest waits and is transcribed, oldest first, on the 1st or as soon as the plan is raised.
 
-Others can create their own account from the app (each with separate memories); set
+Others can create their own account from the app, with an email or with Google (each with
+separate memories); set
 `REGISTRATION_OPEN=false` in `.env` to close that. `create-user` attaches the account to the
 existing owner, so data recorded before stays yours. Signing in on a phone gives
-that phone its own API key; Settings → Devices lists the phones and revokes one.
+that phone its own API key; Account → Devices lists the phones and revokes one.
 
 For scripts and plain HTTP, `make create-key` still prints a key once. The examples below use `my-secret-key` (`make create-key KEY=my-secret-key`) for local testing
 only: that key is public, so never keep it on a backend reachable from the internet
@@ -204,11 +225,11 @@ curl -X POST http://localhost:8000/api/segments \
 
 ### 6. Connect your apps (optional)
 
-With `COMPOSIO_API_KEY` set, open **Settings → Apps** in the app and tap
+With `COMPOSIO_API_KEY` set, open **Account → Apps** in the app and tap
 **Connect** next to Gmail, Google Calendar, Slack, Telegram, Todoist or Notion (or search for other
 apps). You log in with the provider in the browser; Composio keeps the account tokens. See
 [Actions](#actions-composio). The iPhone's Reminders and Calendar need no Composio: turn them on in
-**Settings → On this iPhone**.
+**Account → Apps → On this iPhone**.
 
 ## Actions (Composio)
 
@@ -235,7 +256,7 @@ check the app before trying again.
 
 **Privacy and audit.** Composio receives only the tool arguments (never audio or full transcripts) and
 holds the account tokens; email or message contents that Echo reads are sent to OpenAI to write the
-answer and are not stored in Echo's memory. Every executed call is recorded in **Settings → Activity**
+answer and are not stored in Echo's memory. Every executed call is recorded in **Account → Activity**
 with a short, redacted argument summary.
 
 **Endpoints** (all under `/api/actions`, `X-API-Key` required):
@@ -254,7 +275,7 @@ answering from memory only.
 ## MCP (connected apps)
 
 Claude, Cursor and other assistants can read the user's memory over MCP, read-only:
-`https://<server>/mcp` (Streamable HTTP), with a connected app's key from Settings → Devices →
+`https://<server>/mcp` (Streamable HTTP), with a connected app's key from Account → Devices →
 **Connect an assistant** (`POST /api/auth/connected-apps`) in `Authorization: Bearer <key>`.
 
 | Tool | Returns |
@@ -328,7 +349,7 @@ All `/api` endpoints require the `X-API-Key` header, except signing in and creat
 - `POST /api/auth/me/delete` (`{password}`) — deletes the account and everything Echo keeps of it
   (every row with its user id, the audio on disk, its Redis keys; WhatsApp and the connected apps
   are unlinked, best effort). 403 for a wrong password, limited like signing in. The daily backups
-  keep it until they rotate (14 days). In the app: Profile → More → About → Delete account.
+  keep it until they rotate (14 days). In the app: Account → About → Delete account.
 
 ### Segments
 - `POST /api/segments` — ingest a Segment, Opus from firmware 0.9 or ADPCM before it (multipart
